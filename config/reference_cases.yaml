@@ -1,0 +1,41 @@
+# Test case with 6 generators 
+test_case: # One scenario with 6 generators and demand of 225 MW
+  demand: 
+    - 215.0
+
+  generators:
+    - id: 0
+      name: "G1"
+      pmax: 50.0
+      pmin: 0.0
+      cost: 20.0
+      
+    - id: 1
+      name: "G2"
+      pmax: 50.0
+      pmin: 0.0
+      cost: 30.0
+      
+    - id: 2
+      name: "G3"
+      pmax: 50.0
+      pmin: 0.0
+      cost: 40.0
+      
+    - id: 3
+      name: "G4"
+      pmax: 50.0
+      pmin: 0.0
+      cost: 50.0
+      
+    - id: 4
+      name: "G5"
+      pmax: 50.0
+      pmin: 0.0
+      cost: 60.0
+      
+    - id: 5
+      name: "G6"
+      pmax: 50.0
+      pmin: 0.0
+      cost: 70.0

@@ -1,0 +1,14 @@
+# MPEC model configuration parameters
+mpec_config:
+  # Big-M values for complementarity constraints
+  big_m_complementarity: 10000.0
+  
+  # Big-M values for bid separation constraints  
+  big_m_bid_separation: 10000.0
+  
+  # Epsilon value for bid separation constraints
+  bid_separation_epsilon: 0.01
+  
+  # Bid bounds
+  alpha_min: 0.0
+  alpha_max: 1200.0

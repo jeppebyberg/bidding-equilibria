@@ -1,0 +1,4 @@
+#Diagonalization algorithm configuration
+diagonalization:
+  max_iterations: 50
+  conv_tolerance: 1e-2
