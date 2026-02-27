@@ -47,12 +47,3 @@ class EconomicDispatchModel:
         else:
             print("Solver status:", results.solver.status)
             print("Termination condition:", results.solver.termination_condition)
-
-if __name__ == "__main__":
-    from config.utils.cases_utils import load_setup_data
-    num_generators, Pmax, Pmin, bid_list, demand = load_setup_data()
-
-    model = EconomicDispatchModel()
-    dispatch, clearing_price = model.economic_dispatch(num_generators=num_generators, demand=demand, Pmax=Pmax, Pmin=Pmin, bid_list=bid_list)
-    print("Optimal Dispatch:", dispatch)
-    print("Market Clearing Price:", clearing_price)

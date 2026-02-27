@@ -4,46 +4,45 @@ from typing import List, Dict, Any, Optional, Tuple
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Add parent directory to path for config imports
-sys.path.append(str(Path(__file__).parent.parent))
-from config.utils.cases_utils import load_setup_data
-from models.diagonalization.MPEC import MPECModel
-from models.diagonalization.economic_dispatch import EconomicDispatchModel
+import config.base_case as config
+from models.diagonalization.OneScenario.MPEC import MPECModel
+from models.diagonalization.OneScenario.economic_dispatch import EconomicDispatchModel
 
-from config.utils.diagonalization_loader import load_diagonalization
+from models.diagonalization.OneScenario.utilities.diagonalization_loader import load_diagonalization
 
 class BestResponseAlgorithm:
     """
     Best response algorithm for finding bidding equilibrium using MPEC and economic dispatch models
     """
     
-    def __init__(self):
+    def __init__(self,
+                 case: str = "test_case"
+                 ):
         """
         Initialize the best response algorithm
         
         Parameters
         ----------
-        max_iterations : int, default 20
-            Maximum number of iterations for the algorithm
-        tolerance : float, default 1e-3
-            Convergence tolerance for bid changes
+        case : str
+            Name of the test case to load from config
         """
         
         # Load test case data
-        self.num_generators, self.pmax_list, self.pmin_list, self.cost_vector, self.demand = load_setup_data()
+        self.num_generators, self.pmax_list, self.pmin_list, self.cost_vector, self.demand, self.generators = config.load_setup_data(case)
 
-        config = load_diagonalization()
+        diag_config = load_diagonalization()
 
         # Algorithm parameters
-        self.max_iterations = int(config.get("max_iterations"))
-        self.conv_tolerance = float(config.get("conv_tolerance"))
+        self.max_iterations = int(diag_config.get("max_iterations"))
+        self.conv_tolerance = float(diag_config.get("conv_tolerance"))
         
         # Create MPEC model (reused for all strategic players)
         self.mpec_model = MPECModel(
             demand=self.demand,
             pmax_list=self.pmax_list,
             pmin_list=self.pmin_list,
-            num_generators=self.num_generators
+            num_generators=self.num_generators,
+            generators=self.generators
         )
         
         # Create economic dispatch model
@@ -800,31 +799,43 @@ class BestResponseAlgorithm:
         plt.scatter([demand_level], [strategic_price], color='red', s=200, marker='s',
                    zorder=5, label=f'Strategic Clearing\n(${strategic_price:.2f}/MWh)', edgecolor='black')
         
-        # Add annotations for key generators
+        # Add annotations for key generators with improved spacing
         # Competitive merit order annotations
         cumulative_comp = 0
+        comp_annotation_count = 0
         for gen_id, cost, pmax, dispatch in comp_gen_data:
             if dispatch > 0.1:  # Only annotate dispatched units
+                # Alternate positioning and add horizontal offset to avoid overlap
+                vertical_offset = max_price * (0.12 + 0.04 * (comp_annotation_count % 3))
+                horizontal_offset = 5 * (comp_annotation_count % 2 - 0.5)  # Alternate left/right
+                
                 plt.annotate(f'Gen {gen_id}\nCost: ${cost:.1f}', 
                            xy=(cumulative_comp + dispatch/2, cost),
-                           xytext=(cumulative_comp + dispatch/2, cost + max_price*0.08),
-                           ha='center', va='bottom', fontsize=9,
-                           bbox=dict(boxstyle='round,pad=0.2', facecolor='lightblue', alpha=0.7),
-                           arrowprops=dict(arrowstyle='->', color='blue', alpha=0.6))
+                           xytext=(cumulative_comp + dispatch/2 + horizontal_offset, cost + vertical_offset),
+                           ha='center', va='bottom', fontsize=8,
+                           bbox=dict(boxstyle='round,pad=0.3', facecolor='lightblue', alpha=0.8),
+                           arrowprops=dict(arrowstyle='->', color='blue', alpha=0.7, lw=1.5))
+                comp_annotation_count += 1
             cumulative_comp += dispatch
         
         # Strategic merit order annotations (only show different ones)
         cumulative_strategic = 0
+        strat_annotation_count = 0
         for gen_id, bid, pmax, dispatch in strategic_gen_data:
             if dispatch > 0.1:  # Only annotate dispatched units
                 # Only annotate if significantly different from cost
                 if abs(bid - self.cost_vector[gen_id]) > 1.0:
+                    # Alternate positioning with better spacing below the curve
+                    vertical_offset = max_price * (0.12 + 0.04 * (strat_annotation_count % 3))
+                    horizontal_offset = 8 * (strat_annotation_count % 2 - 0.5)  # Alternate left/right
+                    
                     plt.annotate(f'Gen {gen_id}\nBid: ${bid:.1f}', 
                                xy=(cumulative_strategic + dispatch/2, bid),
-                               xytext=(cumulative_strategic + dispatch/2, bid - max_price*0.08),
-                               ha='center', va='top', fontsize=9,
-                               bbox=dict(boxstyle='round,pad=0.2', facecolor='lightcoral', alpha=0.7),
-                               arrowprops=dict(arrowstyle='->', color='red', alpha=0.6))
+                               xytext=(cumulative_strategic + dispatch/2 + horizontal_offset, bid - vertical_offset),
+                               ha='center', va='top', fontsize=8,
+                               bbox=dict(boxstyle='round,pad=0.3', facecolor='lightcoral', alpha=0.8),
+                               arrowprops=dict(arrowstyle='->', color='red', alpha=0.7, lw=1.5))
+                    strat_annotation_count += 1
             cumulative_strategic += dispatch
         
         # Formatting
@@ -879,7 +890,7 @@ if __name__ == "__main__":
     print("=== Testing Best Response Algorithm ===")
     
     # Create and run algorithm
-    algo = BestResponseAlgorithm()
+    algo = BestResponseAlgorithm(case = "test_case")
     algo.run()
     results = algo.results
     
