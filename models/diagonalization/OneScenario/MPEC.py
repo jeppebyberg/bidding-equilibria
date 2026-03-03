@@ -4,7 +4,6 @@ import pandas as pd
 from typing import List, Optional, Dict, Any
 
 from .utilities.MPEC_utils import get_mpec_parameters
-from .economic_dispatch import EconomicDispatchModel
 
 class MPECModel:
     def __init__(self, 
@@ -13,7 +12,8 @@ class MPECModel:
                  pmin_list: List[float],
                  num_generators: int,
                  generators: List[str] = None,
-                 strategic_player: int | tuple[int] = None,
+                 players_config: List[Dict[str, Any]] = None,
+                 strategic_player_id: int = None,
                  bid_vector: List[float] = None,
                  cost_vector: List[float] = None,
                  config_overrides: Optional[Dict[str, Any]] = None):
@@ -30,6 +30,16 @@ class MPECModel:
             Minimum power output for each generator
         num_generators : int
             Number of generators in the system
+        generators : List[str], optional
+            List of generator names
+        players_config : List[Dict[str, Any]], optional
+            List of player configurations from base case, each with 'name' and 'controlled_generators'
+        strategic_player_id : int, optional
+            ID of the player to optimize (must match a player name in players_config)
+        bid_vector : List[float], optional
+            Current bid vector for all generators
+        cost_vector : List[float], optional
+            Cost vector for all generators
         config_overrides : Dict[str, Any], optional
             Configuration overrides for MPEC parameters
         """
@@ -53,16 +63,28 @@ class MPECModel:
         self.Pmax = pmax_list
         self.Pmin = pmin_list 
         self.num_generators = num_generators
+        self.generators = generators
         
-        self.strategic_player = strategic_player
+        # Store players configuration if provided
+        self.players_config = {}
+        if players_config:
+            for player in players_config:
+                # Use 'id' field from player configuration to match actual data format
+                self.players_config[player['id']] = player['controlled_generators']
+        
+        # Set initial strategic player
+        self.strategic_player_id = strategic_player_id
+        self.strategic_generators = []
+        if strategic_player_id is not None:
+            self.strategic_generators = self.players_config.get(strategic_player_id, [])
+        
         self.bid_vector = bid_vector
         self.cost_vector = cost_vector
-        self.generators = generators
 
         self.model = None
 
     def update_strategic_player(self, 
-                                strategic_player: int | tuple[int], 
+                                player_id: int, 
                                 bid_vector: List[float], 
                                 cost_vector: List[float]) -> None:
         """
@@ -71,14 +93,18 @@ class MPECModel:
         
         Parameters
         ----------
-        strategic_player : int or tuple[int]
-            Index or indexes of generator(s) the strategic player controls
+        player_id : int
+            ID of the player to optimize (must match a player name in players_config)
         bid_vector : List[float]
             Current bid vector for all generators
         cost_vector : List[float]
             Cost vector for all generators
         """
-        self.strategic_player = strategic_player
+        if player_id not in self.players_config:
+            raise ValueError(f"Player {player_id} not found in players configuration. Available players: {list(self.players_config.keys())}")
+        
+        self.strategic_player_id = player_id
+        self.strategic_generators = self.players_config[player_id]
         self.bid_vector = bid_vector
         self.cost_vector = cost_vector
         
@@ -94,16 +120,13 @@ class MPECModel:
         Build the complete MPEC model structure.
         This is called once, then update_strategic_player() updates the changing parts between each strategic player.
         """
-        if self.strategic_player is None:
+        if self.strategic_player_id is None:
             raise ValueError("Must call update_strategic_player() before building model")
 
         self.model = ConcreteModel()
         
-        # Determine strategic set
-        if isinstance(self.strategic_player, int):
-            strategic_set = [self.strategic_player]
-        else:
-            strategic_set = list(self.strategic_player)
+        # Use strategic generators from player configuration
+        strategic_set = self.strategic_generators
 
         self.model.n_gen = Set(initialize=range(self.num_generators))
         self.model.strategic_index = Set(initialize=strategic_set)
@@ -121,11 +144,8 @@ class MPECModel:
         Update only the constraints that depend on the strategic player.
         This is much more efficient than rebuilding the entire model.
         """
-        # Update strategic set
-        if isinstance(self.strategic_player, int):
-            strategic_set = [self.strategic_player]
-        else:
-            strategic_set = list(self.strategic_player)
+        # Update strategic set from player configuration
+        strategic_set = self.strategic_generators
             
         # Update the strategic index set
         self.model.strategic_index.clear()
@@ -352,3 +372,7 @@ class MPECModel:
         if not (results.solver.status == 'ok') and not (results.solver.termination_condition == 'optimal'):
             print("Solver status:", results.solver.status)
             print("Termination condition:", results.solver.termination_condition)
+        else:
+            print("Solver status:", results.solver.status)
+            print("Termination condition:", results.solver.termination_condition)
+    

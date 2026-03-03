@@ -6,7 +6,7 @@ class EconomicDispatchModel:
     def __init__(self):
         pass
 
-    def economic_dispatch(self, num_generators: int, demand_scenarios: List[float], Pmax, Pmin, bid_list, num_scenarios: int = 1) -> tuple[List[List[float]], List[float]]:
+    def economic_dispatch(self, num_generators: int, demand_scenarios: List[float], Pmax, Pmin, bid_list) -> tuple[List[List[float]], List[float]]:
         """
         Solve the economic dispatch problem for multiple scenarios with the bids placed.
         Now optimized to solve all scenarios in a single optimization problem.
@@ -23,8 +23,6 @@ class EconomicDispatchModel:
             Minimum power output - either [scenario][generator] or [generator] for uniform
         bid_list : List[List[float]] or List[float]
             Cost/bid values - either [scenario][generator] or [generator] for uniform
-        num_scenarios : int
-            Number of scenarios to solve
             
         Returns
         -------
@@ -34,6 +32,8 @@ class EconomicDispatchModel:
             Market clearing price for each scenario
         """
         
+        num_scenarios = len(demand_scenarios)
+
         # Handle backward compatibility - convert single arrays to scenario arrays
         if not isinstance(Pmax[0], list):
             # Old API: single arrays for all scenarios
@@ -91,33 +91,25 @@ class EconomicDispatchModel:
         else:
             print(f"Solver status:", results.solver.status)
             print(f"Termination condition:", results.solver.termination_condition)
-            # Return empty results for failed scenarios
-            for s in range(num_scenarios):
-                all_dispatches.append([0.0] * num_generators)
-                clearing_prices.append(0.0)
                 
         return all_dispatches, clearing_prices
 
-    def economic_dispatch_from_dataframe(self, scenarios_df: pd.DataFrame, bid_list: List[float] = None, 
-                                       demand_col: str = 'demand', 
-                                       generator_cols: List[str] = None,
-                                       bid_cols: List[str] = None,
-                                       pmin_default: float = 0.0) -> tuple[List[List[float]], List[float]]:
+    def economic_dispatch_from_dataframe(self, scenarios_df: pd.DataFrame, costs_df: pd.DataFrame,
+                                       pmin_default: float = 0.0) -> tuple[List[List[float]], List[float], List[dict]]:
         """
-        Solve economic dispatch for multiple scenarios using a DataFrame.
+        Solve economic dispatch for multiple scenarios using separate DataFrames.
         
         Parameters
         ----------
         scenarios_df : pd.DataFrame
-            DataFrame containing scenario data with demand, generator capacity, and optionally bid columns
-        bid_list : List[float], optional
-            Array of cost/bid values for each generator (used if bid_cols not provided)
-        demand_col : str, optional
-            Name of the demand column (default: 'demand')
-        generator_cols : List[str], optional
-            List of generator column names. If None, auto-detects non-demand/bid columns
-        bid_cols : List[str], optional
-            List of bid column names for scenario-specific bids. If None, uses single bid_list
+            DataFrame containing scenario data with demand, generator capacity, and bid columns
+            Expected columns:
+            - Demand column: should contain 'demand' or 'load' in name
+            - Generator capacity columns: should end with '_cap' (e.g., 'G1_cap', 'G2_cap')
+            - Generator bid columns: should end with '_bid' (e.g., 'G1_bid', 'G2_bid')
+        costs_df : pd.DataFrame
+            DataFrame containing static generator costs for profit calculation
+            Expected columns: should end with '_cost' (e.g., 'G1_cost', 'G2_cost')
         pmin_default : float, optional
             Default Pmin value for all generators (default: 0.0)
             
@@ -127,62 +119,79 @@ class EconomicDispatchModel:
             Optimal dispatch for each generator in each scenario
         clearing_prices : List[float]
             Market clearing price for each scenario
+        all_profits : List[dict]
+            Profit for each generator in each scenario as dictionaries with generator names as keys
+            Format: [{'G1': profit, 'G2': profit, ...}, {'G1': profit, 'G2': profit, ...}, ...]
+            Profit = (clearing_price - cost) * dispatch
         """
         
-        # Auto-detect generator columns if not provided
-        if generator_cols is None:
-            # Get capacity/generation columns (exclude demand, scenario_id, and bid columns)
-            exclude_cols = [demand_col, 'scenario_id']
-            if bid_cols:
-                exclude_cols.extend(bid_cols)
-            generator_cols = [col for col in scenarios_df.columns 
-                            if col not in exclude_cols]
+        # Auto-detect demand column
+        demand_col = None
+        for col in scenarios_df.columns:
+            if any(keyword in col.lower() for keyword in ['demand', 'load']):
+                demand_col = col
+                break
         
-        num_generators = len(generator_cols)
+        if demand_col is None:
+            raise ValueError("No demand column found. Expected column name containing 'demand' or 'load'")
         
-        # Handle bid data - either scenario-specific or single bid_list
-        use_scenario_bids = bid_cols is not None
+        # Auto-detect generator capacity columns (those ending with "_cap")
+        capacity_cols = [col for col in scenarios_df.columns if col.endswith('_cap')]
         
-        if use_scenario_bids:
-            # Validate bid columns match generator columns
-            if len(bid_cols) != num_generators:
-                raise ValueError(f"bid_cols length ({len(bid_cols)}) must match number of generators ({num_generators})")
-        else:
-            # Validate single bid_list
-            if bid_list is None:
-                raise ValueError("Either bid_list or bid_cols must be provided")
-            if len(bid_list) != num_generators:
-                raise ValueError(f"bid_list length ({len(bid_list)}) must match number of generators ({num_generators})")
+        if not capacity_cols:
+            raise ValueError("No generator capacity columns found. Expected columns ending with '_cap'")
         
-        # Prepare data for single optimization call
+        # Extract generator names from capacity columns
+        generator_names = [col.replace('_cap', '') for col in capacity_cols]
+        num_generators = len(generator_names)
+        
+        # Get bid columns (must exist in scenarios_df)
+        bid_cols = [f"{gen_name}_bid" for gen_name in generator_names]
+        missing_bid_cols = [col for col in bid_cols if col not in scenarios_df.columns]
+        if missing_bid_cols:
+            raise ValueError(f"Missing bid columns in scenarios_df: {missing_bid_cols}")
+        
+        # Get cost columns (must exist in costs_df)
+        cost_cols = [f"{gen_name}_cost" for gen_name in generator_names]
+        missing_cost_cols = [col for col in cost_cols if col not in costs_df.columns]
+        if missing_cost_cols:
+            raise ValueError(f"Missing cost columns in costs_df: {missing_cost_cols}")
+        
+        # Prepare data for optimization
         demand_scenarios = scenarios_df[demand_col].tolist()
         pmax_scenarios = []
         pmin_scenarios = []
         bid_scenarios = []
         
         for _, row in scenarios_df.iterrows():
-            # Extract Pmax for this scenario
-            pmax_scenario = [row[col] for col in generator_cols]
+            # Extract capacity and bids for this scenario
+            pmax_scenario = [row[col] for col in capacity_cols]
             pmin_scenario = [pmin_default] * num_generators
-            
-            # Extract bids for this scenario
-            if use_scenario_bids:
-                scenario_bids = [row[col] for col in bid_cols]
-            else:
-                scenario_bids = bid_list
+            scenario_bids = [row[col] for col in bid_cols]
             
             pmax_scenarios.append(pmax_scenario)
             pmin_scenarios.append(pmin_scenario)
             bid_scenarios.append(scenario_bids)
         
-        # Call economic_dispatch once for all scenarios
+        # Solve economic dispatch for all scenarios
         all_dispatches, clearing_prices = self.economic_dispatch(
             num_generators=num_generators,
             demand_scenarios=demand_scenarios,
             Pmax=pmax_scenarios,
             Pmin=pmin_scenarios,
-            bid_list=bid_scenarios,
-            num_scenarios=len(scenarios_df)
+            bid_list=bid_scenarios
         )
-            
-        return all_dispatches, clearing_prices
+
+        # Calculate profits for each generator in each scenario
+        generator_costs = [costs_df[col].iloc[0] for col in cost_cols]
+        all_profits = []
+        
+        for scenario_idx, (dispatch, clearing_price) in enumerate(zip(all_dispatches, clearing_prices)):
+            scenario_profits = {}
+            for gen_idx, (gen_name, dispatch_amount, cost) in enumerate(zip(generator_names, dispatch, generator_costs)):
+                # Profit = (clearing_price - cost) * dispatch_amount
+                profit = (clearing_price - cost) * dispatch_amount
+                scenario_profits[gen_name] = profit
+            all_profits.append(scenario_profits)
+                     
+        return all_dispatches, clearing_prices, all_profits

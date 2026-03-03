@@ -31,9 +31,35 @@ def get_generators(case_name: str) -> List[Dict[str, Any]]:
     test_case = load_test_case(case_name=case_name)
     return test_case.get("generators")
 
-def load_setup_data(case_name: str = "test_case") -> Tuple[int, List[float], List[float], List[float], float]:
+def get_players(case_name: str) -> List[Dict[str, Any]]:
+    """Get players data from test case"""
+    test_case = load_test_case(case_name=case_name)
+    players = test_case.get("players", [])
+    if not players:
+        raise ValueError(f"No players configuration found in case '{case_name}'")
+    
+    # Check for overlapping generator ownership
+    all_controlled_generators = []
+    player_generator_map = {}
+    
+    for player in players:
+        player_name = player.get("id", "Unknown")
+        controlled_gens = player.get("controlled_generators", [])
+        
+        for gen_id in controlled_gens:
+            if gen_id in all_controlled_generators:
+                # Find which player already controls this generator
+                existing_player = player_generator_map.get(gen_id, "Unknown")
+                raise ValueError(f"Generator {gen_id} is controlled by both player {existing_player} and player {player_name} in case '{case_name}'")
+            
+            all_controlled_generators.append(gen_id)
+            player_generator_map[gen_id] = player_name
+    
+    return players
+
+def load_setup_data(case_name: str = "test_case") -> Tuple[int, List[float], List[float], List[float], float, List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
-    Load base case data for a given case name
+    Load complete base case data including players for a given case name
 
     Parameters
     ----------
@@ -43,11 +69,12 @@ def load_setup_data(case_name: str = "test_case") -> Tuple[int, List[float], Lis
     Returns
     -------
     tuple
-        (num_generators, pmax_list, pmin_list, cost_vector, demand)
+        (num_generators, pmax_list, pmin_list, cost_vector, demand, generators, players)
     """
-    # Load generators and demand
+    # Load generators, demand, and players
     generators = get_generators(case_name=case_name)
     demand = get_demand(case_name=case_name)
+    players = get_players(case_name=case_name)
     
     num_generators = len(generators)
 
@@ -56,14 +83,16 @@ def load_setup_data(case_name: str = "test_case") -> Tuple[int, List[float], Lis
     pmin_list = [gen["pmin"] for gen in generators]
     cost_vector = [gen["cost"] for gen in generators]
     
-    return num_generators, pmax_list, pmin_list, cost_vector, demand, generators
+    return num_generators, pmax_list, pmin_list, cost_vector, demand, generators, players
 
 if __name__ == "__main__":
-    # Example usage
-    num_generators, pmax, pmin, cost, demand, generators = load_setup_data("test_case")
+    # Example usage - load complete data including players
+    num_generators, pmax, pmin, cost, demand, generators, players = load_setup_data("test_case")
     print("Number of generators:", num_generators)
     print("Pmax:", pmax)
     print("Pmin:", pmin)
     print("Cost:", cost)
     print("Demand:", demand)
-    print("Generators:", generators) 
+    print("Generators:", generators)
+    print("\nPlayers:", players)
+    print(f"\nLoaded {num_generators} generators and {len(players)} players") 

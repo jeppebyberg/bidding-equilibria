@@ -5,30 +5,65 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import config.base_case as config
-from models.diagonalization.OneScenario.MPEC import MPECModel
-from models.diagonalization.OneScenario.economic_dispatch import EconomicDispatchModel
+from models.diagonalization.MultipleScenarios.MPEC_MS import MPECModel
+from models.diagonalization.MultipleScenarios.economic_dispatch_MS import EconomicDispatchModel
+from models.diagonalization.MultipleScenarios.utilities.diagonalization_loader import load_diagonalization
 
-from models.diagonalization.OneScenario.utilities.diagonalization_loader import load_diagonalization
-
-class BestResponseAlgorithm:
+class BestResponseAlgorithmMS:
     """
     Best response algorithm for finding bidding equilibrium using MPEC and economic dispatch models
     """
     
     def __init__(self,
-                 case: str = "test_case"
+                 scenarios_df,
+                 costs_df,
+                 players_config
                  ):
         """
         Initialize the best response algorithm
         
         Parameters
         ----------
-        case : str
-            Name of the test case to load from config
+        scenarios_df : pd.DataFrame
+            DataFrame containing scenario data with demand, generator capacity, and bid columns
+        costs_df : pd.DataFrame
+            DataFrame containing static generator costs
+        players_config : List[Dict[str, Any]]
+            List of player configurations
         """
         
-        # Load test case data
-        self.num_generators, self.pmax_list, self.pmin_list, self.cost_vector, self.demand, self.generators, self.players_config = config.load_setup_data(case)
+        self.scenarios_df = scenarios_df
+        self.costs_df = costs_df
+        self.players_config = players_config
+        
+        # Extract basic data for compatibility with ED model from scenarios_df
+        # Auto-detect generator names from capacity columns
+        capacity_cols = [col for col in scenarios_df.columns if col.endswith('_cap')]
+        generator_names = [col.replace('_cap', '') for col in capacity_cols]
+        
+        self.num_generators = len(generator_names)
+        
+        # Extract generator data from scenarios_df first row and costs_df
+        self.pmax_list = [scenarios_df[f"{gen}_cap"].iloc[0] for gen in generator_names]
+        self.pmin_list = [0.0] * self.num_generators  # Default Pmin = 0
+        self.cost_vector = [costs_df[f"{gen}_cost"].iloc[0] for gen in generator_names]
+        
+        # Use first scenario demand for ED compatibility
+        demand_col = None
+        for col in scenarios_df.columns:
+            if any(keyword in col.lower() for keyword in ['demand', 'load']):
+                demand_col = col
+                break
+        self.demand = scenarios_df[demand_col].iloc[0] if demand_col else scenarios_df.iloc[0, 0]
+        
+        # Create generators list for compatibility
+        self.generators = [{
+            "id": i,
+            "name": gen_name,
+            "pmax": self.pmax_list[i],
+            "pmin": self.pmin_list[i],
+            "cost": self.cost_vector[i]
+        } for i, gen_name in enumerate(generator_names)]
 
         diag_config = load_diagonalization()
 
@@ -38,11 +73,8 @@ class BestResponseAlgorithm:
         
         # Create MPEC model (reused for all strategic players)
         self.mpec_model = MPECModel(
-            demand=self.demand,
-            pmax_list=self.pmax_list,
-            pmin_list=self.pmin_list,
-            num_generators=self.num_generators,
-            generators=self.generators,
+            scenarios_df=self.scenarios_df,
+            costs_df=self.costs_df,
             players_config=self.players_config
         )
         
@@ -71,16 +103,25 @@ class BestResponseAlgorithm:
         Returns
         -------
         Tuple[List[float], float]
-            Optimal bids for all generators controlled by the player
-            Total profit for the player (aggregated across all their generators)
+            Optimal bids for all generators controlled by the player (averaged across scenarios)
+            Total profit for the player (aggregated across all their generators and scenarios)
         """
         
-        # Update the MPEC model for this strategic player
-        self.mpec_model.update_strategic_player(
-            player_id=player_id,
-            bid_vector=self.bid_vector,
-            cost_vector=self.cost_vector
+        # Update bid scenarios with current bid vector before solving
+        for s in range(len(self.scenarios_df)):
+            for gen_idx in range(self.num_generators):
+                gen_name = self.mpec_model.generator_names[gen_idx]
+                self.scenarios_df.at[s, f"{gen_name}_bid"] = self.bid_vector[gen_idx]
+        
+        # Reconstruct MPEC model with updated bid scenarios
+        self.mpec_model = MPECModel(
+            scenarios_df=self.scenarios_df,
+            costs_df=self.costs_df,
+            players_config=self.players_config
         )
+        
+        # Update the MPEC model for this strategic player
+        self.mpec_model.update_strategic_player(strategic_player_id=player_id)
         
         # Solve the MPEC model
         self.mpec_model.solve()
@@ -95,17 +136,22 @@ class BestResponseAlgorithm:
         if controlled_generators is None:
             raise ValueError(f"Player {player_id} not found in players config")
         
-        # Extract optimal bids for all controlled generators
+        # Extract optimal bids for all controlled generators (averaged across scenarios)
         optimal_bids = []
-        total_profit = -self.mpec_model.model.objective.expr()
+        total_profit = 0.0
         
+        # Get optimal bid scenarios
+        optimal_bid_scenarios = self.mpec_model.get_optimal_bids()
+        
+        # Average bids across scenarios for each controlled generator
         for gen_id in controlled_generators:
-            if self.mpec_model.model.alpha[gen_id].value is not None:
-                optimal_bids.append(self.mpec_model.model.alpha[gen_id].value)
-            else:
-                print(f"Warning: No solution found for generator {gen_id} of player {player_id}")
-                raise ValueError(f"No solution found for generator {gen_id} of player {player_id}")
-                
+            avg_bid = sum(optimal_bid_scenarios[s][gen_id] for s in range(len(optimal_bid_scenarios))) / len(optimal_bid_scenarios)
+            optimal_bids.append(avg_bid)
+        
+        # Calculate total profit (negative of objective value)
+        if hasattr(self.mpec_model.model, 'objective'):
+            total_profit = -self.mpec_model.model.objective.expr()
+        
         return optimal_bids, total_profit
                                 
     def calculate_ED(self) -> Tuple[List[float], float, List[float]]:
@@ -115,18 +161,25 @@ class BestResponseAlgorithm:
         Returns
         -------
         tuple
-            (dispatch, clearing_price, profits)
+            (dispatch, clearing_price, profits) - averaged across scenarios
         """
         
+        # Use base case demand for economic dispatch
+        demand_scenarios = [self.demand]  # Single scenario for simplicity
+        
         # Update economic dispatch with current bids
-        dispatch, clearing_price = self.ed_model.economic_dispatch(
+        all_dispatches, clearing_prices = self.ed_model.economic_dispatch(
             num_generators=self.num_generators,
-            demand=self.demand,
+            demand_scenarios=demand_scenarios,
             Pmax=self.pmax_list,
             Pmin=self.pmin_list,
             bid_list=self.bid_vector
         )
                 
+        # Use first scenario results (since we only have one scenario in ED)
+        dispatch = all_dispatches[0]
+        clearing_price = clearing_prices[0]
+        
         # Calculate profits for each generator first
         generator_profits = []
         for i in range(self.num_generators):
@@ -436,13 +489,14 @@ class BestResponseAlgorithm:
         final_profits = self.results['final_market_outcomes']['profits']
         
         # Calculate perfect competition profits (bidding at marginal cost)
-        perfect_comp_dispatch, perfect_comp_price = self.ed_model.economic_dispatch(
+        all_comp_dispatches, comp_prices = self.ed_model.economic_dispatch(
             num_generators=self.num_generators,
-            demand=self.demand,
+            demand_scenarios=[self.demand],
             Pmax=self.pmax_list,
             Pmin=self.pmin_list,
             bid_list=self.cost_vector  # Bid at marginal cost
         )
+        perfect_comp_dispatch, perfect_comp_price = all_comp_dispatches[0], comp_prices[0]
         
         # Calculate perfect competition profits per generator first
         perfect_comp_gen_profits = []
@@ -538,13 +592,14 @@ class BestResponseAlgorithm:
         print("\n=== Competitive Benchmark Analysis ===")
         
         # Calculate competitive dispatch (bidding at marginal cost)
-        comp_dispatch, comp_price = self.ed_model.economic_dispatch(
+        all_comp_dispatches, comp_prices = self.ed_model.economic_dispatch(
             num_generators=self.num_generators,
-            demand=self.demand,
+            demand_scenarios=[self.demand],
             Pmax=self.pmax_list,
             Pmin=self.pmin_list,
             bid_list=self.cost_vector  # Bid at marginal cost
         )
+        comp_dispatch, comp_price = all_comp_dispatches[0], comp_prices[0]
         
         # Create merit order based on costs
         gen_data = [(i, self.cost_vector[i], self.pmax_list[i], comp_dispatch[i]) 
@@ -615,13 +670,14 @@ class BestResponseAlgorithm:
             return
             
         # Get competitive dispatch (Economic Dispatch with marginal cost bidding)
-        comp_dispatch, comp_price = self.ed_model.economic_dispatch(
+        all_comp_dispatches, comp_prices = self.ed_model.economic_dispatch(
             num_generators=self.num_generators,
-            demand=self.demand,
+            demand_scenarios=[self.demand],
             Pmax=self.pmax_list,
             Pmin=self.pmin_list,
             bid_list=self.cost_vector  # Bid at marginal cost
         )
+        comp_dispatch, comp_price = all_comp_dispatches[0], comp_prices[0]
         
         # Get strategic dispatch (MPEC results)
         strategic_dispatch = self.results['final_market_outcomes']['dispatch']
@@ -774,13 +830,14 @@ class BestResponseAlgorithm:
             return
             
         # Get competitive and strategic data
-        comp_dispatch, comp_price = self.ed_model.economic_dispatch(
+        all_comp_dispatches, comp_prices = self.ed_model.economic_dispatch(
             num_generators=self.num_generators,
-            demand=self.demand,
+            demand_scenarios=[self.demand],
             Pmax=self.pmax_list,
             Pmin=self.pmin_list,
             bid_list=self.cost_vector
         )
+        comp_dispatch, comp_price = all_comp_dispatches[0], comp_prices[0]
         
         strategic_dispatch = self.results['final_market_outcomes']['dispatch']
         strategic_price = self.results['final_market_outcomes']['clearing_price']
@@ -927,12 +984,43 @@ class BestResponseAlgorithm:
         else:
             print("✓ Merit order UNCHANGED (only prices affected)")
 
-
 if __name__ == "__main__":
     print("=== Testing Best Response Algorithm ===")
     
+    # Generate scenarios for the algorithm
+    from config.base_case.scenarios.scenario_generator import ScenarioManager
+    
+    # Load scenario manager
+    scenario_manager = ScenarioManager("test_case")
+    players_config = scenario_manager.get_players_config()
+    
+    # Generate demand scenarios with some variation
+    demand_scenarios = scenario_manager.generate_demand_scenarios(
+        "linear", 
+        num_scenarios=5, 
+        min_factor=0.9, 
+        max_factor=1.1
+    )
+    
+    # Generate capacity scenarios (use base case capacities)
+    capacity_scenarios = scenario_manager.generate_capacity_scenarios(
+        "linear",
+        num_scenarios=1,  # Use base case capacities
+        min_factor=1.0,
+        max_factor=1.0
+    )
+    
+    # Create scenario set
+    scenarios = scenario_manager.create_scenario_set(
+        demand_scenarios=demand_scenarios,
+        capacity_scenarios=capacity_scenarios
+    )
+    
+    scenarios_df = scenarios['scenarios_df']
+    costs_df = scenarios['costs_df']
+    
     # Create and run algorithm
-    algo = BestResponseAlgorithm(case = "test_case_multiple_owners")
+    algo = BestResponseAlgorithmMS(scenarios_df, costs_df, players_config)
     algo.run()
     results = algo.results
     
