@@ -268,7 +268,7 @@ class MPECModel:
         """
         Function to build the objective function for the MPEC model. 
         """
-        self.model.objective = Objective(expr= -(
+        self.model.objective = Objective(expr= 1/self.num_scenarios * -(
                                         sum(self.model.lambda_var[s] * self.demand_scenarios[s] for s in self.model.n_scenarios) -
                                         sum(self.model.mu_upper_bound[s, i] * self.pmax_scenarios[s][i] for s in self.model.n_scenarios for i in self.model.n_gen) +
                                         sum(self.model.mu_lower_bound[s, i] * self.pmin_scenarios[s][i] for s in self.model.n_scenarios for i in self.model.n_gen) -
@@ -396,8 +396,8 @@ class MPECModel:
         if not (results.solver.status == 'ok') and not (results.solver.termination_condition == 'optimal'):
             print("Solver status:", results.solver.status)
             print("Termination condition:", results.solver.termination_condition)
-        else:
-            print("Model solved successfully!")
+        # else:
+            # print("Model solved successfully!")
     
     def get_optimal_bids(self) -> List[List[float]]:
         """
@@ -442,7 +442,7 @@ class MPECModel:
                     
         return optimal_bid_scenarios
     
-    def update_bids_with_optimal_values(self, scenarios_df: pd.DataFrame = None) -> pd.DataFrame:
+    def update_bids_with_optimal_values(self, scenarios_df: pd.DataFrame) -> pd.DataFrame:
         """
         Update bid scenarios with optimal strategic bids and return updated DataFrame.
         
@@ -463,24 +463,8 @@ class MPECModel:
         # Get strategic indices
         strategic_indices = self.strategic_generators
         
-        # Create or update scenarios DataFrame
-        if scenarios_df is not None:
-            updated_df = scenarios_df.copy()
-        else:
-            # Create a new DataFrame from scratch
-            updated_data = {
-                'demand': self.demand_scenarios
-            }
-            
-            # Add capacity columns
-            for gen_idx, gen_name in enumerate(self.generator_names):
-                updated_data[f"{gen_name}_cap"] = [self.pmax_scenarios[s][gen_idx] for s in range(self.num_scenarios)]
-                
-            # Add bid columns
-            for gen_idx, gen_name in enumerate(self.generator_names):
-                updated_data[f"{gen_name}_bid"] = [optimal_bid_scenarios[s][gen_idx] for s in range(self.num_scenarios)]
-                
-            updated_df = pd.DataFrame(updated_data)
+        # Create update scenarios DataFrame
+        updated_df = scenarios_df.copy()        
             
         # Update bid columns in the DataFrame
         for gen_idx in strategic_indices:
@@ -492,18 +476,30 @@ class MPECModel:
                     
         return updated_df
 
-    # def get_all_players(self) -> List[int]:
-    #     """
-    #     Get all available player IDs from the players configuration.
+    def get_scenario_profits(self) -> List[float]:
+        """
+        Calculate the profit for the strategic player in each scenario based on the optimal bids and dispatch.
         
-    #     Returns
-    #     -------
-    #     List[int]
-    #         List of player IDs that can be used as strategic players
-    #     """
-    #     if not self.players_config:
-    #         return []
-    #     return [player['name'] for player in self.players_config]
+        Returns
+        -------
+        List[float]
+            List of profits for the strategic player in each scenario
+        """
+        if not hasattr(self.model, 'lambda_var'):
+            raise ValueError("Market clearing price variable (lambda_var) not found. Model may not be properly built.")
+        
+        profits = []
+        for s in range(self.num_scenarios):
+            lambda_value = self.model.lambda_var[s].value
+            profit_scenario = 0.0
+            for i in self.strategic_generators:
+                bid = self.model.alpha[s, i].value if self.model.alpha[s, i].value is not None else self.bid_scenarios[s][i]
+                dispatch = self.model.P[s, i].value if self.model.P[s, i].value is not None else 0.0
+                cost = self.cost_vector[i]
+                profit_scenario += (lambda_value * dispatch - cost * dispatch)
+            profits.append(profit_scenario)
+        
+        return profits
 
     def print_players_summary(self) -> None:
         """
@@ -523,48 +519,3 @@ class MPECModel:
                         for i in controlled_gens]
             print(f"Player {player_name}: Controls {len(controlled_gens)} generators - {gen_names}")
 
-    # def solve_for_all_players(self, verbose: bool = True) -> Dict[int, List[List[float]]]:
-    #     """
-    #     Solve MPEC optimization for all players and return results.
-        
-    #     Parameters
-    #     ----------
-    #     verbose : bool, optional
-    #         Whether to print progress information
-            
-    #     Returns
-    #     -------
-    #     Dict[int, List[List[float]]]
-    #         Dictionary mapping player IDs to their optimal bid matrices
-    #     """
-    #     all_results = {}
-    #     all_player_ids = self.get_all_players()
-        
-    #     if not all_player_ids:
-    #         raise ValueError("No players configuration found. Cannot solve for players.")
-            
-    #     if verbose:
-    #         print(f"\n=== Solving MPEC for {len(all_player_ids)} Players ===")
-            
-    #     for player_id in all_player_ids:
-    #         if verbose:
-    #             player_info = next(p for p in self.players_config if p['name'] == player_id)
-    #             print(f"\nSolving for Player {player_id} (controls generators: {player_info['controlled_generators']})")
-                
-    #         try:
-    #             # Update to this player and solve
-    #             self.update_strategic_player(player_id)
-    #             self.solve()
-                
-    #             # Extract optimal bids
-    #             optimal_bids = self.get_optimal_bids()
-    #             all_results[player_id] = optimal_bids
-                
-    #             if verbose:
-    #                 print(f"Player {player_id}: Optimization completed successfully")
-                    
-    #         except Exception as e:
-    #             print(f"Error optimizing for Player {player_id}: {e}")
-    #             all_results[player_id] = None
-                
-    #     return all_results

@@ -7,7 +7,7 @@ mpec_config:
   big_m_bid_separation: 10000.0
   
   # Epsilon value for bid separation constraints
-  bid_separation_epsilon: 0.01
+  bid_separation_epsilon: 0.1
   
   # Bid bounds
   alpha_min: 0.0

@@ -932,7 +932,8 @@ if __name__ == "__main__":
     print("=== Testing Best Response Algorithm ===")
     
     # Create and run algorithm
-    algo = BestResponseAlgorithm(case = "test_case_multiple_owners")
+    # algo = BestResponseAlgorithm(case = "test_case_multiple_owners")
+    algo = BestResponseAlgorithm(case = "test_case")
     algo.run()
     results = algo.results
     
