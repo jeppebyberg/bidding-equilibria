@@ -63,6 +63,7 @@ class BestResponseAlgorithmMS:
         # Algorithm parameters
         self.max_iterations = int(diag_config.get("max_iterations"))
         self.conv_tolerance = float(diag_config.get("conv_tolerance"))
+        self.damping_factor = float(diag_config.get("damping_factor", 0.5))
         
         # Create MPEC model (reused for all strategic players)
         self.mpec_model = MPECModel(
@@ -80,7 +81,9 @@ class BestResponseAlgorithmMS:
         # History tracking
         self.bid_history = []
         self.profit_history_agent_perspective = []
+        self.profit_history_agent_perspective_scenario = []
         self.profit_history_ED_perspective = []
+        self.profit_history_ED_perspective_scenario = []
         self.dispatch_history = []
         self.clearing_price_history = []
         
@@ -112,11 +115,11 @@ class BestResponseAlgorithmMS:
         # Solve the MPEC model
         self.mpec_model.solve()
         
-        # Calculate total profit (negative of objective value)
-        if hasattr(self.mpec_model.model, 'objective'):
-            total_profit = -self.mpec_model.model.objective.expr()
-        
+        # Get per-scenario profits (correctly evaluated from solved variable values)
         scenario_profits = self.mpec_model.get_scenario_profits()
+        
+        # Total profit = sum across all scenarios (not averaged)
+        total_profit = sum(scenario_profits)
 
         return total_profit, scenario_profits
                                 
@@ -155,7 +158,14 @@ class BestResponseAlgorithmMS:
                 scenario_player_profits.append(player_profit)
             all_player_profits.append(scenario_player_profits)
         
-        return all_dispatches, clearing_prices, all_player_profits
+        # Sum each player's profit across all scenarios: [player] -> total profit
+        num_players = len(self.players_config)
+        total_player_profits = [
+            sum(all_player_profits[s][p] for s in range(len(all_player_profits)))
+            for p in range(num_players)
+        ]
+
+        return all_dispatches, clearing_prices, all_player_profits, total_player_profits
     
     def check_convergence(self, parameter_1: float, parameter_2: float) -> bool:
         """
@@ -186,6 +196,7 @@ class BestResponseAlgorithmMS:
         print(f"Initial bids: {[f'{b:.2f}' for b in self.bid_vector]}")
         print(f"Generator costs: {[f'{c:.2f}' for c in self.cost_vector]}")
         print(f"Demand: {self.demand:.1f} MW")
+        print(f"Damping factor: {self.damping_factor}")
         
         self.iteration = 0
         
@@ -197,12 +208,14 @@ class BestResponseAlgorithmMS:
             
             # Update each player's bid sequentially (shuffled order each iteration)
             profit_agent_perspective = [None] * len(self.players_config)
-            shuffled_indices = list(range(len(self.players_config)))
+            profit_agent_perspective_scenario = [None] * len(self.players_config)
+
+            indices = list(range(len(self.players_config)))
 
             # np.random.seed(self.seed + self.iteration)  # Ensure reproducibility with changing seed each iteration
-            # np.random.shuffle(shuffled_indices)
+            # np.random.shuffle(indices)
 
-            for player_idx in shuffled_indices:
+            for player_idx in indices:
                 player_config = self.players_config[player_idx]
                 player_id = player_config['id']
                 controlled_generators = player_config['controlled_generators']
@@ -211,10 +224,24 @@ class BestResponseAlgorithmMS:
                 # Solve MPEC problem for this player (using current bid_vector which may have been updated by previous players)
                 total_profit, scenario_profits = self.solve_strategic_player_problem(player_id)
                 
-                # Update scenarios DataFrame with optimal bids using MPEC function
-                self.scenarios_df = self.mpec_model.update_bids_with_optimal_values(self.scenarios_df)
+                # # Update scenarios DataFrame with optimal bids using MPEC function
+                # self.scenarios_df = self.mpec_model.update_bids_with_optimal_values(self.scenarios_df)
                     
-                profit_agent_perspective[player_idx] = scenario_profits  # Store per-scenario profits
+                # Apply damped bid update: new_bid = (1-α)*old_bid + α*optimal_bid
+                optimal_bid_scenarios = self.mpec_model.get_optimal_bids()
+                strategic_gens = self.mpec_model.strategic_generators
+                gen_names_mpec = self.mpec_model.generator_names
+                for gen_idx in strategic_gens:
+                    bid_col = f"{gen_names_mpec[gen_idx]}_bid"
+                    for s in range(len(self.scenarios_df)):
+                        old_bid = self.scenarios_df.at[s, bid_col]
+                        optimal_bid = optimal_bid_scenarios[s][gen_idx]
+                        damped_bid = (1 - self.damping_factor) * old_bid + self.damping_factor * optimal_bid
+                        self.scenarios_df.at[s, bid_col] = damped_bid
+
+
+                profit_agent_perspective[player_idx] = total_profit  # Store total profit for this player
+                profit_agent_perspective_scenario[player_idx] = scenario_profits  # Store per-scenario profits
 
                 # print(f"    Total profit for player {player_id}: {total_profit:.2f}")
                 # print(f"    Scenario profits: {[f'{p:.2f}' for p in scenario_profits]}")
@@ -226,57 +253,58 @@ class BestResponseAlgorithmMS:
                 iteration_bids.append(scenario_bid_vector)
             self.bid_history.append(iteration_bids)
             
+            # Concise per-iteration summary
+            mpec_profits_str = ", ".join([f"P{i}={profit_agent_perspective[i]:.1f}" for i in range(len(self.players_config))])
+            print(f"  MPEC profits: {mpec_profits_str}")
+            for s in range(len(self.scenarios_df)):
+                bids_str = ", ".join([f"{iteration_bids[s][g]:.1f}" for g in range(self.num_generators)])
+                print(f"  S{s} bids: [{bids_str}]")
+            
             # Store the profit history: [iteration][player_idx] -> list of scenario profits
             self.profit_history_agent_perspective.append(profit_agent_perspective.copy())
+            self.profit_history_agent_perspective_scenario.append(profit_agent_perspective_scenario.copy())
             
-
+            # Calculate ED every iteration to track actual market outcomes
+            all_dispatches, clearing_prices, all_player_profits, total_player_profits = self.calculate_ED()
+            self.dispatch_history.append(all_dispatches)
+            self.clearing_price_history.append(clearing_prices)
+            self.profit_history_ED_perspective.append(total_player_profits)
+            self.profit_history_ED_perspective_scenario.append(all_player_profits)
+            
+            ed_profits_str = ", ".join([f"P{i}={total_player_profits[i]:.1f}" for i in range(len(self.players_config))])
+            print(f"  ED profits:   {ed_profits_str}")
+            
             if self.iteration > 0:
+                # --- Convergence Check 1: MPEC profit stability between iterations ---
                 self.convergence_check_1 = []
-                # Check convergence based on MPEC scenario profit changes for each player between iterations
                 for player_idx in range(len(self.players_config)):
-                    player_converged = True
-                    current_scenario_profits = self.profit_history_agent_perspective[self.iteration][player_idx]
-                    previous_scenario_profits = self.profit_history_agent_perspective[self.iteration - 1][player_idx]
-                    
-                    # Compare profit in each scenario between iterations
-                    for s in range(len(current_scenario_profits)):
-                        if not self.check_convergence(current_scenario_profits[s], previous_scenario_profits[s]):
-                            player_converged = False
-                            break
-                    self.convergence_check_1.append(player_converged)
+                    current_profit = self.profit_history_agent_perspective[self.iteration][player_idx]
+                    previous_profit = self.profit_history_agent_perspective[self.iteration - 1][player_idx]
+                    self.convergence_check_1.append(self.check_convergence(current_profit, previous_profit))
 
-                # Check if all players have converged                
-                if all(self.convergence_check_1):
-                    print("Convergence achieved based on MPEC scenario profits!")
-                    self.convergence_check_2 = []
-                    
-                    # Calculate market outcomes via economic dispatch
-                    all_dispatches, clearing_prices, all_player_profits = self.calculate_ED()
-            
-                    # Store results
-                    self.dispatch_history.append(all_dispatches)
-                    self.clearing_price_history.append(clearing_prices)
-                    self.profit_history_ED_perspective.append(all_player_profits)
+                # --- Convergence Check 2: ED profit stability between iterations ---
+                self.convergence_check_2 = []
+                for player_idx in range(len(self.players_config)):
+                    current_ed_profit = self.profit_history_ED_perspective[self.iteration][player_idx]
+                    previous_ed_profit = self.profit_history_ED_perspective[self.iteration - 1][player_idx]
+                    self.convergence_check_2.append(self.check_convergence(current_ed_profit, previous_ed_profit))
 
-                    # Check convergence between MPEC scenario profits and ED scenario profits for each player
+                # Both checks must pass for convergence
+                if all(self.convergence_check_1) and all(self.convergence_check_2):
+                    print("Convergence achieved! (MPEC profits stable AND ED profits stable)")
+                    
+                    # Print final comparison
                     for player_idx in range(len(self.players_config)):
-                        player_converged = True
-                        mpec_scenario_profits = self.profit_history_agent_perspective[self.iteration][player_idx]
-                        
-                        # Compare MPEC profit vs ED profit for each scenario
-                        for scenario_idx in range(len(all_player_profits)):
-                            mpec_profit_s = mpec_scenario_profits[scenario_idx]
-                            ed_profit_s = all_player_profits[scenario_idx][player_idx]
-                            if not self.check_convergence(mpec_profit_s, ed_profit_s):
-                                player_converged = False
-                                print("Player id for second convergence check failed for player: ", player_idx)
-                                break
-                        self.convergence_check_2.append(player_converged)
-
-                    if all(self.convergence_check_2):
-                        print("Convergence achieved!")
-                        self.results = self.get_results()
-                        break
+                        mpec_p = self.profit_history_agent_perspective[self.iteration][player_idx]
+                        ed_p = total_player_profits[player_idx]
+                        print(f"    Player {player_idx}: MPEC={mpec_p:.2f}, ED={ed_p:.2f}, gap={mpec_p - ed_p:.2f}")
+                    
+                    self.results = self.get_results()
+                    break
+                elif all(self.convergence_check_1) and not all(self.convergence_check_2):
+                    print("  Check 1 PASSED (MPEC stable), Check 2 FAILED (ED still changing)")
+                elif not all(self.convergence_check_1) and all(self.convergence_check_2):
+                    print("  Check 1 FAILED (MPEC changing), Check 2 PASSED (ED stable)")
                 
             # Increment iteration counter
             self.iteration += 1
@@ -294,7 +322,7 @@ class BestResponseAlgorithmMS:
             Dictionary containing all results and history with scenario-indexed data
         """
         
-        final_dispatches, final_prices, final_player_profits = self.calculate_ED()
+        final_dispatches, final_prices, final_player_profits, final_total_player_profits = self.calculate_ED()
         
         # Calculate aggregate welfare for each scenario
         scenario_welfare = [sum(final_player_profits[s]) for s in range(len(final_player_profits))]
@@ -894,38 +922,33 @@ class BestResponseAlgorithmMS:
         print(f"\nDemand: {demand_level:.1f} MW")
         print(f"Supply adequacy: {'✓' if min(total_comp_dispatch, total_strategic_dispatch) >= demand_level - 0.1 else '✗'}")
     
-    def visualize_merit_order_comparison(self, scenario_id: int = 0) -> None:
+    def _compute_merit_order_data(self, scenario_id: int) -> Dict[str, Any]:
         """
-        Visualize merit order curves for both competitive (cost-based) and strategic (bid-based) dispatch
+        Compute merit order data for a single scenario (competitive and strategic).
         
         Parameters
         ----------
-        scenario_id : int, optional
-            Scenario to visualize (default: 0)
+        scenario_id : int
+            Scenario index
+            
+        Returns
+        -------
+        dict
+            Dictionary with all merit order data for the scenario
         """
-        if not hasattr(self, 'results') or not self.results:
-            print("No results available for merit order comparison")
-            return
+        import pandas as pd
         
-        num_scenarios = self.results['num_scenarios']
-        if scenario_id >= num_scenarios:
-            print(f"Invalid scenario_id {scenario_id}. Available scenarios: 0-{num_scenarios-1}")
-            return
-        
-        # Get scenario-specific data from results
         scenario_data = self.results['final_scenarios_data']
         strategic_bids = scenario_data['scenario_bids'][scenario_id]
         strategic_dispatch = scenario_data['scenario_dispatches'][scenario_id]
         strategic_price = scenario_data['scenario_prices'][scenario_id]
         
-        # Get scenario-specific demand and capacities from scenarios_df
         generator_names = [col.replace('_cap', '') for col in self.scenarios_df.columns if col.endswith('_cap')]
         demand_col = [col for col in self.scenarios_df.columns if any(kw in col.lower() for kw in ['demand', 'load'])][0]
         demand_level = self.scenarios_df.at[scenario_id, demand_col]
         scenario_pmax = [self.scenarios_df.at[scenario_id, f"{gen}_cap"] for gen in generator_names]
         
         # Compute competitive dispatch for this scenario (bid at marginal cost)
-        import pandas as pd
         comp_scenarios_df = self.scenarios_df.iloc[[scenario_id]].copy().reset_index(drop=True)
         for gen_name in generator_names:
             comp_scenarios_df[f"{gen_name}_bid"] = self.costs_df[f"{gen_name}_cost"].iloc[0]
@@ -938,21 +961,19 @@ class BestResponseAlgorithmMS:
         comp_dispatch = comp_dispatches[0]
         comp_price = comp_prices[0]
         
-        # Create merit order for competitive case (sorted by costs)
+        # Create merit orders
         comp_gen_data = [(i, self.cost_vector[i], scenario_pmax[i], comp_dispatch[i]) 
                         for i in range(self.num_generators)]
-        comp_gen_data.sort(key=lambda x: x[1])  # Sort by cost
+        comp_gen_data.sort(key=lambda x: x[1])
         
-        # Create merit order for strategic case (sorted by bids)
         strategic_gen_data = [(i, strategic_bids[i], scenario_pmax[i], strategic_dispatch[i]) 
                              for i in range(self.num_generators)]
-        strategic_gen_data.sort(key=lambda x: x[1])  # Sort by bid
+        strategic_gen_data.sort(key=lambda x: x[1])
         
         # Build competitive supply curve
         cumulative_capacity_comp = 0
         supply_quantities_comp = [0]
         supply_prices_comp = [0]
-        
         for gen_id, cost, pmax, dispatch in comp_gen_data:
             supply_quantities_comp.append(cumulative_capacity_comp)
             supply_prices_comp.append(cost)
@@ -964,7 +985,6 @@ class BestResponseAlgorithmMS:
         cumulative_capacity_strategic = 0
         supply_quantities_strategic = [0]
         supply_prices_strategic = [0]
-        
         for gen_id, bid, pmax, dispatch in strategic_gen_data:
             supply_quantities_strategic.append(cumulative_capacity_strategic)
             supply_prices_strategic.append(bid)
@@ -972,101 +992,187 @@ class BestResponseAlgorithmMS:
             supply_quantities_strategic.append(cumulative_capacity_strategic)
             supply_prices_strategic.append(bid)
         
-        # Create the plot
-        plt.figure(figsize=(14, 10))
+        return {
+            'demand_level': demand_level,
+            'comp_price': comp_price,
+            'strategic_price': strategic_price,
+            'comp_gen_data': comp_gen_data,
+            'strategic_gen_data': strategic_gen_data,
+            'supply_quantities_comp': supply_quantities_comp,
+            'supply_prices_comp': supply_prices_comp,
+            'supply_quantities_strategic': supply_quantities_strategic,
+            'supply_prices_strategic': supply_prices_strategic,
+            'cumulative_capacity_comp': cumulative_capacity_comp,
+            'cumulative_capacity_strategic': cumulative_capacity_strategic,
+        }
+    
+    def _plot_merit_order_on_ax(self, ax, data: Dict[str, Any], scenario_id: int, 
+                                 detailed: bool = True) -> None:
+        """
+        Plot merit order comparison on a given axes object.
+        
+        Parameters
+        ----------
+        ax : matplotlib axes
+            Axes to plot on
+        data : dict
+            Merit order data from _compute_merit_order_data
+        scenario_id : int
+            Scenario index (for title)
+        detailed : bool
+            If True, add annotations and larger fonts (single-scenario mode)
+        """
+        lw = 3 if detailed else 2
+        fs_label = 12 if detailed else 8
+        fs_title = 16 if detailed else 12
+        marker_size = 200 if detailed else 100
         
         # Plot both supply curves
-        plt.step(supply_quantities_comp, supply_prices_comp, where='post', linewidth=3, 
-                color='blue', label='Competitive Merit Order (Costs)', alpha=0.8)
-        plt.step(supply_quantities_strategic, supply_prices_strategic, where='post', linewidth=3, 
-                color='red', label='Strategic Merit Order (Bids)', alpha=0.8, linestyle='--')
+        ax.step(data['supply_quantities_comp'], data['supply_prices_comp'], where='post',
+                linewidth=lw, color='blue', label='Competitive (Costs)', alpha=0.8)
+        ax.step(data['supply_quantities_strategic'], data['supply_prices_strategic'], where='post',
+                linewidth=lw, color='red', label='Strategic (Bids)', alpha=0.8, linestyle='--')
         
-        # Plot demand curve
-        max_price = max(max(supply_prices_comp), max(supply_prices_strategic)) * 1.1
-        plt.axvline(x=demand_level, color='green', linewidth=3, 
-                   label=f'Demand ({demand_level:.0f} MW)', alpha=0.8)
+        # Plot demand line
+        max_price = max(max(data['supply_prices_comp']), max(data['supply_prices_strategic'])) * 1.1
+        ax.axvline(x=data['demand_level'], color='green', linewidth=lw,
+                   label=f'Demand ({data["demand_level"]:.0f} MW)', alpha=0.8)
         
         # Mark market clearing points
-        plt.scatter([demand_level], [comp_price], color='blue', s=200, marker='o',
-                   zorder=5, label=f'Competitive Clearing\n(${comp_price:.2f}/MWh)', edgecolor='black')
-        plt.scatter([demand_level], [strategic_price], color='red', s=200, marker='s',
-                   zorder=5, label=f'Strategic Clearing\n(${strategic_price:.2f}/MWh)', edgecolor='black')
+        ax.scatter([data['demand_level']], [data['comp_price']], color='blue', s=marker_size,
+                   marker='o', zorder=5, edgecolor='black',
+                   label=f'Comp: ${data["comp_price"]:.2f}/MWh')
+        ax.scatter([data['demand_level']], [data['strategic_price']], color='red', s=marker_size,
+                   marker='s', zorder=5, edgecolor='black',
+                   label=f'Strat: ${data["strategic_price"]:.2f}/MWh')
         
-        # Add annotations for key generators with improved spacing
-        # Competitive merit order annotations
-        cumulative_comp = 0
-        comp_annotation_count = 0
-        for gen_id, cost, pmax, dispatch in comp_gen_data:
-            if dispatch > 0.1:  # Only annotate dispatched units
-                vertical_offset = max_price * (0.12 + 0.04 * (comp_annotation_count % 3))
-                horizontal_offset = 5 * (comp_annotation_count % 2 - 0.5)
-                
-                plt.annotate(f'Gen {gen_id}\nCost: ${cost:.1f}', 
-                           xy=(cumulative_comp + dispatch/2, cost),
-                           xytext=(cumulative_comp + dispatch/2 + horizontal_offset, cost + vertical_offset),
-                           ha='center', va='bottom', fontsize=8,
-                           bbox=dict(boxstyle='round,pad=0.3', facecolor='lightblue', alpha=0.8),
-                           arrowprops=dict(arrowstyle='->', color='blue', alpha=0.7, lw=1.5))
-                comp_annotation_count += 1
-            cumulative_comp += dispatch
-        
-        # Strategic merit order annotations (only show different ones)
-        cumulative_strategic = 0
-        strat_annotation_count = 0
-        for gen_id, bid, pmax, dispatch in strategic_gen_data:
-            if dispatch > 0.1:  # Only annotate dispatched units
-                if abs(bid - self.cost_vector[gen_id]) > 1.0:
-                    vertical_offset = max_price * (0.12 + 0.04 * (strat_annotation_count % 3))
-                    horizontal_offset = 8 * (strat_annotation_count % 2 - 0.5)
-                    
-                    plt.annotate(f'Gen {gen_id}\nBid: ${bid:.1f}', 
-                               xy=(cumulative_strategic + dispatch/2, bid),
-                               xytext=(cumulative_strategic + dispatch/2 + horizontal_offset, bid - vertical_offset),
-                               ha='center', va='top', fontsize=8,
-                               bbox=dict(boxstyle='round,pad=0.3', facecolor='lightcoral', alpha=0.8),
-                               arrowprops=dict(arrowstyle='->', color='red', alpha=0.7, lw=1.5))
-                    strat_annotation_count += 1
-            cumulative_strategic += dispatch
+        # Add annotations only in detailed (single-scenario) mode
+        if detailed:
+            # Competitive merit order annotations
+            cumulative_comp = 0
+            comp_annotation_count = 0
+            for gen_id, cost, pmax, dispatch in data['comp_gen_data']:
+                if dispatch > 0.1:
+                    vertical_offset = max_price * (0.12 + 0.04 * (comp_annotation_count % 3))
+                    horizontal_offset = 5 * (comp_annotation_count % 2 - 0.5)
+                    ax.annotate(f'Gen {gen_id}\nCost: ${cost:.1f}',
+                               xy=(cumulative_comp + dispatch/2, cost),
+                               xytext=(cumulative_comp + dispatch/2 + horizontal_offset, cost + vertical_offset),
+                               ha='center', va='bottom', fontsize=8,
+                               bbox=dict(boxstyle='round,pad=0.3', facecolor='lightblue', alpha=0.8),
+                               arrowprops=dict(arrowstyle='->', color='blue', alpha=0.7, lw=1.5))
+                    comp_annotation_count += 1
+                cumulative_comp += dispatch
+            
+            # Strategic merit order annotations (only show different ones)
+            cumulative_strategic = 0
+            strat_annotation_count = 0
+            for gen_id, bid, pmax, dispatch in data['strategic_gen_data']:
+                if dispatch > 0.1:
+                    if abs(bid - self.cost_vector[gen_id]) > 1.0:
+                        vertical_offset = max_price * (0.12 + 0.04 * (strat_annotation_count % 3))
+                        horizontal_offset = 8 * (strat_annotation_count % 2 - 0.5)
+                        ax.annotate(f'Gen {gen_id}\nBid: ${bid:.1f}',
+                                   xy=(cumulative_strategic + dispatch/2, bid),
+                                   xytext=(cumulative_strategic + dispatch/2 + horizontal_offset, bid - vertical_offset),
+                                   ha='center', va='top', fontsize=8,
+                                   bbox=dict(boxstyle='round,pad=0.3', facecolor='lightcoral', alpha=0.8),
+                                   arrowprops=dict(arrowstyle='->', color='red', alpha=0.7, lw=1.5))
+                        strat_annotation_count += 1
+                cumulative_strategic += dispatch
         
         # Formatting
-        plt.xlabel('Cumulative Capacity (MW)', fontsize=14)
-        plt.ylabel('Price ($/MWh)', fontsize=14)
-        plt.title(f'Merit Order Comparison: Competitive vs Strategic Bidding (Scenario {scenario_id})', fontsize=16, fontweight='bold')
-        plt.legend(loc='upper left', fontsize=12)
-        plt.grid(True, alpha=0.3)
+        ax.set_xlabel('Cumulative Capacity (MW)', fontsize=fs_label)
+        ax.set_ylabel('Price ($/MWh)', fontsize=fs_label)
+        ax.set_title(f'Merit Order Comparison (Scenario {scenario_id})', fontsize=fs_title, fontweight='bold')
+        ax.legend(loc='upper left', fontsize=fs_label - 2)
+        ax.grid(True, alpha=0.3)
         
-        max_capacity = max(cumulative_capacity_comp, cumulative_capacity_strategic)
-        plt.xlim(0, max(max_capacity, demand_level) * 1.1)
-        plt.ylim(0, max_price)
+        max_capacity = max(data['cumulative_capacity_comp'], data['cumulative_capacity_strategic'])
+        ax.set_xlim(0, max(max_capacity, data['demand_level']) * 1.1)
+        ax.set_ylim(0, max_price)
+    
+    def visualize_merit_order_comparison(self, scenario_id: Optional[int] = None) -> None:
+        """
+        Visualize merit order curves for both competitive (cost-based) and strategic (bid-based) dispatch.
         
-        plt.tight_layout()
-        plt.show()
+        Parameters
+        ----------
+        scenario_id : int, optional
+            Scenario to visualize. If None, plots one subplot per scenario.
+        """
+        if not hasattr(self, 'results') or not self.results:
+            print("No results available for merit order comparison")
+            return
         
-        # Print merit order comparison
+        num_scenarios = self.results['num_scenarios']
+        
+        if scenario_id is not None:
+            # --- Single scenario: detailed plot ---
+            if scenario_id >= num_scenarios:
+                print(f"Invalid scenario_id {scenario_id}. Available scenarios: 0-{num_scenarios-1}")
+                return
+            
+            data = self._compute_merit_order_data(scenario_id)
+            
+            fig, ax = plt.subplots(figsize=(14, 10))
+            self._plot_merit_order_on_ax(ax, data, scenario_id, detailed=True)
+            plt.tight_layout()
+            plt.show()
+            
+            # Print detailed merit order comparison
+            self._print_merit_order_summary(data, scenario_id)
+        else:
+            # --- All scenarios: one subplot per scenario ---
+            cols = min(3, num_scenarios)
+            rows = (num_scenarios + cols - 1) // cols
+            fig, axes = plt.subplots(rows, cols, figsize=(7 * cols, 6 * rows), squeeze=False)
+            
+            for s in range(num_scenarios):
+                ax = axes[s // cols][s % cols]
+                data = self._compute_merit_order_data(s)
+                self._plot_merit_order_on_ax(ax, data, s, detailed=False)
+            
+            # Hide unused subplots
+            for idx in range(num_scenarios, rows * cols):
+                axes[idx // cols][idx % cols].set_visible(False)
+            
+            fig.suptitle('Merit Order Comparison: Competitive vs Strategic (All Scenarios)',
+                         fontsize=14, fontweight='bold')
+            plt.tight_layout()
+            plt.show()
+            
+            # Print summary for each scenario
+            for s in range(num_scenarios):
+                data = self._compute_merit_order_data(s)
+                # self._print_merit_order_summary(data, s)
+    
+    def _print_merit_order_summary(self, data: Dict[str, Any], scenario_id: int) -> None:
+        """Print merit order comparison summary for a scenario."""
         print(f"\n=== Merit Order Comparison (Scenario {scenario_id}) ===")
-        print(f"Demand: {demand_level:.0f} MW")
+        print(f"Demand: {data['demand_level']:.0f} MW")
         print("\nCompetitive Merit Order (by Cost):")
         print(f"{'Rank':<4} {'Gen':<4} {'Cost':<8} {'Capacity':<8} {'Dispatch':<8}")
         print("-" * 40)
-        for rank, (gen_id, cost, pmax, dispatch) in enumerate(comp_gen_data, 1):
+        for rank, (gen_id, cost, pmax, dispatch) in enumerate(data['comp_gen_data'], 1):
             print(f"{rank:<4} {gen_id:<4} ${cost:<7.2f} {pmax:<8.0f} {dispatch:<8.0f}")
         
         print(f"\nStrategic Merit Order (by Bid):")
         print(f"{'Rank':<4} {'Gen':<4} {'Bid':<8} {'Capacity':<8} {'Dispatch':<8} {'Cost':<8}")
         print("-" * 50)
-        for rank, (gen_id, bid, pmax, dispatch) in enumerate(strategic_gen_data, 1):
+        for rank, (gen_id, bid, pmax, dispatch) in enumerate(data['strategic_gen_data'], 1):
             cost = self.cost_vector[gen_id]
             print(f"{rank:<4} {gen_id:<4} ${bid:<7.2f} {pmax:<8.0f} {dispatch:<8.0f} ${cost:<7.2f}")
         
-        # Efficiency analysis
         print(f"\n=== Merit Order Efficiency Analysis ===")
+        comp_price = data['comp_price']
+        strategic_price = data['strategic_price']
         print(f"Competitive price: ${comp_price:.2f}/MWh")
         print(f"Strategic price: ${strategic_price:.2f}/MWh")
         print(f"Price increase: ${strategic_price - comp_price:.2f}/MWh ({((strategic_price/comp_price - 1)*100):+.1f}%)")
         
-        # Check if merit order changed
-        comp_order = [gen_id for gen_id, _, _, dispatch in comp_gen_data if dispatch > 0.1]
-        strategic_order = [gen_id for gen_id, _, _, dispatch in strategic_gen_data if dispatch > 0.1]
+        comp_order = [gen_id for gen_id, _, _, dispatch in data['comp_gen_data'] if dispatch > 0.1]
+        strategic_order = [gen_id for gen_id, _, _, dispatch in data['strategic_gen_data'] if dispatch > 0.1]
         
         if comp_order != strategic_order:
             print("Merit order CHANGED due to strategic bidding!")
@@ -1141,22 +1247,11 @@ if __name__ == "__main__":
     #     print(f"  Player profits: {[f'{p:.2f}' for p in scenario_data['scenario_player_profits'][s]]}")
     #     print(f"  Total welfare: ${scenario_data['scenario_welfare'][s]:.2f}")
     
-    # # Visualizations with scenario selection
+    # Visualizations with scenario selection
     scenario_to_analyze = 0  # Choose which scenario to analyze in detail
     print(f"\n=== Visualizing Results for Scenario {scenario_to_analyze} ===")
     
     # Visualize bid evolution
     print("\n=== Visualizing Bid Evolution ====")
     algo.visualize_bid_evolution()
-    
-    # # Visualize supply-demand curve for specific scenario
-    # print(f"\n=== Visualizing Supply-Demand Curve (Scenario {scenario_to_analyze}) ====")
-    # algo.visualize_supply_demand_curve(scenario_id=scenario_to_analyze)
-    
-    # # Visualize agent profits for specific scenario
-    # print(f"\n=== Visualizing Agent Profits (Scenario {scenario_to_analyze}) ====")
-    # algo.visualize_agent_profits(scenario_id=scenario_to_analyze)
-
-    algo.visualize_merit_order_comparison(scenario_id=scenario_to_analyze)
-
-    stop = True
+    algo.visualize_merit_order_comparison()

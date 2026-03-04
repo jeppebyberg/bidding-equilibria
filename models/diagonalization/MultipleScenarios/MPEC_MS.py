@@ -266,9 +266,11 @@ class MPECModel:
 
     def _build_objective(self) -> None:
         """
-        Function to build the objective function for the MPEC model. 
+        Function to build the objective function for the MPEC model.
+        Minimizes the negative profit of the strategic player across all scenarios
+        (equivalent to maximizing total profit).
         """
-        self.model.objective = Objective(expr= 1/self.num_scenarios * -(
+        self.model.objective = Objective(expr= 1 / self.num_scenarios * (-(
                                         sum(self.model.lambda_var[s] * self.demand_scenarios[s] for s in self.model.n_scenarios) -
                                         sum(self.model.mu_upper_bound[s, i] * self.pmax_scenarios[s][i] for s in self.model.n_scenarios for i in self.model.n_gen) +
                                         sum(self.model.mu_lower_bound[s, i] * self.pmin_scenarios[s][i] for s in self.model.n_scenarios for i in self.model.n_gen) -
@@ -276,7 +278,7 @@ class MPECModel:
                                         sum(self.model.mu_upper_bound[s, i] * self.pmax_scenarios[s][i] for s in self.model.n_scenarios for i in self.model.strategic_index) -
                                         sum(self.model.mu_lower_bound[s, i] * self.pmin_scenarios[s][i] for s in self.model.n_scenarios for i in self.model.strategic_index)
                                         )
-                                        + sum(self.cost_vector[i] * self.model.P[s, i] for s in self.model.n_scenarios for i in self.model.strategic_index),
+                                        + sum(self.cost_vector[i] * self.model.P[s, i] for s in self.model.n_scenarios for i in self.model.strategic_index)),
                                         sense=minimize)
 
     def _build_constraints(self) -> None:
@@ -300,8 +302,12 @@ class MPECModel:
         def max_bid_rule(model, s, i):
             return model.alpha[s, i] <= self.alpha_max
         
+        def min_bid_rule_2(model, s, i):
+            return model.alpha[s, i] >= self.cost_vector[i]
+        
         self.model.min_bid_constraint = Constraint(self.model.n_scenarios, self.model.strategic_index, rule=min_bid_rule)
         self.model.max_bid_constraint = Constraint(self.model.n_scenarios, self.model.strategic_index, rule=max_bid_rule)
+        self.model.min_bid_constraint_2 = Constraint(self.model.n_scenarios, self.model.strategic_index, rule=min_bid_rule_2)
 
     def _build_lower_level_constraints(self) -> None:
         """
