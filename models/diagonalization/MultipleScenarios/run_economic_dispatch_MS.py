@@ -1,38 +1,27 @@
 """
 Script to run Economic Dispatch model for multiple scenarios using ScenarioManager
 """
-import sys
-import os
-# Add project root to Python path for debugging
-if __name__ == "__main__":
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-    if project_root not in sys.path:
-        sys.path.insert(0, project_root)
 
 from models.diagonalization.MultipleScenarios.economic_dispatch_MS import EconomicDispatchModel
-import config.base_case as config
+from config.base_case.scenarios.scenario_generator import ScenarioManager
 import numpy as np
 
 if __name__ == "__main__":
-    # Load base case data (only for costs/bids)
-    num_generators, _, _, bid_list, _, generators = config.load_setup_data("test_case1")
+    # Generate multiple demand scenarios using ScenarioManager
+    manager = ScenarioManager("test_case")
     
-    # Generate multiple demand scenarios using ScenarioManager from test_case1
-    scenario_manager = config.ScenarioManager("test_case")
-    
-    demand_linear = scenario_manager.generate_demand_scenarios("linear", num_scenarios=10, min_factor=0.8, max_factor=1.2)
-    capacity_linear = scenario_manager.generate_capacity_scenarios("linear", num_scenarios=3, min_factor=0.7, max_factor=1.0)
+    demand_linear = manager.generate_demand_scenarios("linear", num_scenarios=10, min_factor=0.8, max_factor=1.2)
+    capacity_linear = manager.generate_capacity_scenarios("linear", num_scenarios=3, min_factor=0.7, max_factor=1.0)
 
-    # Create scenario set with separate DataFrames (now default behavior)
+    # Create scenario set with separate DataFrames
     print("=== Creating Scenario Set ===")
-    scenarios = scenario_manager.create_scenario_set(
+    scenarios = manager.create_scenario_set(
         demand_scenarios=demand_linear,
         capacity_scenarios=capacity_linear
     )
     
     print(scenarios['description_text'])
     
-    # Extract the separate DataFrames
     scenarios_df = scenarios['scenarios_df']
     costs_df = scenarios['costs_df']
     
@@ -46,14 +35,14 @@ if __name__ == "__main__":
     print("="*60)
     
     # Extract basic info for display
-    demand_scenarios_list = scenarios_df['demand'].tolist()
-    # Auto-detect generator capacity columns
+    demand_col = [col for col in scenarios_df.columns if any(kw in col.lower() for kw in ['demand', 'load'])][0]
+    demand_list = scenarios_df[demand_col].tolist()
     capacity_columns = [col for col in scenarios_df.columns if col.endswith('_cap')]
     generator_names = [col.replace('_cap', '') for col in capacity_columns]
 
-    print(f"Demand range: {min(demand_scenarios_list):.1f} - {max(demand_scenarios_list):.1f} MW")
+    print(f"Demand range: {min(demand_list):.1f} - {max(demand_list):.1f} MW")
     
-    # Show costs from the separate costs DataFrame
+    # Show costs from the costs DataFrame
     print("Generator costs (from costs_df):")
     for gen_name in generator_names:
         cost_col = f"{gen_name}_cost"
@@ -61,13 +50,13 @@ if __name__ == "__main__":
             cost = costs_df[cost_col].iloc[0]
             print(f"  {gen_name}: ${cost:.2f}/MWh")
 
-    # Run economic dispatch using the separate DataFrames method
-    model = EconomicDispatchModel()
-    all_dispatches, clearing_prices, all_profits = model.economic_dispatch_from_dataframe(
-        scenarios_df=scenarios_df,
-        costs_df=costs_df,
-        pmin_default=0.0
-    )
+    # Run economic dispatch using the new DataFrame constructor
+    ed = EconomicDispatchModel(scenarios_df, costs_df)
+    ed.solve()
+    
+    all_dispatches = ed.get_dispatches()
+    clearing_prices = ed.get_clearing_prices()
+    all_profits = ed.get_generator_profits()
     
     # Summary statistics
     print("=== Summary Statistics ===\n")

@@ -42,6 +42,7 @@ class BestResponseAlgorithmMS:
         # Auto-detect generator names from capacity columns
         capacity_cols = [col for col in scenarios_df.columns if col.endswith('_cap')]
         generator_names = [col.replace('_cap', '') for col in capacity_cols]
+        self.generator_names = generator_names
         
         self.num_generators = len(generator_names)
         
@@ -63,7 +64,6 @@ class BestResponseAlgorithmMS:
         # Algorithm parameters
         self.max_iterations = int(diag_config.get("max_iterations"))
         self.conv_tolerance = float(diag_config.get("conv_tolerance"))
-        self.damping_factor = float(diag_config.get("damping_factor", 0.5))
         
         # Create MPEC model (reused for all strategic players)
         self.mpec_model = MPECModel(
@@ -71,9 +71,6 @@ class BestResponseAlgorithmMS:
             costs_df=self.costs_df,
             players_config=self.players_config
         )
-        
-        # Create economic dispatch model
-        self.ed_model = EconomicDispatchModel()
         
         # Initialize bid vector with true costs
         self.bid_vector = self.cost_vector.copy()
@@ -123,6 +120,27 @@ class BestResponseAlgorithmMS:
 
         return total_profit, scenario_profits
                                 
+    def _run_competitive_ed(self) -> Tuple[List[float], float]:
+        """
+        Run ED with cost-based bidding (perfect competition) using first-scenario data.
+        
+        Returns
+        -------
+        tuple
+            (dispatch, clearing_price) for a single scenario at marginal cost bidding
+        """
+        import pandas as pd
+        demand_col = [col for col in self.scenarios_df.columns 
+                      if any(kw in col.lower() for kw in ['demand', 'load'])][0]
+        comp_data = {demand_col: [self.demand]}
+        for i, gen in enumerate(self.generator_names):
+            comp_data[f'{gen}_cap'] = [self.pmax_list[i]]
+            comp_data[f'{gen}_bid'] = [self.cost_vector[i]]
+        comp_df = pd.DataFrame(comp_data)
+        ed = EconomicDispatchModel(comp_df, self.costs_df)
+        ed.solve()
+        return ed.get_dispatches()[0], ed.get_clearing_prices()[0], ed
+
     def calculate_ED(self) -> Tuple[List[List[float]], List[float], List[List[float]]]:
         """
         Calculate market dispatch and profits using economic dispatch across all scenarios
@@ -130,35 +148,28 @@ class BestResponseAlgorithmMS:
         Returns
         -------
         tuple
-            (all_dispatches, clearing_prices, all_player_profits)
+            (all_dispatches, clearing_prices, all_player_profits, total_player_profits)
             - all_dispatches: List[List[float]] - dispatch for each scenario and generator
             - clearing_prices: List[float] - clearing price for each scenario  
             - all_player_profits: List[List[float]] - profits for each scenario and player
+            - total_player_profits: List[float] - total profit for each player across scenarios
         """
+        ed = EconomicDispatchModel(self.scenarios_df, self.costs_df)
+        ed.solve()
+        all_dispatches = ed.get_dispatches()
+        clearing_prices = ed.get_clearing_prices()
+        all_gen_profits = ed.get_generator_profits()  # List[List[float]] by [scenario][generator]
         
-        # Use the DataFrame-based economic dispatch function (scenarios_df already has up-to-date bids)
-        generator_names = [col.replace('_cap', '') for col in self.scenarios_df.columns if col.endswith('_cap')]
-        all_dispatches, clearing_prices, all_profits = self.ed_model.economic_dispatch_from_dataframe(
-            scenarios_df=self.scenarios_df,
-            costs_df=self.costs_df,
-            pmin_default=0.0
-        )
-        
-        # Extract generator profits and aggregate by player for each scenario
-        # all_profits format: [{'G1': profit, 'G2': profit, ...}, ...] (one dict per scenario)
+        # Aggregate generator profits by player for each scenario
         all_player_profits = []
-        for scenario_idx in range(len(all_profits)):
+        for scenario_idx in range(len(all_gen_profits)):
             scenario_player_profits = []
             for player_config in self.players_config:
-                player_profit = 0.0
-                controlled_generators = player_config['controlled_generators']
-                for gen_id in controlled_generators:
-                    gen_name = generator_names[gen_id]
-                    player_profit += all_profits[scenario_idx][gen_name]
+                player_profit = sum(all_gen_profits[scenario_idx][g] for g in player_config['controlled_generators'])
                 scenario_player_profits.append(player_profit)
             all_player_profits.append(scenario_player_profits)
         
-        # Sum each player's profit across all scenarios: [player] -> total profit
+        # Sum each player's profit across all scenarios
         num_players = len(self.players_config)
         total_player_profits = [
             sum(all_player_profits[s][p] for s in range(len(all_player_profits)))
@@ -196,7 +207,7 @@ class BestResponseAlgorithmMS:
         print(f"Initial bids: {[f'{b:.2f}' for b in self.bid_vector]}")
         print(f"Generator costs: {[f'{c:.2f}' for c in self.cost_vector]}")
         print(f"Demand: {self.demand:.1f} MW")
-        print(f"Damping factor: {self.damping_factor}")
+
         
         self.iteration = 0
         
@@ -224,21 +235,8 @@ class BestResponseAlgorithmMS:
                 # Solve MPEC problem for this player (using current bid_vector which may have been updated by previous players)
                 total_profit, scenario_profits = self.solve_strategic_player_problem(player_id)
                 
-                # # Update scenarios DataFrame with optimal bids using MPEC function
-                # self.scenarios_df = self.mpec_model.update_bids_with_optimal_values(self.scenarios_df)
-                    
-                # Apply damped bid update: new_bid = (1-α)*old_bid + α*optimal_bid
-                optimal_bid_scenarios = self.mpec_model.get_optimal_bids()
-                strategic_gens = self.mpec_model.strategic_generators
-                gen_names_mpec = self.mpec_model.generator_names
-                for gen_idx in strategic_gens:
-                    bid_col = f"{gen_names_mpec[gen_idx]}_bid"
-                    for s in range(len(self.scenarios_df)):
-                        old_bid = self.scenarios_df.at[s, bid_col]
-                        optimal_bid = optimal_bid_scenarios[s][gen_idx]
-                        damped_bid = (1 - self.damping_factor) * old_bid + self.damping_factor * optimal_bid
-                        self.scenarios_df.at[s, bid_col] = damped_bid
-
+                # Update scenarios DataFrame with optimal bids
+                self.scenarios_df = self.mpec_model.update_bids_with_optimal_values(self.scenarios_df)
 
                 profit_agent_perspective[player_idx] = total_profit  # Store total profit for this player
                 profit_agent_perspective_scenario[player_idx] = scenario_profits  # Store per-scenario profits
@@ -264,52 +262,76 @@ class BestResponseAlgorithmMS:
             self.profit_history_agent_perspective.append(profit_agent_perspective.copy())
             self.profit_history_agent_perspective_scenario.append(profit_agent_perspective_scenario.copy())
             
-            # Calculate ED every iteration to track actual market outcomes
-            all_dispatches, clearing_prices, all_player_profits, total_player_profits = self.calculate_ED()
-            self.dispatch_history.append(all_dispatches)
-            self.clearing_price_history.append(clearing_prices)
-            self.profit_history_ED_perspective.append(total_player_profits)
-            self.profit_history_ED_perspective_scenario.append(all_player_profits)
-            
-            ed_profits_str = ", ".join([f"P{i}={total_player_profits[i]:.1f}" for i in range(len(self.players_config))])
-            print(f"  ED profits:   {ed_profits_str}")
-            
             if self.iteration > 0:
-                # --- Convergence Check 1: MPEC profit stability between iterations ---
+                # --- Convergence Check 1: Bid stability between iterations (per scenario, per generator) ---
+                # self.convergence_check_1 = []
+                # current_bids = self.bid_history[self.iteration]   # [scenario][generator]
+                # previous_bids = self.bid_history[self.iteration - 1]
+                # for s in range(len(current_bids)):
+                #     for g in range(len(current_bids[s])):
+                #         self.convergence_check_1.append(
+                #             self.check_convergence(current_bids[s][g], previous_bids[s][g])
+                #         )
+
+                # --- Alternative Check 1: MPEC profit stability between iterations ---
                 self.convergence_check_1 = []
                 for player_idx in range(len(self.players_config)):
                     current_profit = self.profit_history_agent_perspective[self.iteration][player_idx]
                     previous_profit = self.profit_history_agent_perspective[self.iteration - 1][player_idx]
                     self.convergence_check_1.append(self.check_convergence(current_profit, previous_profit))
 
-                # --- Convergence Check 2: ED profit stability between iterations ---
-                self.convergence_check_2 = []
-                for player_idx in range(len(self.players_config)):
-                    current_ed_profit = self.profit_history_ED_perspective[self.iteration][player_idx]
-                    previous_ed_profit = self.profit_history_ED_perspective[self.iteration - 1][player_idx]
-                    self.convergence_check_2.append(self.check_convergence(current_ed_profit, previous_ed_profit))
-
-                # Both checks must pass for convergence
-                if all(self.convergence_check_1) and all(self.convergence_check_2):
-                    print("Convergence achieved! (MPEC profits stable AND ED profits stable)")
+                if all(self.convergence_check_1):
+                    print("  Check 1 PASSED (all bids stable) — running ED validation...")
                     
-                    # Print final comparison
+                    # Only run ED when MPEC has converged
+                    all_dispatches, clearing_prices, all_player_profits, total_player_profits = self.calculate_ED()
+                    self.dispatch_history.append(all_dispatches)
+                    self.clearing_price_history.append(clearing_prices)
+                    self.profit_history_ED_perspective.append(total_player_profits)
+                    self.profit_history_ED_perspective_scenario.append(all_player_profits)
+                    
+                    ed_profits_str = ", ".join([f"P{i}={total_player_profits[i]:.1f}" for i in range(len(self.players_config))])
+                    print(f"  ED profits:   {ed_profits_str}")
+
+                    # --- Convergence Check 2: MPEC profit ≈ ED profit (same iteration) ---
+                    self.convergence_check_2 = []
                     for player_idx in range(len(self.players_config)):
                         mpec_p = self.profit_history_agent_perspective[self.iteration][player_idx]
                         ed_p = total_player_profits[player_idx]
-                        print(f"    Player {player_idx}: MPEC={mpec_p:.2f}, ED={ed_p:.2f}, gap={mpec_p - ed_p:.2f}")
-                    
-                    self.results = self.get_results()
-                    break
-                elif all(self.convergence_check_1) and not all(self.convergence_check_2):
-                    print("  Check 1 PASSED (MPEC stable), Check 2 FAILED (ED still changing)")
-                elif not all(self.convergence_check_1) and all(self.convergence_check_2):
-                    print("  Check 1 FAILED (MPEC changing), Check 2 PASSED (ED stable)")
+                        self.convergence_check_2.append(self.check_convergence(mpec_p, ed_p))
+
+                    if all(self.convergence_check_2):
+                        print("Convergence achieved! (MPEC profits stable AND MPEC ≈ ED)")
+                        
+                        # Print final comparison
+                        for player_idx in range(len(self.players_config)):
+                            mpec_p = self.profit_history_agent_perspective[self.iteration][player_idx]
+                            ed_p = total_player_profits[player_idx]
+                            print(f"    Player {player_idx}: MPEC={mpec_p:.2f}, ED={ed_p:.2f}, gap={mpec_p - ed_p:.2f}")
+                        
+                        self.results = self.get_results()
+                        break
+                    else:
+                        for player_idx in range(len(self.players_config)):
+                            mpec_p = self.profit_history_agent_perspective[self.iteration][player_idx]
+                            ed_p = total_player_profits[player_idx]
+                            print(f"    Player {player_idx}: MPEC={mpec_p:.2f}, ED={ed_p:.2f}, gap={mpec_p - ed_p:.2f}")
+                        print("  Check 2 FAILED (MPEC and ED profits differ)")
+                else:
+                    num_unconverged = sum(1 for c in self.convergence_check_1 if not c)
+                    total_checks = len(self.convergence_check_1)
+                    print(f"  Check 1 FAILED ({num_unconverged}/{total_checks} bids still changing)")
                 
             # Increment iteration counter
             self.iteration += 1
             if self.iteration == self.max_iterations:
                 print("Maximum iterations reached without convergence.")
+                # Run final ED so results are complete
+                all_dispatches, clearing_prices, all_player_profits, total_player_profits = self.calculate_ED()
+                self.dispatch_history.append(all_dispatches)
+                self.clearing_price_history.append(clearing_prices)
+                self.profit_history_ED_perspective.append(total_player_profits)
+                self.profit_history_ED_perspective_scenario.append(all_player_profits)
                 self.results = self.get_results()
     
     def get_results(self) -> Dict[str, Any]:
@@ -584,30 +606,13 @@ class BestResponseAlgorithmMS:
             title_suffix = " (Average Across Scenarios)"
         
         # Calculate perfect competition profits (bidding at marginal cost)
-        # Use single scenario for perfect competition comparison
-        all_comp_dispatches, comp_prices = self.ed_model.economic_dispatch(
-            num_generators=self.num_generators,
-            demand_scenarios=[self.demand],
-            Pmax=self.pmax_list,
-            Pmin=self.pmin_list,
-            bid_list=self.cost_vector  # Bid at marginal cost
-        )
-        perfect_comp_dispatch, perfect_comp_price = all_comp_dispatches[0], comp_prices[0]
-        
-        # Calculate perfect competition profits per generator first
-        perfect_comp_gen_profits = []
-        for i in range(self.num_generators):
-            revenue = perfect_comp_price * perfect_comp_dispatch[i]
-            cost = self.cost_vector[i] * perfect_comp_dispatch[i]
-            perfect_comp_gen_profits.append(revenue - cost)
+        perfect_comp_dispatch, perfect_comp_price, comp_ed = self._run_competitive_ed()
+        perfect_comp_gen_profits = comp_ed.get_generator_profits()[0]
             
         # Aggregate perfect competition profits by player
         perfect_comp_profits = []
         for player_config in self.players_config:
-            player_profit = 0.0
-            controlled_generators = player_config['controlled_generators']
-            for gen_id in controlled_generators:
-                player_profit += perfect_comp_gen_profits[gen_id]
+            player_profit = sum(perfect_comp_gen_profits[g] for g in player_config['controlled_generators'])
             perfect_comp_profits.append(player_profit)
         
         # Create bar chart
@@ -693,14 +698,7 @@ class BestResponseAlgorithmMS:
         print("\n=== Competitive Benchmark Analysis ===")
         
         # Calculate competitive dispatch (bidding at marginal cost)
-        all_comp_dispatches, comp_prices = self.ed_model.economic_dispatch(
-            num_generators=self.num_generators,
-            demand_scenarios=[self.demand],
-            Pmax=self.pmax_list,
-            Pmin=self.pmin_list,
-            bid_list=self.cost_vector  # Bid at marginal cost
-        )
-        comp_dispatch, comp_price = all_comp_dispatches[0], comp_prices[0]
+        comp_dispatch, comp_price, _ = self._run_competitive_ed()
         
         # Create merit order based on costs
         gen_data = [(i, self.cost_vector[i], self.pmax_list[i], comp_dispatch[i]) 
@@ -771,14 +769,7 @@ class BestResponseAlgorithmMS:
             return
             
         # Get competitive dispatch (Economic Dispatch with marginal cost bidding)
-        all_comp_dispatches, comp_prices = self.ed_model.economic_dispatch(
-            num_generators=self.num_generators,
-            demand_scenarios=[self.demand],
-            Pmax=self.pmax_list,
-            Pmin=self.pmin_list,
-            bid_list=self.cost_vector  # Bid at marginal cost
-        )
-        comp_dispatch, comp_price = all_comp_dispatches[0], comp_prices[0]
+        comp_dispatch, comp_price, _ = self._run_competitive_ed()
         
         # Get strategic dispatch (MPEC results)
         strategic_dispatch = self.results['final_market_outcomes']['dispatch']
@@ -920,7 +911,7 @@ class BestResponseAlgorithmMS:
         # Efficiency analysis
         demand_level = sum(self.demand) if isinstance(self.demand, list) else self.demand
         print(f"\nDemand: {demand_level:.1f} MW")
-        print(f"Supply adequacy: {'✓' if min(total_comp_dispatch, total_strategic_dispatch) >= demand_level - 0.1 else '✗'}")
+        print(f"Supply adequacy: {'YES' if min(total_comp_dispatch, total_strategic_dispatch) >= demand_level - 0.1 else 'NO'}")
     
     def _compute_merit_order_data(self, scenario_id: int) -> Dict[str, Any]:
         """
@@ -953,13 +944,10 @@ class BestResponseAlgorithmMS:
         for gen_name in generator_names:
             comp_scenarios_df[f"{gen_name}_bid"] = self.costs_df[f"{gen_name}_cost"].iloc[0]
         
-        comp_dispatches, comp_prices, _ = self.ed_model.economic_dispatch_from_dataframe(
-            scenarios_df=comp_scenarios_df,
-            costs_df=self.costs_df,
-            pmin_default=0.0
-        )
-        comp_dispatch = comp_dispatches[0]
-        comp_price = comp_prices[0]
+        comp_ed = EconomicDispatchModel(comp_scenarios_df, self.costs_df)
+        comp_ed.solve()
+        comp_dispatch = comp_ed.get_dispatches()[0]
+        comp_price = comp_ed.get_clearing_prices()[0]
         
         # Create merit orders
         comp_gen_data = [(i, self.cost_vector[i], scenario_pmax[i], comp_dispatch[i]) 
@@ -1188,13 +1176,13 @@ if __name__ == "__main__":
     from config.base_case.scenarios.scenario_generator import ScenarioManager
     
     # Load scenario manager
-    scenario_manager = ScenarioManager("test_case")
+    scenario_manager = ScenarioManager("test_case2")
     players_config = scenario_manager.get_players_config()
     
     # Generate demand scenarios with some variation
     demand_scenarios = scenario_manager.generate_demand_scenarios(
         "linear", 
-        num_scenarios=5, 
+        num_scenarios=6, 
         min_factor=0.4, 
         max_factor=0.6
     )

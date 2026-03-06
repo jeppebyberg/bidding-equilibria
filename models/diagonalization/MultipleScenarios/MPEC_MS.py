@@ -270,7 +270,9 @@ class MPECModel:
         Minimizes the negative profit of the strategic player across all scenarios
         (equivalent to maximizing total profit).
         """
-        self.model.objective = Objective(expr= 1 / self.num_scenarios * (-(
+        self.model.objective = Objective(expr= 
+                                        # 1 / self.num_scenarios * (
+                                        -(
                                         sum(self.model.lambda_var[s] * self.demand_scenarios[s] for s in self.model.n_scenarios) -
                                         sum(self.model.mu_upper_bound[s, i] * self.pmax_scenarios[s][i] for s in self.model.n_scenarios for i in self.model.n_gen) +
                                         sum(self.model.mu_lower_bound[s, i] * self.pmin_scenarios[s][i] for s in self.model.n_scenarios for i in self.model.n_gen) -
@@ -278,7 +280,9 @@ class MPECModel:
                                         sum(self.model.mu_upper_bound[s, i] * self.pmax_scenarios[s][i] for s in self.model.n_scenarios for i in self.model.strategic_index) -
                                         sum(self.model.mu_lower_bound[s, i] * self.pmin_scenarios[s][i] for s in self.model.n_scenarios for i in self.model.strategic_index)
                                         )
-                                        + sum(self.cost_vector[i] * self.model.P[s, i] for s in self.model.n_scenarios for i in self.model.strategic_index)),
+                                        + sum(self.cost_vector[i] * self.model.P[s, i] for s in self.model.n_scenarios for i in self.model.strategic_index)
+                                        # )
+                                        ,
                                         sense=minimize)
 
     def _build_constraints(self) -> None:

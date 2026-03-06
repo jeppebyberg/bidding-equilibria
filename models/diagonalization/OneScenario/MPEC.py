@@ -7,39 +7,32 @@ from .utilities.MPEC_utils import get_mpec_parameters
 
 class MPECModel:
     def __init__(self, 
-                 demand: List[float],
-                 pmax_list: List[float], 
-                 pmin_list: List[float],
-                 num_generators: int,
-                 generators: List[str] = None,
-                 players_config: List[Dict[str, Any]] = None,
+                 scenarios_df: pd.DataFrame,
+                 costs_df: pd.DataFrame,
+                 players_config: List[Dict[str, Any]],
                  strategic_player_id: int = None,
-                 bid_vector: List[float] = None,
-                 cost_vector: List[float] = None,
+                 scenario_id: int = 0,
                  config_overrides: Optional[Dict[str, Any]] = None):
         """
-        Initialize MPEC model with case data and configuration
+        Initialize MPEC model with scenario data and configuration.
         
         Parameters
         ----------
-        demand : List[float]
-            Demand vector for the market
-        pmax_list : List[float]
-            Maximum power output for each generator
-        pmin_list : List[float] 
-            Minimum power output for each generator
-        num_generators : int
-            Number of generators in the system
-        generators : List[str], optional
-            List of generator names
-        players_config : List[Dict[str, Any]], optional
-            List of player configurations from base case, each with 'name' and 'controlled_generators'
+        scenarios_df : pd.DataFrame
+            DataFrame containing scenario data with demand, generator capacity, and bid columns.
+            Expected columns:
+            - Demand column: should contain 'demand' or 'load' in name
+            - Generator capacity columns: should end with '_cap' (e.g., 'G1_cap', 'G2_cap')
+            - Generator bid columns: should end with '_bid' (e.g., 'G1_bid', 'G2_bid')
+        costs_df : pd.DataFrame
+            DataFrame containing static generator costs.
+            Expected columns: should end with '_cost' (e.g., 'G1_cost', 'G2_cost')
+        players_config : List[Dict[str, Any]]
+            List of player configurations from base case, each with 'id' and 'controlled_generators'
         strategic_player_id : int, optional
-            ID of the player to optimize (must match a player name in players_config)
-        bid_vector : List[float], optional
-            Current bid vector for all generators
-        cost_vector : List[float], optional
-            Cost vector for all generators
+            ID of the player to optimize (must match a player id in players_config)
+        scenario_id : int, optional
+            Row index of the scenario to use from scenarios_df (default: 0)
         config_overrides : Dict[str, Any], optional
             Configuration overrides for MPEC parameters
         """
@@ -58,55 +51,80 @@ class MPECModel:
         self.big_m_bid_separation = self.config.get("big_m_bid_separation")
         self.bid_separation_epsilon = self.config.get("bid_separation_epsilon")
         
-        # Case data (fixed for all strategic players)
-        self.demand = demand
-        self.Pmax = pmax_list
-        self.Pmin = pmin_list 
-        self.num_generators = num_generators
-        self.generators = generators
+        # Extract scenario and generator information from DataFrames
+        self.scenario_id = scenario_id
+        self._extract_scenario_data(scenarios_df, costs_df)
         
-        # Store players configuration if provided
-        self.players_config = {}
-        if players_config:
-            for player in players_config:
-                # Use 'id' field from player configuration to match actual data format
-                self.players_config[player['id']] = player['controlled_generators']
-        
-        # Set initial strategic player
+        # Store player configurations and strategic player
+        self.players_config = players_config
         self.strategic_player_id = strategic_player_id
         self.strategic_generators = []
-        if strategic_player_id is not None:
-            self.strategic_generators = self.players_config.get(strategic_player_id, [])
         
-        self.bid_vector = bid_vector
-        self.cost_vector = cost_vector
+        # Extract strategic generator indices if strategic player is specified
+        if self.strategic_player_id is not None and self.players_config:
+            strategic_player = next((p for p in self.players_config if p['id'] == self.strategic_player_id), None)
+            if strategic_player:
+                self.strategic_generators = strategic_player['controlled_generators']
+            else:
+                raise ValueError(f"Strategic player {self.strategic_player_id} not found in players_config")
+        
+        # Store DataFrames
+        self.scenarios_df = scenarios_df
+        self.costs_df = costs_df
 
         self.model = None
 
-    def update_strategic_player(self, 
-                                player_id: int, 
-                                bid_vector: List[float], 
-                                cost_vector: List[float]) -> None:
+    def _extract_scenario_data(self, scenarios_df: pd.DataFrame, costs_df: pd.DataFrame):
+        """Extract scenario and generator data from DataFrames for a given scenario row."""
+        
+        # Auto-detect demand column
+        demand_col = None
+        for col in scenarios_df.columns:
+            if any(keyword in col.lower() for keyword in ['demand', 'load']):
+                demand_col = col
+                break
+        
+        if demand_col is None:
+            raise ValueError("No demand column found. Expected column name containing 'demand' or 'load'")
+        
+        # Auto-detect generator capacity columns
+        capacity_cols = [col for col in scenarios_df.columns if col.endswith('_cap')]
+        if not capacity_cols:
+            raise ValueError("No generator capacity columns found. Expected columns ending with '_cap'")
+        
+        # Extract generator information
+        self.generator_names = [col.replace('_cap', '') for col in capacity_cols]
+        self.num_generators = len(self.generator_names)
+        
+        # Extract data from the specified scenario row
+        row = scenarios_df.iloc[self.scenario_id]
+        self.demand = row[demand_col]
+        self.Pmax = [row[f"{gen}_cap"] for gen in self.generator_names]
+        self.Pmin = [0.0] * self.num_generators
+        
+        # Extract costs
+        self.cost_vector = [costs_df[f"{gen}_cost"].iloc[0] for gen in self.generator_names]
+        
+        # Extract bid data
+        self.bid_vector = [row[f"{gen}_bid"] for gen in self.generator_names]
+
+    def update_strategic_player(self, strategic_player_id: int) -> None:
         """
         Update the model for a new strategic player without rebuilding everything.
         Only updates the constraints that depend on the strategic player.
         
         Parameters
         ----------
-        player_id : int
-            ID of the player to optimize (must match a player name in players_config)
-        bid_vector : List[float]
-            Current bid vector for all generators
-        cost_vector : List[float]
-            Cost vector for all generators
+        strategic_player_id : int
+            ID of the player to optimize (must match a player id in players_config)
         """
-        if player_id not in self.players_config:
-            raise ValueError(f"Player {player_id} not found in players configuration. Available players: {list(self.players_config.keys())}")
+        # Find the player and get their controlled generators
+        strategic_player = next((p for p in self.players_config if p['id'] == strategic_player_id), None)
+        if not strategic_player:
+            raise ValueError(f"Strategic player {strategic_player_id} not found in players_config")
         
-        self.strategic_player_id = player_id
-        self.strategic_generators = self.players_config[player_id]
-        self.bid_vector = bid_vector
-        self.cost_vector = cost_vector
+        self.strategic_player_id = strategic_player_id
+        self.strategic_generators = strategic_player['controlled_generators']
         
         # If model doesn't exist, build it completely
         if self.model is None:
@@ -276,8 +294,12 @@ class MPECModel:
         def max_bid_rule(model, i):
             return model.alpha[i] <= self.alpha_max
         
+        def min_bid_rule_2(model, i):
+            return model.alpha[i] >= self.cost_vector[i]
+        
         self.model.min_bid_constraint = Constraint(self.model.strategic_index, rule=min_bid_rule)
         self.model.max_bid_constraint = Constraint(self.model.strategic_index, rule=max_bid_rule)
+        self.model.min_bid_constraint_2 = Constraint(self.model.strategic_index, rule=min_bid_rule_2)
 
     def _build_lower_level_constraints(self) -> None:
         """
@@ -372,7 +394,91 @@ class MPECModel:
         if not (results.solver.status == 'ok') and not (results.solver.termination_condition == 'optimal'):
             print("Solver status:", results.solver.status)
             print("Termination condition:", results.solver.termination_condition)
-        else:
-            print("Solver status:", results.solver.status)
-            print("Termination condition:", results.solver.termination_condition)
+
+    def get_optimal_bids(self) -> List[float]:
+        """
+        Extract optimal strategic bids from the solved model.
+        
+        Returns
+        -------
+        List[float]
+            Complete bid vector where strategic generators get optimal alpha values,
+            non-strategic generators keep their original bids.
+        """
+        if self.model is None:
+            raise ValueError("Model has not been built yet. Call update_strategic_player() first.")
+        
+        optimal_bids = self.bid_vector.copy()
+        for i in self.strategic_generators:
+            alpha_value = self.model.alpha[i].value
+            if alpha_value is not None:
+                optimal_bids[i] = alpha_value
+            else:
+                print(f"Warning: Alpha value for generator {i} is None")
+        
+        return optimal_bids
+
+    def get_scenario_profits(self) -> List[float]:
+        """
+        Calculate the profit for the strategic player in the scenario.
+        
+        Returns
+        -------
+        List[float]
+            List with one element: the profit for the strategic player
+        """
+        if self.model is None:
+            raise ValueError("Model has not been built yet.")
+        
+        profit = 0.0
+        lambda_val = self.model.lambda_var.value
+        for i in self.strategic_generators:
+            dispatch = self.model.P[i].value if self.model.P[i].value is not None else 0.0
+            cost = self.cost_vector[i]
+            profit += (lambda_val - cost) * dispatch
+        
+        return [profit]
+
+    def update_bids_with_optimal_values(self, scenarios_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Update bid columns in the DataFrame with optimal strategic bids.
+        
+        Parameters
+        ----------
+        scenarios_df : pd.DataFrame
+            Original scenarios DataFrame to update
+            
+        Returns
+        -------
+        pd.DataFrame
+            Updated DataFrame with optimal strategic bids
+        """
+        optimal_bids = self.get_optimal_bids()
+        updated_df = scenarios_df.copy()
+        
+        for gen_idx in self.strategic_generators:
+            gen_name = self.generator_names[gen_idx]
+            bid_col = f"{gen_name}_bid"
+            if bid_col in updated_df.columns:
+                updated_df.at[self.scenario_id, bid_col] = optimal_bids[gen_idx]
+        
+        return updated_df
+
+    def print_players_summary(self) -> None:
+        """
+        Print a summary of all players and their controlled generators.
+        """
+        if not self.players_config:
+            print("No players configuration loaded.")
+            return
+            
+        print(f"\n=== Players Configuration Summary ===")
+        print(f"Total Players: {len(self.players_config)}")
+        
+        for player in self.players_config:
+            player_name = player['id']
+            controlled_gens = player['controlled_generators']
+            gen_names = [self.generator_names[i] if i < len(self.generator_names) else f"Gen{i}" 
+                        for i in controlled_gens]
+            print(f"Player {player_name}: Controls {len(controlled_gens)} generators - {gen_names}")
     

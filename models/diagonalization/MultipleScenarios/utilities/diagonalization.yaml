@@ -1,5 +1,4 @@
 #Diagonalization algorithm configuration
 diagonalization:
-  max_iterations: 100
+  max_iterations: 75
   conv_tolerance: 1e-2
-  damping_factor: 0.2  # Blend factor for bid updates: new = (1-alpha)*old + alpha*optimal
