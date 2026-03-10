@@ -391,7 +391,7 @@ if __name__ == "__main__":
 
     demand_scenarios = scenario_manager.generate_demand_scenarios(
         "linear",
-        num_scenarios=4,
+        num_scenarios=5,
         min_factor=0.6,
         max_factor=1.0,
     )

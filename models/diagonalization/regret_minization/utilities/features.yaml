@@ -1,0 +1,29 @@
+# Feature configuration for policy-based bidding
+features:
+
+  # All features the FeatureBuilder knows how to compute.
+  # To add a new feature: append it here AND implement a _feat_<name> handler
+  # in FeatureBuilder.
+  available_features:
+    # Market-level (public)
+    - bias
+    - demand
+    - demand_sq
+    - wind_forecast
+    - total_capacity
+    # Player-private
+    - player_cost
+    - player_capacity
+
+  # Subset of available_features used by default when no explicit list is given.
+  # NOTE: bias is omitted because player_cost and player_capacity already
+  # span the constant space — adding bias makes theta under-identified.
+  # NOTE: total_capacity omitted — it's a linear shift of wind_forecast
+  # when only wind generators have varying capacity.
+  default_features:
+    # - bias
+    - demand
+    - demand_sq
+    - player_cost
+    # - wind_forecast
+    - player_capacity

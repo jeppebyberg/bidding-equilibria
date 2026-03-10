@@ -1,0 +1,9 @@
+#Diagonalization algorithm configuration
+diagonalization:
+  max_iterations: 75
+  conv_tolerance: 1e-2
+  # Maximum number of past iterations to keep in the MPEC history.
+  # 0 = keep all (no window).  A positive value caps the accumulated
+  # DataFrame to (history_window + 1) * S rows, preventing the MILP
+  # from becoming intractably large.
+  history_window: 15

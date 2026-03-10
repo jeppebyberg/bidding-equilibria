@@ -59,9 +59,9 @@ test_case: # One scenario with 6 generators and demand of 225 MW
     - id: 5
       controlled_generators: [5]  # Controls G6
 
-test_case2: # One scenario with 6 generators and demand of 225 MW
+test_case2: # One scenario with 4 generators and demand of 130 MW
   demand: 
-    - 125.0
+    - 130.0
 
   generators:
     - id: 0
@@ -74,19 +74,19 @@ test_case2: # One scenario with 6 generators and demand of 225 MW
       name: "G2"
       pmax: 50.0
       pmin: 0.0
-      cost: 65.0
+      cost: 60.0
       
     - id: 2
       name: "G3"
       pmax: 50.0
       pmin: 0.0
-      cost: 60.0
+      cost: 50.0
       
     - id: 3
       name: "G4"
       pmax: 50.0
       pmin: 0.0
-      cost: 55.0
+      cost: 40.0
       
   players:
     - id: 0
@@ -199,50 +199,32 @@ test_case_multiple_owners: # One scenario with 12 generators owned by 6 players 
 
 test_case1: # One scenario with 6 generators and demand of 225 MW
   demand: 
-    - 215.0
+    - 130.0
 
   generators:
     - id: 0
       name: "G1"
       pmax: 50.0
       pmin: 0.0
-      cost: 20.0
+      cost: 50.0
       
     - id: 1
       name: "G2"
       pmax: 50.0
       pmin: 0.0
-      cost: 30.0
+      cost: 40.0
       
     - id: 2
-      name: "G3"
+      name: "W3"
       pmax: 50.0
       pmin: 0.0
-      cost: 40.0
+      cost: 30.0
       
     - id: 3
       name: "W4"
       pmax: 50.0
       pmin: 0.0
-      cost: 50.0
-      
-    - id: 4
-      name: "W5"
-      pmax: 50.0
-      pmin: 0.0
-      cost: 60.0
-      
-    - id: 5
-      name: "W6"
-      pmax: 50.0
-      pmin: 0.0
-      cost: 70.0
-
-    - id: 6
-      name: "W7"
-      pmax: 50.0
-      pmin: 0.0
-      cost: 80.0
+      cost: 20.0
 
   players:
     - id: 0
@@ -252,16 +234,8 @@ test_case1: # One scenario with 6 generators and demand of 225 MW
       controlled_generators: [1]  # Controls G2
       
     - id: 2
-      controlled_generators: [2]  # Controls G3
+      controlled_generators: [2]  # Controls W3
       
     - id: 3
       controlled_generators: [3]  # Controls W4
       
-    - id: 4
-      controlled_generators: [4]  # Controls W5
-      
-    - id: 5
-      controlled_generators: [5]  # Controls W6
-      
-    - id: 6
-      controlled_generators: [6]  # Controls W7

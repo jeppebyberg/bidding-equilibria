@@ -4,6 +4,7 @@ import pandas as pd
 from typing import List, Optional, Dict, Any
 
 from .utilities.MPEC_utils import get_mpec_parameters
+from .feature_setup import FeatureBuilder, DEFAULT_FEATURES
 
 class MPECModel:
     def __init__(self, 
@@ -11,7 +12,8 @@ class MPECModel:
                  costs_df: pd.DataFrame,
                  players_config: List[Dict[str, Any]],
                  strategic_player_id: int = None,
-                 config_overrides: Optional[Dict[str, Any]] = None):
+                 config_overrides: Optional[Dict[str, Any]] = None,
+                 features: Optional[List[str]] = None):
         """
         Initialize MPEC model with scenario data and configuration
         
@@ -32,6 +34,9 @@ class MPECModel:
             ID of the player to optimize (must match a player name in players_config)
         config_overrides : Dict[str, Any], optional
             Configuration overrides for MPEC parameters
+        features : List[str], optional
+            Ordered list of feature names for the bidding policy.
+            Defaults to DEFAULT_FEATURES from features.yaml.
         """
         
         # Load default configuration
@@ -67,6 +72,11 @@ class MPECModel:
         # Store DataFrames
         self.scenarios_df = scenarios_df
         self.costs_df = costs_df
+
+        # Feature builder for policy-based bidding
+        self.feature_builder = FeatureBuilder(features or DEFAULT_FEATURES)
+        self.feature_matrix: Dict = {}   # populated by _build_feature_matrix()
+        self.num_policy_features: int = 0
 
         self.model = None
 
@@ -115,6 +125,36 @@ class MPECModel:
             scenario_bids = [row[f"{gen}_bid"] for gen in self.generator_names]
             self.bid_scenarios.append(scenario_bids)
 
+    def _build_feature_matrix(self) -> None:
+        """
+        Build the feature matrix for the current strategic player.
+
+        Produces one feature vector per (scenario, generator) pair and stores
+        them in ``self.feature_matrix`` keyed by ``(s, i)`` where *s* is the
+        scenario index and *i* is the **global** generator index.
+
+        Also sets ``self.num_policy_features`` to the length of each vector.
+        """
+        self.feature_matrix = {}
+
+        for gen_idx in self.strategic_generators:
+            # Build observations treating this single generator as its own "player"
+            observations = FeatureBuilder._extract_observations(
+                self.scenarios_df,
+                self.costs_df,
+                player_generators=[gen_idx],
+                generator_names=self.generator_names,
+            )
+            for s, obs in enumerate(observations):
+                self.feature_matrix[s, gen_idx] = self.feature_builder.build(obs)
+
+        # All vectors have the same length – grab it from any entry
+        if self.feature_matrix:
+            sample = next(iter(self.feature_matrix.values()))
+            self.num_policy_features = len(sample)
+        else:
+            self.num_policy_features = self.feature_builder.num_features_expanded(1)
+
     def update_strategic_player(self, strategic_player_id: int) -> None:
         """
         Update the model for a new strategic player without rebuilding everything.
@@ -158,6 +198,9 @@ class MPECModel:
         # Create set of non-strategic generators  
         non_strategic_gens = [i for i in range(self.num_generators) if i not in self.strategic_generators]
         self.model.non_strategic_index = Set(initialize=non_strategic_gens)
+
+        # Build feature matrix for the current strategic player
+        self._build_feature_matrix()
 
         self._build_variables()
         self._build_objective()
@@ -208,6 +251,19 @@ class MPECModel:
         self.model.del_component(self.model.alpha_lower_seperation_constraints)
         self._build_bid_seperation_constraints()
 
+        # Rebuild feature matrix for the new strategic player
+        self._build_feature_matrix()
+
+        # Update policy variables and constraints (if they exist)
+        if hasattr(self.model, 'policy_constraint'):
+            self.model.del_component(self.model.policy_constraint)
+        if hasattr(self.model, 'theta'):
+            self.model.del_component(self.model.theta)
+        if hasattr(self.model, 'n_features'):
+            self.model.del_component(self.model.n_features)
+        self._build_policy_variables()
+        self._build_policy_constraints()
+
     def _build_variables(self) -> None:
         """
         Function to build the Pyomo variables for the MPEC model. 
@@ -217,7 +273,7 @@ class MPECModel:
         self._build_lower_level_primal_variables()
         self._build_complementarity_variables()
         self._build_bid_seperation_variables()
-        # self._build_policy_variables()
+        self._build_policy_variables()
 
     def _build_upper_level_primal_variables(self) -> None:
         """
@@ -252,10 +308,12 @@ class MPECModel:
 
     def _build_policy_variables(self) -> None:
         """
-        Function to build the policy variables for the MPEC model. 
+        Function to build the policy variables for the MPEC model.
+        theta is the weight vector shared across all strategic generators;
+        its dimension equals the expanded feature size (num_policy_features).
         """
-        #Policy variable for the strategic player
-        self.model.theta = Var(domain=Reals)
+        self.model.n_features = Set(initialize=range(self.num_policy_features))
+        self.model.theta = Var(self.model.n_features, domain=Reals)
 
     def _build_bid_seperation_variables(self) -> None:
         """
@@ -268,23 +326,23 @@ class MPECModel:
     def _build_objective(self) -> None:
         """
         Function to build the objective function for the MPEC model.
-        Minimizes the negative profit of the strategic player across all scenarios
-        (equivalent to maximizing total profit).
+        Minimizes the negative *average* profit of the strategic player
+        across all scenarios and accumulated iterations (equivalent to
+        maximizing the mean profit per observation).
         """
-        self.model.objective = Objective(expr= 
-                                        # 1 / self.num_scenarios * (
-                                        -(
-                                        sum(self.model.lambda_var[s] * self.demand_scenarios[s] for s in self.model.n_scenarios) -
-                                        sum(self.model.mu_upper_bound[s, i] * self.pmax_scenarios[s][i] for s in self.model.n_scenarios for i in self.model.n_gen) +
-                                        sum(self.model.mu_lower_bound[s, i] * self.pmin_scenarios[s][i] for s in self.model.n_scenarios for i in self.model.n_gen) -
-                                        sum(self.bid_scenarios[s][i] * self.model.P[s, i] for s in self.model.n_scenarios for i in self.model.non_strategic_index) +
-                                        sum(self.model.mu_upper_bound[s, i] * self.pmax_scenarios[s][i] for s in self.model.n_scenarios for i in self.model.strategic_index) -
-                                        sum(self.model.mu_lower_bound[s, i] * self.pmin_scenarios[s][i] for s in self.model.n_scenarios for i in self.model.strategic_index)
-                                        )
-                                        + sum(self.cost_vector[i] * self.model.P[s, i] for s in self.model.n_scenarios for i in self.model.strategic_index)
-                                        # )
-                                        ,
-                                        sense=minimize)
+        self.model.objective = Objective(expr=
+            1 / self.num_scenarios * (
+            -(
+            sum(self.model.lambda_var[s] * self.demand_scenarios[s] for s in self.model.n_scenarios) -
+            sum(self.model.mu_upper_bound[s, i] * self.pmax_scenarios[s][i] for s in self.model.n_scenarios for i in self.model.n_gen) +
+            sum(self.model.mu_lower_bound[s, i] * self.pmin_scenarios[s][i] for s in self.model.n_scenarios for i in self.model.n_gen) -
+            sum(self.bid_scenarios[s][i] * self.model.P[s, i] for s in self.model.n_scenarios for i in self.model.non_strategic_index) +
+            sum(self.model.mu_upper_bound[s, i] * self.pmax_scenarios[s][i] for s in self.model.n_scenarios for i in self.model.strategic_index) -
+            sum(self.model.mu_lower_bound[s, i] * self.pmin_scenarios[s][i] for s in self.model.n_scenarios for i in self.model.strategic_index)
+            )
+            + sum(self.cost_vector[i] * self.model.P[s, i] for s in self.model.n_scenarios for i in self.model.strategic_index)
+            ),
+            sense=minimize)
 
     def _build_constraints(self) -> None:
         """
@@ -295,7 +353,7 @@ class MPECModel:
         self._build_KKT_stationarity_constraints()
         self._build_KKT_complementarity_constraints()
         self._build_bid_seperation_constraints()
-        # self._build_policy_constraints()
+        self._build_policy_constraints()
 
     def _build_upper_level_constraints(self) -> None:
         """
@@ -386,11 +444,18 @@ class MPECModel:
 
     def _build_policy_constraints(self) -> None:
         """
-        Function to build the policy constraints for the MPEC model. 
+        Function to build the policy constraints for the MPEC model.
+        Links each strategic bid to the shared policy weights:
+            alpha[s, i] = sum_k  theta[k] * feature_matrix[s, i, k]
         """
         def policy_rule(m, s, i):
-            return m.alpha[s, i] == m.theta * self.features[s, i]
-        self.model.policy_constraint = Constraint(self.model.n_scenarios, self.model.strategic_index, rule=policy_rule)
+            phi = self.feature_matrix[s, i]          # 1-D numpy array
+            return m.alpha[s, i] == sum(
+                m.theta[k] * float(phi[k]) for k in m.n_features
+            )
+        self.model.policy_constraint = Constraint(
+            self.model.n_scenarios, self.model.strategic_index, rule=policy_rule
+        )
 
     def solve(self) -> None:
         """
@@ -529,4 +594,93 @@ class MPECModel:
             gen_names = [self.generator_names[i] if i < len(self.generator_names) else f"Gen{i}" 
                         for i in controlled_gens]
             print(f"Player {player_name}: Controls {len(controlled_gens)} generators - {gen_names}")
+
+    # ── scenario accumulation for regret minimization ─────────────────
+
+    def update_scenarios(self, new_scenarios_df: pd.DataFrame) -> None:
+        """
+        Replace the scenario data with an updated (growing) DataFrame.
+
+        This is the main entry point for the best-response loop.  After each
+        iteration the caller appends the latest bid state for **every** market
+        scenario and passes the full accumulated DataFrame here so that the
+        next ``solve()`` optimises theta over all scenarios **and** all
+        previous iterations.
+
+        Example accumulation with *S* base scenarios and *T* iterations::
+
+            accumulated = base_df.copy()          # S rows (iteration 0)
+            for t in range(1, T):
+                iter_df = ...                     # S rows with updated bids
+                accumulated = pd.concat([accumulated, iter_df], ignore_index=True)
+                mpec.update_scenarios(accumulated) # S*t rows
+
+        The Pyomo model is invalidated and will be rebuilt on the next
+        ``update_strategic_player`` / ``solve`` call.
+
+        Parameters
+        ----------
+        new_scenarios_df : pd.DataFrame
+            The accumulated scenarios DataFrame (S_base * num_iterations rows).
+        """
+        # Re-extract all data from the new DataFrame
+        self._extract_scenario_data(new_scenarios_df, self.costs_df)
+        self.scenarios_df = new_scenarios_df.copy().reset_index(drop=True)
+
+        # Force a full model rebuild next time
+        self.model = None
+
+    def get_optimal_theta(self) -> np.ndarray:
+        """
+        Extract the optimal policy weights from the solved model.
+
+        Returns
+        -------
+        np.ndarray of shape (num_policy_features,)
+            The solved theta vector.
+        """
+        if self.model is None:
+            raise ValueError("Model has not been built / solved yet.")
+        if not hasattr(self.model, 'theta'):
+            raise ValueError("Policy variables (theta) not found on the model.")
+
+        return np.array([
+            self.model.theta[k].value for k in self.model.n_features
+        ], dtype=np.float64)
+
+    def get_policy_bids(self, theta: np.ndarray, scenarios_df: pd.DataFrame) -> List[List[float]]:
+        """
+        Compute the bids a given theta would produce on an arbitrary set of scenarios.
+
+        This is useful for *evaluating* a policy on data it was not trained on
+        (e.g. testing the current theta against a single new iteration).
+
+        Parameters
+        ----------
+        theta : np.ndarray
+            Policy weight vector of length ``num_policy_features``.
+        scenarios_df : pd.DataFrame
+            Scenarios to evaluate (same column format as the training data).
+
+        Returns
+        -------
+        List[List[float]]
+            ``policy_bids[s][i]`` is the bid for generator *i* in scenario *s*.
+            Non-strategic generators keep their DataFrame bids.
+        """
+        # Build feature vectors for the current strategic player
+        bid_matrix: List[List[float]] = []
+        for s_idx, (_, row) in enumerate(scenarios_df.iterrows()):
+            row_bids = [row[f"{g}_bid"] for g in self.generator_names]
+            for gen_idx in self.strategic_generators:
+                obs_list = FeatureBuilder._extract_observations(
+                    scenarios_df.iloc[[s_idx]].reset_index(drop=True),
+                    self.costs_df,
+                    player_generators=[gen_idx],
+                    generator_names=self.generator_names,
+                )
+                phi = self.feature_builder.build(obs_list[0])
+                row_bids[gen_idx] = float(theta @ phi)
+            bid_matrix.append(row_bids)
+        return bid_matrix
 

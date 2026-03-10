@@ -189,6 +189,7 @@ class MPECModel:
         # Update upper level constraints (bid bounds for strategic players)
         self.model.del_component(self.model.min_bid_constraint)
         self.model.del_component(self.model.max_bid_constraint)
+        self.model.del_component(self.model.min_bid_constraint_2)
         self._build_upper_level_constraints()
         
         # Update KKT stationarity constraints (different rules for strategic vs non-strategic)
