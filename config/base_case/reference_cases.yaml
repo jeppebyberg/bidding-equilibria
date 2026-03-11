@@ -1,5 +1,5 @@
 # Test case with 6 generators 
-test_case: # One scenario with 6 generators and demand of 225 MW
+test_case: # Scenario with 6 generators and demand of 225 MW
   demand: 
     - 215.0
 
@@ -59,7 +59,7 @@ test_case: # One scenario with 6 generators and demand of 225 MW
     - id: 5
       controlled_generators: [5]  # Controls G6
 
-test_case2: # One scenario with 4 generators and demand of 130 MW
+test_case2: # Scenario with 4 generators and demand of 130 MW
   demand: 
     - 130.0
 
@@ -101,7 +101,7 @@ test_case2: # One scenario with 4 generators and demand of 130 MW
     - id: 3
       controlled_generators: [3]  # Controls G4
 
-test_case_multiple_owners: # One scenario with 12 generators owned by 6 players and demand of 225 MW
+test_case_multiple_owners: # Scenario with 12 generators owned by 6 players and demand of 225 MW
   demand: 
     - 430.0
 
@@ -197,9 +197,9 @@ test_case_multiple_owners: # One scenario with 12 generators owned by 6 players 
     - id: 5
       controlled_generators: [10, 11]  # Controls G11 and G12
 
-test_case1: # One scenario with 6 generators and demand of 225 MW
+test_case1: # Scenario with 4 generators and demand of 130 MW
   demand: 
-    - 130.0
+    - 160.0
 
   generators:
     - id: 0
@@ -226,6 +226,12 @@ test_case1: # One scenario with 6 generators and demand of 225 MW
       pmin: 0.0
       cost: 20.0
 
+    - id: 4
+      name: "W5"
+      pmax: 50.0
+      pmin: 0.0
+      cost: 10.0
+
   players:
     - id: 0
       controlled_generators: [0]  # Controls G1
@@ -239,3 +245,5 @@ test_case1: # One scenario with 6 generators and demand of 225 MW
     - id: 3
       controlled_generators: [3]  # Controls W4
       
+    - id: 4
+      controlled_generators: [4]  # Controls W5

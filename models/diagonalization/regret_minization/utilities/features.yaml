@@ -1,4 +1,17 @@
 # Feature configuration for policy-based bidding
+
+# Historical scenarios used to estimate supply-curve features.
+# These are generated INDEPENDENTLY of the BR scenarios to avoid
+# information leakage — they represent historic data
+historical_scenarios:
+  reference_case: "test_case1"  # Reference case for scenario generation
+  num_demand: 50
+  demand_min_factor: 0.4
+  demand_max_factor: 1.0
+  num_capacity: 10
+  capacity_min_factor: 0.4
+  capacity_max_factor: 1.0
+
 features:
 
   # All features the FeatureBuilder knows how to compute.
@@ -11,19 +24,24 @@ features:
     - demand_sq
     - wind_forecast
     - total_capacity
+    - scarcity_ratio
+    - residual_demand
     # Player-private
     - player_cost
     - player_capacity
+    # Historical supply-curve (pre-computed, static across BR iterations)
+    - supply_intercept
+    - supply_slope
 
   # Subset of available_features used by default when no explicit list is given.
-  # NOTE: bias is omitted because player_cost and player_capacity already
-  # span the constant space — adding bias makes theta under-identified.
-  # NOTE: total_capacity omitted — it's a linear shift of wind_forecast
-  # when only wind generators have varying capacity.
   default_features:
     # - bias
     - demand
-    - demand_sq
+    # - demand_sq
     - player_cost
-    # - wind_forecast
-    - player_capacity
+    - wind_forecast
+    # - player_capacity
+    # - scarcity_ratio
+    # - residual_demand
+    # - supply_slope
+    # - supply_intercept

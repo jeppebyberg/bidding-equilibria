@@ -27,7 +27,7 @@ from models.diagonalization.regret_minization.MPEC_regret_min import MPECModel
 from models.diagonalization.MultipleScenarios.economic_dispatch_MS import EconomicDispatchModel
 from models.diagonalization.regret_minization.utilities.diagonalization_loader import load_diagonalization
 
-from models.diagonalization.regret_minization.feature_setup import FeatureBuilder
+from models.diagonalization.regret_minization.feature_setup import FeatureBuilder, create_feature_builder
 
 class BestResponseAlgorithmRegretMin:
     """
@@ -41,9 +41,8 @@ class BestResponseAlgorithmRegretMin:
         scenarios_df: pd.DataFrame,
         costs_df: pd.DataFrame,
         players_config: List[Dict[str, Any]],
-        features: Optional[List[str]] = None,
+        feature_list: Optional[List[str]] = None,
         results_dir: Optional[str] = None,
-        initial_theta: Optional[Dict[int, np.ndarray]] = None,
     ):
         """
         Parameters
@@ -55,8 +54,8 @@ class BestResponseAlgorithmRegretMin:
             Static generator cost data (single row).
         players_config : list[dict]
             Player configuration list (id, controlled_generators).
-        features : list[str], optional
-            Feature names for the bidding policy.  ``None`` → defaults.
+        feature_list : list[str], optional
+            List of features to include in the feature vector.  ``None`` → default features from features.yaml.
         results_dir : str, optional
             Directory to save figures.  ``None`` → ``results/`` in project root.
         initial_theta : dict[int, np.ndarray], optional
@@ -66,7 +65,7 @@ class BestResponseAlgorithmRegretMin:
         self.scenarios_df = scenarios_df.copy().reset_index(drop=True)
         self.costs_df = costs_df
         self.players_config = players_config
-        self.features = features
+        self.feature_builder = create_feature_builder(feature_list)
 
         # Auto-detect columns
         capacity_cols = [c for c in scenarios_df.columns if c.endswith('_cap')]
@@ -102,7 +101,7 @@ class BestResponseAlgorithmRegretMin:
             scenarios_df=self.scenarios_df,
             costs_df=self.costs_df,
             players_config=self.players_config,
-            features=self.features,
+            feature_builder=self.feature_builder,
         )
 
         # Accumulated history: list of scenario snapshots (one S-row df per iteration)
@@ -128,10 +127,7 @@ class BestResponseAlgorithmRegretMin:
         self.results: Optional[Dict[str, Any]] = None
 
         # Initial policy ────────────────────────────────────────────────
-        if initial_theta is not None:
-            self.initial_theta = initial_theta
-        else:
-            self.initial_theta = self._compute_cost_theta()
+        self.initial_theta = self._compute_cost_theta()
 
     # ── helpers ────────────────────────────────────────────────────────
 
@@ -322,6 +318,9 @@ class BestResponseAlgorithmRegretMin:
         print(f"Base scenarios : {S}")
         print(f"Features      : {self.mpec_model.feature_builder.features}")
         print(f"Players       : {num_players}")
+        sc = self.mpec_model.feature_builder.supply_coeffs
+        if sc:
+            print(f"Supply curve  : price ≈ {sc['supply_intercept']:.2f} + {sc['supply_slope']:.4f} * demand")
 
         # Apply initial policy and record iteration 0
         self._apply_initial_policy()
@@ -1068,7 +1067,7 @@ if __name__ == "__main__":
 
     # ── Configuration ──────────────────────────────────────────────
     BASE_CASE  = "test_case1"
-    NUM_DEMAND = 15
+    NUM_DEMAND = 5
     DEMAND_MIN = 0.6
     DEMAND_MAX = 1.0
 

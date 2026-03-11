@@ -4,7 +4,7 @@ import pandas as pd
 from typing import List, Optional, Dict, Any
 
 from .utilities.MPEC_utils import get_mpec_parameters
-from .feature_setup import FeatureBuilder, DEFAULT_FEATURES
+from .feature_setup import FeatureBuilder, DEFAULT_FEATURES, create_feature_builder
 
 class MPECModel:
     def __init__(self, 
@@ -13,7 +13,7 @@ class MPECModel:
                  players_config: List[Dict[str, Any]],
                  strategic_player_id: int = None,
                  config_overrides: Optional[Dict[str, Any]] = None,
-                 features: Optional[List[str]] = None):
+                 feature_builder: Optional[FeatureBuilder] = None):
         """
         Initialize MPEC model with scenario data and configuration
         
@@ -34,9 +34,9 @@ class MPECModel:
             ID of the player to optimize (must match a player name in players_config)
         config_overrides : Dict[str, Any], optional
             Configuration overrides for MPEC parameters
-        features : List[str], optional
-            Ordered list of feature names for the bidding policy.
-            Defaults to DEFAULT_FEATURES from features.yaml.
+        feature_builder : FeatureBuilder, optional
+            Pre-configured feature builder (carries supply-curve coefficients
+            if needed).  ``None`` → default builder from features.yaml.
         """
         
         # Load default configuration
@@ -74,7 +74,7 @@ class MPECModel:
         self.costs_df = costs_df
 
         # Feature builder for policy-based bidding
-        self.feature_builder = FeatureBuilder(features or DEFAULT_FEATURES)
+        self.feature_builder = feature_builder or FeatureBuilder(DEFAULT_FEATURES)
         self.feature_matrix: Dict = {}   # populated by _build_feature_matrix()
         self.num_policy_features: int = 0
 

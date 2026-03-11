@@ -263,17 +263,6 @@ class BestResponseAlgorithmMS:
             self.profit_history_agent_perspective_scenario.append(profit_agent_perspective_scenario.copy())
             
             if self.iteration > 0:
-                # --- Convergence Check 1: Bid stability between iterations (per scenario, per generator) ---
-                # self.convergence_check_1 = []
-                # current_bids = self.bid_history[self.iteration]   # [scenario][generator]
-                # previous_bids = self.bid_history[self.iteration - 1]
-                # for s in range(len(current_bids)):
-                #     for g in range(len(current_bids[s])):
-                #         self.convergence_check_1.append(
-                #             self.check_convergence(current_bids[s][g], previous_bids[s][g])
-                #         )
-
-                # --- Alternative Check 1: MPEC profit stability between iterations ---
                 self.convergence_check_1 = []
                 for player_idx in range(len(self.players_config)):
                     current_profit = self.profit_history_agent_perspective[self.iteration][player_idx]
