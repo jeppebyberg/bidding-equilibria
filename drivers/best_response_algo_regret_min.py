@@ -1079,7 +1079,7 @@ if __name__ == "__main__":
         "linear", num_scenarios=NUM_DEMAND, min_factor=DEMAND_MIN, max_factor=DEMAND_MAX
     )
     capacity_scenarios = scenario_manager.generate_capacity_scenarios(
-        "linear", num_scenarios=2, min_factor=0.6, max_factor=1.0
+        "linear", num_scenarios=2, min_factor=0.8, max_factor=1.0
     )
     scenarios = scenario_manager.create_scenario_set(
         demand_scenarios=demand_scenarios,
