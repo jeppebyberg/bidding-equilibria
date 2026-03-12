@@ -635,6 +635,38 @@ class BestResponseAlgorithmRegretMin:
         self._save_fig(fig, 'theta_evolution.png')
         plt.show()
 
+    def visualize_final_theta(self) -> None:
+        feature_names = self.mpec_model.feature_builder.features
+        final_thetas = self.results['final_thetas']
+
+        num_features = len(feature_names)
+        num_players = len(self.players_config)
+
+        cols = min(3, num_players)
+        rows = (num_players + cols - 1) // cols
+        fig, axes = plt.subplots(rows, cols, figsize=(6*cols, 5*rows), squeeze=False)
+
+        for p_idx, pc in enumerate(self.players_config):
+            pid = pc['id']
+            theta = final_thetas.get(pid)
+            ax = axes[p_idx // cols][p_idx % cols]
+            if theta is not None:
+                ax.bar(np.arange(num_features), theta[:num_features], color='skyblue', alpha=0.8)
+            ax.set_xticks(np.arange(num_features))
+            ax.set_xticklabels(feature_names, rotation=30, ha='right')
+            ax.set_xlabel('Feature', fontsize=12)
+            ax.set_ylabel('Theta Weight', fontsize=12)
+            ax.set_title(f'Player {pid} Final Policy Weights', fontsize=12, fontweight='bold')
+            ax.grid(True, alpha=0.3, axis='y')
+
+        for idx in range(num_players, rows * cols):
+            axes[idx // cols][idx % cols].set_visible(False)
+
+        fig.suptitle('Final Policy Weights (Theta)', fontsize=14, fontweight='bold')
+        plt.tight_layout()
+        self._save_fig(fig, 'final_theta.png')
+        plt.show()
+
     def visualize_supply_demand_curve(self, scenario_id: int = 0) -> None:
         """
         Visualize the supply-demand curve with market clearing point.
@@ -1101,3 +1133,6 @@ if __name__ == "__main__":
     algo.visualize_bid_evolution()
     algo.visualize_theta_evolution()
     algo.visualize_merit_order_comparison()
+    algo.visualize_final_theta()
+
+    stop = True
