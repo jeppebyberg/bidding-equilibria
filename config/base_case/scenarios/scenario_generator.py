@@ -240,10 +240,7 @@ class ScenarioManager:
         
         return capacity_scenarios
     
-    def _generate_custom_capacity_scenarios(
-        self, 
-        wind_factor_list: List[float]
-    ) -> List[Dict[str, Any]]:
+    def _generate_custom_capacity_scenarios(self, wind_factor_list: List[float]) -> List[Dict[str, Any]]:
         """Generate custom capacity scenarios.
         
         Only wind generators (W prefix) have variable capacity.
@@ -585,13 +582,100 @@ class ScenarioManager:
         
         return validation
 
+    def generate_historic_df(
+        self,
+        scenarios_df: pd.DataFrame,
+        demand_persistence: float = 0.85,
+        wind_persistence: float = 0.8,
+        noise_scale: float = 0.05,
+    ) -> pd.DataFrame:
+        """
+        Generate synthetic historical data linked to each scenario.
+
+        Adds:
+            demand_tm1
+            W*_gen_tm1 for each wind generator
+            G*_cap_tm1 for each conventional generator
+        """
+
+        rng = np.random.default_rng()
+        historic_rows = []
+
+        wind_generators = []
+        conventional_generators = []
+
+        for gen in self.base_case['generators']:
+            name = gen['name'] if isinstance(gen, dict) else gen
+            if name.startswith("W"):
+                wind_generators.append(name)
+            elif name.startswith("G"):
+                conventional_generators.append(name)
+
+        wind_nominal = {
+            (gen['name'] if isinstance(gen, dict) else gen): pmax
+            for gen, pmax in zip(self.base_case['generators'], self.base_case['pmax_list'])
+            if (gen['name'] if isinstance(gen, dict) else gen).startswith("W")
+        }
+
+        conv_nominal = {
+            (gen['name'] if isinstance(gen, dict) else gen): pmax
+            for gen, pmax in zip(self.base_case['generators'], self.base_case['pmax_list'])
+            if (gen['name'] if isinstance(gen, dict) else gen).startswith("G")
+        }
+
+        for _, row in scenarios_df.iterrows():
+
+            hist_row = {
+                "scenario_id": row["scenario_id"]
+            }
+
+            # --- Yesterday demand ---
+            demand_tm1 = (
+                demand_persistence * row["demand"]
+                + (1 - demand_persistence) * self.base_case["demand"]
+                + rng.normal(0, noise_scale * row["demand"])
+            )
+
+            hist_row["demand_tm1"] = float(demand_tm1)
+
+            # Conventional capacities yesterday
+            for g in conventional_generators:
+                hist_row[f"{g}_cap_tm1"] = float(conv_nominal[g])
+
+            # --- Wind factor today ---
+            if wind_generators:
+                wind_today = sum(row[f"{w}_cap"] for w in wind_generators)
+                wind_nominal_total = sum(wind_nominal[w] for w in wind_generators)
+                wind_factor_today = wind_today / wind_nominal_total
+            else:
+                wind_factor_today = 0.0
+
+            # --- Yesterday wind factor ---
+            wind_factor_tm1 = (
+                wind_persistence * wind_factor_today
+                + rng.normal(0, noise_scale)
+            )
+
+            wind_factor_tm1 = np.clip(wind_factor_tm1, 0, 1)
+
+            hist_row["wind_factor_tm1"] = float(wind_factor_tm1)
+
+            # Wind generation yesterday
+            for w in wind_generators:
+                hist_row[f"{w}_cap_tm1"] = float(wind_factor_tm1 * wind_nominal[w])
+
+
+            historic_rows.append(hist_row)
+
+        return pd.DataFrame(historic_rows)
+
 if __name__ == "__main__":
     """Demo of ScenarioManager functionality."""
     
     # Initialize with base case reference
     # manager = ScenarioManager("test_case")
     # manager = ScenarioManager("test_case1")
-    manager = ScenarioManager("test_case_multiple_owners")
+    manager = ScenarioManager("test_case1")
 
     players_config = manager.players_config
 
@@ -619,3 +703,5 @@ if __name__ == "__main__":
     print("\nPlayers Configuration:")
     for player in players_config:
         print(f"  • Player {player['id']} controls generators: {player['controlled_generators']}")
+
+    stop = True

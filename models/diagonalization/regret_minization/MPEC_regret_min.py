@@ -8,6 +8,7 @@ from .feature_setup import FeatureBuilder, DEFAULT_FEATURES, create_feature_buil
 
 class MPECModel:
     def __init__(self, 
+                 reference_case: str,
                  scenarios_df: pd.DataFrame,
                  costs_df: pd.DataFrame,
                  players_config: List[Dict[str, Any]],
@@ -19,6 +20,8 @@ class MPECModel:
         
         Parameters
         ----------
+        reference_case : str
+            Identifier for the reference case (used for feature building and supply curve estimation)
         scenarios_df : pd.DataFrame
             DataFrame containing scenario data with demand, generator capacity, and bid columns
             Expected columns:
@@ -74,8 +77,11 @@ class MPECModel:
         self.costs_df = costs_df
 
         # Feature builder for policy-based bidding
-        self.feature_builder = feature_builder or FeatureBuilder(DEFAULT_FEATURES)
+        self.feature_builder = feature_builder or FeatureBuilder(reference_case, DEFAULT_FEATURES)
         self.feature_matrix: Dict = {}   # populated by _build_feature_matrix()
+
+        self._build_feature_matrix()  # Build initial feature matrix for the strategic player (if specified)
+        
         self.num_policy_features: int = 0
 
         self.model = None
@@ -139,7 +145,7 @@ class MPECModel:
 
         for gen_idx in self.strategic_generators:
             # Build observations treating this single generator as its own "player"
-            observations = FeatureBuilder._extract_observations(
+            observations = self.feature_builder._extract_observations(
                 self.scenarios_df,
                 self.costs_df,
                 player_generators=[gen_idx],
@@ -148,12 +154,28 @@ class MPECModel:
             for s, obs in enumerate(observations):
                 self.feature_matrix[s, gen_idx] = self.feature_builder.build(obs)
 
+            # Optional: Check for rank deficiency in the feature matrix for this generator for debugging purposes (commented out)
+            # X = np.array([
+            #     self.feature_matrix[(s, gen_idx)]
+            #     for s in range(len(observations))
+            # ])
+
+            # rank = np.linalg.matrix_rank(X)
+
+            # if rank < X.shape[1]:
+            #     print(
+            #         f"Warning: Feature matrix is rank deficient for generator {gen_idx}. "
+            #         f"Rank={rank}, Features={X.shape[1]}"
+            #     )
+
         # All vectors have the same length – grab it from any entry
         if self.feature_matrix:
             sample = next(iter(self.feature_matrix.values()))
             self.num_policy_features = len(sample)
         else:
             self.num_policy_features = self.feature_builder.num_features_expanded(1)
+        
+        stop = True
 
     def update_strategic_player(self, strategic_player_id: int) -> None:
         """
@@ -595,7 +617,7 @@ class MPECModel:
                         for i in controlled_gens]
             print(f"Player {player_name}: Controls {len(controlled_gens)} generators - {gen_names}")
 
-    # ── scenario accumulation for regret minimization ─────────────────
+    # Scenario accumulation for regret minimization
 
     def update_scenarios(self, new_scenarios_df: pd.DataFrame) -> None:
         """
@@ -673,7 +695,7 @@ class MPECModel:
         for s_idx, (_, row) in enumerate(scenarios_df.iterrows()):
             row_bids = [row[f"{g}_bid"] for g in self.generator_names]
             for gen_idx in self.strategic_generators:
-                obs_list = FeatureBuilder._extract_observations(
+                obs_list = self.feature_builder._extract_observations(
                     scenarios_df.iloc[[s_idx]].reset_index(drop=True),
                     self.costs_df,
                     player_generators=[gen_idx],

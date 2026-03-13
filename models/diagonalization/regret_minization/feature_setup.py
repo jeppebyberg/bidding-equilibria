@@ -31,6 +31,7 @@ import yaml
 import numpy as np
 import pandas as pd
 from pathlib import Path
+import matplotlib.pyplot as plt
 
 from models.diagonalization.MultipleScenarios.economic_dispatch_MS import EconomicDispatchModel
 from config.base_case.scenarios.scenario_generator import ScenarioManager
@@ -56,13 +57,11 @@ def load_feature_config(config_path: str = None) -> Dict[str, List[str]]:
         "historical_scenarios": hist_cfg,
     }
 
-# ──────────────────────────────────────────────────────────────────────
 # Historical supply-curve estimation
-# ──────────────────────────────────────────────────────────────────────
-
 def compute_historical_supply_curve(
     reference_case: str = "test_case",
     config_path: str = None,
+    plot = False,
 ) -> Dict[str, float]:
     """
     Estimate the supply-curve from *independent* historical scenarios.
@@ -71,7 +70,7 @@ def compute_historical_supply_curve(
     ``features.yaml → historical_scenarios``), runs competitive (cost-based)
     economic dispatch on them, and fits:
 
-        clearing_price ≈ supply_intercept + supply_slope × demand
+        clearing_price ≈ supply_intercept + supply_slope x demand
 
     The resulting coefficients are **exogenous prior knowledge** — they
     do not depend on any BR-iteration data.
@@ -93,12 +92,12 @@ def compute_historical_supply_curve(
     cfg = load_feature_config(config_path)
     hist_cfg = cfg.get("historical_scenarios", {})
 
-    num_demand   = int(hist_cfg.get("num_demand", 7))
-    demand_min   = float(hist_cfg.get("demand_min_factor", 0.4))
-    demand_max   = float(hist_cfg.get("demand_max_factor", 1.0))
-    num_capacity = int(hist_cfg.get("num_capacity", 3))
-    cap_min      = float(hist_cfg.get("capacity_min_factor", 0.4))
-    cap_max      = float(hist_cfg.get("capacity_max_factor", 1.0))
+    num_demand   = int(hist_cfg.get("num_demand", None ))
+    demand_min   = float(hist_cfg.get("demand_min_factor", None))
+    demand_max   = float(hist_cfg.get("demand_max_factor", None))
+    num_capacity = int(hist_cfg.get("num_capacity", None ))
+    cap_min      = float(hist_cfg.get("capacity_min_factor", None))
+    cap_max      = float(hist_cfg.get("capacity_max_factor", None))
 
     scenario_manager = ScenarioManager(reference_case)  
 
@@ -137,10 +136,34 @@ def compute_historical_supply_curve(
         intercept = float(prices.mean())
         slope = 0.0
 
+    if plot:
+        plt.scatter(demands, prices, label="Historical Scenarios")
+        plt.plot(demands, intercept + slope * demands, color="red", label=f"Fitted Supply Curve\n ($y={intercept:.2f} + {slope:.2f}x$)")
+        plt.xlabel("Demand [MW]")
+        plt.ylabel("Clearing Price [$/MWh]")
+        plt.title("Historical Supply Curve Estimation")
+        plt.legend()
+        plt.grid()
+        plt.show()
+
     return {"supply_intercept": intercept, "supply_slope": slope}
 
-# Dataclasses that capture a single observation for one player
+def compute_tm1_historical_supply_curve(reference_case: str, scenario_df: pd.DataFrame, config_path: str = None) -> Dict[str, float]:
+    
+    cfg = load_feature_config(config_path)
+    hist_cfg = cfg.get("historical_scenarios", {})
 
+    demand_persistence   = float(hist_cfg.get("demand_persistence", 0.85))
+    wind_persistence     = float(hist_cfg.get("wind_persistence", 0.8))
+    noise_scale          = float(hist_cfg.get("noise_scale", 0.05))
+    
+    scenario_manager = ScenarioManager(reference_case)  
+
+    historic_df = scenario_manager.generate_historic_df(scenario_df, demand_persistence, wind_persistence, noise_scale)
+
+    return historic_df
+
+# Dataclasses that capture a single observation for one player
 @dataclass
 class MarketState:
     """Public / market-level information for a single scenario."""
@@ -155,17 +178,24 @@ class PrivateInfo:
     player_capacity: List[float]
 
 @dataclass
+class HistoricData:
+    """Historical supply-curve coefficients."""
+    supply_intercept: float
+    supply_slope: float
+    supply_curve: List[float]
+    
+@dataclass
 class Observation:
     """Full observation = market state + private info."""
     market: MarketState
     private: PrivateInfo
+    historic: HistoricData
 
 # Catalogue of all available features (loaded from features.yaml)
 _FEATURE_CFG = load_feature_config()
 AVAILABLE_FEATURES: List[str] = _FEATURE_CFG["available_features"]
 
 # FeatureBuilder
-
 class FeatureBuilder:
     """
     Converts an ``Observation`` into a numeric feature vector.
@@ -176,15 +206,21 @@ class FeatureBuilder:
         Ordered list of feature names to include (see ``AVAILABLE_FEATURES``).
     """
 
-    def __init__(self, features: List[str], supply_coeffs: Dict[str, float] = None):
+    def __init__(self, reference_case: str, features: List[str]):
         unknown = set(features) - set(AVAILABLE_FEATURES)
         if unknown:
             raise ValueError(
                 f"Unknown feature(s): {unknown}. "
                 f"Available: {AVAILABLE_FEATURES}"
             )
+
         self.features = list(features)
-        self.supply_coeffs = supply_coeffs or {}
+        self.reference_case = reference_case
+
+        # Pre-compute supply-curve coefficients if needed
+        supply_features = {"supply_intercept", "supply_slope", "supply_curve"}
+        if supply_features & set(features):
+            self.supply_coeffs = compute_historical_supply_curve(reference_case)
 
         # Map each feature name → its handler method.
         # To add a new feature: write a _feat_<name> method and add the
@@ -201,6 +237,7 @@ class FeatureBuilder:
             "residual_demand":  self._feat_residual_demand,
             "supply_intercept": self._feat_supply_intercept,
             "supply_slope":     self._feat_supply_slope,
+            "supply_curve":     self._feat_supply_curve,
         }
 
     # Individual feature handlers 
@@ -264,6 +301,12 @@ class FeatureBuilder:
         """Slope of historical price~demand regression [$/MW]."""
         return self.supply_coeffs.get("supply_slope", 0.0)
 
+    def _feat_supply_curve(self, obs: Observation):
+        """Full historical supply curve value at current demand [$/MWh]."""
+        intercept = self._feat_supply_intercept(obs)
+        slope = self._feat_supply_slope(obs)
+        return intercept + slope * obs.market.demand
+
     # Core feature builder
     def build(self, obs: Observation) -> np.ndarray:
         """Return a 1-D feature vector for a single observation."""
@@ -305,8 +348,8 @@ class FeatureBuilder:
         return np.vstack([self.build(obs) for obs in observations])
 
     # Helpers
-    @staticmethod
     def _extract_observations(
+        self,
         scenarios_df: pd.DataFrame,
         costs_df: pd.DataFrame,
         player_generators: List[int],
@@ -317,6 +360,10 @@ class FeatureBuilder:
         # Static cost info (same across scenarios)
         costs = np.array([costs_df[f"{g}_cost"].iloc[0] for g in generator_names])
         player_gen_names = [generator_names[i] for i in player_generators]
+
+        # Supply coefficients from self.supply_coeffs if available
+        supply_intercept = getattr(self, "supply_coeffs", {}).get("supply_intercept", 0.0)
+        supply_slope = getattr(self, "supply_coeffs", {}).get("supply_slope", 0.0)
 
         observations: List[Observation] = []
         for _, row in scenarios_df.iterrows():
@@ -344,7 +391,17 @@ class FeatureBuilder:
                 player_cost=player_costs,
                 player_capacity=player_caps,
             )
-            observations.append(Observation(market=market, private=private))
+
+            # Compute supply_curve value at current demand
+            supply_curve = supply_intercept + supply_slope * demand
+
+            historic = HistoricData(
+                supply_intercept=supply_intercept,
+                supply_slope=supply_slope,
+                supply_curve=supply_curve,
+            )
+
+            observations.append(Observation(market=market, private=private, historic=historic))
 
         return observations
 
@@ -371,13 +428,12 @@ class FeatureBuilder:
         return f"FeatureBuilder(features={self.features})"
 
 
-# ──────────────────────────────────────────────────────────────────────
 # Convenience: default feature set (loaded from features.yaml)
-# ──────────────────────────────────────────────────────────────────────
 
 DEFAULT_FEATURES: List[str] = _FEATURE_CFG["default_features"]
 
 def create_feature_builder(
+    reference_case: str,
     features: List[str] = None,
 ) -> FeatureBuilder:
     """
@@ -400,39 +456,36 @@ def create_feature_builder(
     if features is None:
         features = DEFAULT_FEATURES
 
-    supply_features = {"supply_intercept", "supply_slope"}
-    needs_supply = bool(supply_features & set(features))
-
-    supply_coeffs = None
-    if needs_supply:
-        supply_coeffs = compute_historical_supply_curve()
-
-    return FeatureBuilder(features, supply_coeffs=supply_coeffs)
-
-# ──────────────────────────────────────────────────────────────────────
-# Quick smoke-test when run directly
-# ──────────────────────────────────────────────────────────────────────
+    return FeatureBuilder(reference_case, features)
 
 if __name__ == "__main__":
     from config.base_case.scenarios.scenario_generator import ScenarioManager
 
-    # ── 1. Load scenarios from ScenarioManager ──────────────────────
-    manager = ScenarioManager("test_case_multiple_owners")
+        # Configuration
+    BASE_CASE  = "test_case1"
+    NUM_DEMAND = 5
+    DEMAND_MIN = 0.6
+    DEMAND_MAX = 1.0
+    NUM_CAPACITY = 2
+    CAPACITY_MIN = 0.8
+    CAPACITY_MAX = 1.0
 
-    demand_scenarios = manager.generate_demand_scenarios(
-        "linear", num_scenarios=5, min_factor=0.8, max_factor=1.0
+    # Scenario generation
+    scenario_manager = ScenarioManager(BASE_CASE)
+    players_config   = scenario_manager.get_players_config()
+
+    demand_scenarios   = scenario_manager.generate_demand_scenarios(
+        "linear", num_scenarios=NUM_DEMAND, min_factor=DEMAND_MIN, max_factor=DEMAND_MAX
     )
-    capacity_scenarios = manager.generate_capacity_scenarios(
-        "linear", num_scenarios=3
+    capacity_scenarios = scenario_manager.generate_capacity_scenarios(
+        "linear", num_scenarios=NUM_CAPACITY, min_factor=CAPACITY_MIN, max_factor=CAPACITY_MAX
     )
-    scenario_set = manager.create_scenario_set(
+    scenarios = scenario_manager.create_scenario_set(
         demand_scenarios=demand_scenarios,
         capacity_scenarios=capacity_scenarios,
     )
-
-    scenarios_df = scenario_set["scenarios_df"]
-    costs_df     = scenario_set["costs_df"]
-    players_cfg  = manager.players_config
+    scenarios_df = scenarios["scenarios_df"]
+    costs_df     = scenarios["costs_df"]
 
     # Generator names from the DataFrame columns
     generator_names = [c.replace("_cap", "") for c in scenarios_df.columns if c.endswith("_cap")]
@@ -442,15 +495,17 @@ if __name__ == "__main__":
     print("\nCosts DataFrame:")
     print(costs_df)
 
-    # ── 2. Build feature vectors per player ─────────────────────────
-    fb = create_feature_builder(DEFAULT_FEATURES)
+    # Build feature vectors per player
+    fb = create_feature_builder(BASE_CASE, DEFAULT_FEATURES)
 
-    for player in players_cfg:
+    compute_historical_supply_curve(reference_case=BASE_CASE, plot=True)
+
+    for player in players_config:
         pid  = player["id"]
         gens = player["controlled_generators"]
 
         # Extract observations for this player across all scenarios
-        observations = FeatureBuilder._extract_observations(
+        observations = fb._extract_observations(
             scenarios_df, costs_df, gens, generator_names
         )
 
@@ -459,16 +514,6 @@ if __name__ == "__main__":
             scenarios_df, costs_df, gens, generator_names
         )
 
-        print(f"\n── Player {pid} (generators {gens}) ──")
-        print(f"Feature names : {fb.features}")
-        print(f"Feature matrix ({feature_matrix.shape}):")
-        print(feature_matrix)
-
-        # Show first observation details
-        obs0 = observations[0]
-        print(f"  First obs → market : demand={obs0.market.demand}, "
-              f"wind={obs0.market.wind_forecast}, total_cap={obs0.market.total_capacity}")
-        print(f"              private: cost={obs0.private.player_cost}, "
-              f"cap={obs0.private.player_capacity}")
+    compute_tm1_historical_supply_curve(reference_case=BASE_CASE, scenario_df=scenarios_df)
 
     stop = True

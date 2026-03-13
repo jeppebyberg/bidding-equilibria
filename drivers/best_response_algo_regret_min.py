@@ -38,6 +38,7 @@ class BestResponseAlgorithmRegretMin:
 
     def __init__(
         self,
+        reference_case: str,
         scenarios_df: pd.DataFrame,
         costs_df: pd.DataFrame,
         players_config: List[Dict[str, Any]],
@@ -47,6 +48,8 @@ class BestResponseAlgorithmRegretMin:
         """
         Parameters
         ----------
+        reference_case : str
+            Reference case name (used for feature building to load historic data similiar to test data).
         scenarios_df : pd.DataFrame
             Base scenario set (S rows — one per demand/capacity combination).
             Bids should be initialised to marginal costs.
@@ -65,7 +68,7 @@ class BestResponseAlgorithmRegretMin:
         self.scenarios_df = scenarios_df.copy().reset_index(drop=True)
         self.costs_df = costs_df
         self.players_config = players_config
-        self.feature_builder = create_feature_builder(feature_list)
+        self.feature_builder = create_feature_builder(reference_case, feature_list)
 
         # Auto-detect columns
         capacity_cols = [c for c in scenarios_df.columns if c.endswith('_cap')]
@@ -98,6 +101,7 @@ class BestResponseAlgorithmRegretMin:
 
         # Build MPEC model (will be rebuilt via update_scenarios each iteration)
         self.mpec_model = MPECModel(
+            reference_case=reference_case,
             scenarios_df=self.scenarios_df,
             costs_df=self.costs_df,
             players_config=self.players_config,
@@ -129,7 +133,7 @@ class BestResponseAlgorithmRegretMin:
         # Initial policy ────────────────────────────────────────────────
         self.initial_theta = self._compute_cost_theta()
 
-    # ── helpers ────────────────────────────────────────────────────────
+    # Helpers
 
     def _build_accumulated_df(self) -> pd.DataFrame:
         """
@@ -190,7 +194,7 @@ class BestResponseAlgorithmRegretMin:
             theta = self.initial_theta[pid]
             for s in range(S):
                 for gen_idx in pc['controlled_generators']:
-                    obs_list = FeatureBuilder._extract_observations(
+                    obs_list = fb._extract_observations(
                         self.scenarios_df.iloc[[s]].reset_index(drop=True),
                         self.costs_df,
                         player_generators=[gen_idx],
@@ -227,7 +231,7 @@ class BestResponseAlgorithmRegretMin:
         fig.savefig(path, dpi=150, bbox_inches='tight')
         print(f"  [saved] {path}")
 
-    # ── per-player solve ──────────────────────────────────────────────
+    # Per-player solve
 
     def solve_strategic_player_problem(self, player_id: int) -> Tuple[float, List[float], np.ndarray]:
         """
@@ -274,7 +278,7 @@ class BestResponseAlgorithmRegretMin:
 
         return total_profit, current_profits, theta
 
-    # ── ED validation ─────────────────────────────────────────────────
+    # ED validation for second 
 
     def calculate_ED(self) -> Tuple[List[List[float]], List[float], List[List[float]], List[float]]:
         """
@@ -304,7 +308,7 @@ class BestResponseAlgorithmRegretMin:
 
         return dispatches, prices, player_profits_by_scenario, total_player_profits
 
-    # ── main loop ─────────────────────────────────────────────────────
+    # Main algorithm loop
 
     def run(self) -> Dict[str, Any]:
         """Run the best-response algorithm with regret minimisation."""
@@ -318,9 +322,9 @@ class BestResponseAlgorithmRegretMin:
         print(f"Base scenarios : {S}")
         print(f"Features      : {self.mpec_model.feature_builder.features}")
         print(f"Players       : {num_players}")
-        sc = self.mpec_model.feature_builder.supply_coeffs
-        if sc:
-            print(f"Supply curve  : price ≈ {sc['supply_intercept']:.2f} + {sc['supply_slope']:.4f} * demand")
+        # sc = self.mpec_model.feature_builder.supply_coeffs
+        # if sc:
+        #     print(f"Supply curve  : price ≈ {sc['supply_intercept']:.2f} + {sc['supply_slope']:.4f} * demand")
 
         # Apply initial policy and record iteration 0
         self._apply_initial_policy()
@@ -442,7 +446,7 @@ class BestResponseAlgorithmRegretMin:
         self.results = self.get_results()
         return self.results
 
-    # ── results ───────────────────────────────────────────────────────
+    # Results
 
     def get_results(self) -> Dict[str, Any]:
         """Compile algorithm results into a dictionary."""
@@ -492,7 +496,7 @@ class BestResponseAlgorithmRegretMin:
             },
         }
 
-    # ── competitive benchmark ─────────────────────────────────────────
+    # Visualization
 
     def _run_competitive_ed(self, scenario_id: Optional[int] = None):
         """
@@ -515,8 +519,6 @@ class BestResponseAlgorithmRegretMin:
         ed = EconomicDispatchModel(comp_df, self.costs_df)
         ed.solve()
         return ed.get_dispatches()[0], ed.get_clearing_prices()[0], ed
-
-    # ── visualisation ─────────────────────────────────────────────────
 
     def visualize_bid_evolution(self, scenario_id: Optional[int] = None) -> None:
         """
@@ -856,8 +858,6 @@ class BestResponseAlgorithmRegretMin:
         pct = (total_comp - total_eq) / total_comp * 100 if total_comp else 0
         print(f"Welfare Loss: ${total_comp - total_eq:.0f} ({pct:.1f}%)")
 
-    # ── merit order comparison ────────────────────────────────────────
-
     def _compute_merit_order_data(self, scenario_id: int) -> Dict[str, Any]:
         """Compute merit-order data for a single scenario (competitive & strategic)."""
         sd = self.results['final_scenarios_data']
@@ -1060,7 +1060,7 @@ class BestResponseAlgorithmRegretMin:
         else:
             print("Merit order UNCHANGED (only prices affected)")
 
-    # ── convenience ───────────────────────────────────────────────────
+    # Printing summary
 
     def print_summary(self) -> None:
         """Print a concise summary of the final results."""
@@ -1097,13 +1097,16 @@ if __name__ == "__main__":
 
     from config.base_case.scenarios.scenario_generator import ScenarioManager
 
-    # ── Configuration ──────────────────────────────────────────────
+    # Configuration
     BASE_CASE  = "test_case1"
     NUM_DEMAND = 5
     DEMAND_MIN = 0.6
     DEMAND_MAX = 1.0
+    NUM_CAPACITY = 2
+    CAPACITY_MIN = 0.8
+    CAPACITY_MAX = 1.0
 
-    # ── Scenario generation ────────────────────────────────────────
+    # Scenario generation
     scenario_manager = ScenarioManager(BASE_CASE)
     players_config   = scenario_manager.get_players_config()
 
@@ -1111,7 +1114,7 @@ if __name__ == "__main__":
         "linear", num_scenarios=NUM_DEMAND, min_factor=DEMAND_MIN, max_factor=DEMAND_MAX
     )
     capacity_scenarios = scenario_manager.generate_capacity_scenarios(
-        "linear", num_scenarios=2, min_factor=0.8, max_factor=1.0
+        "linear", num_scenarios=NUM_CAPACITY, min_factor=CAPACITY_MIN, max_factor=CAPACITY_MAX
     )
     scenarios = scenario_manager.create_scenario_set(
         demand_scenarios=demand_scenarios,
@@ -1120,8 +1123,9 @@ if __name__ == "__main__":
     scenarios_df = scenarios["scenarios_df"]
     costs_df     = scenarios["costs_df"]
 
-    # ── Run algorithm ──────────────────────────────────────────────
+    # Run algorithm
     algo = BestResponseAlgorithmRegretMin(
+        reference_case=BASE_CASE,
         scenarios_df=scenarios_df,
         costs_df=costs_df,
         players_config=players_config,
@@ -1129,7 +1133,7 @@ if __name__ == "__main__":
     algo.run()
     algo.print_summary()
 
-    # ── Visualisations ─────────────────────────────────────────────
+    # Visualisations
     algo.visualize_bid_evolution()
     algo.visualize_theta_evolution()
     algo.visualize_merit_order_comparison()
