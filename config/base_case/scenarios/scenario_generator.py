@@ -626,7 +626,7 @@ class ScenarioManager:
         for _, row in scenarios_df.iterrows():
 
             hist_row = {
-                "scenario_id": row["scenario_id"]
+                "scenario_id": int(row["scenario_id"])
             }
 
             # --- Yesterday demand ---
@@ -658,12 +658,11 @@ class ScenarioManager:
 
             wind_factor_tm1 = np.clip(wind_factor_tm1, 0, 1)
 
-            hist_row["wind_factor_tm1"] = float(wind_factor_tm1)
+            # hist_row["wind_factor_tm1"] = float(wind_factor_tm1)
 
             # Wind generation yesterday
             for w in wind_generators:
                 hist_row[f"{w}_cap_tm1"] = float(wind_factor_tm1 * wind_nominal[w])
-
 
             historic_rows.append(hist_row)
 

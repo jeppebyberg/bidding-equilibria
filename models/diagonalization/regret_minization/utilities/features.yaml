@@ -36,6 +36,9 @@ features:
     - supply_intercept
     - supply_slope
     - supply_curve
+    - total_capacity_tm1
+    - wind_tm1
+    - demand_tm1
 
   # Subset of available_features used by default when no explicit list is given.
   default_features:
@@ -44,9 +47,11 @@ features:
     - demand_sq
     - player_cost
     - wind_forecast
-    - player_capacity
+    # - player_capacity
     # - scarcity_ratio
-    - residual_demand
+    # - residual_demand
+    - wind_tm1
+    - demand_tm1
     # - supply_slope
     # - supply_intercept
     # - supply_curve

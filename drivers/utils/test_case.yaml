@@ -1,0 +1,15 @@
+test_cases:
+  test_case1:
+    base_case: test_case1
+
+    demand:
+      type: linear
+      num_scenarios: 8
+      min_factor: 0.8
+      max_factor: 1.0
+
+    capacity:
+      type: linear
+      num_scenarios: 3
+      min_factor: 0.65
+      max_factor: 1.0

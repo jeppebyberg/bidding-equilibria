@@ -199,7 +199,7 @@ test_case_multiple_owners: # Scenario with 12 generators owned by 6 players and 
 
 test_case1: # Scenario with 4 generators and demand of 130 MW
   demand: 
-    - 160.0
+    - 151.0
 
   generators:
     - id: 0

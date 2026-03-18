@@ -22,6 +22,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import yaml
 
 from models.diagonalization.regret_minization.MPEC_regret_min import MPECModel
 from models.diagonalization.MultipleScenarios.economic_dispatch_MS import EconomicDispatchModel
@@ -66,6 +67,7 @@ class BestResponseAlgorithmRegretMin:
             ``None`` → cost-based default (bid = marginal cost).
         """
         self.scenarios_df = scenarios_df.copy().reset_index(drop=True)
+        self.initial_scenarios = scenarios_df.copy().reset_index(drop=True)
         self.costs_df = costs_df
         self.players_config = players_config
         self.feature_builder = create_feature_builder(reference_case, feature_list)
@@ -195,7 +197,7 @@ class BestResponseAlgorithmRegretMin:
             for s in range(S):
                 for gen_idx in pc['controlled_generators']:
                     obs_list = fb._extract_observations(
-                        self.scenarios_df.iloc[[s]].reset_index(drop=True),
+                        self.initial_scenarios.iloc[[s]].reset_index(drop=True),
                         self.costs_df,
                         player_generators=[gen_idx],
                         generator_names=self.generator_names,
@@ -278,7 +280,7 @@ class BestResponseAlgorithmRegretMin:
 
         return total_profit, current_profits, theta
 
-    # ED validation for second 
+    # ED validation for second convergence check
 
     def calculate_ED(self) -> Tuple[List[List[float]], List[float], List[List[float]], List[float]]:
         """
@@ -1092,29 +1094,41 @@ class BestResponseAlgorithmRegretMin:
         print(f"Avg player profits : {[f'{p:.1f}' for p in stats['avg_player_profits']]}")
         print(f"Avg welfare        : ${stats['avg_welfare']:.1f}")
 
+def load_config(path: str = "config/defaults.yaml") -> dict:
+    with open(Path(path), "r") as f:
+        return yaml.safe_load(f)
+    
 if __name__ == "__main__":
     print("=== Testing Regret-Min Best Response Algorithm ===")
 
     from config.base_case.scenarios.scenario_generator import ScenarioManager
+    from config.default_loader import load_test_case_config
 
-    # Configuration
-    BASE_CASE  = "test_case1"
-    NUM_DEMAND = 5
-    DEMAND_MIN = 0.6
-    DEMAND_MAX = 1.0
-    NUM_CAPACITY = 2
-    CAPACITY_MIN = 0.8
-    CAPACITY_MAX = 1.0
+    TEST_CASE  = "test_case1"
+
+    test_config = load_test_case_config(TEST_CASE)
+
+    demand_cfg = test_config["demand"]
+    capacity_cfg = test_config["capacity"]
 
     # Scenario generation
-    scenario_manager = ScenarioManager(BASE_CASE)
+    scenario_manager = ScenarioManager(TEST_CASE)
     players_config   = scenario_manager.get_players_config()
 
-    demand_scenarios   = scenario_manager.generate_demand_scenarios(
-        "linear", num_scenarios=NUM_DEMAND, min_factor=DEMAND_MIN, max_factor=DEMAND_MAX
+    # Demand
+    demand_scenarios = scenario_manager.generate_demand_scenarios(
+        demand_cfg["type"],
+        num_scenarios=demand_cfg["num_scenarios"],
+        min_factor=demand_cfg["min_factor"],
+        max_factor=demand_cfg["max_factor"],
     )
+
+    # Capacity
     capacity_scenarios = scenario_manager.generate_capacity_scenarios(
-        "linear", num_scenarios=NUM_CAPACITY, min_factor=CAPACITY_MIN, max_factor=CAPACITY_MAX
+        capacity_cfg["type"],
+        num_scenarios=capacity_cfg["num_scenarios"],
+        min_factor=capacity_cfg["min_factor"],
+        max_factor=capacity_cfg["max_factor"],
     )
     scenarios = scenario_manager.create_scenario_set(
         demand_scenarios=demand_scenarios,
@@ -1125,7 +1139,7 @@ if __name__ == "__main__":
 
     # Run algorithm
     algo = BestResponseAlgorithmRegretMin(
-        reference_case=BASE_CASE,
+        reference_case=TEST_CASE,
         scenarios_df=scenarios_df,
         costs_df=costs_df,
         players_config=players_config,
