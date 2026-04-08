@@ -1,0 +1,964 @@
+"""
+Scenario Management Module
+
+This module provides comprehensive utilities for:
+1. Loading base case setup and configuration data
+2. Referencing the base case setup for analysis
+3. Generating demand scenarios based on the base case:
+   - Linear demand scenarios (linearly spaced between min/max factors of base demand)
+   - Custom demand scenarios (from user-provided demand lists)
+4. Future extensibility for scenarios affecting generator capacities and costs
+"""
+
+from typing import Dict, List, Optional, Any, Tuple
+import os
+import yaml
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from pathlib import Path
+
+from config.intertemporal.utils.cases_utils import load_setup_data
+
+class ScenarioManager:
+    """Unified scenario management for loading base cases and generating scenarios."""
+    
+    def __init__(self, base_case_reference: str = "test_case"):
+        """Initialize the scenario manager.
+        
+        Args:
+            base_case_reference: Default reference case name from reference_cases.yaml
+        """
+        self.base_case_reference = base_case_reference
+        
+        # Load base case once and reuse
+        try:
+            num_generators, pmax_list, pmin_list, cost_vector, r_rates_list, demand, generators, players, time_steps = load_setup_data(self.base_case_reference)
+            
+            self.base_case = {
+                'case_name': self.base_case_reference,
+                'num_generators': num_generators,
+                'generators': generators,
+                'players': players,
+                'demand': demand,
+                'pmax_list': pmax_list,
+                'pmin_list': pmin_list,
+                'cost_vector': cost_vector,
+                'r_rates_list': r_rates_list,
+                'time_steps': time_steps
+            }
+            
+            # Validate the loaded base case
+            if not self.validate_base_setup():
+                raise ValueError(f"Base case '{self.base_case_reference}' failed validation checks")
+                    
+            self.players_config = self.get_players_config()
+
+        except Exception as e:
+            raise ValueError(f"Failed to load base case '{self.base_case_reference}': {e}")
+    
+    def get_base_setup_reference(self) -> Dict[str, Any]:
+        """
+        Get a reference to the base setup that can be used by scenario analysis.
+        
+        Returns:
+            Dictionary containing reference information to the base setup
+        """
+        return {
+            'type': 'base_reference',
+            'base_case_name': self.base_case_reference,
+            'reference_file': 'config/intertemporal/reference_cases.yaml',
+            'setup_summary': {
+                'num_generators': self.base_case['num_generators'],
+                'total_capacity': sum(self.base_case['pmax_list']),
+                'demand': self.base_case['demand']
+            }
+        }
+    
+    def get_players_config(self) -> List[Dict[str, Any]]:
+        """
+        Get the players configuration from the loaded base case.
+        
+        Returns:
+            List of player configurations, each containing 'name' and 'controlled_generators'
+        """
+        return self.base_case['players']
+    
+    def validate_base_setup(self) -> bool:
+        """Validate that the base setup is properly configured."""
+        try:
+            # Basic validation checks
+            if self.base_case['num_generators'] <= 0:
+                return False
+            if self.base_case['demand'] <= 0:
+                return False
+            total_capacity = sum(self.base_case['pmax_list'])
+            if total_capacity <= self.base_case['demand']:
+                print(f"Warning: Total capacity ({total_capacity}) is less than or equal to demand ({self.base_case['demand']})")
+            
+            return True
+        except Exception:
+            return False
+    
+    def generate_demand_scenarios(
+        self,
+        scenario_type: str = "linear",
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Generate complete scenarios combining base case with demand scenarios.
+        
+        Args:
+            scenario_type: Type of demand scenarios ('linear' or 'custom')
+            **kwargs: Additional parameters for scenario generation
+                For 'linear': num_scenarios, min_factor, max_factor
+                For 'custom': demand_list
+        
+        Returns:
+            Dictionary containing complete scenario configuration
+        """
+        # Generate demand scenarios based on type
+        if scenario_type == "linear":
+            demand_scenarios = self._generate_linear_demand_scenarios(**kwargs)
+        elif scenario_type == "custom":
+            demand_scenarios = self._generate_custom_demand_scenarios(**kwargs)
+        else:
+            raise ValueError(f"Unknown scenario type: {scenario_type}. Use 'linear' or 'custom'")
+        
+        # Create complete scenario configuration
+        return demand_scenarios
+
+    def _generate_linear_demand_scenarios(
+        self,
+        num_scenarios: int = 6,
+        min_factor: float = 0.7,
+        max_factor: float = 1.3
+    ) -> List[float]:
+        """Generate linear demand scenarios based on reference case.
+        
+        Arguments:
+            num_scenarios: Number of demand scenarios to generate
+            min_factor: Minimum factor to apply to base demand (e.g., 0.7 for 70% of base demand)
+            max_factor: Maximum factor to apply to base demand (e.g., 1.3 for 130% of base demand)
+
+        Returns:
+            List of demand values for each scenario
+        """
+
+        base_demand = self.base_case['demand']
+        
+        min_demand = base_demand * min_factor
+        max_demand = base_demand * max_factor
+        
+        demand_scenarios = np.linspace(min_demand, max_demand, num_scenarios)
+        return [float(d) for d in demand_scenarios]
+    
+    def _generate_custom_demand_scenarios(self, demand_list: List[float]) -> List[float]:
+        """Generate custom demand scenarios."""
+        if not demand_list:
+            raise ValueError("Demand list cannot be empty for custom scenarios")
+        
+        if any(d <= 0 for d in demand_list):
+            raise ValueError("All demand values must be positive")
+        
+        return [float(d) for d in demand_list]
+
+    def _generate_demand_profile(
+        self,
+        demand: float,
+        profile_shape: str = "daily",
+        peak_strength: float = 0.20,
+        scenario_id: Optional[int] = None,
+    ) -> List[float]:
+        """Generate a realistic demand trajectory for a single scenario.
+
+        The profile is centered on the scenario demand, then modulated by a
+        smooth shape so it resembles an intra-day load curve.
+        """
+        if demand <= 0:
+            raise ValueError(f"Demand must be positive, got {demand}")
+
+        horizon = self.base_case['time_steps']
+        if horizon <= 0:
+            raise ValueError(f"time_steps must be positive, got {horizon}")
+
+        if horizon == 1:
+            return [float(demand)]
+
+        t = np.linspace(0.0, 1.0, horizon)
+
+        if profile_shape == "daily":
+            # Time in hours (more intuitive)
+            hours = np.linspace(0, 24, horizon)
+
+            # --- Components ---
+            base = 0.6
+
+            # Morning peak (~08:00)
+            morning = 0.25 * np.exp(-0.5 * ((hours - 8) / 2.5)**2)
+
+            # Evening peak (~14–16, stronger)
+            evening = 0.40 * np.exp(-0.5 * ((hours - 15) / 3.0)**2)
+
+            # Slight midday dip
+            dip = -0.10 * np.exp(-0.5 * ((hours - 11) / 2.0)**2)
+
+            base_shape = base + morning + evening + dip
+
+            # Scale with peak_strength
+            base_shape = 1 + peak_strength * (base_shape - np.mean(base_shape))
+
+        elif profile_shape == "ramp":
+            base_shape = 1.0 + peak_strength * (t - 0.5)
+        else:
+            raise ValueError(f"Unknown profile shape: {profile_shape}")
+
+        base_shape = np.clip(base_shape, 0.2, None)
+
+        # Keep the average demand anchored to the scenario value.
+        base_shape = base_shape / np.mean(base_shape)
+
+        profile = demand * base_shape
+        return [float(value) for value in profile]
+
+    def generate_capacity_scenarios(
+        self,
+        scenario_type: str = "linear",
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Generate complete scenarios combining base case with capacity scenarios.
+        
+        Only wind generators (W prefix) have variable capacity between 0 and pmax.
+        Conventional generators (G prefix) maintain their nominal capacity.
+        
+        Args:
+            scenario_type: Type of capacity scenarios ('linear' or 'custom')
+            **kwargs: Additional parameters for scenario generation
+                For 'linear': num_scenarios, min_factor (default 0.0), max_factor (default 1.0)
+                For 'custom': wind_factor_list (list of factors between 0 and 1)
+        
+        Returns:
+            Dictionary containing complete scenario configuration
+        """
+        # Generate capacity scenarios based on type
+        if scenario_type == "linear":
+            capacity_scenarios = self._generate_linear_capacity_scenarios(**kwargs)
+        elif scenario_type == "custom":
+            capacity_scenarios = self._generate_custom_capacity_scenarios(**kwargs)
+        else:
+            raise ValueError(f"Unknown scenario type: {scenario_type}. Use 'linear' or 'custom'")
+        
+        # Create complete scenario configuration
+        return capacity_scenarios
+    
+    def _generate_linear_capacity_scenarios(
+        self,
+        num_scenarios: int = 6,
+        min_factor: float = 0.0,
+        max_factor: float = 1.0
+    ) -> List[Dict[str, Any]]:
+        """Generate linear capacity scenarios based on reference case.
+        
+        Only wind generators (W prefix) have variable capacity between 0 and pmax.
+        Conventional generators (G prefix) maintain their nominal capacity.
+        """
+        base_capacity_list = self.base_case['pmax_list']
+        generators = self.base_case['generators']
+        
+        # Check if there are any wind generators
+        has_wind_generators = any(
+            (generator['name'] if isinstance(generator, dict) else generator).startswith('W') 
+            for generator in generators
+        )
+        
+        # If no wind generators, return single scenario with base capacities
+        if not has_wind_generators:
+            return [{
+                'wind_capacity_factor': 1.0,
+                'capacity_list': [float(cap) for cap in base_capacity_list],
+                'total_capacity': float(sum(base_capacity_list)),
+                'wind_capacity': 0.0,
+                'conventional_capacity': float(sum(base_capacity_list))
+            }]
+        
+        # Generate scaling factors for wind generators
+        wind_factors = np.linspace(min_factor, max_factor, num_scenarios)
+        
+        # Create capacity scenarios
+        capacity_scenarios = []
+        for factor in wind_factors:
+            scenario_capacities = []
+            for i, (generator, base_cap) in enumerate(zip(generators, base_capacity_list)):
+                gen_name = generator['name'] if isinstance(generator, dict) else generator
+                if gen_name.startswith('W'):  # Wind generator - apply scaling
+                    new_capacity = float(base_cap * factor)
+                else:  # Conventional generator (G) - keep nominal capacity
+                    new_capacity = float(base_cap)
+                scenario_capacities.append(new_capacity)
+            
+            capacity_scenarios.append({
+                'wind_capacity_factor': float(factor),
+                'capacity_list': scenario_capacities,
+                'total_capacity': sum(scenario_capacities),
+                'wind_capacity': sum([cap for i, cap in enumerate(scenario_capacities) 
+                                    if (generators[i]['name'] if isinstance(generators[i], dict) else generators[i]).startswith('W')]),
+                'conventional_capacity': sum([cap for i, cap in enumerate(scenario_capacities) 
+                                            if (generators[i]['name'] if isinstance(generators[i], dict) else generators[i]).startswith('G')])
+            })
+        
+        return capacity_scenarios
+    
+    def _generate_custom_capacity_scenarios(self, wind_factor_list: List[float]) -> List[Dict[str, Any]]:
+        """Generate custom capacity scenarios.
+        
+        Only wind generators (W prefix) have variable capacity.
+        Conventional generators (G prefix) maintain their nominal capacity.
+        """
+        if not wind_factor_list:
+            raise ValueError("Wind factor list cannot be empty for custom scenarios")
+        
+        if any(f < 0 or f > 1 for f in wind_factor_list):
+            raise ValueError("All wind capacity factors must be between 0 and 1")
+        
+        base_capacity_list = self.base_case['pmax_list']
+        generators = self.base_case['generators']
+        
+        # Check if there are any wind generators
+        has_wind_generators = any(
+            (generator['name'] if isinstance(generator, dict) else generator).startswith('W') 
+            for generator in generators
+        )
+        
+        # If no wind generators, return single scenario with base capacities
+        if not has_wind_generators:
+            return [{
+                'wind_capacity_factor': 1.0,
+                'capacity_list': [float(cap) for cap in base_capacity_list],
+                'total_capacity': float(sum(base_capacity_list)),
+                'wind_capacity': 0.0,
+                'conventional_capacity': float(sum(base_capacity_list))
+            }]
+        
+        # Create capacity scenarios
+        capacity_scenarios = []
+        for factor in wind_factor_list:
+            scenario_capacities = []
+            for i, (generator, base_cap) in enumerate(zip(generators, base_capacity_list)):
+                gen_name = generator['name'] if isinstance(generator, dict) else generator
+                if gen_name.startswith('W'):  # Wind generator - apply scaling
+                    new_capacity = float(base_cap * factor)
+                else:  # Conventional generator (G) - keep nominal capacity
+                    new_capacity = float(base_cap)
+                scenario_capacities.append(new_capacity)
+            
+            capacity_scenarios.append({
+                'wind_capacity_factor': float(factor),
+                'capacity_list': scenario_capacities,
+                'total_capacity': sum(scenario_capacities),
+                'wind_capacity': sum([cap for i, cap in enumerate(scenario_capacities) 
+                                    if (generators[i]['name'] if isinstance(generators[i], dict) else generators[i]).startswith('W')]),
+                'conventional_capacity': sum([cap for i, cap in enumerate(scenario_capacities) 
+                                            if (generators[i]['name'] if isinstance(generators[i], dict) else generators[i]).startswith('G')])
+            })
+        
+        return capacity_scenarios
+    
+    def _generate_wind_capacity_profiles(
+        self,
+        scenario_capacities: List[float],
+        common_variability: float = 0.20,
+        generator_specific_variability: float = 0.3,
+    ) -> Dict[str, List[float]]:
+        """Generate per-time-step capacity profiles for wind generators only.
+
+        Profiles are deterministic and depend only on scenario capacities.
+        All wind units share a common trajectory (high correlation), but each
+        generator gets a small deterministic, name-based shape adjustment so
+        units are not identical. For a fixed generator and fixed capacity, the
+        profile is identical across scenarios.
+        """
+        horizon = self.base_case['time_steps']
+        if horizon <= 0:
+            raise ValueError(f"time_steps must be positive, got {horizon}")
+
+        generators = self.base_case['generators']
+        nominal_capacities = scenario_capacities
+
+        wind_indices = [
+            i for i, generator in enumerate(generators)
+            if (generator['name'] if isinstance(generator, dict) else generator).startswith('W')
+        ]
+
+        if not wind_indices:
+            return {}
+
+        if horizon == 1:
+            return {
+                (generators[i]['name'] if isinstance(generators[i], dict) else generators[i]): [float(scenario_capacities[i])]
+                for i in wind_indices
+            }
+
+        wind_target_factors = []
+        for i in wind_indices:
+            nominal = float(nominal_capacities[i])
+            target_cap = float(scenario_capacities[i])
+            wind_target_factors.append(0.0 if nominal <= 0 else np.clip(target_cap / nominal, 0.0, 1.0))
+
+        t = np.linspace(0.0, 1.0, horizon)
+        common_shape = (
+            1.0
+            + common_variability
+            * (
+                0.55 * np.sin(2 * np.pi * (t - 0.10))
+                + 0.25 * np.sin(4 * np.pi * (t + 0.20))
+                + 0.15 * np.cos(2 * np.pi * (t + 0.33))
+            )
+        )
+        common_shape = np.clip(common_shape, 0.1, None)
+        common_shape = common_shape / np.mean(common_shape)
+
+        wind_profiles: Dict[str, List[float]] = {}
+
+        for offset, i in enumerate(wind_indices):
+            generator = generators[i]
+            name = generator['name'] if isinstance(generator, dict) else generator
+            nominal = float(nominal_capacities[i])
+            target_factor = float(wind_target_factors[offset])
+
+            # Deterministic per-generator phase shift based on name.
+            phase_seed = (sum(ord(char) for char in name) % 360) / 360.0
+            generator_shape = (
+                1.0
+                + generator_specific_variability
+                * (
+                    0.70 * np.sin(2 * np.pi * (t + phase_seed))
+                    + 0.30 * np.cos(4 * np.pi * (t + 0.5 * phase_seed))
+                )
+            )
+            generator_shape = np.clip(generator_shape, 0.2, None)
+            generator_shape = generator_shape / np.mean(generator_shape)
+
+            combined_shape = common_shape * generator_shape
+            combined_shape = combined_shape / np.mean(combined_shape)
+
+            unit_factor = np.clip(target_factor * combined_shape, 0.0, 1.0)
+            if np.mean(unit_factor) > 1e-4:
+                # Keep profile mean aligned with scenario-level target factor.
+                unit_factor = unit_factor * (target_factor / np.mean(unit_factor))
+            unit_factor = np.clip(unit_factor, 0.0, 1.0)
+
+            profile = nominal * unit_factor
+            wind_profiles[name] = [float(value) for value in profile]
+
+        return wind_profiles
+
+    def create_scenario_set(
+        self,
+        demand_scenarios: Optional[List[float]] = None,
+        capacity_scenarios: Optional[List[Dict[str, Any]]] = None
+    ) -> Dict[str, Any]:
+        """
+        Create a complete scenario set as cartesian product of demand and capacity scenarios.
+        
+        Args:
+            demand_scenarios: List of demand values from generate_demand_scenarios
+            capacity_scenarios: List of capacity scenario dictionaries from generate_capacity_scenarios
+            
+        Returns:
+            Dictionary containing cartesian product of all scenario combinations
+        """
+        
+        # Use provided scenarios or default to base case values
+        time_steps = self.base_case['time_steps']
+
+        if demand_scenarios is None:
+            demand_scenarios = [self.base_case['demand']]
+        
+        if capacity_scenarios is None:
+            # Use base capacity as single scenario
+            capacity_scenarios = [{
+                'wind_capacity_factor': 1.0,
+                'capacity_list': self.base_case['pmax_list'],
+                'total_capacity': sum(self.base_case['pmax_list']),
+                'wind_capacity': sum([cap for i, cap in enumerate(self.base_case['pmax_list']) 
+                                    if (self.base_case['generators'][i]['name'] if isinstance(self.base_case['generators'][i], dict) else self.base_case['generators'][i]).startswith('W')]),
+                'conventional_capacity': sum([cap for i, cap in enumerate(self.base_case['pmax_list']) 
+                                            if (self.base_case['generators'][i]['name'] if isinstance(self.base_case['generators'][i], dict) else self.base_case['generators'][i]).startswith('G')])
+            }]
+        
+        # Create cartesian product of demand and capacity scenarios
+        all_scenarios = []
+        scenario_id = 1
+        
+        for demand in demand_scenarios:
+            for capacity_scenario in capacity_scenarios:
+                scenario = {
+                    'scenario_id': scenario_id,
+                    'demand': demand,
+                    'time_steps': time_steps,
+                    'demand_profile': self._generate_demand_profile(
+                        demand=demand,
+                        scenario_id=scenario_id,
+                    ),
+                    'wind_capacity_profiles': self._generate_wind_capacity_profiles(
+                        scenario_capacities=capacity_scenario['capacity_list'],
+                    ),
+                    'capacity_info': capacity_scenario,
+                    'total_capacity': capacity_scenario['total_capacity'],
+                    'wind_capacity': capacity_scenario['wind_capacity'],
+                    'conventional_capacity': capacity_scenario['conventional_capacity'],
+                    'capacity_list': capacity_scenario['capacity_list']
+                }
+                all_scenarios.append(scenario)
+                scenario_id += 1
+        
+        # Validate all scenarios and filter based on results
+        validation_results = self.validate_scenario_set(all_scenarios, self.base_case)
+        
+        # Filter out invalid scenarios (those that failed N-1 or other checks)
+        valid_scenarios = []
+        invalid_scenarios = []
+        
+        for i, scenario in enumerate(all_scenarios):
+            scenario_validation = validation_results['scenario_details'][i]
+            if scenario_validation['is_valid']:
+                valid_scenarios.append(scenario)
+            else:
+                invalid_scenarios.append({
+                    **scenario,
+                    'validation_errors': scenario_validation['errors']
+                })
+        
+        # Re-number the valid scenarios sequentially and build separate DataFrames directly
+        combined_scenarios = []
+        scenarios_table = []  # For scenario data (dynamic)
+        
+        # Create costs DataFrame first (static data) - same for all scenarios
+        cost_data = {}
+        ramp_data = {}
+
+        for j, (generator, _) in enumerate(zip(self.base_case['generators'], self.base_case['pmax_list'])):
+            gen_name = generator['name'] if isinstance(generator, dict) else generator
+            gen_cost = self.base_case['cost_vector'][j]
+            gen_ramp = self.base_case['r_rates_list'][j]
+            cost_data[f'{gen_name}_cost'] = gen_cost
+            ramp_data[f'{gen_name}_ramp'] = gen_ramp
+        costs_df = pd.DataFrame([cost_data])
+        ramps_df = pd.DataFrame([ramp_data])
+        
+        # Build scenarios DataFrame (dynamic data)
+        for i, scenario in enumerate(valid_scenarios, 1):
+            scenario['scenario_id'] = i
+            combined_scenarios.append(scenario)
+            
+            # Create scenario row with only dynamic data
+            scenario_row = {
+                'scenario_id': i,
+                'demand': scenario['demand'],
+                'time_steps': scenario['time_steps'],
+            }
+
+            demand_profile = scenario.get('demand_profile')
+            if demand_profile is None:
+                demand_profile = self._generate_demand_profile(
+                    demand=scenario['demand'],
+                    scenario_id=i,
+                )
+
+            scenario_row['demand_profile'] = demand_profile
+
+            wind_capacity_profiles = scenario.get('wind_capacity_profiles')
+            if wind_capacity_profiles is None:
+                wind_capacity_profiles = self._generate_wind_capacity_profiles(
+                    scenario_capacities=scenario['capacity_list'],
+                )
+
+            # scenario_row['wind_capacity_profiles'] = wind_capacity_profiles
+            
+            # Add individual generator capacities and bids (no costs)
+            for j, (generator, capacity) in enumerate(zip(self.base_case['generators'], scenario['capacity_list'])):
+                gen_name = generator['name'] if isinstance(generator, dict) else generator
+                gen_cost = self.base_case['cost_vector'][j]
+
+                if gen_name.startswith('W') and gen_name in wind_capacity_profiles:
+                    scenario_row[f'{gen_name}_profile'] = wind_capacity_profiles[gen_name]
+                
+                # Add capacity and bid profile columns for each generator
+                scenario_row[f'{gen_name}_cap'] = capacity
+                scenario_row[f'{gen_name}_bid_profile'] = [gen_cost] * time_steps  # Initialize bid profile as cost repeated for each time step
+            
+            scenarios_table.append(scenario_row)
+        
+        # Convert scenarios table to DataFrame
+        scenarios_df = pd.DataFrame(scenarios_table)
+        
+        # Create formatted description for printing
+        wind_generators = [gen['name'] if isinstance(gen, dict) else gen for gen in self.base_case['generators'] if (gen['name'] if isinstance(gen, dict) else gen).startswith('W')]
+        conventional_generators = [gen['name'] if isinstance(gen, dict) else gen for gen in self.base_case['generators'] if (gen['name'] if isinstance(gen, dict) else gen).startswith('G')]
+        
+        total_possible = len(all_scenarios)
+        description_text = f"""
+            === Scenario Set Summary (Comprehensive N-1 Contingency) ===
+            Reference Case: {self.base_case_reference}
+            Total Possible Scenarios: {total_possible}
+            Valid Scenarios: {len(combined_scenarios)} (passed N-1 contingency and validation checks)
+            Invalid Scenarios: {len(invalid_scenarios)}
+            Demand Scenarios: {len(demand_scenarios)} (Range: {min(demand_scenarios):.1f} - {max(demand_scenarios):.1f} MW)
+            Capacity Scenarios: {len(capacity_scenarios)} (Wind Factor Range: {min([cs['wind_capacity_factor'] for cs in capacity_scenarios]):.1f} - {max([cs['wind_capacity_factor'] for cs in capacity_scenarios]):.1f})
+            Generators: {len(self.base_case['generators'])} total ({len(wind_generators)} wind, {len(conventional_generators)} conventional)
+            Wind Generators: {', '.join(wind_generators) if wind_generators else 'None'}
+            Conventional Generators: {', '.join(conventional_generators) if conventional_generators else 'None'}
+        """.strip()
+        
+        # Update validation results with invalid scenario details
+        validation_results['dismissed_details'] = invalid_scenarios
+        validation_results['dismissed_scenarios'] = len(invalid_scenarios)
+
+        return {
+            'description_text': description_text,
+            'scenarios_df': scenarios_df,
+            'costs_df': costs_df,
+            'ramps_df': ramps_df,
+            'validation': validation_results
+        }
+        
+    def validate_scenario_set(self, all_scenarios: List[Dict[str, Any]], base_case: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Validate each scenario in the scenario set for feasibility and data integrity.
+        
+        Args:
+            all_scenarios: List of all scenario dictionaries to validate
+            base_case: Base case configuration for reference
+            
+        Returns:
+            Dictionary containing validation results and summary
+        """
+        validation_results = {
+            'total_scenarios': len(all_scenarios),
+            'dismissed_scenarios': 0,  # Will be updated after filtering
+            'valid_scenarios': 0,
+            'warnings': [],
+            'errors': [],
+            'scenario_details': []
+        }
+        
+        for scenario in all_scenarios:
+            scenario_validation = self._validate_single_scenario(scenario, base_case)
+            validation_results['scenario_details'].append(scenario_validation)
+            
+            if scenario_validation['is_valid']:
+                validation_results['valid_scenarios'] += 1
+            
+            # Collect errors and warnings
+            validation_results['errors'].extend([
+                f"Scenario {scenario['scenario_id']}: {error}" 
+                for error in scenario_validation['errors']
+            ])
+            validation_results['warnings'].extend([
+                f"Scenario {scenario['scenario_id']}: {warning}" 
+                for warning in scenario_validation['warnings']
+            ])
+        
+        # Add summary statistics
+        validation_results['validation_success_rate'] = (
+            validation_results['valid_scenarios'] / validation_results['total_scenarios'] * 100
+            if validation_results['total_scenarios'] > 0 else 0
+        )
+        
+        # Print validation summary
+        print(f"\n=== Scenario Validation Summary ===")
+        print(f"Total Possible Scenarios: {validation_results['total_scenarios']}")
+        print(f"Valid Scenarios: {validation_results['valid_scenarios']}")
+        if validation_results['dismissed_scenarios'] > 0:
+            print(f"Invalid Scenarios: {validation_results['dismissed_scenarios']} (failed N-1 contingency or validation checks)")
+        print(f"Success Rate: {validation_results['validation_success_rate']:.1f}%")
+        
+        # Show invalid scenario details if any
+        if validation_results.get('dismissed_details', []):
+            print(f"\nInvalid Scenarios:")
+            for invalid in validation_results['dismissed_details'][:5]:  # Show first 5 invalid
+                errors = invalid.get('validation_errors', ['Unknown error'])
+                print(f"  • Scenario {invalid['scenario_id']}: {errors[0]}")
+            if len(validation_results['dismissed_details']) > 5:
+                print(f"  ... and {len(validation_results['dismissed_details']) - 5} more invalid scenarios")
+        
+        if validation_results['errors']:
+            print(f"\nErrors ({len(validation_results['errors'])}):")
+            for error in validation_results['errors'][:5]:  # Show first 5 errors
+                print(f"  • {error}")
+            if len(validation_results['errors']) > 5:
+                print(f"  ... and {len(validation_results['errors']) - 5} more errors")
+        
+        return validation_results
+    
+    def _validate_single_scenario(self, scenario: Dict[str, Any], base_case: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Validate a single scenario for N-1 contingency and data integrity.
+        
+        Args:
+            scenario: Single scenario dictionary
+            base_case: Base case configuration for reference
+            
+        Returns:
+            Dictionary containing validation results for the scenario
+        """
+        validation = {
+            'scenario_id': scenario['scenario_id'],
+            'is_valid': True,
+            'errors': [],
+            'warnings': [],  # Keep empty as requested
+            'checks_performed': []
+        }
+        
+        try:
+            # Check 1: N-1 Contingency - demand must be met even without ANY single generator
+            validation['checks_performed'].append('n_minus_1_contingency')
+            capacity_list = scenario['capacity_list']
+            total_capacity = scenario['total_capacity']
+            demand = scenario['demand']
+            
+            for i, generator_capacity in enumerate(capacity_list):
+                remaining_capacity = total_capacity - generator_capacity
+                if demand > remaining_capacity:
+                    # Find generator name for better error message
+                    gen_name = f"Generator_{i+1}"  # Default name
+                    if i < len(self.base_case['generators']):
+                        generator = self.base_case['generators'][i]
+                        gen_name = generator['name'] if isinstance(generator, dict) else generator
+                    
+                    validation['errors'].append(f"N-1 Infeasible: Demand ({demand:.1f} MW) exceeds remaining capacity ({remaining_capacity:.1f} MW) when {gen_name} ({generator_capacity:.1f} MW) is unavailable")
+                    validation['is_valid'] = False
+                    break  # Found first failing case, no need to check others
+            
+            # Check 2: Positive demand
+            validation['checks_performed'].append('positive_demand')
+            if scenario['demand'] <= 0:
+                validation['errors'].append(f"Demand must be positive, got {scenario['demand']}")
+                validation['is_valid'] = False
+            
+            # Check 3: Individual generator capacities
+            validation['checks_performed'].append('generator_capacities')
+            capacity_list = scenario['capacity_list']
+            base_pmax_list = self.base_case['pmax_list']
+            generators = self.base_case['generators']
+            
+            for i, (capacity, base_capacity, generator) in enumerate(zip(capacity_list, base_pmax_list, generators)):
+                gen_name = generator['name'] if isinstance(generator, dict) else generator
+                
+                # Check for negative capacity
+                if capacity < 0:
+                    validation['errors'].append(f"Generator {gen_name} has negative capacity: {capacity}")
+                    validation['is_valid'] = False
+                
+                # Check for NaN or infinite values
+                if not np.isfinite(capacity):
+                    validation['errors'].append(f"Generator {gen_name} has invalid capacity: {capacity}")
+                    validation['is_valid'] = False
+                
+                # Check wind generator bounds (should be between 0 and nominal)
+                if gen_name.startswith('W'):
+                    if capacity > base_capacity:
+                        validation['errors'].append(f"Wind generator {gen_name} capacity ({capacity:.1f}) exceeds nominal ({base_capacity:.1f})")
+                        validation['is_valid'] = False
+            
+            # Check 4: Data consistency
+            validation['checks_performed'].append('data_consistency')
+
+            demand_profile = scenario.get('demand_profile')
+            if demand_profile is not None:
+                if len(demand_profile) != self.base_case['time_steps']:
+                    validation['errors'].append(
+                        f"Demand profile length mismatch: expected {self.base_case['time_steps']} values, got {len(demand_profile)}"
+                    )
+                    validation['is_valid'] = False
+                elif any(value <= 0 or not np.isfinite(value) for value in demand_profile):
+                    validation['errors'].append("Demand profile contains invalid or non-positive values")
+                    validation['is_valid'] = False
+
+            wind_profiles = scenario.get('wind_capacity_profiles', {})
+            if wind_profiles:
+                for i, generator in enumerate(self.base_case['generators']):
+                    gen_name = generator['name'] if isinstance(generator, dict) else generator
+                    if not gen_name.startswith('W'):
+                        continue
+
+                    profile = wind_profiles.get(gen_name)
+                    if profile is None:
+                        validation['errors'].append(f"Missing wind profile for generator {gen_name}")
+                        validation['is_valid'] = False
+                        continue
+
+                    if len(profile) != self.base_case['time_steps']:
+                        validation['errors'].append(
+                            f"Wind profile length mismatch for {gen_name}: expected {self.base_case['time_steps']} values, got {len(profile)}"
+                        )
+                        validation['is_valid'] = False
+                        continue
+
+                    nominal_cap = base_pmax_list[i]
+                    if any((not np.isfinite(v) or v < 0 or v > nominal_cap + 1e-6) for v in profile):
+                        validation['errors'].append(
+                            f"Wind profile for {gen_name} contains invalid values outside [0, {nominal_cap:.3f}]"
+                        )
+                        validation['is_valid'] = False
+
+                    profile_mean = float(np.mean(profile))
+                    if abs(profile_mean - capacity_list[i]) > max(0.05 * nominal_cap, 1.0):
+                        validation['errors'].append(
+                            f"Wind profile mean mismatch for {gen_name}: profile mean {profile_mean:.2f} vs scenario capacity {capacity_list[i]:.2f}"
+                        )
+                        validation['is_valid'] = False
+            
+            # Verify capacity sums
+            calculated_total = sum(capacity_list)
+            if abs(calculated_total - scenario['total_capacity']) > 1e-6:
+                validation['errors'].append(f"Capacity sum mismatch: calculated {calculated_total:.3f} vs stored {scenario['total_capacity']:.3f}")
+                validation['is_valid'] = False
+                
+        except Exception as e:
+            validation['errors'].append(f"Validation error: {str(e)}")
+            validation['is_valid'] = False
+        
+        return validation
+
+    def generate_historic_df(
+        self,
+        scenarios_df: pd.DataFrame,
+        demand_persistence: float = 0.85,
+        wind_persistence: float = 0.8,
+        noise_scale: float = 0.05,
+    ) -> pd.DataFrame:
+        raise NotImplementedError("Outdated function")
+        #     """
+        #     Generate synthetic historical data linked to each scenario.
+
+        #     Adds:
+        #         demand_tm1
+        #         W*_gen_tm1 for each wind generator
+        #         G*_cap_tm1 for each conventional generator
+        #     """
+
+        #     rng = np.random.default_rng()
+        #     historic_rows = []
+
+        #     wind_generators = []
+        #     conventional_generators = []
+
+        #     for gen in self.base_case['generators']:
+        #         name = gen['name'] if isinstance(gen, dict) else gen
+        #         if name.startswith("W"):
+        #             wind_generators.append(name)
+        #         elif name.startswith("G"):
+        #             conventional_generators.append(name)
+
+        #     wind_nominal = {
+        #         (gen['name'] if isinstance(gen, dict) else gen): pmax
+        #         for gen, pmax in zip(self.base_case['generators'], self.base_case['pmax_list'])
+        #         if (gen['name'] if isinstance(gen, dict) else gen).startswith("W")
+        #     }
+
+        #     conv_nominal = {
+        #         (gen['name'] if isinstance(gen, dict) else gen): pmax
+        #         for gen, pmax in zip(self.base_case['generators'], self.base_case['pmax_list'])
+        #         if (gen['name'] if isinstance(gen, dict) else gen).startswith("G")
+        #     }
+
+        #     for _, row in scenarios_df.iterrows():
+
+        #         hist_row = {
+        #             "scenario_id": int(row["scenario_id"])
+        #         }
+
+        #         # --- Yesterday demand ---
+        #         demand_tm1 = (
+        #             demand_persistence * row["demand"]
+        #             + (1 - demand_persistence) * self.base_case["demand"]
+        #             + rng.normal(0, noise_scale * row["demand"])
+        #         )
+
+        #         hist_row["demand_tm1"] = float(demand_tm1)
+
+        #         # Conventional capacities yesterday
+        #         for g in conventional_generators:
+        #             hist_row[f"{g}_cap_tm1"] = float(conv_nominal[g])
+
+        #         # --- Wind factor today ---
+        #         if wind_generators:
+        #             wind_today = sum(row[f"{w}_cap"] for w in wind_generators)
+        #             wind_nominal_total = sum(wind_nominal[w] for w in wind_generators)
+        #             wind_factor_today = wind_today / wind_nominal_total
+        #         else:
+        #             wind_factor_today = 0.0
+
+        #         # --- Yesterday wind factor ---
+        #         wind_factor_tm1 = (
+        #             wind_persistence * wind_factor_today
+        #             + rng.normal(0, noise_scale)
+        #         )
+
+        #         wind_factor_tm1 = np.clip(wind_factor_tm1, 0, 1)
+
+        #         # hist_row["wind_factor_tm1"] = float(wind_factor_tm1)
+
+        #         # Wind generation yesterday
+        #         for w in wind_generators:
+        #             hist_row[f"{w}_cap_tm1"] = float(wind_factor_tm1 * wind_nominal[w])
+
+        #         historic_rows.append(hist_row)
+
+        #     return pd.DataFrame(historic_rows)
+
+if __name__ == "__main__":
+    """Demo of ScenarioManager functionality."""
+    
+    # Initialize with base case reference
+    # manager = ScenarioManager("test_case")
+    # manager = ScenarioManager("test_case1")
+    manager = ScenarioManager("test_case1")
+
+    players_config = manager.players_config
+
+    demand_linear = manager.generate_demand_scenarios("linear", num_scenarios=10, min_factor=0.8, max_factor=1.2)
+    capacity_linear = manager.generate_capacity_scenarios("linear", num_scenarios=3, min_factor=0.7, max_factor=1.0)
+
+    scenarios = manager.create_scenario_set(
+        demand_scenarios=demand_linear,
+        capacity_scenarios=capacity_linear
+    )
+
+    # Print description
+    print(scenarios['description_text'])
+    
+    # Access DataFrame directly
+    scenario_df = scenarios['scenarios_df']
+    print("\nCombined Scenarios Table:")
+    print(scenario_df)
+    
+    cost_df = scenarios['costs_df']
+    print("\nCosts DataFrame:")
+    print(cost_df)
+
+    ramp_df = scenarios['ramps_df']
+    print("\nRamps DataFrame:")
+    print(ramp_df)
+
+    # Players configuration
+    print("\nPlayers Configuration:")
+    for player in players_config:
+        print(f"  • Player {player['id']} controls generators: {player['controlled_generators']}")
+
+    # plt.plot(scenario_df['demand_profile'][0], label='Scenario 1 Demand Profile')
+    for i in range(3, 6):
+        plt.plot(scenario_df[f'W{i}_profile'][0], label=f'Scenario 1 Wind {i} Profile')
+    for i in range(3, 6):
+        plt.plot(scenario_df[f'W{i}_profile'][1], label=f'Scenario 2 Wind {i} Profile')
+    for i in range(3, 6):
+        plt.plot(scenario_df[f'W{i}_profile'][2], label=f'Scenario 3 Wind {i} Profile')
+    plt.xlabel('Time')
+    plt.ylabel('Demand')
+    plt.title('Demand Scenarios')
+    plt.legend()
+    plt.show()
+
+    stop = True
