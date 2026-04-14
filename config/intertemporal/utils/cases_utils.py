@@ -93,18 +93,20 @@ def load_setup_data(case_name: str = "test_case") -> Tuple[int, List[float], Lis
     pmax_list = [gen["pmax"] for gen in generators]
     pmin_list = [gen["pmin"] for gen in generators]
     cost_vector = [gen["cost"] for gen in generators]
-    r_rates_list = [gen["R_rate"] for gen in generators]
+    r_rates_up_list = [gen["R_rate_up"] for gen in generators]
+    r_rates_down_list = [gen["R_rate_down"] for gen in generators]
     
-    return num_generators, pmax_list, pmin_list, cost_vector, r_rates_list, demand, generators, players, time_steps
+    return num_generators, pmax_list, pmin_list, cost_vector, r_rates_up_list, r_rates_down_list, demand, generators, players, time_steps
 
 if __name__ == "__main__":
     # Example usage - load complete data including players
-    num_generators, pmax, pmin, cost, r_rates, demand, generators, players, time_steps = load_setup_data("test_case")
+    num_generators, pmax, pmin, cost, r_rates_up, r_rates_down, demand, generators, players, time_steps = load_setup_data("test_case")
     print("Number of generators:", num_generators)
     print("Pmax:", pmax)
     print("Pmin:", pmin)
     print("Cost:", cost)
-    print("R_rates:", r_rates)
+    print("R_rates_up:", r_rates_up)
+    print("R_rates_down:", r_rates_down)
     print("Demand:", demand)
     print("Time steps:", time_steps)
     # print("Generators:", generators)

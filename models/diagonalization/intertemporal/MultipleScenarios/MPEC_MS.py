@@ -196,7 +196,8 @@ class MPECModel:
         # Extract costs
         self.cost_vector = [costs_df[f"{gen}_cost"].iloc[0] for gen in self.generator_names]
         
-        self.ramp_vector = [ramps_df[f"{gen}_ramp"].iloc[0] for gen in self.generator_names]
+        self.ramp_vector_up = [ramps_df[f"{gen}_ramp_up"].iloc[0] for gen in self.generator_names]
+        self.ramp_vector_down = [ramps_df[f"{gen}_ramp_down"].iloc[0] for gen in self.generator_names]
 
     def update_strategic_player(self, strategic_player_id: int) -> None:
         """
@@ -237,6 +238,7 @@ class MPECModel:
         self.model.n_gen = Set(initialize=range(self.num_generators))
         self.model.n_scenarios = Set(initialize=range(self.num_scenarios))
         self.model.time_steps = Set(initialize=range(self.num_time_steps))
+        self.model.time_steps_plus_1 = Set(initialize=range(self.num_time_steps + 1)) # For ramp constraints
         
         # Create set of strategic generators
         self.model.strategic_index = Set(initialize=self.strategic_generators)
@@ -320,6 +322,8 @@ class MPECModel:
         self.model.lambda_var = Var(self.model.n_scenarios, self.model.time_steps, domain=Reals)
         self.model.mu_upper_bound = Var(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, domain=NonNegativeReals)  # Upper bound duals
         self.model.mu_lower_bound = Var(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, domain=NonNegativeReals)  # Lower bound duals
+        self.model.mu_ramp_up = Var(self.model.n_scenarios, self.model.time_steps_plus_1, self.model.n_gen, domain=NonNegativeReals)  # Ramp up duals
+        self.model.mu_ramp_down = Var(self.model.n_scenarios, self.model.time_steps_plus_1, self.model.n_gen, domain=NonNegativeReals)  # Ramp down duals
 
     def _build_lower_level_primal_variables(self) -> None:
         """
@@ -335,6 +339,8 @@ class MPECModel:
         #Complementarity variables for the upper and lower bounds (one per generator per scenario)
         self.model.z_upper_bound = Var(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, domain=Binary)
         self.model.z_lower_bound = Var(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, domain=Binary)
+        self.model.z_ramp_up = Var(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, domain=Binary)
+        self.model.z_ramp_down = Var(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, domain=Binary)
 
     def _build_policy_variables(self) -> None:
         """
@@ -357,24 +363,49 @@ class MPECModel:
         Minimizes the negative profit of the strategic player across all scenarios
         (equivalent to maximizing total profit).
         """
-        self.model.objective = Objective(expr= 
-                                        # 1 / self.num_scenarios * (
-                                        -(
-                                        sum(self.model.lambda_var[s, t] * self.demand_scenarios[s][t] for s in self.model.n_scenarios for t in self.model.time_steps) -
-                                        sum(self.model.mu_upper_bound[s, t, i] * self.pmax_scenarios[s][t][i] for s in self.model.n_scenarios for t in self.model.time_steps for i in self.model.n_gen) +
-                                        sum(self.model.mu_lower_bound[s, t, i] * self.pmin_scenarios[s][t][i] for s in self.model.n_scenarios for t in self.model.time_steps for i in self.model.n_gen) -
-                                        sum(self.bid_scenarios[s][t][i] * self.model.P[s, t, i] for s in self.model.n_scenarios for t in self.model.time_steps for i in self.model.non_strategic_index) +
-                                        sum(self.model.mu_upper_bound[s, t, i] * self.pmax_scenarios[s][t][i] for s in self.model.n_scenarios for t in self.model.time_steps for i in self.model.strategic_index) -
-                                        sum(self.model.mu_lower_bound[s, t, i] * self.pmin_scenarios[s][t][i] for s in self.model.n_scenarios for t in self.model.time_steps for i in self.model.strategic_index)
-                                        )
-                                        + sum(self.cost_vector[i] * self.model.P[s, t, i] for s in self.model.n_scenarios for t in self.model.time_steps for i in self.model.strategic_index)
-                                        # )
-                                        ,
-                                        sense=minimize)
 
+        self.model.objective = Objective(expr =
+                                         1 / self.num_scenarios * 
+                                         sum(
+                                            sum(
+                                                self.model.lambda_var[s, t] * self.demand_scenarios[s][t]  
+                                                    + sum(
+                                                          -self.bid_scenarios[s][t][i] * self.model.P[s, t, i] 
+                                                          for i in self.model.non_strategic_index) 
+                                                    + sum(-self.model.mu_upper_bound[s, t, i] * self.pmax_scenarios[s][t][i]
+                                                              +self.model.mu_upper_bound[s, t, i] * self.pmin_scenarios[s][t][i]
+                                                              -self.model.mu_ramp_up[s, t, i] * self.ramp_vector_up[i]
+                                                              -self.model.mu_ramp_down[s, t, i] * self.ramp_vector_down[i]
+                                                          for i in self.model.n_gen)
+                                                for t in self.model.time_steps)
+                                                # Initial conditions for ramp constraints (t=0)
+                                                + sum(
+                                                    -self.model.mu_ramp_up[s, 0, i] * self.P_init[s][i]
+                                                    +self.model.mu_ramp_down[s, 0, i] * self.P_init[s][i]
+                                                    for i in self.model.n_gen)
+                                          + sum(
+                                                sum(
+                                                    self.model.mu_upper_bound[s, t, i] * self.pmax_scenarios[s][t][i]
+                                                   -self.model.mu_lower_bound[s, t, i] * self.pmin_scenarios[s][t][i]
+                                                    for i in self.model.strategic_index)
+                                                for t in self.model.time_steps)
+                                          + sum(self.mu_ramp_up[s, 0, i] * (self.P_init[s][i] + self.ramp_vector_up[i])
+                                                -self.mu_ramp_down[s, 0, i] * (self.P_init[s][i] - self.ramp_vector_down[i])
+                                                +sum(self.model.mu_ramp_up[s, t, i] * self.ramp_vector_up[i]
+                                                    +self.model.mu_ramp_down[s, t, i] * self.ramp_vector_down[i]
+                                                     for t in range(1, self.num_time_steps))
+                                                for i in self.model.strategic_index)   
+                                         + sum(
+                                               sum(self.cost_vector[i] * self.model.P[s, t, i]
+                                                   for i in self.model.strategic_index) 
+                                               for t in self.model.time_steps)
+                                             for s in self.model.n_scenarios)
+ 
+                                            , sense=minimize
+        )
     def _build_constraints(self) -> None:
         """
-        Function to build the constraints for the MPEC model. 
+        Function to build all constraints for the MPEC model. 
         """
         self._build_upper_level_constraints()
         self._build_lower_level_constraints()
@@ -406,17 +437,29 @@ class MPECModel:
         """
 
         def power_balance_rule(m, s, t):
-            return sum(m.P[s, t, i] for i in m.n_gen) == self.demand_scenarios[s][t]
+            return sum(m.P[s, t, i] for i in m.n_gen) - self.demand_scenarios[s][t] == 0
         
         def generation_upper_rule(m, s, t, i):
-            return 0 <= self.pmax_scenarios[s][t][i] - m.P[s, t, i]
+            return m.P[s, t, i] - self.pmax_scenarios[s][t][i] <= 0 
 
         def generation_lower_rule(m, s, t, i):
-            return 0 <= m.P[s, t, i] - self.pmin_scenarios[s][t][i]
+            return self.pmin_scenarios[s][t][i] - m.P[s, t, i] <= 0
         
+        def ramp_up_rule(m, s, t, i):
+            if t == 0:
+                return Constraint.Skip
+            return 0 <= self.ramp_vector_up[i] - (m.P[s, t, i] - m.P[s, t-1, i])
+        
+        def ramp_down_rule(m, s, t, i):
+            if t == 0:
+                return Constraint.Skip
+            return 0 <= self.ramp_vector_down[i] - (m.P[s, t-1, i] - m.P[s, t, i])
+
         self.model.power_balance_constraint = Constraint(self.model.n_scenarios, self.model.time_steps, rule=power_balance_rule)
         self.model.generation_upper_bound_constraints = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, rule=generation_upper_rule)
         self.model.generation_lower_bound_constraints = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, rule=generation_lower_rule)
+        self.model.ramp_up_constraints = Constraint(self.model.n_scenarios, self.model.time_steps_plus_1, self.model.n_gen, rule=ramp_up_rule)
+        self.model.ramp_down_constraints = Constraint(self.model.n_scenarios, self.model.time_steps_plus_1, self.model.n_gen, rule=ramp_down_rule)
 
     def _build_KKT_stationarity_constraints(self) -> None:
         """
@@ -428,8 +471,16 @@ class MPECModel:
         def stationarity_rule_non_strategic_agents(m, s, t, i):
             return self.bid_scenarios[s][t][i] - m.lambda_var[s, t] + m.mu_upper_bound[s, t, i] - m.mu_lower_bound[s, t, i] == 0
 
+        def final_ramp_up_dual_rule(m, s, i):
+            return m.mu_ramp_up[s, self.num_time_steps, i] == 0
+
+        def final_ramp_down_dual_rule(m, s, i):
+            return m.mu_ramp_down[s, self.num_time_steps, i] == 0
+
         self.model.stationarity_constraint_strategic = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=stationarity_rule_strategic_agent)
         self.model.stationarity_constraint_non_strategic = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.non_strategic_index, rule=stationarity_rule_non_strategic_agents)
+        self.model.final_ramp_up_dual_constraint = Constraint(self.model.n_scenarios, self.model.n_gen, rule=final_ramp_up_dual_rule)
+        self.model.final_ramp_down_dual_constraint = Constraint(self.model.n_scenarios, self.model.n_gen, rule=final_ramp_down_dual_rule)
 
     def _build_KKT_complementarity_constraints(self) -> None:
         """
@@ -438,21 +489,33 @@ class MPECModel:
         BigM = self.big_m_complementarity
 
         def upper_bound_complementarity_rule(m, s, t, i):
-            return self.pmax_scenarios[s][t][i] - m.P[s, t, i] <= BigM * (1 - m.z_upper_bound[s, t, i]) 
+            return -BigM * (1 - m.z_upper_bound[s, t, i]) <= m.P[s, t, i] - self.pmax_scenarios[s][t][i]  
 
         def upper_bound_complementarity_rule_dual(m, s, t, i):
             return m.mu_upper_bound[s, t, i] <= BigM * m.z_upper_bound[s, t, i] 
         
         def lower_bound_complementarity_rule(m, s, t, i):
-            return m.P[s, t, i] - self.pmin_scenarios[s][t][i] <= BigM * (1 - m.z_lower_bound[s, t, i]) 
+            return -BigM * (1 - m.z_lower_bound[s, t, i]) <= -m.P[s, t, i] + self.pmin_scenarios[s][t][i]
 
         def lower_bound_complementarity_rule_dual(m, s, t, i):
             return m.mu_lower_bound[s, t, i] <= BigM * m.z_lower_bound[s, t, i] 
+
+        def ramp_up_complementarity_rule(m, s, t, i):
+            if t == 0:
+                return Constraint.Skip
+            return -BigM * (1 - m.z_ramp_up[s, t, i]) <= m.P[s, t, i] - m.P[s, t-1, i] - self.ramp_vector_up[i]
+
+        def ramp_down_complementarity_rule(m, s, t, i):
+            if t == 0:
+                return Constraint.Skip
+            return -BigM * (1 - m.z_ramp_down[s, t, i]) <= - m.P[s, t, i] + m.P[s, t-1, i] - self.ramp_vector_down[i]
 
         self.model.upper_bound_complementarity_constraints = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, rule=upper_bound_complementarity_rule)
         self.model.upper_bound_complementarity_constraints_dual = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, rule=upper_bound_complementarity_rule_dual)
         self.model.lower_bound_complementarity_constraints = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, rule=lower_bound_complementarity_rule)
         self.model.lower_bound_complementarity_constraints_dual = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, rule=lower_bound_complementarity_rule_dual)
+        self.model.ramp_up_complementarity_constraints = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, rule=ramp_up_complementarity_rule)
+        self.model.ramp_down_complementarity_constraints = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, rule=ramp_down_complementarity_rule)
 
     def _build_bid_seperation_constraints(self) -> None:
         """

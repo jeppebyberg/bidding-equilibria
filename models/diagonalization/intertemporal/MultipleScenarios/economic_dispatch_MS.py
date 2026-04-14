@@ -141,7 +141,7 @@ class EconomicDispatchModel:
 
                     pmax_t.append(cap)
                     pmin_t.append(float(pmin_default))
-                    bid_t.append(float(row[f"{gen}_bid"]))
+                    bid_t.append(float(row[f"{gen}_bid_profile"][t]))
 
                 pmax_scenario_by_time.append(pmax_t)
                 pmin_scenario_by_time.append(pmin_t)
@@ -155,7 +155,8 @@ class EconomicDispatchModel:
         self.cost_vector = [costs_df[f"{gen}_cost"].iloc[0] for gen in self.generator_names]
 
         # Extract ramps (static across scenarios)
-        self.ramp_vector = [ramps_df[f"{gen}_ramp"].iloc[0] for gen in self.generator_names]
+        self.ramp_vector_up = [ramps_df[f"{gen}_ramp_up"].iloc[0] for gen in self.generator_names]
+        self.ramp_vector_down = [ramps_df[f"{gen}_ramp_down"].iloc[0] for gen in self.generator_names]
 
     # ------------------------------------------------------------------
     # Solve
@@ -196,14 +197,14 @@ class EconomicDispatchModel:
         def ramp_up_rule(m, s, t, g):
             if t == 0:
                 return Constraint.Skip
-            return m.P_G[s, t, g] - m.P_G[s, t - 1, g] <= self.ramp_vector[g]
+            return m.P_G[s, t, g] - m.P_G[s, t - 1, g] <= self.ramp_vector_up[g]
         model.ramp_up = Constraint(model.scenarios, model.time_steps, model.generators, rule=ramp_up_rule)
 
         # NEED TO UPDATE THIS TO INSERT THE INITIAL CONDITIONS FOR THE FIRST TIME STEP
         def ramp_down_rule(m, s, t, g):
             if t == 0:
                 return Constraint.Skip
-            return m.P_G[s, t - 1, g] - m.P_G[s, t, g] <= self.ramp_vector[g]
+            return m.P_G[s, t - 1, g] - m.P_G[s, t, g] <= self.ramp_vector_down[g]
         model.ramp_down = Constraint(model.scenarios, model.time_steps, model.generators, rule=ramp_down_rule)
 
         # Attach suffix to capture duals

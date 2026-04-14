@@ -12,42 +12,48 @@ test_case: # Scenario with 6 generators and demand of 225 MW
       pmax: 50.0
       pmin: 0.0
       cost: 70.0
-      R_rate: 10.0
-      
+      R_rate_up: 10.0
+      R_rate_down: 10.0
+
     - id: 1
       name: "G2"
       pmax: 50.0
       pmin: 0.0
       cost: 60.0
-      R_rate: 10.0
-      
+      R_rate_up: 10.0
+      R_rate_down: 10.0
+
     - id: 2
       name: "G3"
       pmax: 50.0
       pmin: 0.0
       cost: 50.0
-      R_rate: 10.0
-      
+      R_rate_up: 10.0
+      R_rate_down: 10.0
+
     - id: 3
       name: "G4"
       pmax: 50.0
       pmin: 0.0
       cost: 40.0
-      R_rate: 10.0
-      
+      R_rate_up: 10.0
+      R_rate_down: 10.0
+
     - id: 4
       name: "G5"
       pmax: 50.0
       pmin: 0.0
       cost: 30.0
-      R_rate: 10.0
-      
+      R_rate_up: 10.0
+      R_rate_down: 10.0
+
     - id: 5
       name: "G6"
       pmax: 50.0
       pmin: 0.0
       cost: 20.0
-      R_rate: 10.0
+      R_rate_up: 10.0
+      R_rate_down: 10.0
 
   players:
     - id: 0
@@ -81,28 +87,32 @@ test_case2: # Scenario with 4 generators and demand of 130 MW
       pmax: 50.0
       pmin: 0.0
       cost: 70.0
-      R_rate: 10.0
+      R_rate_up: 10.0
+      R_rate_down: 10.0
 
     - id: 1
       name: "G2"
       pmax: 50.0
       pmin: 0.0
       cost: 60.0
-      R_rate: 10.0
+      R_rate_up: 10.0
+      R_rate_down: 10.0
 
     - id: 2
       name: "G3"
       pmax: 50.0
       pmin: 0.0
       cost: 50.0
-      R_rate: 10.0
+      R_rate_up: 10.0
+      R_rate_down: 10.0
 
     - id: 3
       name: "G4"
       pmax: 50.0
       pmin: 0.0
       cost: 40.0
-      R_rate: 10.0
+      R_rate_up: 10.0
+      R_rate_down: 10.0
 
   players:
     - id: 0
@@ -130,84 +140,96 @@ test_case_multiple_owners: # Scenario with 12 generators owned by 6 players and 
       pmax: 50.0
       pmin: 0.0
       cost: 20.0
-      R_rate: 10.0
+      R_rate_up: 10.0
+      R_rate_down: 10.0
 
     - id: 1
       name: "G2"
       pmax: 50.0
       pmin: 0.0
       cost: 30.0
-      R_rate: 10.0
+      R_rate_up: 10.0
+      R_rate_down: 10.0
 
     - id: 2
       name: "G3"
       pmax: 50.0
       pmin: 0.0
       cost: 40.0
-      R_rate: 10.0
-      
+      R_rate_up: 10.0
+      R_rate_down: 10.0
+
     - id: 3
       name: "G4"
       pmax: 50.0
       pmin: 0.0
       cost: 50.0
-      R_rate: 10.0
-      
+      R_rate_up: 10.0
+      R_rate_down: 10.0
+
     - id: 4
       name: "G5"
       pmax: 50.0
       pmin: 0.0
       cost: 60.0
-      R_rate: 10.0
-      
+      R_rate_up: 10.0
+      R_rate_down: 10.0
+
     - id: 5
       name: "G6"
       pmax: 50.0
       pmin: 0.0
       cost: 70.0
-      R_rate: 10.0
+      R_rate_up: 10.0
+      R_rate_down: 10.0
 
     - id: 6
       name: "G7"
       pmax: 50.0
       pmin: 0.0
       cost: 20.0
-      R_rate: 10.0
-      
+      R_rate_up: 10.0
+      R_rate_down: 10.0
+
     - id: 7
       name: "G8"
       pmax: 50.0
       pmin: 0.0
       cost: 30.0
-      R_rate: 10.0
-      
+      R_rate_up: 10.0
+      R_rate_down: 10.0
+
     - id: 8
       name: "G9"
       pmax: 50.0
       pmin: 0.0
       cost: 40.0
-      R_rate: 10.0
-      
+      R_rate_up: 10.0
+      R_rate_down: 10.0
+
     - id: 9
       name: "G10"
       pmax: 50.0
       pmin: 0.0
       cost: 50.0
-      R_rate: 10.0
-      
+      R_rate_up: 10.0
+      R_rate_down: 10.0
+
     - id: 10
       name: "G11"
       pmax: 50.0
       pmin: 0.0
       cost: 60.0
-      R_rate: 10.0
-      
+      R_rate_up: 10.0
+      R_rate_down: 10.0
+
     - id: 11
       name: "G12"
       pmax: 50.0
       pmin: 0.0
       cost: 70.0
-      R_rate: 10.0
+      R_rate_up: 10.0
+      R_rate_down: 10.0
 
   players:
     - id: 0
@@ -241,35 +263,40 @@ test_case1: # Scenario with 4 generators and demand of 130 MW
       pmax: 50.0
       pmin: 0.0
       cost: 50.0
-      R_rate: 10.0
-      
+      R_rate_up: 10.0
+      R_rate_down: 10.0
+
     - id: 1
       name: "G2"
       pmax: 50.0
       pmin: 0.0
       cost: 40.0
-      R_rate: 10.0
-      
+      R_rate_up: 10.0
+      R_rate_down: 10.0
+
     - id: 2
       name: "W3"
       pmax: 50.0
       pmin: 0.0
       cost: 30.0
-      R_rate: 10.0
-      
+      R_rate_up: 10.0
+      R_rate_down: 10.0
+
     - id: 3
       name: "W4"
       pmax: 50.0
       pmin: 0.0
       cost: 20.0
-      R_rate: 10.0
+      R_rate_up: 10.0
+      R_rate_down: 10.0
 
     - id: 4
       name: "W5"
       pmax: 50.0
       pmin: 0.0
       cost: 10.0
-      R_rate: 10.0
+      R_rate_up: 10.0
+      R_rate_down: 10.0
 
   players:
     - id: 0

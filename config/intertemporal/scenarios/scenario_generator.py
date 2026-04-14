@@ -33,7 +33,7 @@ class ScenarioManager:
         
         # Load base case once and reuse
         try:
-            num_generators, pmax_list, pmin_list, cost_vector, r_rates_list, demand, generators, players, time_steps = load_setup_data(self.base_case_reference)
+            num_generators, pmax_list, pmin_list, cost_vector, r_rates_up_list, r_rates_down_list, demand, generators, players, time_steps = load_setup_data(self.base_case_reference)
             
             self.base_case = {
                 'case_name': self.base_case_reference,
@@ -44,7 +44,8 @@ class ScenarioManager:
                 'pmax_list': pmax_list,
                 'pmin_list': pmin_list,
                 'cost_vector': cost_vector,
-                'r_rates_list': r_rates_list,
+                'r_rates_up_list': r_rates_up_list,
+                'r_rates_down_list': r_rates_down_list,
                 'time_steps': time_steps
             }
             
@@ -541,9 +542,12 @@ class ScenarioManager:
         for j, (generator, _) in enumerate(zip(self.base_case['generators'], self.base_case['pmax_list'])):
             gen_name = generator['name'] if isinstance(generator, dict) else generator
             gen_cost = self.base_case['cost_vector'][j]
-            gen_ramp = self.base_case['r_rates_list'][j]
+            gen_ramp_up = self.base_case['r_rates_up_list'][j]
+            gen_ramp_down = self.base_case['r_rates_down_list'][j]
             cost_data[f'{gen_name}_cost'] = gen_cost
-            ramp_data[f'{gen_name}_ramp'] = gen_ramp
+            ramp_data[f'{gen_name}_ramp_up'] = gen_ramp_up
+            ramp_data[f'{gen_name}_ramp_down'] = gen_ramp_down
+
         costs_df = pd.DataFrame([cost_data])
         ramps_df = pd.DataFrame([ramp_data])
         
@@ -573,8 +577,6 @@ class ScenarioManager:
                 wind_capacity_profiles = self._generate_wind_capacity_profiles(
                     scenario_capacities=scenario['capacity_list'],
                 )
-
-            # scenario_row['wind_capacity_profiles'] = wind_capacity_profiles
             
             # Add individual generator capacities and bids (no costs)
             for j, (generator, capacity) in enumerate(zip(self.base_case['generators'], scenario['capacity_list'])):
