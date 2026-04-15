@@ -3,55 +3,55 @@
 # Historical scenarios used to estimate supply-curve features.
 # These are generated INDEPENDENTLY of the BR scenarios to avoid
 # information leakage — they represent historic data
-historical_scenarios:
-  reference_case: "test_case1"  # Reference case for scenario generation
-  num_demand: 50
-  demand_min_factor: 0.2
-  demand_max_factor: 1.0
-  num_capacity: 10
-  capacity_min_factor: 0.8
-  capacity_max_factor: 1.0
-  demand_persistence: 0.85
-  wind_persistence: 0.8
-  noise_scale: 0.05
+# historical_scenarios:
+#   reference_case: "test_case1"  # Reference case for scenario generation
+#   num_demand: 50
+#   demand_min_factor: 0.2
+#   demand_max_factor: 1.0
+#   num_capacity: 10
+#   capacity_min_factor: 0.8
+#   capacity_max_factor: 1.0
+#   demand_persistence: 0.85
+#   wind_persistence: 0.8
+#   noise_scale: 0.05
 
-features:
+# features:
 
-  # All features the FeatureBuilder knows how to compute.
-  # To add a new feature: append it here AND implement a _feat_<name> handler
-  # in FeatureBuilder.
-  available_features:
-    # Market-level (public)
-    - bias
-    - demand
-    - demand_sq
-    - wind_forecast
-    - total_capacity
-    - scarcity_ratio
-    - residual_demand
-    # Player-private
-    - player_cost
-    - player_capacity
-    # Historical supply-curve (pre-computed, static across BR iterations)
-    - supply_intercept
-    - supply_slope
-    - supply_curve
-    - total_capacity_tm1
-    - wind_tm1
-    - demand_tm1
+#   # All features the FeatureBuilder knows how to compute.
+#   # To add a new feature: append it here AND implement a _feat_<name> handler
+#   # in FeatureBuilder.
+#   available_features:
+#     # Market-level (public)
+#     - bias
+#     - demand
+#     - demand_sq
+#     - wind_forecast
+#     - total_capacity
+#     - scarcity_ratio
+#     - residual_demand
+#     # Player-private
+#     - player_cost
+#     - player_capacity
+#     # Historical supply-curve (pre-computed, static across BR iterations)
+#     - supply_intercept
+#     - supply_slope
+#     - supply_curve
+#     - total_capacity_tm1
+#     - wind_tm1
+#     - demand_tm1
 
-  # Subset of available_features used by default when no explicit list is given.
-  default_features:
-    # - bias
-    - demand
-    - demand_sq
-    - player_cost
-    - wind_forecast
-    # - player_capacity
-    # - scarcity_ratio
-    # - residual_demand
-    - wind_tm1
-    - demand_tm1
-    # - supply_slope
-    # - supply_intercept
-    # - supply_curve
+#   # Subset of available_features used by default when no explicit list is given.
+#   default_features:
+#     # - bias
+#     - demand
+#     - demand_sq
+#     - player_cost
+#     - wind_forecast
+#     # - player_capacity
+#     # - scarcity_ratio
+#     # - residual_demand
+#     - wind_tm1
+#     - demand_tm1
+#     # - supply_slope
+#     # - supply_intercept
+#     # - supply_curve

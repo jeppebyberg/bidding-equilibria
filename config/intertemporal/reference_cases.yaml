@@ -255,7 +255,7 @@ test_case1: # Scenario with 4 generators and demand of 130 MW
     - 151.0
 
   time_steps: 
-    - 8
+    - 4
 
   generators:
     - id: 0
@@ -263,40 +263,40 @@ test_case1: # Scenario with 4 generators and demand of 130 MW
       pmax: 50.0
       pmin: 0.0
       cost: 50.0
-      R_rate_up: 10.0
-      R_rate_down: 10.0
+      R_rate_up: 30.0
+      R_rate_down: 30.0
 
     - id: 1
       name: "G2"
       pmax: 50.0
       pmin: 0.0
       cost: 40.0
-      R_rate_up: 10.0
-      R_rate_down: 10.0
+      R_rate_up: 30.0
+      R_rate_down: 30.0
 
     - id: 2
       name: "W3"
       pmax: 50.0
       pmin: 0.0
       cost: 30.0
-      R_rate_up: 10.0
-      R_rate_down: 10.0
+      R_rate_up: 30.0
+      R_rate_down: 30.0
 
     - id: 3
       name: "W4"
       pmax: 50.0
       pmin: 0.0
       cost: 20.0
-      R_rate_up: 10.0
-      R_rate_down: 10.0
+      R_rate_up: 30.0
+      R_rate_down: 30.0
 
     - id: 4
       name: "W5"
       pmax: 50.0
       pmin: 0.0
       cost: 10.0
-      R_rate_up: 10.0
-      R_rate_down: 10.0
+      R_rate_up: 30.0
+      R_rate_down: 30.0
 
   players:
     - id: 0

@@ -5,6 +5,7 @@
 # information leakage — they represent historic data
 historical_scenarios:
   reference_case: "test_case1"  # Reference case for scenario generation
+  # reference_case: "test_case_multiple_owners"  # Reference case for scenario generation
   num_demand: 50
   demand_min_factor: 0.2
   demand_max_factor: 1.0
@@ -50,8 +51,7 @@ features:
     # - player_capacity
     # - scarcity_ratio
     # - residual_demand
-    - wind_tm1
-    - demand_tm1
+    - total_capacity
     # - supply_slope
     # - supply_intercept
     # - supply_curve

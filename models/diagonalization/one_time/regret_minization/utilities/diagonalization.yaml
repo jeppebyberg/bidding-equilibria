@@ -6,4 +6,4 @@ diagonalization:
   # 0 = keep all (no window).  A positive value caps the accumulated
   # DataFrame to (history_window + 1) * S rows, preventing the MILP
   # from becoming intractably large.
-  history_window: 10
+  history_window: 5

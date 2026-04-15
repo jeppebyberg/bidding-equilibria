@@ -19,6 +19,7 @@ class MPECModel:
         feature_builder: Optional[Any] = None,
         ramps_df: Optional[pd.DataFrame] = None,
         pmin_default: float = 0.0,
+        p_init: Optional[Any] = None,
     ):
         """
         Intertemporal regret-minimization MPEC model.
@@ -50,9 +51,13 @@ class MPECModel:
         self.costs_df = costs_df
         self.ramps_df = ramps_df
 
-        self._extract_scenario_data(self.scenarios_df, self.costs_df, pmin_default)
+        if self.ramps_df is None:
+            raise ValueError("ramps_df is required for intertemporal ramp constraints.")
 
-        self.num_policy_features = 4
+        self._extract_scenario_data(self.scenarios_df, self.costs_df, self.ramps_df, pmin_default)
+        self.P_init = self._initialize_p_init(p_init)
+
+        self.num_policy_features = len(self.feature_builder.features) if self.feature_builder is not None else 4
         self.features: Dict[Tuple[int, int, int], List[float]] = {}
         self._build_feature_matrix()
 
@@ -83,10 +88,14 @@ class MPECModel:
         except Exception as exc:
             raise ValueError(f"Profile column '{column_name}' contains non-numeric values") from exc
 
-    def _extract_scenario_data(self, scenarios_df: pd.DataFrame, costs_df: pd.DataFrame, pmin_default: float) -> None:
+    def _extract_scenario_data(
+        self,
+        scenarios_df: pd.DataFrame,
+        costs_df: pd.DataFrame,
+        ramps_df: pd.DataFrame,
+        pmin_default: float,
+    ) -> None:
         """Extract intertemporal scenario data."""
-
-        stop = True 
         
         demand_profile_col = None
         for col in scenarios_df.columns:
@@ -163,24 +172,118 @@ class MPECModel:
             self.bid_scenarios.append(bid_s_by_t)
 
         self.cost_vector = [float(costs_df[f"{gen}_cost"].iloc[0]) for gen in self.generator_names]
+        self.ramp_vector_up = [float(ramps_df[f"{gen}_ramp_up"].iloc[0]) for gen in self.generator_names]
+        self.ramp_vector_down = [float(ramps_df[f"{gen}_ramp_down"].iloc[0]) for gen in self.generator_names]
+
+    def _initialize_p_init(self, p_init: Optional[Any]) -> List[List[float]]:
+        """Normalize initial production input to shape [num_scenarios][num_generators]."""
+        if p_init is None:
+            return [[0.0 for _ in range(self.num_generators)] for _ in range(self.num_scenarios)]
+
+        if np.isscalar(p_init):
+            value = float(p_init)
+            return [[value for _ in range(self.num_generators)] for _ in range(self.num_scenarios)]
+
+        if isinstance(p_init, np.ndarray):
+            p_init = p_init.tolist()
+
+        if isinstance(p_init, (list, tuple)):
+            if len(p_init) == self.num_generators and all(np.isscalar(v) for v in p_init):
+                row = [float(v) for v in p_init]
+                return [list(row) for _ in range(self.num_scenarios)]
+
+            if len(p_init) == self.num_scenarios:
+                matrix: List[List[float]] = []
+                for s, row in enumerate(p_init):
+                    if not isinstance(row, (list, tuple, np.ndarray)):
+                        raise ValueError(
+                            f"Invalid p_init row at scenario {s}: expected a sequence of length {self.num_generators}"
+                        )
+                    if len(row) != self.num_generators:
+                        raise ValueError(
+                            f"Invalid p_init shape at scenario {s}: expected {self.num_generators} generators, got {len(row)}"
+                        )
+                    matrix.append([float(v) for v in row])
+                return matrix
+
+        raise ValueError(
+            "Invalid p_init format. Expected None, scalar, 1D vector of generators, or "
+            "2D matrix [num_scenarios][num_generators]."
+        )
 
     def _build_feature_matrix(self) -> None:
         """
-        Build placeholder policy features per (scenario, time, generator).
+        Build policy features per (scenario, time, generator).
 
-        Feature vector:
-        [1, demand_t, pmax_t_i, cost_i]
+        When a shared ``FeatureBuilder`` is provided, this uses the configured
+        feature list and includes intertemporal values from the previous time
+        step. Otherwise, it falls back to the legacy 4-feature placeholder.
         """
         self.features = {}
+
+        if self.feature_builder is None:
+            self.num_policy_features = 4
+            for s in range(self.num_scenarios):
+                for t in range(self.num_time_steps):
+                    for i in range(self.num_generators):
+                        self.features[s, t, i] = [
+                            1.0,
+                            float(self.demand_scenarios[s][t]),
+                            float(self.pmax_scenarios[s][t][i]),
+                            float(self.cost_vector[i]),
+                        ]
+            return
+
+        expected_dim: Optional[int] = None
+
         for s in range(self.num_scenarios):
             for t in range(self.num_time_steps):
+                demand_t = float(self.demand_scenarios[s][t])
+                total_capacity_t = float(sum(float(self.pmax_scenarios[s][t][g]) for g in range(self.num_generators)))
+                wind_t = float(sum(
+                    float(self.pmax_scenarios[s][t][g])
+                    for g, name in enumerate(self.generator_names)
+                    if name.startswith("W")
+                ))
+
+                if t > 0:
+                    demand_tm1 = float(self.demand_scenarios[s][t - 1])
+                    total_capacity_tm1 = float(sum(float(self.pmax_scenarios[s][t - 1][g]) for g in range(self.num_generators)))
+                    wind_tm1 = float(sum(
+                        float(self.pmax_scenarios[s][t - 1][g])
+                        for g, name in enumerate(self.generator_names)
+                        if name.startswith("W")
+                    ))
+                else:
+                    demand_tm1 = 0.0
+                    total_capacity_tm1 = 0.0
+                    wind_tm1 = 0.0
+
                 for i in range(self.num_generators):
-                    self.features[s, t, i] = [
-                        1.0,
-                        float(self.demand_scenarios[s][t]),
-                        float(self.pmax_scenarios[s][t][i]),
-                        float(self.cost_vector[i]),
-                    ]
+                    phi = self.feature_builder.build_intertemporal_features(
+                        demand=demand_t,
+                        wind_forecast=wind_t,
+                        total_capacity=total_capacity_t,
+                        player_cost=[float(self.cost_vector[i])],
+                        player_capacity=[float(self.pmax_scenarios[s][t][i])],
+                        demand_tm1=demand_tm1,
+                        wind_tm1=wind_tm1,
+                        total_capacity_tm1=total_capacity_tm1,
+                    )
+
+                    phi_list = np.atleast_1d(phi).astype(np.float64).tolist()
+                    if expected_dim is None:
+                        expected_dim = len(phi_list)
+                    elif len(phi_list) != expected_dim:
+                        raise ValueError(
+                            f"Inconsistent feature dimension at (s={s}, t={t}, i={i}). "
+                            f"Expected {expected_dim}, got {len(phi_list)}."
+                        )
+
+                    self.features[s, t, i] = phi_list
+
+        if expected_dim is not None:
+            self.num_policy_features = expected_dim
 
     def build_model(self, strategic_player_id: int) -> None:
         """Build a fresh model for the specified strategic player."""
@@ -203,6 +306,8 @@ class MPECModel:
         self.model.n_gen = Set(initialize=range(self.num_generators))
         self.model.n_scenarios = Set(initialize=range(self.num_scenarios))
         self.model.time_steps = Set(initialize=range(self.num_time_steps))
+        self.model.time_steps_plus_1 = Set(initialize=range(self.num_time_steps + 1))
+        self.model.time_steps_minus_1 = Set(initialize=range(1, self.num_time_steps))
         self.model.strategic_index = Set(initialize=self.strategic_generators)
 
         non_strategic_gens = [i for i in range(self.num_generators) if i not in self.strategic_generators]
@@ -214,7 +319,7 @@ class MPECModel:
 
     def _build_variables(self) -> None:
         self._build_upper_level_primal_variables()
-        self._build_upper_level_dual_variables()
+        self._build_lower_level_dual_variables()
         self._build_lower_level_primal_variables()
         self._build_complementarity_variables()
         self._build_bid_separation_variables()
@@ -223,13 +328,19 @@ class MPECModel:
     def _build_upper_level_primal_variables(self) -> None:
         self.model.alpha = Var(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, domain=Reals)
 
-    def _build_upper_level_dual_variables(self) -> None:
+    def _build_lower_level_dual_variables(self) -> None:
         self.model.lambda_var = Var(self.model.n_scenarios, self.model.time_steps, domain=Reals)
         self.model.mu_upper_bound = Var(
             self.model.n_scenarios, self.model.time_steps, self.model.n_gen, domain=NonNegativeReals
         )
         self.model.mu_lower_bound = Var(
             self.model.n_scenarios, self.model.time_steps, self.model.n_gen, domain=NonNegativeReals
+        )
+        self.model.mu_ramp_up = Var(
+            self.model.n_scenarios, self.model.time_steps_plus_1, self.model.n_gen, domain=NonNegativeReals
+        )
+        self.model.mu_ramp_down = Var(
+            self.model.n_scenarios, self.model.time_steps_plus_1, self.model.n_gen, domain=NonNegativeReals
         )
 
     def _build_lower_level_primal_variables(self) -> None:
@@ -240,6 +351,12 @@ class MPECModel:
             self.model.n_scenarios, self.model.time_steps, self.model.n_gen, domain=Binary
         )
         self.model.z_lower_bound = Var(
+            self.model.n_scenarios, self.model.time_steps, self.model.n_gen, domain=Binary
+        )
+        self.model.z_ramp_up = Var(
+            self.model.n_scenarios, self.model.time_steps, self.model.n_gen, domain=Binary
+        )
+        self.model.z_ramp_down = Var(
             self.model.n_scenarios, self.model.time_steps, self.model.n_gen, domain=Binary
         )
 
@@ -258,54 +375,56 @@ class MPECModel:
 
     def _build_objective(self) -> None:
         self.model.objective = Objective(
-            expr=(
+            expr=
                 1 / self.num_scenarios
-                * (
-                    -(
-                        sum(
-                            self.model.lambda_var[s, t] * self.demand_scenarios[s][t]
-                            for s in self.model.n_scenarios
-                            for t in self.model.time_steps
-                        )
-                        - sum(
-                            self.model.mu_upper_bound[s, t, i] * self.pmax_scenarios[s][t][i]
-                            for s in self.model.n_scenarios
-                            for t in self.model.time_steps
-                            for i in self.model.n_gen
-                        )
+                * sum(
+                    sum(
+                        self.model.lambda_var[s, t] * self.demand_scenarios[s][t]
                         + sum(
-                            self.model.mu_lower_bound[s, t, i] * self.pmin_scenarios[s][t][i]
-                            for s in self.model.n_scenarios
-                            for t in self.model.time_steps
-                            for i in self.model.n_gen
-                        )
-                        - sum(
-                            self.bid_scenarios[s][t][i] * self.model.P[s, t, i]
-                            for s in self.model.n_scenarios
-                            for t in self.model.time_steps
+                            -self.bid_scenarios[s][t][i] * self.model.P[s, t, i]
                             for i in self.model.non_strategic_index
                         )
                         + sum(
-                            self.model.mu_upper_bound[s, t, i] * self.pmax_scenarios[s][t][i]
-                            for s in self.model.n_scenarios
-                            for t in self.model.time_steps
-                            for i in self.model.strategic_index
+                            -self.model.mu_upper_bound[s, t, i] * self.pmax_scenarios[s][t][i]
+                            + self.model.mu_upper_bound[s, t, i] * self.pmin_scenarios[s][t][i]
+                            - self.model.mu_ramp_up[s, t, i] * self.ramp_vector_up[i]
+                            - self.model.mu_ramp_down[s, t, i] * self.ramp_vector_down[i]
+                            for i in self.model.n_gen
                         )
-                        - sum(
-                            self.model.mu_lower_bound[s, t, i] * self.pmin_scenarios[s][t][i]
-                            for s in self.model.n_scenarios
-                            for t in self.model.time_steps
-                            for i in self.model.strategic_index
-                        )
+                        for t in self.model.time_steps
                     )
                     + sum(
-                        self.cost_vector[i] * self.model.P[s, t, i]
-                        for s in self.model.n_scenarios
+                        -self.model.mu_ramp_up[s, 0, i] * self.P_init[s][i]
+                        + self.model.mu_ramp_down[s, 0, i] * self.P_init[s][i]
+                        for i in self.model.n_gen
+                    )
+                    + sum(
+                        sum(
+                            self.model.mu_upper_bound[s, t, i] * self.pmax_scenarios[s][t][i]
+                            - self.model.mu_lower_bound[s, t, i] * self.pmin_scenarios[s][t][i]
+                            for i in self.model.strategic_index
+                        )
                         for t in self.model.time_steps
+                    )
+                    + sum(
+                        self.model.mu_ramp_up[s, 0, i] * (self.P_init[s][i] + self.ramp_vector_up[i])
+                        - self.model.mu_ramp_down[s, 0, i] * (self.P_init[s][i] - self.ramp_vector_down[i])
+                        + sum(
+                            self.model.mu_ramp_up[s, t, i] * self.ramp_vector_up[i]
+                            + self.model.mu_ramp_down[s, t, i] * self.ramp_vector_down[i]
+                            for t in range(1, self.num_time_steps)
+                        )
                         for i in self.model.strategic_index
                     )
-                )
-            ),
+                    + sum(
+                        sum(
+                            self.cost_vector[i] * self.model.P[s, t, i]
+                            for i in self.model.strategic_index
+                        )
+                        for t in self.model.time_steps
+                    )
+                    for s in self.model.n_scenarios
+                ),
             sense=minimize,
         )
 
@@ -324,8 +443,8 @@ class MPECModel:
         def max_bid_rule(m, s, t, i):
             return m.alpha[s, t, i] <= self.alpha_max
 
-        def min_bid_rule_2(m, s, t, i):
-            return m.alpha[s, t, i] >= self.cost_vector[i]
+        # def min_bid_rule_2(m, s, t, i):
+        #     return m.alpha[s, t, i] >= self.cost_vector[i]
 
         self.model.min_bid_constraint = Constraint(
             self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=min_bid_rule
@@ -333,9 +452,9 @@ class MPECModel:
         self.model.max_bid_constraint = Constraint(
             self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=max_bid_rule
         )
-        self.model.min_bid_constraint_2 = Constraint(
-            self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=min_bid_rule_2
-        )
+        # self.model.min_bid_constraint_2 = Constraint(
+        #     self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=min_bid_rule_2
+        # )
 
     def _build_lower_level_constraints(self) -> None:
         def power_balance_rule(m, s, t):
@@ -347,6 +466,18 @@ class MPECModel:
         def generation_lower_rule(m, s, t, i):
             return 0 <= m.P[s, t, i] - self.pmin_scenarios[s][t][i]
 
+        def ramp_up_rule(m, s, t, i):
+            return m.P[s, t, i] - m.P[s, t - 1, i] - self.ramp_vector_up[i] <= 0
+
+        def ramp_up_initial_rule(m, s, i):
+            return m.P[s, 0, i] - self.P_init[s][i] - self.ramp_vector_up[i] <= 0
+
+        def ramp_down_rule(m, s, t, i):
+            return -m.P[s, t, i] + m.P[s, t - 1, i] - self.ramp_vector_down[i] <= 0
+
+        def ramp_down_initial_rule(m, s, i):
+            return -m.P[s, 0, i] + self.P_init[s][i] - self.ramp_vector_down[i] <= 0
+
         self.model.power_balance_constraint = Constraint(self.model.n_scenarios, self.model.time_steps, rule=power_balance_rule)
         self.model.generation_upper_bound_constraints = Constraint(
             self.model.n_scenarios, self.model.time_steps, self.model.n_gen, rule=generation_upper_rule
@@ -354,28 +485,44 @@ class MPECModel:
         self.model.generation_lower_bound_constraints = Constraint(
             self.model.n_scenarios, self.model.time_steps, self.model.n_gen, rule=generation_lower_rule
         )
+        self.model.ramp_up_constraints = Constraint(
+            self.model.n_scenarios, self.model.time_steps_minus_1, self.model.n_gen, rule=ramp_up_rule
+        )
+        self.model.ramp_down_constraints = Constraint(
+            self.model.n_scenarios, self.model.time_steps_minus_1, self.model.n_gen, rule=ramp_down_rule
+        )
+        self.model.ramp_up_initial_feasibility_constraints = Constraint(
+            self.model.n_scenarios, self.model.n_gen, rule=ramp_up_initial_rule
+        )
+        self.model.ramp_down_initial_feasibility_constraints = Constraint(
+            self.model.n_scenarios, self.model.n_gen, rule=ramp_down_initial_rule
+        )
 
     def _build_kkt_stationarity_constraints(self) -> None:
-        def stationarity_rule_strategic(m, s, t, i):
-            return m.alpha[s, t, i] - m.lambda_var[s, t] + m.mu_upper_bound[s, t, i] - m.mu_lower_bound[s, t, i] == 0
 
-        def stationarity_rule_non_strategic(m, s, t, i):
-            return (
-                self.bid_scenarios[s][t][i]
-                - m.lambda_var[s, t]
-                + m.mu_upper_bound[s, t, i]
-                - m.mu_lower_bound[s, t, i]
-                == 0
-            )
+        def stationarity_rule_strategic_agent(m, s, t, i):
+            return m.alpha[s, t, i] - m.lambda_var[s, t] + m.mu_upper_bound[s, t, i] - m.mu_lower_bound[s, t, i] + m.mu_ramp_up[s, t, i] - m.mu_ramp_up[s, t+1, i] - m.mu_ramp_down[s, t, i] + m.mu_ramp_down[s, t+1, i] == 0
+
+        def stationarity_rule_non_strategic_agents(m, s, t, i):
+            return self.bid_scenarios[s][t][i] - m.lambda_var[s, t] + m.mu_upper_bound[s, t, i] - m.mu_lower_bound[s, t, i] + m.mu_ramp_up[s, t, i] - m.mu_ramp_up[s, t+1, i] - m.mu_ramp_down[s, t, i] + m.mu_ramp_down[s, t+1, i] == 0
+
+        def final_ramp_up_dual_rule(m, s, i):
+            return m.mu_ramp_up[s, self.num_time_steps, i] == 0
+
+        def final_ramp_down_dual_rule(m, s, i):
+            return m.mu_ramp_down[s, self.num_time_steps, i] == 0
 
         self.model.stationarity_constraint_strategic = Constraint(
-            self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=stationarity_rule_strategic
+            self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=stationarity_rule_strategic_agent
         )
         self.model.stationarity_constraint_non_strategic = Constraint(
-            self.model.n_scenarios,
-            self.model.time_steps,
-            self.model.non_strategic_index,
-            rule=stationarity_rule_non_strategic,
+            self.model.n_scenarios, self.model.time_steps, self.model.non_strategic_index, rule=stationarity_rule_non_strategic_agents
+        )
+        self.model.final_ramp_up_dual_constraint = Constraint(
+            self.model.n_scenarios, self.model.n_gen, rule=final_ramp_up_dual_rule
+        )
+        self.model.final_ramp_down_dual_constraint = Constraint(
+            self.model.n_scenarios, self.model.n_gen, rule=final_ramp_down_dual_rule
         )
 
     def _build_kkt_complementarity_constraints(self) -> None:
@@ -393,6 +540,24 @@ class MPECModel:
         def lower_bound_comp_dual_rule(m, s, t, i):
             return m.mu_lower_bound[s, t, i] <= big_m * m.z_lower_bound[s, t, i]
 
+        def ramp_up_comp_rule(m, s, t, i):
+            return -big_m * (1 - m.z_ramp_up[s, t, i]) <= m.P[s, t, i] - m.P[s, t - 1, i] - self.ramp_vector_up[i]
+
+        def ramp_up_comp_initial_rule(m, s, i):
+            return -big_m * (1 - m.z_ramp_up[s, 0, i]) <= m.P[s, 0, i] - self.P_init[s][i] - self.ramp_vector_up[i]
+
+        def ramp_up_comp_dual_rule(m, s, t, i):
+            return m.mu_ramp_up[s, t, i] <= big_m * m.z_ramp_up[s, t, i]
+
+        def ramp_down_comp_rule(m, s, t, i):
+            return -big_m * (1 - m.z_ramp_down[s, t, i]) <= -m.P[s, t, i] + m.P[s, t - 1, i] - self.ramp_vector_down[i]
+
+        def ramp_down_comp_initial_rule(m, s, i):
+            return -big_m * (1 - m.z_ramp_down[s, 0, i]) <= -m.P[s, 0, i] + self.P_init[s][i] - self.ramp_vector_down[i]
+
+        def ramp_down_comp_dual_rule(m, s, t, i):
+            return m.mu_ramp_down[s, t, i] <= big_m * m.z_ramp_down[s, t, i]
+
         self.model.upper_bound_complementarity_constraints = Constraint(
             self.model.n_scenarios, self.model.time_steps, self.model.n_gen, rule=upper_bound_comp_rule
         )
@@ -404,6 +569,25 @@ class MPECModel:
         )
         self.model.lower_bound_complementarity_constraints_dual = Constraint(
             self.model.n_scenarios, self.model.time_steps, self.model.n_gen, rule=lower_bound_comp_dual_rule
+        )
+        self.model.ramp_up_complementarity_constraints = Constraint(
+            self.model.n_scenarios, self.model.time_steps_minus_1, self.model.n_gen, rule=ramp_up_comp_rule
+        )
+        self.model.ramp_up_complementarity_initial_constraints = Constraint(
+            self.model.n_scenarios, self.model.n_gen, rule=ramp_up_comp_initial_rule
+        )
+        self.model.ramp_up_complementarity_constraints_dual = Constraint(
+            self.model.n_scenarios, self.model.time_steps, self.model.n_gen, rule=ramp_up_comp_dual_rule
+        )
+
+        self.model.ramp_down_complementarity_constraints = Constraint(
+            self.model.n_scenarios, self.model.time_steps_minus_1, self.model.n_gen, rule=ramp_down_comp_rule
+        )
+        self.model.ramp_down_complementarity_initial_constraints = Constraint(
+            self.model.n_scenarios, self.model.n_gen, rule=ramp_down_comp_initial_rule
+        )
+        self.model.ramp_down_complementarity_constraints_dual = Constraint(
+            self.model.n_scenarios, self.model.time_steps, self.model.n_gen, rule=ramp_down_comp_dual_rule
         )
 
     def _build_bid_separation_constraints(self) -> None:
@@ -445,7 +629,7 @@ class MPECModel:
             raise ValueError("Model has not been built. Call build_model(strategic_player_id) first.")
 
         solver = SolverFactory("gurobi")
-        results = solver.solve(self.model, tee=False)
+        results = solver.solve(self.model, tee=True)
 
         if not (results.solver.status == "ok") and not (results.solver.termination_condition == "optimal"):
             print("Solver status:", results.solver.status)
@@ -521,7 +705,7 @@ class MPECModel:
         Replace scenario data; model will need rebuilding with build_model(...).
         """
         self.scenarios_df = new_scenarios_df.copy().reset_index(drop=True)
-        self._extract_scenario_data(self.scenarios_df, self.costs_df, pmin_default=0.0)
+        self._extract_scenario_data(self.scenarios_df, self.costs_df, self.ramps_df, pmin_default=0.0)
         self._build_feature_matrix()
         self.model = None
 
@@ -544,6 +728,7 @@ class MPECModel:
             config_overrides=self.config,
             feature_builder=self.feature_builder,
             ramps_df=self.ramps_df,
+            p_init=self.P_init,
         )
 
         bids = [
