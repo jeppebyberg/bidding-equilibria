@@ -1,5 +1,6 @@
 from pyomo.environ import *
 import pandas as pd
+import numpy as np
 from typing import List, Optional, Dict, Any, Tuple
 import ast
 
@@ -89,6 +90,9 @@ class MPECModel:
         self.costs_df = costs_df
         self.ramps_df = ramps_df
         self.model = None
+
+        if self.strategic_player_id is not None:
+            self.build_model(self.strategic_player_id)
 
     # ------------------------------------------------------------------
     # Data extraction
@@ -213,21 +217,19 @@ class MPECModel:
         self.ramp_vector_up = [ramps_df[f"{gen}_ramp_up"].iloc[0] for gen in self.generator_names]
         self.ramp_vector_down = [ramps_df[f"{gen}_ramp_down"].iloc[0] for gen in self.generator_names]
 
-    def update_strategic_player(self, strategic_player_id: int) -> None:
+    def build_model(self, strategic_player_id: int) -> None:
         """
-        Update the model for a new strategic player without rebuilding everything.
-        Only updates the constraints that depend on the strategic player.
-        
+        Build a model for the specified strategic player.
+
         Parameters
         ----------
         strategic_player_id : int
             ID of the player to optimize (must match a player id in players_config)
-        """            
-        # Find the player and get their controlled generators
+        """
         strategic_player = next((p for p in self.players_config if p['id'] == strategic_player_id), None)
         if not strategic_player:
             raise ValueError(f"Strategic player {strategic_player_id} not found in players_config")
-            
+
         self.strategic_player_id = strategic_player_id
         self.strategic_generators = strategic_player['controlled_generators']
 
@@ -238,21 +240,8 @@ class MPECModel:
             )
 
         self.features = self.feature_matrix_by_player[strategic_player_id]
-        
-        # If model doesn't exist, build it completely
-        if self.model is None:
-            self._build_model()
-        else:
-            # Update only the strategic player dependent constraints
-            self._update_strategic_constraints()
-    
-    def _build_model(self) -> None:
-        """
-        Build the complete MPEC model structure.
-        This is called once, then update_strategic_player() updates the changing parts between each strategic player.
-        """
         if self.strategic_player_id is None:
-            raise ValueError("Must call update_strategic_player() before building model")
+            raise ValueError("Must call build_model(strategic_player_id) before solving model")
 
         self.model = ConcreteModel()
         
@@ -273,57 +262,6 @@ class MPECModel:
         self._build_variables()
         self._build_objective()
         self._build_constraints()
-        
-    def _update_strategic_constraints(self) -> None:
-        """
-        Update only the constraints that depend on the strategic player.
-        This is much more efficient than rebuilding the entire model.
-        """
-        # Update strategic set
-        strategic_set = self.strategic_generators
-            
-        # Update the strategic index set
-        self.model.strategic_index.clear()
-        self.model.strategic_index.update(strategic_set)
-        
-        # Update non-strategic set
-        non_strategic_gens = [i for i in range(self.num_generators) if i not in strategic_set]
-        self.model.non_strategic_index.clear()
-        self.model.non_strategic_index.update(non_strategic_gens)
-        
-        # Update alpha variables to match new strategic set (BEFORE building constraints)
-        self.model.del_component(self.model.alpha)
-        self.model.alpha = Var(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, domain=Reals)
-        
-        # Update tau variables to match new strategic/non-strategic split (BEFORE building constraints)
-        self.model.del_component(self.model.tau)
-        self.model.tau = Var(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, self.model.non_strategic_index, domain=Binary)
-        
-        # Update objective (depends on strategic player)
-        self.model.del_component(self.model.objective)
-        self._build_objective()
-        
-        # Update upper level constraints (bid bounds for strategic players)
-        self.model.del_component(self.model.min_bid_constraint)
-        self.model.del_component(self.model.max_bid_constraint)
-        # self.model.del_component(self.model.min_bid_constraint_2)
-        self._build_upper_level_constraints()
-        
-        # Update KKT stationarity constraints (different rules for strategic vs non-strategic)
-        self.model.del_component(self.model.stationarity_constraint_strategic)
-        self.model.del_component(self.model.stationarity_constraint_non_strategic)
-        self.model.del_component(self.model.final_ramp_up_dual_constraint)
-        self.model.del_component(self.model.final_ramp_down_dual_constraint)
-        self._build_KKT_stationarity_constraints()
-        
-        # Update bid separation constraints (only between strategic and non-strategic)
-        self.model.del_component(self.model.alpha_upper_seperation_constraints)
-        self.model.del_component(self.model.alpha_lower_seperation_constraints)
-        self._build_bid_seperation_constraints()
-
-        if hasattr(self.model, "policy_constraint"):
-            self.model.del_component(self.model.policy_constraint)
-        self._build_policy_constraints()
 
     def _build_variables(self) -> None:
         """
@@ -616,7 +554,7 @@ class MPECModel:
             non-strategic generators keep their original bids.
         """        
         if not hasattr(self, 'model') or self.model is None:
-            raise ValueError("Model has not been built yet. Call update_strategic_player() first.")
+            raise ValueError("Model has not been built yet. Call build_model(strategic_player_id) first.")
             
         if not hasattr(self.model, 'alpha'):
             raise ValueError("Strategic bid variables (alpha) not found. Model may not be properly built.")
@@ -645,6 +583,12 @@ class MPECModel:
                     
         return optimal_bid_scenarios
     
+    def get_optimal_theta(self) -> np.ndarray:
+        if self.model is None or not hasattr(self.model, "theta"):
+            raise ValueError("Policy variables (theta) not available. Build and solve first.")
+
+        return np.array([self.model.theta[k].value for k in self.model.n_features], dtype=np.float64)
+
     def update_bids_with_optimal_values(self, scenarios_df: pd.DataFrame) -> pd.DataFrame:
         """
         Update bid scenarios with optimal strategic bids and return updated DataFrame.

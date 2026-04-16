@@ -78,9 +78,9 @@ if __name__ == "__main__":
         feature_matrix_by_player=feature_matrix_by_player,
     )
     
-    # Set strategic player (this also builds the model)
-    print("Setting strategic player to 0...")
-    mpec_model.update_strategic_player(0)
+    # Build model for strategic player 0
+    print("Building model for strategic player 0...")
+    mpec_model.build_model(0)
     
     # Try to solve
     print("\nAttempting to solve MPEC model...")
@@ -91,9 +91,9 @@ if __name__ == "__main__":
     print("\n=== Updating Bid Scenarios ===")
     scenarios_df = mpec_model.update_bids_with_optimal_values(scenarios_df)
 
-    # Set strategic player (this also builds the model)
-    print("Setting strategic player to 1...")
-    mpec_model.update_strategic_player(1)
+    # Build model for strategic player 1
+    print("Building model for strategic player 1...")
+    mpec_model.build_model(1)
 
     print("\nAttempting to solve MPEC model...")
     mpec_model.solve()

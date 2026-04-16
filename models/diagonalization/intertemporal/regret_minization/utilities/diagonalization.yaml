@@ -1,6 +1,6 @@
 #Diagonalization algorithm configuration
 diagonalization:
-  max_iterations: 75
+  max_iterations: 10
   conv_tolerance: 1e-2
   # Maximum number of past iterations to keep in the MPEC history.
   # 0 = keep all (no window).  A positive value caps the accumulated

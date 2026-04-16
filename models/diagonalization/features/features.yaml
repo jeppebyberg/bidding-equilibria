@@ -48,7 +48,7 @@ features:
     - demand_sq
     - player_cost
     - wind_forecast
-    - player_capacity
+    # - player_capacity
     # - scarcity_ratio
     # - residual_demand
     - total_capacity

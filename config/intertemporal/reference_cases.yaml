@@ -255,7 +255,7 @@ test_case1: # Scenario with 4 generators and demand of 130 MW
     - 151.0
 
   time_steps: 
-    - 4
+    - 3
 
   generators:
     - id: 0
