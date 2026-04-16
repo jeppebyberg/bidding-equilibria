@@ -19,6 +19,7 @@ class BestResponseAlgorithmMS:
                  costs_df,
                  ramps_df,
                  players_config, 
+                 feature_matrix_by_player,
                  seed: int = 123
                  ):
         """
@@ -38,6 +39,7 @@ class BestResponseAlgorithmMS:
         self.costs_df = costs_df
         self.ramps_df = ramps_df
         self.players_config = players_config
+        self.feature_matrix_by_player = feature_matrix_by_player
         
         self.seed = seed
 
@@ -70,7 +72,8 @@ class BestResponseAlgorithmMS:
             costs_df=self.costs_df,
             ramps_df=self.ramps_df,
             p_init=self.P_init,
-            players_config=self.players_config
+            players_config=self.players_config,
+            feature_matrix_by_player=self.feature_matrix_by_player,
         )
         
         # # Initialize bid vector with true costs
@@ -115,7 +118,8 @@ class BestResponseAlgorithmMS:
             costs_df=self.costs_df,
             ramps_df=self.ramps_df,
             p_init=self.P_init,
-            players_config=self.players_config
+            players_config=self.players_config,
+            feature_matrix_by_player=self.feature_matrix_by_player,
         )
         
         # Update the MPEC model for this strategic player
@@ -1310,43 +1314,66 @@ class BestResponseAlgorithmMS:
 if __name__ == "__main__":
     print("=== Testing Best Response Algorithm ===")
     
-    # Generate scenarios for the algorithm
     from config.intertemporal.scenarios.scenario_generator import ScenarioManager
-    
-    # Load scenario manager
-    scenario_manager = ScenarioManager("test_case1")
-    players_config = scenario_manager.get_players_config()
-    
-    # Generate demand scenarios with some variation
+    from config.default_loader import load_test_case_config
+    from models.diagonalization.features.feature_setup import FeatureBuilder, DEFAULT_FEATURES
+
+    # Generate scenarios for the algorithm
+    TEST_CASE  = "test_case1"
+
+    test_config = load_test_case_config(TEST_CASE)
+
+    demand_cfg = test_config["demand"]
+    capacity_cfg = test_config["capacity"]
+
+    # Scenario generation
+    scenario_manager = ScenarioManager(TEST_CASE)
+    players_config   = scenario_manager.get_players_config()
+
+    # Demand
     demand_scenarios = scenario_manager.generate_demand_scenarios(
-        "linear", 
-        num_scenarios=6, 
-        min_factor=0.4, 
-        max_factor=0.6
+        demand_cfg["type"],
+        num_scenarios=demand_cfg["num_scenarios"],
+        min_factor=demand_cfg["min_factor"],
+        max_factor=demand_cfg["max_factor"],
     )
-    
-    # Generate capacity scenarios (use base case capacities)
+
+    # Capacity
     capacity_scenarios = scenario_manager.generate_capacity_scenarios(
-        "linear",
-        num_scenarios=1,  # Use base case capacities
-        min_factor=1.0,
-        max_factor=1.0
+        capacity_cfg["type"],
+        num_scenarios=capacity_cfg["num_scenarios"],
+        min_factor=capacity_cfg["min_factor"],
+        max_factor=capacity_cfg["max_factor"],
     )
-    
-    # Create scenario set
+
     scenarios = scenario_manager.create_scenario_set(
         demand_scenarios=demand_scenarios,
-        capacity_scenarios=capacity_scenarios
+        capacity_scenarios=capacity_scenarios,
     )
-    
-    scenarios_df = scenarios['scenarios_df']
-    costs_df = scenarios['costs_df']
-    ramps_df = scenarios['ramps_df']
-    
-    seed = 0
+    scenarios_df = scenarios["scenarios_df"]
+    costs_df     = scenarios["costs_df"]
+    ramps_df     = scenarios["ramps_df"]
+
+    # Generator names from the DataFrame columns
+    generator_names = [c.replace("_cap", "") for c in scenarios_df.columns if c.endswith("_cap")]
+
+    # Build feature vectors per player
+    fb = FeatureBuilder(TEST_CASE, DEFAULT_FEATURES)
+
+    # compute_historical_supply_curve(reference_case=TEST_CASE, plot=True)
+
+    feature_matrix_by_player = fb.build_intertemporal_feature_matrix_by_player_from_frames(
+        scenarios_df=scenarios_df,
+        costs_df=costs_df,
+        generator_names=generator_names,
+        players_config=players_config,
+        fit_normalizer=True,
+    )
+
+    fb.save_feature_normalizer_stats("results/feature_normalizer_stats.json")
 
     # Create and run algorithm
-    algo = BestResponseAlgorithmMS(scenarios_df, costs_df, ramps_df, players_config, seed=seed)
+    algo = BestResponseAlgorithmMS(scenarios_df, costs_df, ramps_df, players_config, feature_matrix_by_player)
     algo.run()
     results = algo.results
     saved_path = algo.save_results("results/best_response_results.json")

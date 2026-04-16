@@ -4,7 +4,6 @@ from typing import List, Optional, Dict, Any, Tuple
 import ast
 
 from .utilities.MPEC_utils import get_mpec_parameters
-from ...features.feature_setup import FeatureBuilder, build_intertemporal_feature_matrix_by_player
 
 
 class MPECModel:
@@ -14,8 +13,8 @@ class MPECModel:
         costs_df: pd.DataFrame,
         ramps_df: pd.DataFrame,
         players_config: List[Dict[str, Any]],
-        p_init: Optional[Any],
-        feature_builder: Optional[FeatureBuilder],
+        p_init: Any,
+        feature_matrix_by_player: Dict[int, Dict[Tuple[int, int, int], List[float]]],
         strategic_player_id: int = None,
         pmin_default: float = 0.0,
         config_overrides: Optional[Dict[str, Any]] = None,
@@ -42,8 +41,8 @@ class MPECModel:
             Default minimum generation level for generators (if not specified in scenarios_df)
         p_init : Any, optional
             Initial production levels for ramp constraints (list of lists: scenarios x generators)
-        feature_builder : Optional[FeatureBuilder]
-            Optional feature builder object to construct policy features. If None, uses default features.
+        feature_matrix_by_player : Dict[int, Dict[Tuple[int, int, int], List[float]]]
+            Precomputed feature matrix dictionary keyed by player id.
         config_overrides : Dict[str, Any], optional
             Configuration overrides for MPEC parameters
         """
@@ -58,35 +57,26 @@ class MPECModel:
         self.big_m_bid_separation = self.config.get("big_m_bid_separation")
         self.bid_separation_epsilon = self.config.get("bid_separation_epsilon")
 
+        if feature_matrix_by_player is None:
+            raise ValueError("feature_matrix_by_player must be provided")
+
         self.P_init = p_init
-        self.feature_builder = feature_builder
-
-        self._extract_scenario_data(scenarios_df, costs_df, ramps_df, pmin_default)
-
-        self.features = {}
-
-        self.feature_matrix_all_players = build_intertemporal_feature_matrix_by_player(
-            feature_builder=self.feature_builder,
-            demand_scenarios=self.demand_scenarios,
-            pmax_scenarios=self.pmax_scenarios,
-            cost_vector=self.cost_vector,
-            generator_names=self.generator_names,
-            players_config=players_config,
-        )
-
-        self.num_policy_features = len(self.feature_builder.features)
-
-        if self.feature_matrix_all_players:
-            first_player = next(iter(self.feature_matrix_all_players.values()))
-            if first_player:
-                self.num_policy_features = len(next(iter(first_player.values())))
-
-        self.feature_matrix = self.feature_matrix_all_players[self.strategic_player_id]
-
-
         self.players_config = players_config
         self.strategic_player_id = strategic_player_id
         self.strategic_generators: List[int] = []
+
+        self._extract_scenario_data(scenarios_df, costs_df, ramps_df, pmin_default)
+
+        self.feature_matrix_by_player = feature_matrix_by_player
+
+        self.features: Dict[Tuple[int, int, int], List[float]] = {}
+        self.num_policy_features = 0
+        if self.feature_matrix_by_player:
+            first_player = next(iter(self.feature_matrix_by_player.values()))
+            if first_player:
+                self.num_policy_features = len(next(iter(first_player.values())))
+        if self.num_policy_features == 0:
+            raise ValueError("feature_matrix_by_player is empty; cannot infer policy feature dimension")
 
         if self.strategic_player_id is not None and self.players_config:
             strategic_player = next((p for p in self.players_config if p["id"] == self.strategic_player_id), None)
@@ -99,34 +89,6 @@ class MPECModel:
         self.costs_df = costs_df
         self.ramps_df = ramps_df
         self.model = None
-
-    @classmethod
-    def precompute_feature_matrix_by_player(
-        cls,
-        scenarios_df: pd.DataFrame,
-        costs_df: pd.DataFrame,
-        ramps_df: pd.DataFrame,
-        players_config: List[Dict[str, Any]],
-        feature_builder: Optional[FeatureBuilder] = None,
-        pmin_default: float = 0.0,
-        p_init: Optional[Any] = None,
-    ) -> Dict[int, Dict[Tuple[int, int, int], List[float]]]:
-        """Precompute and return cached feature matrices keyed by player id."""
-        if feature_builder is None:
-            raise ValueError("feature_builder must be provided for precomputing feature matrices")
-
-        temp = cls.__new__(cls)
-        temp.feature_builder = feature_builder
-        temp._extract_scenario_data(scenarios_df, costs_df, ramps_df, pmin_default)
-
-        return build_intertemporal_feature_matrix_by_player(
-            feature_builder=feature_builder,
-            demand_scenarios=temp.demand_scenarios,
-            pmax_scenarios=temp.pmax_scenarios,
-            cost_vector=temp.cost_vector,
-            generator_names=temp.generator_names,
-            players_config=players_config,
-        )
 
     # ------------------------------------------------------------------
     # Data extraction
@@ -153,31 +115,6 @@ class MPECModel:
             return [float(v) for v in value]
         except Exception as exc:
             raise ValueError(f"Profile column '{column_name}' contains non-numeric values") from exc
-
-    def _build_feature_matrix(self) -> None:
-        """Rebuild the full feature matrix (flattened across players)."""
-        feature_by_player = build_intertemporal_feature_matrix_by_player(
-            feature_builder=self.feature_builder,
-            demand_scenarios=self.demand_scenarios,
-            pmax_scenarios=self.pmax_scenarios,
-            cost_vector=self.cost_vector,
-            generator_names=self.generator_names,
-            players_config=self.players_config,
-        )
-        self.features = {}
-        for player_features in feature_by_player.values():
-            self.features.update(player_features)
-
-    def _build_feature_matrix_by_player_dict(self) -> Dict[int, Dict[Tuple[int, int, int], List[float]]]:
-        """Create feature matrices keyed by player id using shared feature setup."""
-        return build_intertemporal_feature_matrix_by_player(
-            feature_builder=self.feature_builder,
-            demand_scenarios=self.demand_scenarios,
-            pmax_scenarios=self.pmax_scenarios,
-            cost_vector=self.cost_vector,
-            generator_names=self.generator_names,
-            players_config=self.players_config,
-        )
 
     def _extract_scenario_data(self, scenarios_df: pd.DataFrame, costs_df: pd.DataFrame, ramps_df: pd.DataFrame,
                                pmin_default: float) -> None:
@@ -295,7 +232,10 @@ class MPECModel:
         self.strategic_generators = strategic_player['controlled_generators']
 
         if strategic_player_id not in self.feature_matrix_by_player:
-            self.feature_matrix_by_player = self._build_feature_matrix_by_player_dict()
+            raise ValueError(
+                f"feature_matrix_by_player is missing player {strategic_player_id}. "
+                "Precompute and pass feature matrices for all players from the best response driver."
+            )
 
         self.features = self.feature_matrix_by_player[strategic_player_id]
         

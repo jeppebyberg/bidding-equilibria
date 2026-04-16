@@ -61,13 +61,12 @@ if __name__ == "__main__":
     print(f"P_init built with shape: ({len(p_init)}, {len(p_init[0]) if p_init else 0})")
 
     feature_builder = FeatureBuilder(TEST_CASE, DEFAULT_FEATURES)
-    feature_matrix_by_player = MPECModel.precompute_feature_matrix_by_player(
+    feature_matrix_by_player = feature_builder.build_intertemporal_feature_matrix_by_player_from_frames(
         scenarios_df=scenarios_df,
         costs_df=costs_df,
-        ramps_df=ramps_df,
+        generator_names=generator_names,
         players_config=players_config,
-        feature_builder=feature_builder,
-        p_init=p_init,
+        fit_normalizer=True,
     )
 
     mpec_model = MPECModel(
@@ -76,7 +75,7 @@ if __name__ == "__main__":
         ramps_df,
         players_config,
         p_init=p_init,
-        feature_builder=feature_builder,
+        feature_matrix_by_player=feature_matrix_by_player,
     )
     
     # Set strategic player (this also builds the model)
