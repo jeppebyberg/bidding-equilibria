@@ -662,4 +662,9 @@ if __name__ == "__main__":
     elapsed = end - start
     print(f"Elapsed time: {elapsed:.6f} seconds")
 
+    results = algo.results
+    saved_path = algo.save_results("results/best_response_results.json")
+
+    print(saved_path)
+
     stop = True

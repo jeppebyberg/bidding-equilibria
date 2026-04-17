@@ -17,6 +17,7 @@ class MPECModel:
         p_init: Any,
         feature_matrix_by_player: Dict[int, Dict[Tuple[int, int, int], List[float]]],
         pmin_default: float = 0.0,
+        NN_nodes: Optional[int] = None,
         config_overrides: Optional[Dict[str, Any]] = None,
     ):
         """
@@ -43,6 +44,8 @@ class MPECModel:
             Initial production levels for ramp constraints (list of lists: scenarios x generators)
         feature_matrix_by_player : Dict[int, Dict[Tuple[int, int, int], List[float]]]
             Precomputed feature matrix dictionary keyed by player id.
+        NN_nodes : int, optional
+            Number of nodes in the neural network policy (if using NN-based policy)
         config_overrides : Dict[str, Any], optional
             Configuration overrides for MPEC parameters
         """
@@ -56,14 +59,13 @@ class MPECModel:
         self.big_m_complementarity = self.config.get("big_m_complementarity")
         self.big_m_bid_separation = self.config.get("big_m_bid_separation")
         self.bid_separation_epsilon = self.config.get("bid_separation_epsilon")
+        self.big_m_activation = self.config.get("big_m_activation")
 
         if feature_matrix_by_player is None:
             raise ValueError("feature_matrix_by_player must be provided")
         
         self.P_init = p_init
         self.players_config = players_config
-        self.strategic_player_id: Optional[int] = None
-        self.strategic_generators: List[int] = []
 
         self._extract_scenario_data(scenarios_df, costs_df, ramps_df, pmin_default)
 
@@ -78,12 +80,17 @@ class MPECModel:
         if self.num_policy_features == 0:
             raise ValueError("feature_matrix_by_player is empty; cannot infer policy feature dimension")
 
-        if self.strategic_player_id is not None and self.players_config:
-            strategic_player = next((p for p in self.players_config if p["id"] == self.strategic_player_id), None)
-            if strategic_player:
-                self.strategic_generators = strategic_player["controlled_generators"]
-            else:
-                raise ValueError(f"Strategic player {self.strategic_player_id} not found in players_config")
+        self.NN_nodes = NN_nodes
+
+        # self.strategic_player_id: Optional[int] = None
+        # self.strategic_generators: List[int] = []
+
+        # if self.strategic_player_id is not None and self.players_config:
+        #     strategic_player = next((p for p in self.players_config if p["id"] == self.strategic_player_id), None)
+        #     if strategic_player:
+        #         self.strategic_generators = strategic_player["controlled_generators"]
+        #     else:
+        #         raise ValueError(f"Strategic player {self.strategic_player_id} not found in players_config")
 
         self.scenarios_df = scenarios_df
         self.costs_df = costs_df
@@ -310,7 +317,18 @@ class MPECModel:
         Function to build the policy variables for the MPEC model. 
         """
         self.model.n_features = Set(initialize=range(self.num_policy_features))
-        self.model.theta = Var(self.model.strategic_index, self.model.n_features, domain=Reals)
+        if self.NN_nodes is None:
+            self.model.theta = Var(self.model.strategic_index, self.model.n_features, domain=Reals)
+        else:
+            self.model.NN_nodes = Set(initialize=range(self.NN_nodes))
+            self.model.feature_to_neuron = Var(self.model.strategic_index, self.model.n_features, self.model.NN_nodes, domain=Reals)
+            self.model.feature_bias = Var(self.model.strategic_index, self.model.NN_nodes, domain=Reals)
+            self.model.neuron_output = Var(self.model.strategic_index, self.model.NN_nodes, domain=Reals)
+            self.model.bias_to_output = Var(self.model.strategic_index, domain=Reals)
+
+            self.model.neural_network_translation = Var(self.model.NN_nodes, self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, domain=Reals)
+            self.model.neural_network_output = Var(self.model.NN_nodes, self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, domain=NonNegativeReals)
+            self.model.neural_network_activation = Var(self.model.NN_nodes, self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, domain=Binary)
 
     def _build_bid_seperation_variables(self) -> None:
         """
@@ -394,7 +412,7 @@ class MPECModel:
         self.model.min_bid_constraint = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=min_bid_rule)
         self.model.max_bid_constraint = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=max_bid_rule)
 
-        self.model.tmp_rule = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=tmp_rule)
+        # self.model.tmp_rule = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=tmp_rule)
 
     def _build_lower_level_constraints(self) -> None:
         """
@@ -520,10 +538,29 @@ class MPECModel:
         """
         Function to build the policy constraints for the MPEC model. 
         """
-        def policy_rule(m, s, t, i):
-            phi = self.features[s, t, i]
-            return m.alpha[s, t, i] == sum(m.theta[i, k] * float(phi[k]) for k in m.n_features)
-        self.model.policy_constraint = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=policy_rule)
+        if self.NN_nodes is None:
+            def policy_rule(m, s, t, i):
+                phi = self.features[s, t, i]
+                return m.alpha[s, t, i] == sum(m.theta[i, k] * float(phi[k]) for k in m.n_features)
+            self.model.policy_constraint = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=policy_rule)
+        else:
+            BigM = self.big_m_activation
+            def neural_network_translation_rule(m, s, t, i, n):
+                phi = self.features[s, t, i]
+                return self.model.neural_network_translation[n, s, t, i] == sum(m.feature_to_neuron[i, f, n] * float(phi[f]) for f in m.n_features) + m.feature_bias[i, n]
+            
+            def neural_network_output(m, s, t, i, n):
+                return m.neural_network_translation[n, s, t, i] <= self.model.neural_network_output[n, s, t, i]
+
+            def neural_network_activation_rule(m, s, t, i, n):
+                return self.model.neural_network_output[n, s, t, i] <= m.neural_network_translation[n, s, t, i] + BigM * (1 - m.neural_network_activation[n, s, t, i])
+
+            def neural_network_output_upper_bound(m, s, t, i, n):
+                return m.neural_network_output[n, s, t, i] <= BigM * m.neural_network_activation[n, s, t, i]
+
+            def alpha_neural_network_rule(m, s, t, i):
+                return m.alpha[s, t, i] == DEAD_END :(((
+            
 
     def solve(self) -> None:
         """
