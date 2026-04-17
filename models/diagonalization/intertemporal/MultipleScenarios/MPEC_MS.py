@@ -389,12 +389,12 @@ class MPECModel:
             return model.alpha[s, t, i] <= self.alpha_max
         
         def tmp_rule(model, s, t, i):
-            return model.alpha[s, t, i] == self.cost_vector[i] 
+            return model.alpha[s, t, i] == self.cost_vector[i] * 3
 
         self.model.min_bid_constraint = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=min_bid_rule)
         self.model.max_bid_constraint = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=max_bid_rule)
 
-        # self.model.tmp_rule = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=tmp_rule)
+        self.model.tmp_rule = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=tmp_rule)
 
     def _build_lower_level_constraints(self) -> None:
         """
@@ -513,8 +513,8 @@ class MPECModel:
         def alpha_lower_seperation(m, s, t, i, k):
             return m.alpha[s, t, i] <= self.bid_scenarios[s][t][k] - epsilon + BigM * m.tau[s, t, i, k]
 
-        self.model.alpha_upper_seperation_constraints = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, self.model.non_strategic_index, rule=alpha_upper_seperation)
-        self.model.alpha_lower_seperation_constraints = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, self.model.non_strategic_index, rule=alpha_lower_seperation)
+        # self.model.alpha_upper_seperation_constraints = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, self.model.non_strategic_index, rule=alpha_upper_seperation)
+        # self.model.alpha_lower_seperation_constraints = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, self.model.non_strategic_index, rule=alpha_lower_seperation)
 
     def _build_policy_constraints(self) -> None:
         """
@@ -540,7 +540,6 @@ class MPECModel:
         if not (results.solver.status == 'ok') and not (results.solver.termination_condition == 'optimal'):
             print("Solver status:", results.solver.status)
             print("Termination condition:", results.solver.termination_condition)
-        else:
             raise ValueError("Solver did not find an optimal solution")
     
     def get_optimal_bids(self) -> List[List[List[float]]]:

@@ -216,7 +216,6 @@ class BestResponseAlgorithmMS:
             [[all_player_profits[s][p] for s in range(len(all_player_profits))] for p in range(len(self.players_config))]
         )
 
-
     # Per-player solve
 
     def solve_strategic_player_problem(self, player_id: int) -> float:
