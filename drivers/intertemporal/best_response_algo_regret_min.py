@@ -23,12 +23,11 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import yaml
+import json
 
 from models.diagonalization.intertemporal.regret_minization.MPEC_regret_min import MPECModel
 from models.diagonalization.intertemporal.MultipleScenarios.economic_dispatch_MS import EconomicDispatchModel
 from models.diagonalization.intertemporal.regret_minization.utilities.diagonalization_loader import load_diagonalization
-
-from models.diagonalization.features.feature_setup import FeatureBuilder, DEFAULT_FEATURES
 
 class BestResponseAlgorithmRegretMin:
     """
@@ -39,19 +38,16 @@ class BestResponseAlgorithmRegretMin:
 
     def __init__(
         self,
-        reference_case: str,
         scenarios_df: pd.DataFrame,
         costs_df: pd.DataFrame,
         ramps_df: pd.DataFrame,
         players_config: List[Dict[str, Any]],
-        feature_list: Optional[List[str]] = None,
-        results_dir: Optional[str] = None,
+        feature_matrix_by_player: Dict[int, Dict[Tuple[int, int, int], List[float]]],
+        features: List[str],
     ):
         """
         Parameters
         ----------
-        reference_case : str
-            Reference case name (used for feature building to load historic data similiar to test data).
         scenarios_df : pd.DataFrame
             Base scenario set (S rows — one per demand/capacity combination).
             Bids should be initialised to marginal costs.
@@ -59,43 +55,36 @@ class BestResponseAlgorithmRegretMin:
             Static generator cost data (single row).
         players_config : list[dict]
             Player configuration list (id, controlled_generators).
-        feature_list : list[str], optional
-            List of features to include in the feature vector.  ``None`` → default features from features.yaml.
-        results_dir : str, optional
-            Directory to save figures.  ``None`` → ``results/`` in project root.
-        initial_theta : dict[int, np.ndarray], optional
-            Initial policy weights per player (keyed by player id).
-            ``None`` → cost-based default (bid = marginal cost).
+        feature_matrix_by_player : dict[int, dict[tuple[int, int, int], list[float]]]
+            Feature matrix for each player, keyed by player id and scenario.
+        features : list[str]
+            List of feature names corresponding to the feature vectors in feature_matrix_by_player.
         """
         self.scenarios_df = scenarios_df.copy().reset_index(drop=True)
         self.initial_scenarios = scenarios_df.copy().reset_index(drop=True)
         self.costs_df = costs_df
         self.ramps_df = ramps_df
         self.players_config = players_config
-        self.feature_builder = FeatureBuilder(reference_case, feature_list or DEFAULT_FEATURES)
+        self.feature_matrix_by_player = feature_matrix_by_player
+        self.features = features
 
-        # Auto-detect columns
-        capacity_cols = [c for c in scenarios_df.columns if c.endswith('_cap')]
-        self.generator_names = [c.replace('_cap', '') for c in capacity_cols]
-        self.num_generators = len(self.generator_names)
+        # Extract basic data for compatibility with ED model from scenarios_df
+        # Auto-detect generator names from capacity columns
+        capacity_cols = [col for col in scenarios_df.columns if col.endswith('_cap')]
+        generator_names = [col.replace('_cap', '') for col in capacity_cols]
+        self.generator_names = generator_names
+        
+        self.num_generators = len(generator_names)
+        self.num_base_scenarios = len(self.initial_scenarios)
+        
+        # Extract generator data from scenarios_df first row and costs_df
+        self.pmax_list = [scenarios_df[f"{gen}_cap"].iloc[0] for gen in generator_names]
+        self.pmin_list = [0.0] * self.num_generators  # Default Pmin = 0
+        self.cost_vector = [costs_df[f"{gen}_cost"].iloc[0] for gen in generator_names]
 
-        demand_col = None
-        for c in scenarios_df.columns:
-            if any(kw in c.lower() for kw in ['demand', 'load']):
-                demand_col = c
-                break
-        self.demand_col = demand_col
-
-        self.cost_vector = [costs_df[f"{g}_cost"].iloc[0] for g in self.generator_names]
-        self.pmax_list = [scenarios_df[f"{g}_cap"].iloc[0] for g in self.generator_names]
-        self.num_base_scenarios = len(scenarios_df)
-
-        # Results directory for saving figures
-        if results_dir is None:
-            self.results_dir = Path(__file__).resolve().parent.parent / "results"
-        else:
-            self.results_dir = Path(results_dir)
-        self.results_dir.mkdir(parents=True, exist_ok=True)
+        self.demand = scenarios_df['demand']
+        self.demand_profile = scenarios_df['demand_profile']
+        self.num_time_steps = len(self.demand_profile[0]) if len(self.demand_profile) > 0 else 0
 
         # Load diagonalization config
         diag_config = load_diagonalization()
@@ -106,86 +95,69 @@ class BestResponseAlgorithmRegretMin:
         # Fix P_init from the first ED run and reuse it across all later
         # accumulated scenario snapshots.
         self.P_init = self._compute_p_init_from_ed(self.scenarios_df)
-        self.feature_matrix_by_player = self._build_feature_matrix_by_player(self.scenarios_df, fit_normalizer=True)
-
+        
         # Build MPEC model (will be rebuilt via update_scenarios each iteration)
         self.mpec_model = MPECModel(
-            reference_case=reference_case,
             scenarios_df=self.scenarios_df,
+            initial_scenarios_df=self.initial_scenarios,
             costs_df=self.costs_df,
-            players_config=self.players_config,
-            feature_matrix_by_player=self.feature_matrix_by_player,
             ramps_df=self.ramps_df,
+            players_config=self.players_config,
             p_init=self.P_init,
+            feature_matrix_by_player=self.feature_matrix_by_player,
         )
 
         # Accumulated history: list of scenario snapshots (one S-row df per iteration)
         self.history_snapshots: List[pd.DataFrame] = []
 
+        #[i] = iteration index, [s] = scenario index, [player_idx] = player index, [g] = generator index, [t] = time step index
+
         # History tracking 
-        # bid_history[t][s][g]  — bids at end of iteration t
-        self.bid_history: List[List[List[float]]] = []
-        # theta_history[t][player_idx] — theta after iteration t
-        self.theta_history: List[Dict[int, np.ndarray]] = []
-        # profit_history_mpec[t][player_idx] — MPEC total profit (summed across current scenarios)
+        # bid_history[i][s][g][t]
+        self.bid_history: List[List[List[List[float]]]] = []
+        # theta_history[i][player_idx][g] — theta 
+        self.theta_history: List[Dict[int, Dict[int, np.ndarray]]] = []
+        # profit_history_mpec[i][player_idx] — MPEC total profit (summed across current scenarios in regret min)
         self.profit_history_mpec: List[List[float]] = []
-        # profit_history_mpec_scenario[t][player_idx][s] — MPEC per-scenario profits
+        # profit_history_mpec_scenario[i][s][player_idx] — MPEC per-scenario profits (across current scenarios in regret min)
         self.profit_history_mpec_scenario: List[List[List[float]]] = []
-        # profit_history_ed[t] — ED total player profits (summed across scenarios)
+        # profit_history_ed[i][player_idx] — ED total player profits (summed across current scenarios in regret min)
         self.profit_history_ed: List[List[float]] = []
-        # profit_history_ed_scenario[t][player_idx][s] — ED per-scenario profits
+        # profit_history_ed_scenario[i][s][player_idx] — ED per-scenario profits (across current scenarios in regret min)
         self.profit_history_ed_scenario: List[List[List[float]]] = []
-        self.dispatch_history: List[List[List[float]]] = []
-        self.clearing_price_history: List[List[float]] = []
+        # dispatch_history[i][s][g][t] — dispatch for each scenario and generator
+        self.dispatch_history: List[List[List[List[float]]]] = []
+        # clearing_price_history[i][s][t] — clearing price for each scenario
+        self.clearing_price_history: List[List[List[float]]] = []
 
-        self.iteration = 0
-        self.results: Optional[Dict[str, Any]] = None
-
-        # Initial policy ────────────────────────────────────────────────
+        # Initial policy 
         self.initial_theta = self._compute_cost_theta()
 
     # Helpers
-    def _compute_p_init_from_ed(self, scenarios_df: pd.DataFrame) -> List[List[float]]:
-        """Run ED once and extract t=0 dispatch as [scenario][generator]."""
-        ed_for_p_init = EconomicDispatchModel(scenarios_df, self.costs_df, self.ramps_df)
+
+    def _compute_p_init_from_ed(self, scenarios_df) -> List[List[float]]:
+        """Solve ED and extract first time-step dispatch as [scenario][generator]."""
+        # Use neutral initial conditions: 50% of scenario capacity for every generator, because all generators can ramp more than 50% of their capacity.
+        initial_dispatch = []
+        for _, row in scenarios_df.iterrows():
+            initial_dispatch.append([
+                0.5 * float(row[f"{gen}_cap"])
+                for gen in self.generator_names
+            ])
+
+        ed_for_p_init = EconomicDispatchModel(
+            scenarios_df,
+            self.costs_df,
+            self.ramps_df,
+            p_init=initial_dispatch,
+        )
         ed_for_p_init.solve()
         dispatches = ed_for_p_init.get_dispatches()
         if dispatches is None:
             raise RuntimeError("Economic dispatch did not return dispatches. Cannot compute p_init.")
         return [list(dispatches[s][0]) for s in range(len(dispatches))]
 
-    def _build_feature_matrix_by_player(
-        self,
-        scenarios_df: pd.DataFrame,
-        fit_normalizer: bool = False,
-    ) -> Dict[int, Dict[Tuple[int, int, int], List[float]]]:
-        return self.feature_builder.build_intertemporal_feature_matrix_by_player_from_frames(
-            scenarios_df=scenarios_df,
-            costs_df=self.costs_df,
-            generator_names=self.generator_names,
-            players_config=self.players_config,
-            fit_normalizer=fit_normalizer,
-        )
-
-    def _build_accumulated_df(self) -> pd.DataFrame:
-        """
-        Concatenate history snapshots with the current ``scenarios_df``
-        to form the accumulated DataFrame fed to the MPEC.
-
-        If ``self.history_window > 0``, only the most recent
-        *history_window* snapshots are included (sliding window) so the
-        MILP size stays bounded.
-        """
-        snapshots = self.history_snapshots
-        if self.history_window > 0 and len(snapshots) > self.history_window:
-            snapshots = snapshots[-self.history_window:]
-        parts = snapshots + [self.scenarios_df]
-        return pd.concat(parts, ignore_index=True)
-
-    def check_convergence(self, a: float, b: float) -> bool:
-        return abs(a - b) <= self.conv_tolerance * abs(b) + self.conv_tolerance
-
-    def _compute_cost_theta(self) -> Dict[int, np.ndarray]:
+    def _compute_cost_theta(self) -> Dict[int, Dict[int, np.ndarray]]:
         """
         Build a theta vector per player that reproduces marginal-cost bidding.
 
@@ -193,8 +165,8 @@ class BestResponseAlgorithmRegretMin:
         - theta for `player_cost` feature(s) is set to the player's cost(s)
         - all other theta entries are set to 0
         """
-        features = self.feature_builder.features
-        cost_theta: Dict[int, np.ndarray] = {}
+        features = self.features
+        cost_theta: Dict[int, Dict[int, np.ndarray]] = {}
 
         for pc in self.players_config:
             pid = pc['id']
@@ -202,92 +174,112 @@ class BestResponseAlgorithmRegretMin:
             player_features = self.feature_matrix_by_player[pid]
 
             if not player_features:
-                cost_theta[pid] = np.zeros(1, dtype=np.float64)
+                cost_theta[pid] = {gen_idx: np.zeros(1, dtype=np.float64) for gen_idx in controlled}
                 continue
 
             # Dimension equals the actual feature vector length used by the model.
             dim = len(next(iter(player_features.values())))
-            theta = np.zeros(dim, dtype=np.float64)
+            theta_by_generator: Dict[int, np.ndarray] = {}
 
-            idx = 0
-            for feature_name in features:
-                if idx >= dim:
-                    break
+            for gen_idx in controlled:
+                theta = np.zeros(dim, dtype=np.float64)
+                idx = 0
+                for feature_name in features:
+                    if idx >= dim:
+                        break
 
-                if feature_name == 'player_cost':
-                    # Expanded block when feature vectors carry one slot per controlled generator.
-                    if len(controlled) > 1 and idx + len(controlled) <= dim:
-                        for off, gen_idx in enumerate(controlled):
-                            theta[idx + off] = float(self.cost_vector[gen_idx])
-                        idx += len(controlled)
-                    else:
-                        # Single slot case: use mean cost (equals the generator cost for single-gen players).
-                        theta[idx] = float(np.mean([self.cost_vector[g] for g in controlled]))
-                        idx += 1
-
-                elif feature_name == 'player_capacity':
-                    # Keep zero-initialized, just advance pointer with matching span.
-                    if len(controlled) > 1 and idx + len(controlled) <= dim:
-                        idx += len(controlled)
-                    else:
-                        idx += 1
-
-                else:
+                    if feature_name == 'player_cost':
+                        theta[idx] = float(self.cost_vector[gen_idx])
                     idx += 1
 
-            cost_theta[pid] = theta
+                theta_by_generator[gen_idx] = theta
+
+            cost_theta[pid] = theta_by_generator
 
         return cost_theta
 
     def _apply_initial_policy(self) -> None:
-        """Overwrite bids in ``scenarios_df`` using ``self.initial_theta``."""
-        S = self.num_base_scenarios
-        T = self.mpec_model.num_time_steps
+        """
+        Apply cost-based theta as fixed policy and record iteration 0 via ED.
+        """
+        num_scenarios = len(self.scenarios_df)
+        num_time_steps = self.mpec_model.num_time_steps
 
-        for pc in self.players_config:
-            pid = pc['id']
-            theta = self.initial_theta[pid]
-            phi_by_player = self.mpec_model.feature_matrix_by_player[pid]
-            for s in range(S):
-                for gen_idx in pc['controlled_generators']:
+        for player in self.players_config:
+            pid = player['id']
+            theta_by_generator = self.initial_theta[pid]
+            phi_by_player = self.feature_matrix_by_player[pid]
+
+            for s in range(num_scenarios):
+                for gen_idx in player['controlled_generators']:
+                    theta = theta_by_generator[gen_idx]
                     bid_profile = [
                         float(theta @ np.asarray(phi_by_player[(s, t, gen_idx)], dtype=np.float64))
-                        for t in range(T)
+                        for t in range(num_time_steps)
                     ]
                     gen_name = self.generator_names[gen_idx]
                     self.scenarios_df.at[s, f"{gen_name}_bid_profile"] = bid_profile
                     self.scenarios_df.at[s, f"{gen_name}_bid"] = bid_profile[0]
 
-        # Record initial thetas and bids so plots show the cost-based start
-        self.theta_history.append(
-            {pc['id']: self.initial_theta[pc['id']].copy()
-             for pc in self.players_config}
-        )
-        bid_snapshot = []
-        for s in range(S):
-            bid_snapshot.append(
-                [self.scenarios_df.at[s, f"{g}_bid"] for g in self.generator_names]
-            )
-        self.bid_history.append(bid_snapshot)
+        iteration_bids = []
+        for s in range(len(self.scenarios_df)):
+            scenario_bid_matrix = [
+                list(self.scenarios_df.at[s, f"{gen_name}_bid_profile"])
+                for gen_name in self.generator_names
+            ]
+            iteration_bids.append(scenario_bid_matrix)
+        self.bid_history.append(iteration_bids)
 
-        # Include cost-based bids in the accumulated history so the MPEC
-        # regret minimisation optimises over them as well.
+        iteration_zero_theta = {
+            player['id']: {
+                gen_idx: theta.copy()
+                for gen_idx, theta in self.initial_theta[player['id']].items()
+            }
+            for player in self.players_config
+        }
+        self.theta_history.append(iteration_zero_theta)
+
+        all_dispatches, clearing_prices, all_player_profits, total_player_profits = self.calculate_ED()
+        self.dispatch_history.append(all_dispatches)
+        self.clearing_price_history.append(clearing_prices)
+
+        self.profit_history_ed.append(total_player_profits)
+        self.profit_history_ed_scenario.append(all_player_profits)
+
+        # Iteration 0 has fixed policy bids, so ED is the relevant profit benchmark.
+        self.profit_history_mpec.append(total_player_profits.copy())
+        self.profit_history_mpec_scenario.append(
+            [[all_player_profits[s][p] for s in range(len(all_player_profits))] for p in range(len(self.players_config))]
+        )
+
+        # Regret-min uses history snapshots to build accumulated scenarios.
         self.history_snapshots.append(self.scenarios_df.copy())
 
-        print("\n--- Initial policy applied (cost-based) ---")
-        for s in range(S):
-            demand = self.scenarios_df.at[s, self.demand_col]
-            print(f"  S{s} (D={demand:.0f}): [{', '.join(f'{b:.1f}' for b in bid_snapshot[s])}]")
+    def _build_accumulated_df(self) -> pd.DataFrame:
+        """
+        Concatenate the recorded scenario snapshots to form the accumulated
+        DataFrame fed to the MPEC.
 
-    def _save_fig(self, fig, name: str) -> None:
-        """Save *fig* as PNG to ``self.results_dir / name``."""
-        path = self.results_dir / name
-        fig.savefig(path, dpi=150, bbox_inches='tight')
-        print(f"  [saved] {path}")
+        If ``self.history_window > 0``, only the most recent
+        *history_window* snapshots are included (sliding window) so the
+        MILP size stays bounded.
+
+        ``self.history_snapshots`` already contains the current scenario state,
+        so appending ``self.scenarios_df`` here would duplicate the latest row
+        block in the accumulated problem.
+        """
+        snapshots = self.history_snapshots
+        if self.history_window > 0 and len(snapshots) > self.history_window:
+            snapshots = snapshots[-self.history_window:]
+
+        if not snapshots:
+            return self.scenarios_df.copy().reset_index(drop=True)
+
+        return pd.concat(snapshots, ignore_index=True)
 
     # Per-player solve
 
-    def solve_strategic_player_problem(self, player_id: int) -> Tuple[float, List[float], np.ndarray]:
+    def solve_strategic_player_problem(self, player_id: int) -> Tuple[float, List[float], Dict[int, np.ndarray]]:
         """
         Solve the regret-min MPEC for one strategic player.
 
@@ -298,15 +290,22 @@ class BestResponseAlgorithmRegretMin:
             of the accumulated DataFrame).
         scenario_profits : list[float]
             Profits for the current S base scenarios.
-        theta : np.ndarray
-            Optimal policy weight vector.
+        theta : Dict[int, np.ndarray]
+            Optimal policy weights keyed by controlled generator index.
         """
         accumulated = self._build_accumulated_df()
-        accumulated_feature_matrix = self._build_feature_matrix_by_player(accumulated)
 
         # Feed full history to MPEC and solve
-        self.mpec_model.update_scenarios(accumulated, accumulated_feature_matrix)
-        self.mpec_model.update_strategic_player(player_id)
+        self.mpec_model = MPECModel(
+            scenarios_df=accumulated,
+            initial_scenarios_df=self.initial_scenarios,
+            costs_df=self.costs_df,
+            ramps_df=self.ramps_df,
+            players_config=self.players_config,
+            feature_matrix_by_player=self.feature_matrix_by_player,
+            p_init=self.P_init,
+        )
+        self.mpec_model.build_model(player_id)
         self.mpec_model.solve()
 
         theta = self.mpec_model.get_optimal_theta()
@@ -320,24 +319,6 @@ class BestResponseAlgorithmRegretMin:
 
         total_profit = sum(current_profits)
 
-        # Compute policy bids for the CURRENT scenarios and update scenarios_df
-        current_feature_matrix = self._build_feature_matrix_by_player(self.scenarios_df)
-        policy_bids = self.mpec_model.get_policy_bids(
-            theta,
-            self.scenarios_df,
-            feature_matrix_by_player=current_feature_matrix,
-        )
-
-        controlled_gens = next(
-            p['controlled_generators'] for p in self.players_config if p['id'] == player_id
-        )
-        for s in range(S):
-            for gen_idx in controlled_gens:
-                gen_name = self.generator_names[gen_idx]
-                bid_profile = [float(policy_bids[s][t][gen_idx]) for t in range(self.mpec_model.num_time_steps)]
-                self.scenarios_df.at[s, f"{gen_name}_bid_profile"] = bid_profile
-                self.scenarios_df.at[s, f"{gen_name}_bid"] = bid_profile[0]
-
         return total_profit, current_profits, theta
 
     # ED validation for second convergence check
@@ -349,7 +330,10 @@ class BestResponseAlgorithmRegretMin:
 
         Returns (dispatches, prices, player_profits_by_scenario, total_player_profits).
         """
-        ed = EconomicDispatchModel(self.scenarios_df, self.costs_df, self.ramps_df)
+        S = self.num_base_scenarios
+        current_scenarios = self.scenarios_df[-S:].copy().reset_index(drop=True)
+
+        ed = EconomicDispatchModel(current_scenarios, self.costs_df, self.ramps_df, self.P_init)
         ed.solve()
         dispatches = ed.get_dispatches()
         prices = ed.get_clearing_prices()
@@ -370,6 +354,19 @@ class BestResponseAlgorithmRegretMin:
 
         return dispatches, prices, player_profits_by_scenario, total_player_profits
 
+    # Convergence helper function
+
+    def check_convergence(self, a: float, b: float) -> bool:
+        """
+        Check if the algorithm has converged
+        
+        Returns
+        -------
+        bool
+            True if converged, False otherwise
+        """
+        return abs(a - b) <= self.conv_tolerance * abs(b) + self.conv_tolerance
+
     # Main algorithm loop
 
     def run(self) -> Dict[str, Any]:
@@ -379,15 +376,22 @@ class BestResponseAlgorithmRegretMin:
         num_players = len(self.players_config)
 
         print("=== Starting Regret-Min Best Response Algorithm ===")
-        print(f"Generators    : {self.generator_names}")
+        print(f"Generators     : {self.generator_names}")
         print(f"Generator costs: {[f'{c:.2f}' for c in self.cost_vector]}")
+        print(f"Number of time steps: {self.num_time_steps}")
         print(f"Base scenarios : {S}")
-        print(f"Features      : {self.feature_builder.features}")
-        print(f"Players       : {num_players}")
+        print(f"Features       : {self.features}")
+        print(f"Players        : {num_players}")
        
         # Apply initial policy and record iteration 0
         self._apply_initial_policy()
-
+        
+        init_mpec_str = ", ".join([
+            f"P{i}={self.profit_history_mpec[0][i]:.1f}" for i in range(len(self.players_config))
+        ])
+        print("\n--- Iteration 0 (cost-based policy, fixed alpha) ---")
+        print(f"  MPEC profits: {init_mpec_str}")
+        
         self.iteration = 0
 
         while self.iteration < self.max_iterations:
@@ -395,27 +399,31 @@ class BestResponseAlgorithmRegretMin:
 
             iteration_profits_mpec: List[Optional[float]] = [None] * num_players
             iteration_profits_mpec_scenario: List[Optional[List[float]]] = [None] * num_players
-            iteration_thetas: Dict[int, np.ndarray] = {}
+            iteration_thetas: Dict[int, Dict[int, np.ndarray]] = {}
 
-            # Gauss-Seidel: solve each player sequentially
             for player_idx, player_config in enumerate(self.players_config):
                 player_id = player_config['id']
                 controlled = player_config['controlled_generators']
-                # print(f"  Player {player_id} (generators {controlled})...")
+                print(f"  Solving for player {player_id} (controls generators {controlled})...")
 
+                # Solve MPEC problem for this player 
                 total_profit, scenario_profits, theta = self.solve_strategic_player_problem(player_id)
+
+                self.scenarios_df = self.mpec_model.update_current_base_scenario_bids(scenarios_df=self.scenarios_df, num_base_scenarios=S, controlled_generators=controlled)
 
                 iteration_profits_mpec[player_idx] = total_profit
                 iteration_profits_mpec_scenario[player_idx] = scenario_profits
                 iteration_thetas[player_id] = theta
 
-            # ── record history ────────────────────────────────────────
-            # Bid snapshot: [scenario][generator]
+            # Record history
             iteration_bids = []
             for s in range(S):
-                iteration_bids.append(
-                    [self.scenarios_df.at[s, f"{g}_bid"] for g in self.generator_names]
-                )
+                scenario_bid_matrix = [
+                    list(self.scenarios_df.at[s, f"{gen_name}_bid_profile"])
+                    for gen_name in self.generator_names
+                ]
+                iteration_bids.append(scenario_bid_matrix)
+
             self.bid_history.append(iteration_bids)
             self.theta_history.append(iteration_thetas)
             self.profit_history_mpec.append(iteration_profits_mpec)
@@ -429,17 +437,12 @@ class BestResponseAlgorithmRegretMin:
                 f"P{pc['id']}={iteration_profits_mpec[i]:.1f}"
                 for i, pc in enumerate(self.players_config)
             )
-            # print(f"  MPEC profits (current scenarios): {mpec_str}")
-            for s in range(S):
-                bids_str = ", ".join(f"{iteration_bids[s][g]:.1f}" for g in range(self.num_generators))
-                demand = self.scenarios_df.at[s, self.demand_col]
-                # print(f"  S{s} (D={demand:.0f}): [{bids_str}]")
-
+            print(f"  MPEC profits: {mpec_str}")
             # Print theta for each player
-            for pid, th in iteration_thetas.items():
-                print(f"  theta[P{pid}] = {np.round(th, 4)}")
+            # for pid, th in iteration_thetas.items():
+            #     print(f"  theta[P{pid}] = {np.round(th, 4)}")
 
-            # ── convergence checks ────────────────────────────────────
+            # Convergence checks
             if self.iteration > 0:
                 # Check 1: MPEC profit stability
                 convergence_1 = []
@@ -453,6 +456,7 @@ class BestResponseAlgorithmRegretMin:
                 if all(convergence_1):
                     print("  Check 1 PASSED (profits stable) — running ED validation...")
 
+                    # Only run ED when MPEC has converged
                     dispatches, prices, ed_player_profits, ed_total_profits = self.calculate_ED()
                     self.dispatch_history.append(dispatches)
                     self.clearing_price_history.append(prices)
@@ -514,9 +518,11 @@ class BestResponseAlgorithmRegretMin:
 
         scenario_bids = []
         for s in range(self.num_base_scenarios):
-            scenario_bids.append(
-                [self.scenarios_df.at[s, f"{g}_bid"] for g in self.generator_names]
-            )
+            scenario_bid_matrix = [
+                list(self.scenarios_df.at[s, f"{gen_name}_bid_profile"])
+                for gen_name in self.generator_names
+            ]
+            scenario_bids.append(scenario_bid_matrix)
 
         # Collect final theta per player
         final_thetas = self.theta_history[-1] if self.theta_history else {}
@@ -534,22 +540,56 @@ class BestResponseAlgorithmRegretMin:
             "profit_history_ed_scenario": self.profit_history_ed_scenario,
             "dispatch_history": self.dispatch_history,
             "clearing_price_history": self.clearing_price_history,
-            "final_scenarios_data": {
-                "scenario_bids": scenario_bids,
-                "scenario_dispatches": dispatches,
-                "scenario_prices": prices,
-                "scenario_player_profits": player_profits,
-                "scenario_welfare": scenario_welfare,
-            },
         }
+    
+    @staticmethod
+    def _json_default_serializer(obj: Any) -> Any:
+        """Convert numpy objects to native Python types for JSON serialization."""
+        if isinstance(obj, (np.integer, np.floating)):
+            return obj.item()
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+    def save_results(self, output_path: str) -> Path:
+        """
+        Save algorithm results from get_results() to a JSON file.
+
+        Parameters
+        ----------
+        output_path : str
+            Target file path.
+
+        Returns
+        -------
+        pathlib.Path
+            Path to the written file.
+        """
+        results = getattr(self, "results", None) or self.get_results()
+
+        path = Path(output_path)
+        if path.suffix and path.suffix.lower() != ".json":
+            raise ValueError("output_path must end with .json or have no extension")
+        if not path.suffix:
+            path = path.with_suffix(".json")
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        with path.open("w", encoding="utf-8") as f:
+            json.dump(results, f, indent=2, default=self._json_default_serializer)
+        return path
 
 
 if __name__ == "__main__":
-    print("=== Testing Regret-Min Best Response Algorithm ===")
-
+    print("=== Testing Best Response Algorithm ===")
+    
     from config.intertemporal.scenarios.scenario_generator import ScenarioManager
     from config.default_loader import load_test_case_config
+    from models.diagonalization.features.feature_setup import FeatureBuilder, DEFAULT_FEATURES
 
+    import time
+
+    # Generate scenarios for the algorithm
     TEST_CASE  = "test_case1"
 
     test_config = load_test_case_config(TEST_CASE)
@@ -576,6 +616,7 @@ if __name__ == "__main__":
         min_factor=capacity_cfg["min_factor"],
         max_factor=capacity_cfg["max_factor"],
     )
+
     scenarios = scenario_manager.create_scenario_set(
         demand_scenarios=demand_scenarios,
         capacity_scenarios=capacity_scenarios,
@@ -584,14 +625,41 @@ if __name__ == "__main__":
     costs_df     = scenarios["costs_df"]
     ramps_df     = scenarios["ramps_df"]
 
+    # Generator names from the DataFrame columns
+    generator_names = [c.replace("_cap", "") for c in scenarios_df.columns if c.endswith("_cap")]
+
+    # Build feature vectors per player
+    fb = FeatureBuilder(TEST_CASE, DEFAULT_FEATURES)
+
+    # compute_historical_supply_curve(reference_case=TEST_CASE, plot=True)
+
+    feature_matrix_by_player = fb.build_intertemporal_feature_matrix_by_player_from_frames(
+        scenarios_df=scenarios_df,
+        costs_df=costs_df,
+        generator_names=generator_names,
+        players_config=players_config,
+        fit_normalizer=True,
+    )
+
+    fb.save_feature_normalizer_stats("results/feature_normalizer_stats.json")
+
+    features = fb.features  # List of feature names in the order they appear in the feature vectors for each generator
+
     # Run algorithm
     algo = BestResponseAlgorithmRegretMin(
-        reference_case=TEST_CASE,
         scenarios_df=scenarios_df,
         costs_df=costs_df,
         ramps_df=ramps_df,
         players_config=players_config,
+        feature_matrix_by_player=feature_matrix_by_player,
+        features=features
     )
+    
+    start = time.perf_counter()
     algo.run()
+    end = time.perf_counter()
+
+    elapsed = end - start
+    print(f"Elapsed time: {elapsed:.6f} seconds")
 
     stop = True

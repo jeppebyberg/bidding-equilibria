@@ -50,7 +50,7 @@ features:
     - wind_forecast
     # - player_capacity
     # - scarcity_ratio
-    # - residual_demand
+    - residual_demand
     - total_capacity
     # - supply_slope
     # - supply_intercept

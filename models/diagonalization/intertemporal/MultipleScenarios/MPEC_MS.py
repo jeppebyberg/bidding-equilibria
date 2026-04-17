@@ -16,7 +16,6 @@ class MPECModel:
         players_config: List[Dict[str, Any]],
         p_init: Any,
         feature_matrix_by_player: Dict[int, Dict[Tuple[int, int, int], List[float]]],
-        strategic_player_id: int = None,
         pmin_default: float = 0.0,
         config_overrides: Optional[Dict[str, Any]] = None,
     ):
@@ -60,10 +59,10 @@ class MPECModel:
 
         if feature_matrix_by_player is None:
             raise ValueError("feature_matrix_by_player must be provided")
-
+        
         self.P_init = p_init
         self.players_config = players_config
-        self.strategic_player_id = strategic_player_id
+        self.strategic_player_id: Optional[int] = None
         self.strategic_generators: List[int] = []
 
         self._extract_scenario_data(scenarios_df, costs_df, ramps_df, pmin_default)
@@ -90,9 +89,6 @@ class MPECModel:
         self.costs_df = costs_df
         self.ramps_df = ramps_df
         self.model = None
-
-        if self.strategic_player_id is not None:
-            self.build_model(self.strategic_player_id)
 
     # ------------------------------------------------------------------
     # Data extraction
@@ -314,7 +310,7 @@ class MPECModel:
         Function to build the policy variables for the MPEC model. 
         """
         self.model.n_features = Set(initialize=range(self.num_policy_features))
-        self.model.theta = Var(self.model.n_features, domain=Reals)
+        self.model.theta = Var(self.model.strategic_index, self.model.n_features, domain=Reals)
 
     def _build_bid_seperation_variables(self) -> None:
         """
@@ -392,8 +388,13 @@ class MPECModel:
         def max_bid_rule(model, s, t, i):
             return model.alpha[s, t, i] <= self.alpha_max
         
+        def tmp_rule(model, s, t, i):
+            return model.alpha[s, t, i] == self.cost_vector[i] 
+
         self.model.min_bid_constraint = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=min_bid_rule)
         self.model.max_bid_constraint = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=max_bid_rule)
+
+        # self.model.tmp_rule = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=tmp_rule)
 
     def _build_lower_level_constraints(self) -> None:
         """
@@ -521,7 +522,7 @@ class MPECModel:
         """
         def policy_rule(m, s, t, i):
             phi = self.features[s, t, i]
-            return m.alpha[s, t, i] == sum(m.theta[k] * float(phi[k]) for k in m.n_features)
+            return m.alpha[s, t, i] == sum(m.theta[i, k] * float(phi[k]) for k in m.n_features)
         self.model.policy_constraint = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=policy_rule)
 
     def solve(self) -> None:
@@ -539,8 +540,8 @@ class MPECModel:
         if not (results.solver.status == 'ok') and not (results.solver.termination_condition == 'optimal'):
             print("Solver status:", results.solver.status)
             print("Termination condition:", results.solver.termination_condition)
-        # else:
-            # print("Model solved successfully!")
+        else:
+            raise ValueError("Solver did not find an optimal solution")
     
     def get_optimal_bids(self) -> List[List[List[float]]]:
         """
@@ -583,11 +584,18 @@ class MPECModel:
                     
         return optimal_bid_scenarios
     
-    def get_optimal_theta(self) -> np.ndarray:
+    def get_optimal_theta(self) -> Dict[int, np.ndarray]:
         if self.model is None or not hasattr(self.model, "theta"):
             raise ValueError("Policy variables (theta) not available. Build and solve first.")
 
-        return np.array([self.model.theta[k].value for k in self.model.n_features], dtype=np.float64)
+        theta_by_generator: Dict[int, np.ndarray] = {}
+        for i in self.strategic_generators:
+            theta_by_generator[i] = np.array(
+                [self.model.theta[i, k].value for k in self.model.n_features],
+                dtype=np.float64,
+            )
+
+        return theta_by_generator
 
     def update_bids_with_optimal_values(self, scenarios_df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -618,9 +626,6 @@ class MPECModel:
             gen_name = self.generator_names[gen_idx]
             bid_profile_col = f"{gen_name}_bid_profile"
 
-            # if bid_profile_col not in updated_df.columns:
-            #     updated_df[bid_profile_col] = [None] * len(updated_df)
-
             for s in range(self.num_scenarios):
                 profile = [float(optimal_bid_scenarios[s][t][gen_idx]) for t in range(self.num_time_steps)]
                 updated_df.at[s, bid_profile_col] = profile
@@ -643,30 +648,12 @@ class MPECModel:
         for s in range(self.num_scenarios):
             profit_scenario = 0.0
             for t in range(self.num_time_steps):
-                lambda_value = self.model.lambda_var[s, t].value if self.model.lambda_var[s, t].value is not None else 0.0
+                lambda_value = self.model.lambda_var[s, t].value 
                 for i in self.strategic_generators:
-                    dispatch = self.model.P[s, t, i].value if self.model.P[s, t, i].value is not None else 0.0
+                    dispatch = self.model.P[s, t, i].value 
                     cost = self.cost_vector[i]
                     profit_scenario += (lambda_value * dispatch - cost * dispatch)
             profits.append(float(profit_scenario))
         
         return profits
-
-    def print_players_summary(self) -> None:
-        """
-        Print a summary of all players and their controlled generators.
-        """
-        if not self.players_config:
-            print("No players configuration loaded.")
-            return
-            
-        print(f"\n=== Players Configuration Summary ===")
-        print(f"Total Players: {len(self.players_config)}")
-        
-        for player in self.players_config:
-            player_name = player['id']
-            controlled_gens = player['controlled_generators']
-            gen_names = [self.generator_names[i] if i < len(self.generator_names) else f"Gen{i}" 
-                        for i in controlled_gens]
-            print(f"Player {player_name}: Controls {len(controlled_gens)} generators - {gen_names}")
 

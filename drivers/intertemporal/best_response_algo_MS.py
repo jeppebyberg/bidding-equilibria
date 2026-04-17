@@ -20,7 +20,7 @@ class BestResponseAlgorithmMS:
                  ramps_df,
                  players_config, 
                  feature_matrix_by_player,
-                 seed: int = 123
+                 features
                  ):
         """
         Initialize the best response algorithm
@@ -40,9 +40,8 @@ class BestResponseAlgorithmMS:
         self.ramps_df = ramps_df
         self.players_config = players_config
         self.feature_matrix_by_player = feature_matrix_by_player
+        self.features = features
         
-        self.seed = seed
-
         # Extract basic data for compatibility with ED model from scenarios_df
         # Auto-detect generator names from capacity columns
         capacity_cols = [col for col in scenarios_df.columns if col.endswith('_cap')]
@@ -58,7 +57,9 @@ class BestResponseAlgorithmMS:
 
         self.demand = scenarios_df['demand']
         self.demand_profile = scenarios_df['demand_profile']
+        self.num_time_steps = len(self.demand_profile[0]) if len(self.demand_profile) > 0 else 0
 
+        # Load diagonalization config
         diag_config = load_diagonalization()
 
         # Algorithm parameters
@@ -71,32 +72,152 @@ class BestResponseAlgorithmMS:
             scenarios_df=self.scenarios_df,
             costs_df=self.costs_df,
             ramps_df=self.ramps_df,
-            p_init=self.P_init,
             players_config=self.players_config,
+            p_init=self.P_init,
             feature_matrix_by_player=self.feature_matrix_by_player,
         )
         
-        # # Initialize bid vector with true costs
-        # self.bid_vector = self.cost_vector.copy()
-               
-        # History tracking
-        self.bid_history = []
-        self.profit_history_agent_perspective = []
-        self.profit_history_agent_perspective_scenario = []
-        self.profit_history_ED_perspective = []
-        self.profit_history_ED_perspective_scenario = []
-        self.theta_history = []
-        self.dispatch_history = []
-        self.clearing_price_history = []
+        #[i] = iteration index, [s] = scenario index, [player_idx] = player index, [g] = generator index, [t] = time step index
+
+        # History tracking 
+        # bid_history[i][s][g][t]
+        self.bid_history: List[List[List[List[float]]]] = []
+        # theta_history[i][player_idx][g] — theta
+        self.theta_history: List[Dict[int, Dict[int, np.ndarray]]] = []
+        # profit_history_mpec[i][player_idx] — MPEC total profit (summed across current scenarios)
+        self.profit_history_mpec: List[List[float]] = []
+        # profit_history_mpec_scenario[i][s][player_idx] — MPEC per-scenario profits
+        self.profit_history_mpec_scenario: List[List[List[float]]] = []
+        # profit_history_ed[i][player_idx] — ED total player profits (summed across scenarios)
+        self.profit_history_ed: List[List[float]] = []
+        # profit_history_ed_scenario[i][s][player_idx] — ED per-scenario profits
+        self.profit_history_ed_scenario: List[List[List[float]]] = []
+        # dispatch_history[i][s][g][t] — dispatch for each scenario and generator
+        self.dispatch_history: List[List[List[List[float]]]] = []
+        # clearing_price_history[i][s][t] — clearing price for each scenario
+        self.clearing_price_history: List[List[List[float]]] = []
+
+        self.initial_theta = self._compute_cost_theta()
+
+    # Helpers
 
     def _compute_p_init_from_ed(self, scenarios_df) -> List[List[float]]:
         """Solve ED and extract first time-step dispatch as [scenario][generator]."""
-        ed_for_p_init = EconomicDispatchModel(scenarios_df, self.costs_df, self.ramps_df)
+        # Use neutral initial conditions: 50% of scenario capacity for every generator, because all generators can ramp more than 50% of their capacity.
+        initial_dispatch = []
+        for _, row in scenarios_df.iterrows():
+            initial_dispatch.append([
+                0.5 * float(row[f"{gen}_cap"])
+                for gen in self.generator_names
+            ])
+
+        ed_for_p_init = EconomicDispatchModel(
+            scenarios_df,
+            self.costs_df,
+            self.ramps_df,
+            p_init=initial_dispatch,
+        )
         ed_for_p_init.solve()
         dispatches = ed_for_p_init.get_dispatches()
         if dispatches is None:
             raise RuntimeError("Economic dispatch did not return dispatches. Cannot compute p_init.")
         return [list(dispatches[s][0]) for s in range(len(dispatches))]
+
+    def _compute_cost_theta(self) -> Dict[int, Dict[int, np.ndarray]]:
+        """
+        Build a theta vector per player that reproduces marginal-cost bidding.
+
+        Initialization rule:
+        - theta for `player_cost` feature(s) is set to the player's cost(s)
+        - all other theta entries are set to 0
+        """
+        cost_theta: Dict[int, Dict[int, np.ndarray]] = {}
+
+        for player in self.players_config:
+            pid = player['id']
+            controlled = list(player['controlled_generators'])
+            player_features = self.feature_matrix_by_player[pid]
+
+            if not player_features:
+                cost_theta[pid] = {gen_idx: np.zeros(1, dtype=np.float64) for gen_idx in controlled}
+                continue
+
+            dim = len(next(iter(player_features.values())))
+            theta_by_generator: Dict[int, np.ndarray] = {}
+
+            for gen_idx in controlled:
+                theta = np.zeros(dim, dtype=np.float64)
+                idx = 0
+                for feature_name in self.features:
+                    if idx >= dim:
+                        break
+
+                    if feature_name == 'player_cost':
+                        theta[idx] = float(self.cost_vector[gen_idx])
+                    idx += 1
+
+                theta_by_generator[gen_idx] = theta
+
+            cost_theta[pid] = theta_by_generator
+
+        return cost_theta
+
+    def _apply_initial_policy(self) -> None:
+        """
+        Apply cost-based theta as fixed policy and record iteration 0 via ED.
+        """
+        num_scenarios = len(self.scenarios_df)
+        num_time_steps = self.mpec_model.num_time_steps
+
+        for player in self.players_config:
+            pid = player['id']
+            theta_by_generator = self.initial_theta[pid]
+            phi_by_player = self.feature_matrix_by_player[pid]
+
+            for s in range(num_scenarios):
+                for gen_idx in player['controlled_generators']:
+                    theta = theta_by_generator[gen_idx]
+                    bid_profile = [
+                        float(theta @ np.asarray(phi_by_player[(s, t, gen_idx)], dtype=np.float64))
+                        for t in range(num_time_steps)
+                    ]
+                    gen_name = self.generator_names[gen_idx]
+                    self.scenarios_df.at[s, f"{gen_name}_bid_profile"] = bid_profile
+                    self.scenarios_df.at[s, f"{gen_name}_bid"] = bid_profile[0]
+
+        iteration_bids = []
+        for s in range(len(self.scenarios_df)):
+            scenario_bid_matrix = [
+                list(self.scenarios_df.at[s, f"{gen_name}_bid_profile"])
+                for gen_name in self.generator_names
+            ]
+            iteration_bids.append(scenario_bid_matrix)
+        self.bid_history.append(iteration_bids)
+
+        iteration_zero_theta = {
+            player['id']: {
+                gen_idx: theta.copy()
+                for gen_idx, theta in self.initial_theta[player['id']].items()
+            }
+            for player in self.players_config
+        }
+        self.theta_history.append(iteration_zero_theta)
+
+        all_dispatches, clearing_prices, all_player_profits, total_player_profits = self.calculate_ED()
+        self.dispatch_history.append(all_dispatches)
+        self.clearing_price_history.append(clearing_prices)
+
+        self.profit_history_ed.append(total_player_profits)
+        self.profit_history_ed_scenario.append(all_player_profits)
+
+        # Iteration 0 has fixed policy bids, so ED is the relevant profit benchmark.
+        self.profit_history_mpec.append(total_player_profits.copy())
+        self.profit_history_mpec_scenario.append(
+            [[all_player_profits[s][p] for s in range(len(all_player_profits))] for p in range(len(self.players_config))]
+        )
+
+
+    # Per-player solve
 
     def solve_strategic_player_problem(self, player_id: int) -> float:
         """
@@ -120,10 +241,11 @@ class BestResponseAlgorithmMS:
             ramps_df=self.ramps_df,
             p_init=self.P_init,
             players_config=self.players_config,
-            feature_matrix_by_player=self.feature_matrix_by_player,
-            strategic_player_id=player_id,
+            feature_matrix_by_player=self.feature_matrix_by_player
         )
         
+        self.mpec_model.build_model(player_id)
+
         # Solve the MPEC model
         self.mpec_model.solve()
         
@@ -132,10 +254,12 @@ class BestResponseAlgorithmMS:
         # Get per-scenario profits (correctly evaluated from solved variable values)
         scenario_profits = self.mpec_model.get_scenario_profits()
         
-        # Total profit = sum across all scenarios (not averaged)
+        # Total profit = sum across all scenarios
         total_profit = sum(scenario_profits)
 
         return total_profit, scenario_profits, theta
+
+    # ED validation for second convergence check
 
     def calculate_ED(self) -> Tuple[List[List[float]], List[float], List[List[float]]]:
         """
@@ -150,7 +274,7 @@ class BestResponseAlgorithmMS:
             - all_player_profits: List[List[float]] - profits for each scenario and player
             - total_player_profits: List[float] - total profit for each player across scenarios
         """
-        ed = EconomicDispatchModel(self.scenarios_df, self.costs_df, self.ramps_df)
+        ed = EconomicDispatchModel(self.scenarios_df, self.costs_df, self.ramps_df, self.P_init)
         ed.solve()
         all_dispatches = ed.get_dispatches()
         clearing_prices = ed.get_clearing_prices()
@@ -174,6 +298,8 @@ class BestResponseAlgorithmMS:
 
         return all_dispatches, clearing_prices, all_player_profits, total_player_profits
     
+    # Convergence helper function
+
     def check_convergence(self, parameter_1: float, parameter_2: float) -> bool:
         """
         Check if the algorithm has converged
@@ -187,7 +313,9 @@ class BestResponseAlgorithmMS:
             return True
         else: 
             return False
-    
+
+    # Main algorithm loop
+
     def run(self) -> Dict[str, Any]:
         """
         Run the best response algorithm
@@ -198,131 +326,144 @@ class BestResponseAlgorithmMS:
             Dictionary containing results and convergence information
         """
         
-        print("=== Starting Best Response Algorithm ===")
-        print(f"Number of generators: {self.num_generators}")
-        # print(f"Initial bids: {[f'{b:.2f}' for b in self.bid_vector]}")
-        print(f"Generator costs: {[f'{c:.2f}' for c in self.cost_vector]}")
-        print(f"Demand: {[f'{d:.1f}' for d in self.demand]} MW")
+        num_players = len(self.players_config)
 
+        print("=== Starting Best Response Algorithm ===")
+        print(f"Generators          : {self.generator_names}")
+        print(f"Generator costs     : {[f'{c:.2f}' for c in self.cost_vector]}")
+        print(f"Number of time steps: {self.num_time_steps}")
+        print(f"Features used       : {self.features}")
+        print(f"Players             : {num_players}")
+
+        self._apply_initial_policy()
+
+        init_mpec_str = ", ".join([
+            f"P{i}={self.profit_history_mpec[0][i]:.1f}" for i in range(len(self.players_config))
+        ])
+        print("\n--- Iteration 0 (cost-based policy, fixed alpha) ---")
+        print(f"  MPEC profits: {init_mpec_str}")
         
         self.iteration = 0
-        
-        # Cache generator names for bid extraction
-        generator_names = [col.replace('_cap', '') for col in self.scenarios_df.columns if col.endswith('_cap')]
         
         while self.iteration < self.max_iterations:
             print(f"\n--- Iteration {self.iteration + 1} ---")
             
-            # Update each player's bid sequentially (shuffled order each iteration)
-            profit_agent_perspective = [None] * len(self.players_config)
-            profit_agent_perspective_scenario = [None] * len(self.players_config)
-            iteration_thetas: Dict[int, np.ndarray] = {}
+            iteration_profits_mpec: List[Optional[float]] = [None] * num_players
+            iteration_profits_mpec_scenario: List[Optional[List[float]]] = [None] * num_players
+            iteration_thetas: Dict[int, Dict[int, np.ndarray]] = {}
 
-            indices = list(range(len(self.players_config)))
-
-            # np.random.seed(self.seed + self.iteration)  # Ensure reproducibility with changing seed each iteration
-            # np.random.shuffle(indices)
-
-            for player_idx in indices:
-                player_config = self.players_config[player_idx]
+            for player_idx, player_config in enumerate(self.players_config):
                 player_id = player_config['id']
-                controlled_generators = player_config['controlled_generators']
-                print(f"  Solving for player {player_id} (controls generators {controlled_generators})...")
-                
-                # Solve MPEC problem for this player (using current bid_vector which may have been updated by previous players)
+                controlled = player_config['controlled_generators']
+                print(f"  Solving for player {player_id} (controls generators {controlled})...")
+
+                # Solve MPEC problem for this player 
                 total_profit, scenario_profits, theta = self.solve_strategic_player_problem(player_id)
                 
                 # Update scenarios DataFrame with optimal bids
                 self.scenarios_df = self.mpec_model.update_bids_with_optimal_values(self.scenarios_df)
 
-                profit_agent_perspective[player_idx] = total_profit  # Store total profit for this player
-                profit_agent_perspective_scenario[player_idx] = scenario_profits  # Store per-scenario profits
-
-                iteration_thetas[player_id] = theta  # Store theta for this player and iteration
+                iteration_profits_mpec[player_idx] = total_profit
+                iteration_profits_mpec_scenario[player_idx] = scenario_profits
+                iteration_thetas[player_id] = theta
 
                 # print(f"    Total profit for player {player_id}: {total_profit:.2f}")
                 # print(f"    Scenario profits: {[f'{p:.2f}' for p in scenario_profits]}")
             
-            # Store scenario-time-dependent bid history: [iteration][scenario][generator][time]
+            # Record history
             iteration_bids = []
             for s in range(len(self.scenarios_df)):
                 scenario_bid_matrix = [
                     list(self.scenarios_df.at[s, f"{gen_name}_bid_profile"])
-                    for gen_name in generator_names
+                    for gen_name in self.generator_names
                 ]
                 iteration_bids.append(scenario_bid_matrix)
+           
             self.bid_history.append(iteration_bids)
+            self.theta_history.append(iteration_thetas)
+            self.profit_history_mpec.append(iteration_profits_mpec)
+            self.profit_history_mpec_scenario.append(iteration_profits_mpec_scenario)
             
-            # Concise per-iteration summary
-            mpec_profits_str = ", ".join([f"P{i}={profit_agent_perspective[i]:.1f}" for i in range(len(self.players_config))])
-            print(f"  MPEC profits: {mpec_profits_str}")
-            
-            # Store the profit history: [iteration][player_idx] -> list of scenario profits
-            self.profit_history_agent_perspective.append(profit_agent_perspective.copy())
-            self.profit_history_agent_perspective_scenario.append(profit_agent_perspective_scenario.copy())
-            self.theta_history.append(iteration_thetas.copy())
-            
-            if self.iteration > 0:
-                self.convergence_check_1 = []
-                for player_idx in range(len(self.players_config)):
-                    current_profit = self.profit_history_agent_perspective[self.iteration][player_idx]
-                    previous_profit = self.profit_history_agent_perspective[self.iteration - 1][player_idx]
-                    self.convergence_check_1.append(self.check_convergence(current_profit, previous_profit))
+            # Print summary
+            mpec_str = ", ".join(
+                f"P{pc['id']}={iteration_profits_mpec[i]:.1f}"
+                for i, pc in enumerate(self.players_config)
+            )
+            print(f"  MPEC profits: {mpec_str}")
+            # Print theta for each player
+            # for pid, th in iteration_thetas.items():
+            #     print(f"  theta[P{pid}] = {np.round(th, 4)}")
 
-                if all(self.convergence_check_1):
+            # Convergence checks
+            if self.iteration > 0:
+                # Check 1: MPEC profit stability                
+                convergence_1 = []
+                cur_profits = self.profit_history_mpec[self.iteration]
+                prev_profits = self.profit_history_mpec[self.iteration - 1]
+                for p_idx in range(num_players):
+                    convergence_1.append(
+                        self.check_convergence(cur_profits[p_idx], prev_profits[p_idx])
+                    )
+
+                if all(convergence_1):
                     print("  Check 1 PASSED (all bids stable) — running ED validation...")
                     
-                    # Only run ED when MPEC has converged
-                    all_dispatches, clearing_prices, all_player_profits, total_player_profits = self.calculate_ED()
-                    self.dispatch_history.append(all_dispatches)
-                    self.clearing_price_history.append(clearing_prices)
-                    self.profit_history_ED_perspective.append(total_player_profits)
-                    self.profit_history_ED_perspective_scenario.append(all_player_profits)
-                    
-                    ed_profits_str = ", ".join([f"P{i}={total_player_profits[i]:.1f}" for i in range(len(self.players_config))])
-                    print(f"  ED profits:   {ed_profits_str}")
+                   # Only run ED when MPEC has converged
+                    dispatches, prices, ed_player_profits, ed_total_profits = self.calculate_ED()
+                    self.dispatch_history.append(dispatches)
+                    self.clearing_price_history.append(prices)
+                    self.profit_history_ed.append(ed_total_profits)
+                    self.profit_history_ed_scenario.append(ed_player_profits)
 
-                    # --- Convergence Check 2: MPEC profit ≈ ED profit (same iteration) ---
-                    self.convergence_check_2 = []
-                    for player_idx in range(len(self.players_config)):
-                        mpec_p = self.profit_history_agent_perspective[self.iteration][player_idx]
-                        ed_p = total_player_profits[player_idx]
-                        self.convergence_check_2.append(self.check_convergence(mpec_p, ed_p))
+                    ed_str = ", ".join(
+                        f"P{pc['id']}={ed_total_profits[i]:.1f}"
+                        for i, pc in enumerate(self.players_config)
+                    )
+                    print(f"  ED profits:   {ed_str}")
 
-                    if all(self.convergence_check_2):
-                        print("Convergence achieved! (MPEC profits stable AND MPEC ≈ ED)")
-                        
-                        # Print final comparison
-                        for player_idx in range(len(self.players_config)):
-                            mpec_p = self.profit_history_agent_perspective[self.iteration][player_idx]
-                            ed_p = total_player_profits[player_idx]
-                            print(f"    Player {player_idx}: MPEC={mpec_p:.2f}, ED={ed_p:.2f}, gap={mpec_p - ed_p:.2f}")
-                        
+                    # Check 2: MPEC ≈ ED
+                    convergence_2 = []
+                    for p_idx in range(num_players):
+                        mpec_p = cur_profits[p_idx]
+                        ed_p = ed_total_profits[p_idx]
+                        convergence_2.append(self.check_convergence(mpec_p, ed_p))
+
+                    if all(convergence_2):
+                        print("  Convergence achieved! (MPEC profits stable AND MPEC ~ ED)")
+                        for p_idx in range(num_players):
+                            mpec_p = cur_profits[p_idx]
+                            ed_p = ed_total_profits[p_idx]
+                            print(f"    Player {self.players_config[p_idx]['id']}: "
+                                  f"MPEC={mpec_p:.2f}, ED={ed_p:.2f}, gap={mpec_p - ed_p:.2f}")
+                        self.iteration += 1
                         self.results = self.get_results()
-                        break
+                        return self.results
                     else:
-                        for player_idx in range(len(self.players_config)):
-                            mpec_p = self.profit_history_agent_perspective[self.iteration][player_idx]
-                            ed_p = total_player_profits[player_idx]
-                            print(f"    Player {player_idx}: MPEC={mpec_p:.2f}, ED={ed_p:.2f}, gap={mpec_p - ed_p:.2f}")
+                        for p_idx in range(num_players):
+                            mpec_p = cur_profits[p_idx]
+                            ed_p = ed_total_profits[p_idx]
+                            print(f"    Player {self.players_config[p_idx]['id']}: "
+                                  f"MPEC={mpec_p:.2f}, ED={ed_p:.2f}, gap={mpec_p - ed_p:.2f}")
                         print("  Check 2 FAILED (MPEC and ED profits differ)")
                 else:
-                    num_unconverged = sum(1 for c in self.convergence_check_1 if not c)
-                    total_checks = len(self.convergence_check_1)
-                    print(f"  Check 1 FAILED ({num_unconverged}/{total_checks} bids still changing)")
+                    n_fail = sum(1 for c in convergence_1 if not c)
+                    print(f"  Check 1 FAILED ({n_fail}/{num_players} players still changing)")
                 
             # Increment iteration counter
             self.iteration += 1
-            if self.iteration == self.max_iterations:
-                print("Maximum iterations reached without convergence.")
-                # Run final ED so results are complete
-                all_dispatches, clearing_prices, all_player_profits, total_player_profits = self.calculate_ED()
-                self.dispatch_history.append(all_dispatches)
-                self.clearing_price_history.append(clearing_prices)
-                self.profit_history_ED_perspective.append(total_player_profits)
-                self.profit_history_ED_perspective_scenario.append(all_player_profits)
-                self.results = self.get_results()
-    
+        
+        # Max iterations reached
+        print("\nMaximum iterations reached without convergence.")
+        dispatches, prices, ed_player_profits, ed_total_profits = self.calculate_ED()
+        self.dispatch_history.append(dispatches)
+        self.clearing_price_history.append(prices)
+        self.profit_history_ed.append(ed_total_profits)
+        self.profit_history_ed_scenario.append(ed_player_profits)
+        self.results = self.get_results()
+        return self.results
+
+    # Results
+
     def get_results(self) -> Dict[str, Any]:
         """
         Get algorithm results
@@ -338,24 +479,20 @@ class BestResponseAlgorithmMS:
         # Calculate aggregate welfare for each scenario
         scenario_welfare = [sum(final_player_profits[s]) for s in range(len(final_player_profits))]
         
-        # Calculate scenario-specific bid data from scenarios_df
-        generator_names = [col.replace('_cap', '') for col in self.scenarios_df.columns if col.endswith('_cap')]
+        # Calculate scenario-specific bid data as [scenario][generator][time]
         scenario_bids = []
         for s in range(len(self.scenarios_df)):
             missing_profile_cols = [
-                f"{gen_name}_bid_profile" for gen_name in generator_names
+                f"{gen_name}_bid_profile" for gen_name in self.generator_names
                 if f"{gen_name}_bid_profile" not in self.scenarios_df.columns
             ]
             if missing_profile_cols:
                 raise ValueError(f"Missing required profile columns: {missing_profile_cols}")
 
-            num_time_steps = len(self.scenarios_df.at[s, f"{generator_names[0]}_bid_profile"])
-            scenario_bid_matrix = []
-            for t in range(num_time_steps):
-                scenario_bid_matrix.append([
-                    self.scenarios_df.at[s, f"{gen_name}_bid_profile"][t]
-                    for gen_name in generator_names
-                ])
+            scenario_bid_matrix = [
+                list(self.scenarios_df.at[s, f"{gen_name}_bid_profile"])
+                for gen_name in self.generator_names
+            ]
             scenario_bids.append(scenario_bid_matrix)
 
         num_scenarios = len(final_dispatches)
@@ -368,20 +505,15 @@ class BestResponseAlgorithmMS:
             "iterations": self.iteration,
             "num_scenarios": len(final_dispatches),
             "generator_costs": self.cost_vector.copy(),
-            "bid_history": self.bid_history.copy(),
-            "theta_history": self.theta_history.copy(),
+            "bid_history": self.bid_history,
+            "theta_history": self.theta_history,
             "final_thetas": final_thetas,
-            "profit_history_agent_perspective": self.profit_history_agent_perspective.copy(),
-            "dispatch_history": self.dispatch_history.copy(),
-            "clearing_price_history": self.clearing_price_history.copy(),
-            "profit_history_ED_perspective": self.profit_history_ED_perspective.copy(),
-            "final_scenarios_data": {
-                "scenario_bids": scenario_bids,  # [scenario][time][generator]
-                "scenario_dispatches": final_dispatches,  # [scenario][time][generator]
-                "scenario_prices": final_prices,  # [scenario][time]
-                "scenario_player_profits": final_player_profits,  # [scenario][player]
-                "scenario_welfare": scenario_welfare  # [scenario]
-            }
+            "profit_history_mpec": self.profit_history_mpec,
+            "profit_history_mpec_scenario": self.profit_history_mpec_scenario,
+            "profit_history_ed": self.profit_history_ed,
+            "profit_history_ed_scenario": self.profit_history_ed_scenario,
+            "dispatch_history": self.dispatch_history,
+            "clearing_price_history": self.clearing_price_history,
         }
         
         return results
@@ -486,8 +618,10 @@ if __name__ == "__main__":
 
     fb.save_feature_normalizer_stats("results/feature_normalizer_stats.json")
 
+    features = fb.features  # List of feature names in the order they appear in the feature vectors for each generator
+
     # Create and run algorithm
-    algo = BestResponseAlgorithmMS(scenarios_df, costs_df, ramps_df, players_config, feature_matrix_by_player)
+    algo = BestResponseAlgorithmMS(scenarios_df, costs_df, ramps_df, players_config, feature_matrix_by_player, features)
     start = time.perf_counter()
     algo.run()
     end = time.perf_counter()
@@ -499,36 +633,3 @@ if __name__ == "__main__":
     saved_path = algo.save_results("results/best_response_results.json")
 
     print(saved_path)
-    
-    # # Display final results
-    # print(f"\n=== Final Results ====")
-    # print(f"Iterations: {results['iterations']}")
-    # print(f"Number of scenarios: {results['num_scenarios']}")
-    # print(f"Generator costs: {[f'{c:.2f}' for c in results['generator_costs']]}")
-    
-    # # Show summary statistics across all scenarios
-    # summary = results['summary_stats']
-    # print(f"\n=== Summary Statistics (Average Across Scenarios) ====")
-    # print(f"Average final dispatch: {[f'{d:.1f}' for d in summary['avg_dispatch']]} MW")
-    # print(f"Average market price: ${summary['avg_price']:.2f}/MWh")
-    # print(f"Average player profits: {[f'{p:.2f}' for p in summary['avg_player_profits']]}")
-    # print(f"Average total welfare: ${summary['avg_welfare']:.2f}")
-    
-    # # Show scenario-specific results
-    # print(f"\n=== Scenario-Specific Results ===")
-    # for s in range(results['num_scenarios']):
-    #     scenario_data = results['final_scenarios_data']
-    #     print(f"\nScenario {s}:")
-    #     print(f"  Dispatch: {[f'{d:.1f}' for d in scenario_data['scenario_dispatches'][s]]} MW")
-    #     print(f"  Price: ${scenario_data['scenario_prices'][s]:.2f}/MWh")
-    #     print(f"  Player profits: {[f'{p:.2f}' for p in scenario_data['scenario_player_profits'][s]]}")
-    #     print(f"  Total welfare: ${scenario_data['scenario_welfare'][s]:.2f}")
-    
-    # Visualizations with scenario selection
-    # scenario_to_analyze = 0  # Choose which scenario to analyze in detail
-    # print(f"\n=== Visualizing Results for Scenario {scenario_to_analyze} ===")
-    
-    # # Visualize bid evolution
-    # print("\n=== Visualizing Bid Evolution ====")
-    # algo.visualize_bid_evolution()
-    # algo.visualize_merit_order_comparison()
