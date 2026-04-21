@@ -1,6 +1,27 @@
 """
 Test script for MPEC model with multiple scenarios
 """
+def compute_p_init_from_ed(scenarios_df, costs_df, ramps_df):
+        """Solve ED and extract first time-step dispatch as [scenario][generator]."""
+        # Use neutral initial conditions: 50% of scenario capacity for every generator, because all generators can ramp more than 50% of their capacity.
+        initial_dispatch = []
+        for _, row in scenarios_df.iterrows():
+            initial_dispatch.append([
+                0.5 * float(row[f"{gen}_cap"])
+                for gen in generator_names
+            ])
+
+        ed_for_p_init = EconomicDispatchModel(
+            scenarios_df,
+            costs_df,
+            ramps_df,
+            p_init=initial_dispatch,
+        )
+        ed_for_p_init.solve()
+        dispatches = ed_for_p_init.get_dispatches()
+        if dispatches is None:
+            raise RuntimeError("Economic dispatch did not return dispatches. Cannot compute p_init.")
+        return [list(dispatches[s][0]) for s in range(len(dispatches))]
 
 if __name__ == "__main__":
     from models.diagonalization.intertemporal.MultipleScenarios.MPEC_MS import MPECModel
@@ -50,15 +71,6 @@ if __name__ == "__main__":
     print(f"Costs values: {costs_df.iloc[0].to_dict()}")
 
     # Solve ED once and use first time-step dispatch as initial condition for MPEC ramps.
-    print("\n=== Solving Economic Dispatch For P_init ===")
-    ed_model = EconomicDispatchModel(scenarios_df, costs_df, ramps_df)
-    ed_model.solve()
-    dispatches = ed_model.get_dispatches()
-    if dispatches is None:
-        raise RuntimeError("Economic dispatch did not return dispatch values. Cannot build P_init.")
-
-    p_init = [list(dispatches[s][0]) for s in range(len(dispatches))]
-    print(f"P_init built with shape: ({len(p_init)}, {len(p_init[0]) if p_init else 0})")
 
     feature_builder = FeatureBuilder(TEST_CASE, DEFAULT_FEATURES)
     feature_matrix_by_player = feature_builder.build_intertemporal_feature_matrix_by_player_from_frames(
@@ -69,15 +81,18 @@ if __name__ == "__main__":
         fit_normalizer=True,
     )
 
+    P_init = compute_p_init_from_ed(scenarios_df, costs_df, ramps_df)
+
     mpec_model = MPECModel(
         scenarios_df,
         costs_df,
         ramps_df,
         players_config,
-        p_init=p_init,
+        p_init=P_init,
         feature_matrix_by_player=feature_matrix_by_player,
+        NN_nodes=4,  # Must be an even number to have equal positive and negative parts
     )
-    
+
     # Build model for strategic player 0
     print("Building model for strategic player 0...")
     mpec_model.build_model(0)
@@ -102,7 +117,5 @@ if __name__ == "__main__":
     # Update bid scenarios with optimal values
     print("\n=== Updating Bid Scenarios ===")
     scenarios_df = mpec_model.update_bids_with_optimal_values(scenarios_df)
-    
-    mpec_model.print_players_summary()
 
     stop = True

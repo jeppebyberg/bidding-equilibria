@@ -1,3 +1,5 @@
+from pyexpat import model
+
 from pyomo.environ import *
 from typing import List, Any, Optional
 import pandas as pd
@@ -187,11 +189,11 @@ class EconomicDispatchModel:
         model.time_steps = Set(initialize=range(self.num_time_steps))
         model.time_steps_minus_1 = Set(initialize=range(1, self.num_time_steps))
         model.generators = Set(initialize=range(self.num_generators))
-        model.P = Var(model.scenarios, model.time_steps, model.generators, domain=Reals)
+        model.P = Var(model.generators, model.time_steps, model.scenarios, domain=Reals)
 
         model.objective = Objective(
             expr= 1 / self.num_scenarios * sum(
-                self.bid_scenarios[s][t][g] * model.P[s, t, g]
+                self.bid_scenarios[s][t][g] * model.P[g, t, s]
                 for s in model.scenarios
                 for t in model.time_steps
                 for g in model.generators
@@ -199,34 +201,35 @@ class EconomicDispatchModel:
             sense=minimize
         )
 
-        def power_balance_rule(m, s, t):
-            return self.demand_scenarios[s][t] - sum(m.P[s, t, g] for g in m.generators) == 0
-        model.power_balance = Constraint(model.scenarios, model.time_steps, rule=power_balance_rule)
+        def power_balance_rule(m, t, s):
+            return self.demand_scenarios[s][t] - sum(m.P[i, t, s] for i in m.generators) == 0
+        
+        def gen_max_rule(m, i, t, s):
+            return m.P[i, t, s] - self.pmax_scenarios[s][t][i] <= 0
+        
+        def gen_min_rule(m, i, t, s):
+            return - m.P[i, t, s] + self.pmin_scenarios[s][t][i] <= 0
 
-        def gen_max_rule(m, s, t, g):
-            return m.P[s, t, g] - self.pmax_scenarios[s][t][g] <= 0
-        model.gen_max = Constraint(model.scenarios, model.time_steps, model.generators, rule=gen_max_rule)
+        def ramp_up_rule(m, i, t, s):
+            return m.P[i, t, s] - m.P[i, t - 1, s] - self.ramp_vector_up[i] <= 0
 
-        def gen_min_rule(m, s, t, g):
-            return - m.P[s, t, g] + self.pmin_scenarios[s][t][g] <= 0
-        model.gen_min = Constraint(model.scenarios, model.time_steps, model.generators, rule=gen_min_rule)
+        def ramp_down_rule(m, i, t, s):
+            return - m.P[i, t, s] + m.P[i, t - 1, s] - self.ramp_vector_down[i] <= 0
 
-        def ramp_up_rule(m, s, t, g):
-            return m.P[s, t, g] - m.P[s, t - 1, g] - self.ramp_vector_up[g] <= 0
+        def ramp_up_initial_rule(m, i, s):
+            return m.P[i, 0, s] - self.P_init[s][i] - self.ramp_vector_up[i] <= 0
 
-        def ramp_down_rule(m, s, t, g):
-            return - m.P[s, t, g] + m.P[s, t - 1, g] - self.ramp_vector_down[g] <= 0
+        def ramp_down_initial_rule(m, i, s):
+            return - m.P[i, 0, s] + self.P_init[s][i] - self.ramp_vector_down[i] <= 0
 
-        def ramp_up_initial_rule(m, s, g):
-            return m.P[s, 0, g] - self.P_init[s][g] - self.ramp_vector_up[g] <= 0
-
-        def ramp_down_initial_rule(m, s, g):
-            return - m.P[s, 0, g] + self.P_init[s][g] - self.ramp_vector_down[g] <= 0
-
-        model.ramp_up = Constraint(model.scenarios, model.time_steps_minus_1, model.generators, rule=ramp_up_rule)
-        model.ramp_down = Constraint(model.scenarios, model.time_steps_minus_1, model.generators, rule=ramp_down_rule)
-        model.ramp_up_initial = Constraint(model.scenarios, model.generators, rule=ramp_up_initial_rule)
-        model.ramp_down_initial = Constraint(model.scenarios, model.generators, rule=ramp_down_initial_rule)
+        model.power_balance = Constraint(model.time_steps, model.scenarios, rule=power_balance_rule)
+        model.gen_max = Constraint(model.generators, model.time_steps, model.scenarios, rule=gen_max_rule)
+        model.gen_min = Constraint(model.generators, model.time_steps, model.scenarios, rule=gen_min_rule)
+        
+        model.ramp_up = Constraint(model.generators, model.time_steps_minus_1, model.scenarios, rule=ramp_up_rule)
+        model.ramp_down = Constraint(model.generators, model.time_steps_minus_1, model.scenarios, rule=ramp_down_rule)
+        model.ramp_up_initial = Constraint(model.generators, model.scenarios, rule=ramp_up_initial_rule)
+        model.ramp_down_initial = Constraint(model.generators, model.scenarios, rule=ramp_down_initial_rule)
 
         # Attach suffix to capture duals
         model.dual = Suffix(direction=Suffix.IMPORT)
@@ -242,9 +245,9 @@ class EconomicDispatchModel:
                 scenario_prices = []
                 for t in range(self.num_time_steps):
                     scenario_dispatch.append(
-                        [model.P[s, t, g].value for g in range(self.num_generators)]
+                        [model.P[i, t, s].value for i in range(self.num_generators)]
                     )
-                    scenario_prices.append(-model.dual[model.power_balance[s, t]] * self.num_scenarios)
+                    scenario_prices.append(-model.dual[model.power_balance[t, s]] * self.num_scenarios)
 
                 self.dispatches.append(
                     scenario_dispatch
@@ -274,9 +277,9 @@ class EconomicDispatchModel:
         all_profits = []
         for s in range(self.num_scenarios):
             profits = []
-            for g in range(self.num_generators):
+            for i in range(self.num_generators):
                 profit_g = sum(
-                    (self.clearing_prices[s][t] - self.cost_vector[g]) * self.dispatches[s][t][g]
+                    (self.clearing_prices[s][t] - self.cost_vector[i]) * self.dispatches[s][t][i]
                     for t in range(self.num_time_steps)
                 )
                 profits.append(float(profit_g))

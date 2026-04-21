@@ -20,7 +20,8 @@ class BestResponseAlgorithmMS:
                  ramps_df,
                  players_config, 
                  feature_matrix_by_player,
-                 features
+                 features,
+                 NN_nodes=None,
                  ):
         """
         Initialize the best response algorithm
@@ -75,6 +76,7 @@ class BestResponseAlgorithmMS:
             players_config=self.players_config,
             p_init=self.P_init,
             feature_matrix_by_player=self.feature_matrix_by_player,
+            NN_nodes=NN_nodes
         )
         
         #[i] = iteration index, [s] = scenario index, [player_idx] = player index, [g] = generator index, [t] = time step index
@@ -619,8 +621,11 @@ if __name__ == "__main__":
 
     features = fb.features  # List of feature names in the order they appear in the feature vectors for each generator
 
+    ### THIS SHOULD BE PUT ELSEWHERE IN THE FUTURE, BUT FOR NOW IT'S CONVENIENT TO HAVE IT HERE FOR TESTING PURPOSES.
+    NN_nodes = 4  # Number of nodes for the neural network policy (if used). Set to None to disable NN and use linear policy instead.
+
     # Create and run algorithm
-    algo = BestResponseAlgorithmMS(scenarios_df, costs_df, ramps_df, players_config, feature_matrix_by_player, features)
+    algo = BestResponseAlgorithmMS(scenarios_df, costs_df, ramps_df, players_config, feature_matrix_by_player, features, NN_nodes=NN_nodes)
     start = time.perf_counter()
     algo.run()
     end = time.perf_counter()

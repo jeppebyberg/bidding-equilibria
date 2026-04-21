@@ -282,35 +282,35 @@ class MPECModel:
         Function to build the primal variables for the upper-level problem. 
         """
         #Bid variable for the strategic player(s)
-        self.model.alpha = Var(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, domain=Reals)
+        self.model.alpha = Var(self.model.strategic_index, self.model.time_steps, self.model.n_scenarios, domain=Reals)
 
     def _build_lower_level_primal_variables(self) -> None:
         """
         Function to build the primal variables for the lower-level problem. 
         """
         #Production variable for each generator in each scenario
-        self.model.P = Var(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, domain=NonNegativeReals)
+        self.model.P = Var(self.model.n_gen, self.model.time_steps, self.model.n_scenarios, domain=NonNegativeReals)
 
     def _build_lower_level_dual_variables(self) -> None:
         """
         Function to build the dual variables for the lower-level problem. 
         """
         #Dual variables for the market clearing problem (one per scenario)
-        self.model.lambda_var = Var(self.model.n_scenarios, self.model.time_steps, domain=Reals)
-        self.model.mu_upper_bound = Var(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, domain=NonNegativeReals)  # Upper bound duals
-        self.model.mu_lower_bound = Var(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, domain=NonNegativeReals)  # Lower bound duals
-        self.model.mu_ramp_up = Var(self.model.n_scenarios, self.model.time_steps_plus_1, self.model.n_gen, domain=NonNegativeReals)  # Ramp up duals
-        self.model.mu_ramp_down = Var(self.model.n_scenarios, self.model.time_steps_plus_1, self.model.n_gen, domain=NonNegativeReals)  # Ramp down duals
+        self.model.lambda_var = Var(self.model.time_steps, self.model.n_scenarios, domain=Reals)
+        self.model.mu_upper_bound = Var(self.model.n_gen, self.model.time_steps, self.model.n_scenarios, domain=NonNegativeReals)  # Upper bound duals
+        self.model.mu_lower_bound = Var(self.model.n_gen, self.model.time_steps, self.model.n_scenarios, domain=NonNegativeReals)  # Lower bound duals
+        self.model.mu_ramp_up = Var(self.model.n_gen, self.model.time_steps_plus_1, self.model.n_scenarios, domain=NonNegativeReals)  # Ramp up duals
+        self.model.mu_ramp_down = Var(self.model.n_gen, self.model.time_steps_plus_1, self.model.n_scenarios, domain=NonNegativeReals)  # Ramp down duals
 
     def _build_complementarity_variables(self) -> None:
         """
         Function to build the complementarity variables for the MPEC model. 
         """
         #Complementarity variables for the upper and lower bounds (one per generator per scenario)
-        self.model.z_upper_bound = Var(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, domain=Binary)
-        self.model.z_lower_bound = Var(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, domain=Binary)
-        self.model.z_ramp_up = Var(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, domain=Binary)
-        self.model.z_ramp_down = Var(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, domain=Binary)
+        self.model.z_upper_bound = Var(self.model.n_gen, self.model.time_steps, self.model.n_scenarios, domain=Binary)
+        self.model.z_lower_bound = Var(self.model.n_gen, self.model.time_steps, self.model.n_scenarios, domain=Binary)
+        self.model.z_ramp_up = Var(self.model.n_gen, self.model.time_steps, self.model.n_scenarios, domain=Binary)
+        self.model.z_ramp_down = Var(self.model.n_gen, self.model.time_steps, self.model.n_scenarios, domain=Binary)
 
     def _build_policy_variables(self) -> None:
         """
@@ -320,15 +320,35 @@ class MPECModel:
         if self.NN_nodes is None:
             self.model.theta = Var(self.model.strategic_index, self.model.n_features, domain=Reals)
         else:
+            if self.NN_nodes % 2 != 0:
+                raise ValueError("NN_nodes must be an even number to have equal positive and negative parts")
+            half = self.NN_nodes // 2            
+            
             self.model.NN_nodes = Set(initialize=range(self.NN_nodes))
-            self.model.feature_to_neuron = Var(self.model.strategic_index, self.model.n_features, self.model.NN_nodes, domain=Reals)
+            
+            self.model.N_pos = Set(initialize=range(half))
+            self.model.N_neg = Set(initialize=range(half, self.NN_nodes))
+
+            self.model.feature_to_neuron = Var(self.model.strategic_index, self.model.NN_nodes, self.model.n_features, domain=Reals)
             self.model.feature_bias = Var(self.model.strategic_index, self.model.NN_nodes, domain=Reals)
-            self.model.neuron_output = Var(self.model.strategic_index, self.model.NN_nodes, domain=Reals)
             self.model.bias_to_output = Var(self.model.strategic_index, domain=Reals)
 
-            self.model.neural_network_translation = Var(self.model.NN_nodes, self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, domain=Reals)
-            self.model.neural_network_output = Var(self.model.NN_nodes, self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, domain=NonNegativeReals)
-            self.model.neural_network_activation = Var(self.model.NN_nodes, self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, domain=Binary)
+            self.model.neural_network_translation = Var(self.model.strategic_index, self.model.time_steps, self.model.n_scenarios, self.model.NN_nodes, domain=Reals)
+            self.model.neural_network_output = Var(self.model.strategic_index, self.model.time_steps, self.model.n_scenarios, self.model.NN_nodes, domain=NonNegativeReals)
+            self.model.neural_network_activation = Var(self.model.strategic_index, self.model.time_steps, self.model.n_scenarios, self.model.NN_nodes, domain=Binary)
+
+            def neuron_output_init(m, n, i):
+                if n < self.NN_nodes // 2:
+                    return 1
+                else:
+                    return -1
+
+            self.model.neuron_to_output = Param(
+                self.model.strategic_index,
+                self.model.NN_nodes,
+                initialize=neuron_output_init,  # dict or function
+                within=Reals
+            )
 
     def _build_bid_seperation_variables(self) -> None:
         """
@@ -336,7 +356,7 @@ class MPECModel:
         """
         
         #Binary bid separation variables for strategic players vs competitors
-        self.model.tau = Var(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, self.model.non_strategic_index, domain=Binary)
+        self.model.tau = Var(self.model.strategic_index, self.model.non_strategic_index, self.model.time_steps, self.model.n_scenarios, domain=Binary)
 
     def _build_objective(self) -> None:
         """
@@ -349,35 +369,35 @@ class MPECModel:
                                          1 / self.num_scenarios * 
                                          sum(
                                             sum(
-                                                self.model.lambda_var[s, t] * self.demand_scenarios[s][t]  
+                                                self.model.lambda_var[t, s] * self.demand_scenarios[s][t]  
                                                     + sum(
-                                                          -self.bid_scenarios[s][t][i] * self.model.P[s, t, i] 
+                                                          -self.bid_scenarios[s][t][i] * self.model.P[i, t, s] 
                                                           for i in self.model.non_strategic_index) 
-                                                    + sum(-self.model.mu_upper_bound[s, t, i] * self.pmax_scenarios[s][t][i]
-                                                          +self.model.mu_upper_bound[s, t, i] * self.pmin_scenarios[s][t][i]
-                                                          -self.model.mu_ramp_up[s, t, i]     * self.ramp_vector_up[i]
-                                                          -self.model.mu_ramp_down[s, t, i]   * self.ramp_vector_down[i]
+                                                    + sum(-self.model.mu_upper_bound[i, t, s] * self.pmax_scenarios[s][t][i]
+                                                          +self.model.mu_upper_bound[i, t, s] * self.pmin_scenarios[s][t][i]
+                                                          -self.model.mu_ramp_up[i, t, s]     * self.ramp_vector_up[i]
+                                                          -self.model.mu_ramp_down[i, t, s]   * self.ramp_vector_down[i]
                                                           for i in self.model.n_gen)
                                                 for t in self.model.time_steps)
                                                 # Initial conditions for ramp constraints (t=0)
                                                 + sum(
-                                                    -self.model.mu_ramp_up[s, 0, i]   * self.P_init[s][i]
-                                                    +self.model.mu_ramp_down[s, 0, i] * self.P_init[s][i]
+                                                    -self.model.mu_ramp_up[i, 0, s]   * self.P_init[s][i]
+                                                    +self.model.mu_ramp_down[i, 0, s] * self.P_init[s][i]
                                                     for i in self.model.n_gen)
                                           + sum(
                                                 sum(
-                                                    self.model.mu_upper_bound[s, t, i] * self.pmax_scenarios[s][t][i]
-                                                   -self.model.mu_lower_bound[s, t, i] * self.pmin_scenarios[s][t][i]
+                                                    self.model.mu_upper_bound[i, t, s] * self.pmax_scenarios[s][t][i]
+                                                   -self.model.mu_lower_bound[i, t, s] * self.pmin_scenarios[s][t][i]
                                                     for i in self.model.strategic_index)
                                                 for t in self.model.time_steps)
-                                          + sum(self.model.mu_ramp_up[s, 0, i]   * (self.P_init[s][i] + self.ramp_vector_up[i])
-                                               -self.model.mu_ramp_down[s, 0, i] * (self.P_init[s][i] - self.ramp_vector_down[i])
-                                                +sum(self.model.mu_ramp_up[s, t, i]   * self.ramp_vector_up[i]
-                                                    +self.model.mu_ramp_down[s, t, i] * self.ramp_vector_down[i]
+                                          + sum(self.model.mu_ramp_up[i, 0, s]   * (self.P_init[s][i] + self.ramp_vector_up[i])
+                                               -self.model.mu_ramp_down[i, 0, s] * (self.P_init[s][i] - self.ramp_vector_down[i])
+                                                +sum(self.model.mu_ramp_up[i, t, s]   * self.ramp_vector_up[i]
+                                                    +self.model.mu_ramp_down[i, t, s] * self.ramp_vector_down[i]
                                                      for t in range(1, self.num_time_steps))
                                                 for i in self.model.strategic_index)   
                                          + sum(
-                                               sum(self.cost_vector[i] * self.model.P[s, t, i]
+                                               sum(self.cost_vector[i] * self.model.P[i, t, s]
                                                    for i in self.model.strategic_index) 
                                                for t in self.model.time_steps)
                                              for s in self.model.n_scenarios)
@@ -400,17 +420,17 @@ class MPECModel:
         """
         Function to build the upper-level constraints for the MPEC model. 
         """
-        def min_bid_rule(model, s, t, i): 
-            return model.alpha[s, t, i] >= self.alpha_min
+        def min_bid_rule(model, i, t, s): 
+            return model.alpha[i, t, s] >= self.alpha_min
         
-        def max_bid_rule(model, s, t, i):
-            return model.alpha[s, t, i] <= self.alpha_max
+        def max_bid_rule(model, i, t, s):
+            return model.alpha[i, t, s] <= self.alpha_max
         
-        def tmp_rule(model, s, t, i):
-            return model.alpha[s, t, i] == self.cost_vector[i] * 3
+        def tmp_rule(model, i, t, s):
+            return model.alpha[i, t, s] == self.cost_vector[i] 
 
-        self.model.min_bid_constraint = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=min_bid_rule)
-        self.model.max_bid_constraint = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=max_bid_rule)
+        self.model.min_bid_constraint = Constraint(self.model.strategic_index, self.model.time_steps, self.model.n_scenarios, rule=min_bid_rule)
+        self.model.max_bid_constraint = Constraint(self.model.strategic_index, self.model.time_steps, self.model.n_scenarios, rule=max_bid_rule)
 
         # self.model.tmp_rule = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=tmp_rule)
 
@@ -419,55 +439,55 @@ class MPECModel:
         Function to build the lower-level constraints for the MPEC model. 
         """
 
-        def power_balance_rule(m, s, t):
-            return sum(m.P[s, t, i] for i in m.n_gen) - self.demand_scenarios[s][t] == 0
+        def power_balance_rule(m, t, s):
+            return sum(m.P[i, t, s] for i in m.n_gen) - self.demand_scenarios[s][t] == 0
         
-        def generation_upper_rule(m, s, t, i):
-            return m.P[s, t, i] - self.pmax_scenarios[s][t][i] <= 0 
+        def generation_upper_rule(m, i, t, s):
+            return m.P[i, t, s] - self.pmax_scenarios[s][t][i] <= 0 
 
-        def generation_lower_rule(m, s, t, i):
-            return -m.P[s, t, i] + self.pmin_scenarios[s][t][i] <= 0
+        def generation_lower_rule(m, i, t, s):
+            return -m.P[i, t, s] + self.pmin_scenarios[s][t][i] <= 0
         
-        def ramp_up_rule(m, s, t, i):
-            return m.P[s, t, i] - m.P[s, t-1, i] - self.ramp_vector_up[i] <= 0
+        def ramp_up_rule(m, i, t, s):
+            return m.P[i, t, s] - m.P[i, t-1, s] - self.ramp_vector_up[i] <= 0
         
-        def ramp_up_initial_rule(m, s, i):
-            return m.P[s, 0, i] - self.P_init[s][i] - self.ramp_vector_up[i] <= 0
+        def ramp_up_initial_rule(m, i, s):
+            return m.P[i, 0, s] - self.P_init[s][i] - self.ramp_vector_up[i] <= 0
         
-        def ramp_down_rule(m, s, t, i):
-            return -m.P[s, t, i] + m.P[s, t-1, i] - self.ramp_vector_down[i] <= 0
+        def ramp_down_rule(m, i, t, s):
+            return -m.P[i, t, s] + m.P[i, t-1, s] - self.ramp_vector_down[i] <= 0
 
-        def ramp_down_initial_rule(m, s, i):
-            return - m.P[s, 0, i] + self.P_init[s][i] - self.ramp_vector_down[i] <= 0
+        def ramp_down_initial_rule(m, i, s):
+            return - m.P[i, 0, s] + self.P_init[s][i] - self.ramp_vector_down[i] <= 0
 
-        self.model.power_balance_constraint = Constraint(self.model.n_scenarios, self.model.time_steps, rule=power_balance_rule)
-        self.model.generation_upper_bound_constraints = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, rule=generation_upper_rule)
-        self.model.generation_lower_bound_constraints = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, rule=generation_lower_rule)
-        self.model.ramp_up_constraints = Constraint(self.model.n_scenarios, self.model.time_steps_minus_1, self.model.n_gen, rule=ramp_up_rule)
-        self.model.ramp_down_constraints = Constraint(self.model.n_scenarios, self.model.time_steps_minus_1, self.model.n_gen, rule=ramp_down_rule)
-        self.model.ramp_up_initial_feasibility_constraints = Constraint(self.model.n_scenarios, self.model.n_gen, rule=ramp_up_initial_rule)
-        self.model.ramp_down_initial_feasibility_constraints = Constraint(self.model.n_scenarios, self.model.n_gen, rule=ramp_down_initial_rule)
+        self.model.power_balance_constraint = Constraint(self.model.time_steps, self.model.n_scenarios, rule=power_balance_rule)
+        self.model.generation_upper_bound_constraints = Constraint(self.model.n_gen, self.model.time_steps, self.model.n_scenarios, rule=generation_upper_rule)
+        self.model.generation_lower_bound_constraints = Constraint(self.model.n_gen, self.model.time_steps, self.model.n_scenarios, rule=generation_lower_rule)
+        self.model.ramp_up_constraints = Constraint(self.model.n_gen, self.model.time_steps_minus_1, self.model.n_scenarios, rule=ramp_up_rule)
+        self.model.ramp_down_constraints = Constraint(self.model.n_gen, self.model.time_steps_minus_1, self.model.n_scenarios, rule=ramp_down_rule)
+        self.model.ramp_up_initial_feasibility_constraints = Constraint(self.model.n_gen, self.model.n_scenarios, rule=ramp_up_initial_rule)
+        self.model.ramp_down_initial_feasibility_constraints = Constraint(self.model.n_gen, self.model.n_scenarios, rule=ramp_down_initial_rule)
 
     def _build_KKT_stationarity_constraints(self) -> None:
         """
         Function to build the KKT stationarity constraints for the MPEC model. 
         """
-        def stationarity_rule_strategic_agent(m, s, t, i):
-            return m.alpha[s, t, i] - m.lambda_var[s, t] + m.mu_upper_bound[s, t, i] - m.mu_lower_bound[s, t, i] + m.mu_ramp_up[s, t, i] - m.mu_ramp_up[s, t+1, i] - m.mu_ramp_down[s, t, i] + m.mu_ramp_down[s, t+1, i] == 0
+        def stationarity_rule_strategic_agent(m, i, t, s):
+            return m.alpha[i, t, s] - m.lambda_var[t, s] + m.mu_upper_bound[i, t, s] - m.mu_lower_bound[i, t, s] + m.mu_ramp_up[i, t, s] - m.mu_ramp_up[i, t+1, s] - m.mu_ramp_down[i, t, s] + m.mu_ramp_down[i, t+1, s] == 0
 
-        def stationarity_rule_non_strategic_agents(m, s, t, i):
-            return self.bid_scenarios[s][t][i] - m.lambda_var[s, t] + m.mu_upper_bound[s, t, i] - m.mu_lower_bound[s, t, i] + m.mu_ramp_up[s, t, i] - m.mu_ramp_up[s, t+1, i] - m.mu_ramp_down[s, t, i] + m.mu_ramp_down[s, t+1, i] == 0
+        def stationarity_rule_non_strategic_agents(m, i, t, s):
+            return self.bid_scenarios[s][t][i] - m.lambda_var[t, s] + m.mu_upper_bound[i, t, s] - m.mu_lower_bound[i, t, s] + m.mu_ramp_up[i, t, s] - m.mu_ramp_up[i, t+1, s] - m.mu_ramp_down[i, t, s] + m.mu_ramp_down[i, t+1, s] == 0
 
-        def final_ramp_up_dual_rule(m, s, i):
-            return m.mu_ramp_up[s, self.num_time_steps, i] == 0
+        def final_ramp_up_dual_rule(m, i, s):
+            return m.mu_ramp_up[i, self.num_time_steps, s] == 0
 
-        def final_ramp_down_dual_rule(m, s, i):
-            return m.mu_ramp_down[s, self.num_time_steps, i] == 0
+        def final_ramp_down_dual_rule(m, i, s):
+            return m.mu_ramp_down[i, self.num_time_steps, s] == 0
 
-        self.model.stationarity_constraint_strategic = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=stationarity_rule_strategic_agent)
-        self.model.stationarity_constraint_non_strategic = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.non_strategic_index, rule=stationarity_rule_non_strategic_agents)
-        self.model.final_ramp_up_dual_constraint = Constraint(self.model.n_scenarios, self.model.n_gen, rule=final_ramp_up_dual_rule)
-        self.model.final_ramp_down_dual_constraint = Constraint(self.model.n_scenarios, self.model.n_gen, rule=final_ramp_down_dual_rule)
+        self.model.stationarity_constraint_strategic = Constraint(self.model.strategic_index, self.model.time_steps, self.model.n_scenarios, rule=stationarity_rule_strategic_agent)
+        self.model.stationarity_constraint_non_strategic = Constraint(self.model.non_strategic_index, self.model.time_steps, self.model.n_scenarios, rule=stationarity_rule_non_strategic_agents)
+        self.model.final_ramp_up_dual_constraint = Constraint(self.model.n_gen, self.model.n_scenarios, rule=final_ramp_up_dual_rule)
+        self.model.final_ramp_down_dual_constraint = Constraint(self.model.n_gen, self.model.n_scenarios, rule=final_ramp_down_dual_rule)
 
     def _build_KKT_complementarity_constraints(self) -> None:
         """
@@ -475,48 +495,48 @@ class MPECModel:
         """
         BigM = self.big_m_complementarity
 
-        def upper_bound_complementarity_rule(m, s, t, i):
-            return -BigM * (1 - m.z_upper_bound[s, t, i]) <= m.P[s, t, i] - self.pmax_scenarios[s][t][i]  
+        def upper_bound_complementarity_rule(m, i, t, s):
+            return -BigM * (1 - m.z_upper_bound[i, t, s]) <= m.P[i, t, s] - self.pmax_scenarios[s][t][i]  
 
-        def upper_bound_complementarity_rule_dual(m, s, t, i):
-            return m.mu_upper_bound[s, t, i] <= BigM * m.z_upper_bound[s, t, i] 
+        def upper_bound_complementarity_rule_dual(m, i, t, s):
+            return m.mu_upper_bound[i, t, s] <= BigM * m.z_upper_bound[i, t, s] 
         
-        def lower_bound_complementarity_rule(m, s, t, i):
-            return -BigM * (1 - m.z_lower_bound[s, t, i]) <= -m.P[s, t, i] + self.pmin_scenarios[s][t][i]
+        def lower_bound_complementarity_rule(m, i, t, s):
+            return -BigM * (1 - m.z_lower_bound[i, t, s]) <= -m.P[i, t, s] + self.pmin_scenarios[s][t][i]
 
-        def lower_bound_complementarity_rule_dual(m, s, t, i):
-            return m.mu_lower_bound[s, t, i] <= BigM * m.z_lower_bound[s, t, i] 
+        def lower_bound_complementarity_rule_dual(m, i, t, s):
+            return m.mu_lower_bound[i, t, s] <= BigM * m.z_lower_bound[i, t, s] 
 
-        def ramp_up_complementarity_rule(m, s, t, i):
-            return -BigM * (1 - m.z_ramp_up[s, t, i]) <= m.P[s, t, i] - m.P[s, t-1, i] - self.ramp_vector_up[i]
+        def ramp_up_complementarity_rule(m, i, t, s):
+            return -BigM * (1 - m.z_ramp_up[i, t, s]) <= m.P[i, t, s] - m.P[i, t-1, s] - self.ramp_vector_up[i]
         
-        def ramp_up_complementarity_initial_rule(m, s, i):
-            return -BigM * (1 - m.z_ramp_up[s, 0, i]) <= m.P[s, 0, i] - self.P_init[s][i] - self.ramp_vector_up[i]
+        def ramp_up_complementarity_initial_rule(m, i, s):
+            return -BigM * (1 - m.z_ramp_up[i, 0, s]) <= m.P[i, 0, s] - self.P_init[s][i] - self.ramp_vector_up[i]
 
-        def ramp_up_complementarity_rule_dual(m, s, t, i):
-            return m.mu_ramp_up[s, t, i] <= BigM * m.z_ramp_up[s, t, i]
+        def ramp_up_complementarity_rule_dual(m, i, t, s):
+            return m.mu_ramp_up[i, t, s] <= BigM * m.z_ramp_up[i, t, s]
 
-        def ramp_down_complementarity_rule(m, s, t, i):
-            return -BigM * (1 - m.z_ramp_down[s, t, i]) <= - m.P[s, t, i] + m.P[s, t-1, i] - self.ramp_vector_down[i]
+        def ramp_down_complementarity_rule(m, i, t, s):
+            return -BigM * (1 - m.z_ramp_down[i, t, s]) <= - m.P[i, t, s] + m.P[i, t-1, s] - self.ramp_vector_down[i]
 
-        def ramp_down_complementarity_initial_rule(m, s, i):
-            return -BigM * (1 - m.z_ramp_down[s, 0, i]) <= - m.P[s, 0, i] + self.P_init[s][i] - self.ramp_vector_down[i]
+        def ramp_down_complementarity_initial_rule(m, i, s):
+            return -BigM * (1 - m.z_ramp_down[i, 0, s]) <= - m.P[i, 0, s] + self.P_init[s][i] - self.ramp_vector_down[i]
 
-        def ramp_down_complementarity_rule_dual(m, s, t, i):
-            return m.mu_ramp_down[s, t, i] <= BigM * m.z_ramp_down[s, t, i]
+        def ramp_down_complementarity_rule_dual(m, i, t, s):
+            return m.mu_ramp_down[i, t, s] <= BigM * m.z_ramp_down[i, t, s]
 
-        self.model.upper_bound_complementarity_constraints = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, rule=upper_bound_complementarity_rule)
-        self.model.upper_bound_complementarity_constraints_dual = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, rule=upper_bound_complementarity_rule_dual)
-        self.model.lower_bound_complementarity_constraints = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, rule=lower_bound_complementarity_rule)
-        self.model.lower_bound_complementarity_constraints_dual = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, rule=lower_bound_complementarity_rule_dual)
+        self.model.upper_bound_complementarity_constraints = Constraint(self.model.n_gen, self.model.time_steps, self.model.n_scenarios, rule=upper_bound_complementarity_rule)
+        self.model.upper_bound_complementarity_constraints_dual = Constraint(self.model.n_gen, self.model.time_steps, self.model.n_scenarios, rule=upper_bound_complementarity_rule_dual)
+        self.model.lower_bound_complementarity_constraints = Constraint(self.model.n_gen, self.model.time_steps, self.model.n_scenarios, rule=lower_bound_complementarity_rule)
+        self.model.lower_bound_complementarity_constraints_dual = Constraint(self.model.n_gen, self.model.time_steps, self.model.n_scenarios, rule=lower_bound_complementarity_rule_dual)
 
-        self.model.ramp_up_complementarity_constraints = Constraint(self.model.n_scenarios, self.model.time_steps_minus_1, self.model.n_gen, rule=ramp_up_complementarity_rule)
-        self.model.ramp_up_complementarity_initial_constraints = Constraint(self.model.n_scenarios, self.model.n_gen, rule=ramp_up_complementarity_initial_rule)
-        self.model.ramp_up_complementarity_constraints_dual = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, rule=ramp_up_complementarity_rule_dual)
-        
-        self.model.ramp_down_complementarity_constraints = Constraint(self.model.n_scenarios, self.model.time_steps_minus_1, self.model.n_gen, rule=ramp_down_complementarity_rule)
-        self.model.ramp_down_complementarity_initial_constraints = Constraint(self.model.n_scenarios, self.model.n_gen, rule=ramp_down_complementarity_initial_rule)
-        self.model.ramp_down_complementarity_constraints_dual = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.n_gen, rule=ramp_down_complementarity_rule_dual)
+        self.model.ramp_up_complementarity_constraints = Constraint(self.model.n_gen, self.model.time_steps_minus_1, self.model.n_scenarios, rule=ramp_up_complementarity_rule)
+        self.model.ramp_up_complementarity_initial_constraints = Constraint(self.model.n_gen, self.model.n_scenarios, rule=ramp_up_complementarity_initial_rule)
+        self.model.ramp_up_complementarity_constraints_dual = Constraint(self.model.n_gen, self.model.time_steps, self.model.n_scenarios, rule=ramp_up_complementarity_rule_dual)
+
+        self.model.ramp_down_complementarity_constraints = Constraint(self.model.n_gen, self.model.time_steps_minus_1, self.model.n_scenarios, rule=ramp_down_complementarity_rule)
+        self.model.ramp_down_complementarity_initial_constraints = Constraint(self.model.n_gen, self.model.n_scenarios, rule=ramp_down_complementarity_initial_rule)
+        self.model.ramp_down_complementarity_constraints_dual = Constraint(self.model.n_gen, self.model.time_steps, self.model.n_scenarios, rule=ramp_down_complementarity_rule_dual)
 
     def _build_bid_seperation_constraints(self) -> None:
         """
@@ -525,11 +545,11 @@ class MPECModel:
         BigM = self.big_m_bid_separation
         epsilon = self.bid_separation_epsilon
 
-        def alpha_upper_seperation(m, s, t, i, k):
-            return m.alpha[s, t, i] >= self.bid_scenarios[s][t][k] + epsilon - BigM * (1 - m.tau[s, t, i, k])
+        def alpha_upper_seperation(m, i, k, t, s):
+            return m.alpha[i, t, s] >= self.bid_scenarios[s][t][k] + epsilon - BigM * (1 - m.tau[i, k, t, s])
         
-        def alpha_lower_seperation(m, s, t, i, k):
-            return m.alpha[s, t, i] <= self.bid_scenarios[s][t][k] - epsilon + BigM * m.tau[s, t, i, k]
+        def alpha_lower_seperation(m, i, k, t, s):
+            return m.alpha[i, t, s] <= self.bid_scenarios[s][t][k] - epsilon + BigM * m.tau[i, k, t, s]
 
         # self.model.alpha_upper_seperation_constraints = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, self.model.non_strategic_index, rule=alpha_upper_seperation)
         # self.model.alpha_lower_seperation_constraints = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, self.model.non_strategic_index, rule=alpha_lower_seperation)
@@ -539,28 +559,33 @@ class MPECModel:
         Function to build the policy constraints for the MPEC model. 
         """
         if self.NN_nodes is None:
-            def policy_rule(m, s, t, i):
+            def policy_rule(m, i, t, s):
                 phi = self.features[s, t, i]
-                return m.alpha[s, t, i] == sum(m.theta[i, k] * float(phi[k]) for k in m.n_features)
-            self.model.policy_constraint = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=policy_rule)
+                return m.alpha[i, t, s] == sum(m.theta[i, f] * float(phi[f]) for f in m.n_features)
+            self.model.policy_constraint = Constraint(self.model.strategic_index, self.model.time_steps, self.model.n_scenarios, rule=policy_rule)
         else:
             BigM = self.big_m_activation
-            def neural_network_translation_rule(m, s, t, i, n):
+            def translation_rule(m, i, t, s, n):
                 phi = self.features[s, t, i]
-                return self.model.neural_network_translation[n, s, t, i] == sum(m.feature_to_neuron[i, f, n] * float(phi[f]) for f in m.n_features) + m.feature_bias[i, n]
+                return self.model.neural_network_translation[i, t, s, n] == sum(m.feature_to_neuron[i, n, f] * float(phi[f]) for f in m.n_features) + m.feature_bias[i, n]
             
-            def neural_network_output(m, s, t, i, n):
-                return m.neural_network_translation[n, s, t, i] <= self.model.neural_network_output[n, s, t, i]
+            def relu_lb_rule(m, i, t, s, n):
+                return m.neural_network_translation[i, t, s, n] <= self.model.neural_network_output[i, t, s, n]
 
-            def neural_network_activation_rule(m, s, t, i, n):
-                return self.model.neural_network_output[n, s, t, i] <= m.neural_network_translation[n, s, t, i] + BigM * (1 - m.neural_network_activation[n, s, t, i])
+            def relu_ub_rule_1(m, i, t, s, n):
+                return self.model.neural_network_output[i, t, s, n] <= m.neural_network_translation[i, t, s, n] + BigM * (1 - m.neural_network_activation[i, t, s, n])
 
-            def neural_network_output_upper_bound(m, s, t, i, n):
-                return m.neural_network_output[n, s, t, i] <= BigM * m.neural_network_activation[n, s, t, i]
+            def relu_ub_rule_2(m, i, t, s, n):
+                return m.neural_network_output[i, t, s, n] <= BigM * m.neural_network_activation[i, t, s, n]
 
-            def alpha_neural_network_rule(m, s, t, i):
-                return m.alpha[s, t, i] == DEAD_END :(((
-            
+            def alpha_rule(m, i, t, s):
+                return m.alpha[i, t, s] == sum(m.neuron_to_output[i, n] * m.neural_network_output[i, t, s, n] for n in m.NN_nodes) + m.bias_to_output[i]
+
+            self.model.translation_constraints = Constraint(self.model.strategic_index, self.model.time_steps, self.model.n_scenarios, self.model.NN_nodes, rule=translation_rule)
+            self.model.relu_lb_constraints = Constraint(self.model.strategic_index, self.model.time_steps, self.model.n_scenarios, self.model.NN_nodes, rule=relu_lb_rule)
+            self.model.relu_ub_constraints = Constraint(self.model.strategic_index, self.model.time_steps, self.model.n_scenarios, self.model.NN_nodes, rule=relu_ub_rule_1)
+            self.model.relu_ub_constraints_2 = Constraint(self.model.strategic_index, self.model.time_steps, self.model.n_scenarios, self.model.NN_nodes, rule=relu_ub_rule_2)
+            self.model.alpha_constraints = Constraint(self.model.strategic_index, self.model.time_steps, self.model.n_scenarios, rule=alpha_rule)
 
     def solve(self) -> None:
         """
@@ -610,7 +635,7 @@ class MPECModel:
             for t in range(self.num_time_steps):
                 for i in strategic_indices:
                     try:
-                        alpha_value = self.model.alpha[s, t, i].value
+                        alpha_value = self.model.alpha[i, t, s].value
                         if alpha_value is not None:
                             optimal_bid_scenarios[s][t][i] = float(alpha_value)
                         else:
@@ -684,9 +709,9 @@ class MPECModel:
         for s in range(self.num_scenarios):
             profit_scenario = 0.0
             for t in range(self.num_time_steps):
-                lambda_value = self.model.lambda_var[s, t].value 
+                lambda_value = self.model.lambda_var[t, s].value 
                 for i in self.strategic_generators:
-                    dispatch = self.model.P[s, t, i].value 
+                    dispatch = self.model.P[i, t, s].value 
                     cost = self.cost_vector[i]
                     profit_scenario += (lambda_value * dispatch - cost * dispatch)
             profits.append(float(profit_scenario))

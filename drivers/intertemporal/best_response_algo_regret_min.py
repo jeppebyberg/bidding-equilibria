@@ -44,6 +44,7 @@ class BestResponseAlgorithmRegretMin:
         players_config: List[Dict[str, Any]],
         feature_matrix_by_player: Dict[int, Dict[Tuple[int, int, int], List[float]]],
         features: List[str],
+        NN_nodes: Optional[int] = None,
     ):
         """
         Parameters

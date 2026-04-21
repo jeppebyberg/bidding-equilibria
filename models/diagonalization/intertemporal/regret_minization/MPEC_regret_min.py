@@ -26,6 +26,7 @@ class MPECModel(MSMPECModel):
         p_init: Any,
         feature_matrix_by_player: Dict[int, Dict[Any, List[float]]],
         pmin_default: float = 0.0,
+        NN_nodes: Optional[int] = None,
         config_overrides: Optional[Dict[str, Any]] = None,
     ):
 
@@ -49,6 +50,7 @@ class MPECModel(MSMPECModel):
             p_init=p_init_matrix,
             feature_matrix_by_player=repeated_feature_matrix_by_player,
             pmin_default=pmin_default,
+            NN_nodes=NN_nodes,
             config_overrides=config_overrides,
         )
 
