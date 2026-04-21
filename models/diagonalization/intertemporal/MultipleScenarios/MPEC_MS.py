@@ -329,13 +329,13 @@ class MPECModel:
             self.model.N_pos = Set(initialize=range(half))
             self.model.N_neg = Set(initialize=range(half, self.NN_nodes))
 
-            self.model.feature_to_neuron = Var(self.model.strategic_index, self.model.NN_nodes, self.model.n_features, domain=Reals)
-            self.model.feature_bias = Var(self.model.strategic_index, self.model.NN_nodes, domain=Reals)
-            self.model.bias_to_output = Var(self.model.strategic_index, domain=Reals)
+            self.model.Gamma_NN = Var(self.model.strategic_index, self.model.NN_nodes, self.model.n_features, domain=Reals)
+            self.model.gamma_NN = Var(self.model.strategic_index, self.model.NN_nodes, domain=Reals)
+            self.model.beta_NN = Var(self.model.strategic_index, domain=Reals)
 
-            self.model.neural_network_translation = Var(self.model.strategic_index, self.model.time_steps, self.model.n_scenarios, self.model.NN_nodes, domain=Reals)
-            self.model.neural_network_output = Var(self.model.strategic_index, self.model.time_steps, self.model.n_scenarios, self.model.NN_nodes, domain=NonNegativeReals)
-            self.model.neural_network_activation = Var(self.model.strategic_index, self.model.time_steps, self.model.n_scenarios, self.model.NN_nodes, domain=Binary)
+            self.model.z_NN = Var(self.model.strategic_index, self.model.time_steps, self.model.n_scenarios, self.model.NN_nodes, domain=Reals)
+            self.model.y_NN = Var(self.model.strategic_index, self.model.time_steps, self.model.n_scenarios, self.model.NN_nodes, domain=NonNegativeReals)
+            self.model.delta_NN = Var(self.model.strategic_index, self.model.time_steps, self.model.n_scenarios, self.model.NN_nodes, domain=Binary)
 
             def neuron_output_init(m, n, i):
                 if n < self.NN_nodes // 2:
@@ -343,7 +343,7 @@ class MPECModel:
                 else:
                     return -1
 
-            self.model.neuron_to_output = Param(
+            self.model.Theta_NN = Param(
                 self.model.strategic_index,
                 self.model.NN_nodes,
                 initialize=neuron_output_init,  # dict or function
@@ -427,12 +427,12 @@ class MPECModel:
             return model.alpha[i, t, s] <= self.alpha_max
         
         def tmp_rule(model, i, t, s):
-            return model.alpha[i, t, s] == self.cost_vector[i] 
+            return model.alpha[i, t, s] <= 2 * self.cost_vector[i] 
 
         self.model.min_bid_constraint = Constraint(self.model.strategic_index, self.model.time_steps, self.model.n_scenarios, rule=min_bid_rule)
         self.model.max_bid_constraint = Constraint(self.model.strategic_index, self.model.time_steps, self.model.n_scenarios, rule=max_bid_rule)
 
-        # self.model.tmp_rule = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, rule=tmp_rule)
+        self.model.tmp_rule = Constraint(self.model.strategic_index, self.model.time_steps, self.model.n_scenarios, rule=tmp_rule)
 
     def _build_lower_level_constraints(self) -> None:
         """
@@ -551,8 +551,8 @@ class MPECModel:
         def alpha_lower_seperation(m, i, k, t, s):
             return m.alpha[i, t, s] <= self.bid_scenarios[s][t][k] - epsilon + BigM * m.tau[i, k, t, s]
 
-        # self.model.alpha_upper_seperation_constraints = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, self.model.non_strategic_index, rule=alpha_upper_seperation)
-        # self.model.alpha_lower_seperation_constraints = Constraint(self.model.n_scenarios, self.model.time_steps, self.model.strategic_index, self.model.non_strategic_index, rule=alpha_lower_seperation)
+        self.model.alpha_upper_seperation_constraints = Constraint(self.model.strategic_index, self.model.non_strategic_index, self.model.time_steps, self.model.n_scenarios, rule=alpha_upper_seperation)
+        self.model.alpha_lower_seperation_constraints = Constraint(self.model.strategic_index, self.model.non_strategic_index, self.model.time_steps, self.model.n_scenarios, rule=alpha_lower_seperation)
 
     def _build_policy_constraints(self) -> None:
         """
@@ -567,19 +567,19 @@ class MPECModel:
             BigM = self.big_m_activation
             def translation_rule(m, i, t, s, n):
                 phi = self.features[s, t, i]
-                return self.model.neural_network_translation[i, t, s, n] == sum(m.feature_to_neuron[i, n, f] * float(phi[f]) for f in m.n_features) + m.feature_bias[i, n]
+                return m.z_NN[i, t, s, n] == sum(m.Gamma_NN[i, n, f] * float(phi[f]) for f in m.n_features) + m.gamma_NN[i, n]
             
             def relu_lb_rule(m, i, t, s, n):
-                return m.neural_network_translation[i, t, s, n] <= self.model.neural_network_output[i, t, s, n]
+                return m.z_NN[i, t, s, n] <= m.y_NN[i, t, s, n]
 
             def relu_ub_rule_1(m, i, t, s, n):
-                return self.model.neural_network_output[i, t, s, n] <= m.neural_network_translation[i, t, s, n] + BigM * (1 - m.neural_network_activation[i, t, s, n])
+                return m.y_NN[i, t, s, n] <= m.z_NN[i, t, s, n] + BigM * (1 - m.delta_NN[i, t, s, n])
 
             def relu_ub_rule_2(m, i, t, s, n):
-                return m.neural_network_output[i, t, s, n] <= BigM * m.neural_network_activation[i, t, s, n]
+                return m.y_NN[i, t, s, n] <= BigM * m.delta_NN[i, t, s, n]
 
             def alpha_rule(m, i, t, s):
-                return m.alpha[i, t, s] == sum(m.neuron_to_output[i, n] * m.neural_network_output[i, t, s, n] for n in m.NN_nodes) + m.bias_to_output[i]
+                return m.alpha[i, t, s] == sum(m.Theta_NN[i, n] * m.y_NN[i, t, s, n] for n in m.NN_nodes) + m.beta_NN[i]
 
             self.model.translation_constraints = Constraint(self.model.strategic_index, self.model.time_steps, self.model.n_scenarios, self.model.NN_nodes, rule=translation_rule)
             self.model.relu_lb_constraints = Constraint(self.model.strategic_index, self.model.time_steps, self.model.n_scenarios, self.model.NN_nodes, rule=relu_lb_rule)
@@ -657,6 +657,42 @@ class MPECModel:
             )
 
         return theta_by_generator
+
+    def get_optimal_nn_policy_weights(self) -> Dict[int, Dict[str, np.ndarray | float]]:
+        """
+        Return the solved neural-network policy parameters.
+
+        The returned structure maps each strategic generator index to:
+        - gamma: input-to-hidden weights, shape (NN_nodes, n_features)
+        - theta: hidden-layer biases, shape (NN_nodes,)
+        - Gamma: hidden-to-output weights, shape (NN_nodes,)
+        - output_bias: scalar output bias
+        """
+        required_attrs = ["Gamma_NN", "gamma_NN", "Theta_NN", "beta_NN", "NN_nodes"]
+        if self.model is None or any(not hasattr(self.model, attr) for attr in required_attrs):
+            raise ValueError("Neural-network policy variables are not available. Build and solve the NN model first.")
+
+        nn_weights: Dict[int, Dict[str, np.ndarray | float]] = {}
+        feature_indices = list(self.model.n_features)
+        neuron_indices = list(self.model.NN_nodes)
+
+        for i in self.strategic_generators:
+            Gamma = np.array(
+                [[self.model.Gamma_NN[i, n, f].value for f in feature_indices] for n in neuron_indices],
+                dtype=np.float64,
+            )
+            Theta = np.array([self.model.Theta_NN[i, n] for n in neuron_indices], dtype=np.float64)
+            gamma = np.array([self.model.gamma_NN[i, n].value for n in neuron_indices], dtype=np.float64)
+            output_bias = float(self.model.beta_NN[i].value)
+
+            nn_weights[i] = {
+                "gamma": gamma,
+                "Theta": Theta,
+                "Gamma": Gamma,
+                "output_bias": output_bias,
+            }
+
+        return nn_weights
 
     def update_bids_with_optimal_values(self, scenarios_df: pd.DataFrame) -> pd.DataFrame:
         """

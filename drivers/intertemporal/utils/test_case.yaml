@@ -10,7 +10,7 @@ test_cases:
 
     capacity:
       type: linear
-      num_scenarios: 3
+      num_scenarios: 2
       min_factor: 0.65
       max_factor: 1.0
   

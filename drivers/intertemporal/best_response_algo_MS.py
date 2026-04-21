@@ -42,6 +42,7 @@ class BestResponseAlgorithmMS:
         self.players_config = players_config
         self.feature_matrix_by_player = feature_matrix_by_player
         self.features = features
+        self.NN_nodes = NN_nodes
         
         # Extract basic data for compatibility with ED model from scenarios_df
         # Auto-detect generator names from capacity columns
@@ -86,6 +87,8 @@ class BestResponseAlgorithmMS:
         self.bid_history: List[List[List[List[float]]]] = []
         # theta_history[i][player_idx][g] — theta
         self.theta_history: List[Dict[int, Dict[int, np.ndarray]]] = []
+        # nn_policy_weights_history[i][player_idx] — NN policy weights for each solved iteration
+        self.nn_policy_weights_history: List[Dict[int, Dict[str, Any]]] = []
         # profit_history_mpec[i][player_idx] — MPEC total profit (summed across current scenarios)
         self.profit_history_mpec: List[List[float]] = []
         # profit_history_mpec_scenario[i][s][player_idx] — MPEC per-scenario profits
@@ -220,7 +223,7 @@ class BestResponseAlgorithmMS:
 
     # Per-player solve
 
-    def solve_strategic_player_problem(self, player_id: int) -> float:
+    def solve_strategic_player_problem(self, player_id: int) -> Tuple[float, List[float], Dict[int, Any]]:
         """
         Solve MPEC optimization for a strategic player
         
@@ -242,7 +245,8 @@ class BestResponseAlgorithmMS:
             ramps_df=self.ramps_df,
             p_init=self.P_init,
             players_config=self.players_config,
-            feature_matrix_by_player=self.feature_matrix_by_player
+            feature_matrix_by_player=self.feature_matrix_by_player,
+            NN_nodes=self.NN_nodes
         )
         
         self.mpec_model.build_model(player_id)
@@ -250,7 +254,10 @@ class BestResponseAlgorithmMS:
         # Solve the MPEC model
         self.mpec_model.solve()
         
-        theta = self.mpec_model.get_optimal_theta()
+        if self.NN_nodes is None:
+            policy_weights = self.mpec_model.get_optimal_theta()
+        else:
+            policy_weights = self.mpec_model.get_optimal_nn_policy_weights()
 
         # Get per-scenario profits (correctly evaluated from solved variable values)
         scenario_profits = self.mpec_model.get_scenario_profits()
@@ -258,7 +265,7 @@ class BestResponseAlgorithmMS:
         # Total profit = sum across all scenarios
         total_profit = sum(scenario_profits)
 
-        return total_profit, scenario_profits, theta
+        return total_profit, scenario_profits, policy_weights
 
     # ED validation for second convergence check
 
@@ -351,7 +358,7 @@ class BestResponseAlgorithmMS:
             
             iteration_profits_mpec: List[Optional[float]] = [None] * num_players
             iteration_profits_mpec_scenario: List[Optional[List[float]]] = [None] * num_players
-            iteration_thetas: Dict[int, Dict[int, np.ndarray]] = {}
+            iteration_policy_weights: Dict[int, Any] = {}
 
             for player_idx, player_config in enumerate(self.players_config):
                 player_id = player_config['id']
@@ -359,14 +366,14 @@ class BestResponseAlgorithmMS:
                 print(f"  Solving for player {player_id} (controls generators {controlled})...")
 
                 # Solve MPEC problem for this player 
-                total_profit, scenario_profits, theta = self.solve_strategic_player_problem(player_id)
-                
+                total_profit, scenario_profits, policy_weights = self.solve_strategic_player_problem(player_id)
+
                 # Update scenarios DataFrame with optimal bids
                 self.scenarios_df = self.mpec_model.update_bids_with_optimal_values(self.scenarios_df)
 
                 iteration_profits_mpec[player_idx] = total_profit
                 iteration_profits_mpec_scenario[player_idx] = scenario_profits
-                iteration_thetas[player_id] = theta
+                iteration_policy_weights[player_id] = policy_weights
 
                 # print(f"    Total profit for player {player_id}: {total_profit:.2f}")
                 # print(f"    Scenario profits: {[f'{p:.2f}' for p in scenario_profits]}")
@@ -381,7 +388,10 @@ class BestResponseAlgorithmMS:
                 iteration_bids.append(scenario_bid_matrix)
            
             self.bid_history.append(iteration_bids)
-            self.theta_history.append(iteration_thetas)
+            if self.NN_nodes is None:
+                self.theta_history.append(iteration_policy_weights)
+            else:
+                self.nn_policy_weights_history.append(iteration_policy_weights)
             self.profit_history_mpec.append(iteration_profits_mpec)
             self.profit_history_mpec_scenario.append(iteration_profits_mpec_scenario)
             
@@ -476,29 +486,27 @@ class BestResponseAlgorithmMS:
         """
         
         final_dispatches, final_prices, final_player_profits, final_total_player_profits = self.calculate_ED()
-        
-        # Calculate aggregate welfare for each scenario
-        scenario_welfare = [sum(final_player_profits[s]) for s in range(len(final_player_profits))]
-        
+               
         # Calculate scenario-specific bid data as [scenario][generator][time]
-        scenario_bids = []
-        for s in range(len(self.scenarios_df)):
-            missing_profile_cols = [
-                f"{gen_name}_bid_profile" for gen_name in self.generator_names
-                if f"{gen_name}_bid_profile" not in self.scenarios_df.columns
-            ]
-            if missing_profile_cols:
-                raise ValueError(f"Missing required profile columns: {missing_profile_cols}")
+        # scenario_bids = []
+        # for s in range(len(self.scenarios_df)):
+        #     scenario_bid_matrix = [
+        #         list(self.scenarios_df.at[s, f"{gen_name}_bid_profile"])
+        #         for gen_name in self.generator_names
+        #     ]
+        #     scenario_bids.append(scenario_bid_matrix)
 
-            scenario_bid_matrix = [
-                list(self.scenarios_df.at[s, f"{gen_name}_bid_profile"])
-                for gen_name in self.generator_names
-            ]
-            scenario_bids.append(scenario_bid_matrix)
+        # num_scenarios = len(final_dispatches)
+        # num_time_steps = len(final_dispatches[0]) if num_scenarios > 0 else 0
+        # num_players = len(self.players_config)
 
-        num_scenarios = len(final_dispatches)
-        num_time_steps = len(final_dispatches[0]) if num_scenarios > 0 else 0
-        num_players = len(self.players_config)
+        nn_policy_weights = None
+        use_nn_policy = getattr(self.mpec_model, "NN_nodes", None) is not None
+        if use_nn_policy:
+            try:
+                nn_policy_weights = self.mpec_model.get_optimal_nn_policy_weights()
+            except ValueError:
+                nn_policy_weights = None
 
         final_thetas = self.theta_history[-1] if self.theta_history else {}
         
@@ -506,9 +514,8 @@ class BestResponseAlgorithmMS:
             "iterations": self.iteration,
             "num_scenarios": len(final_dispatches),
             "generator_costs": self.cost_vector.copy(),
+            "features": self.features.copy(),
             "bid_history": self.bid_history,
-            "theta_history": self.theta_history,
-            "final_thetas": final_thetas,
             "profit_history_mpec": self.profit_history_mpec,
             "profit_history_mpec_scenario": self.profit_history_mpec_scenario,
             "profit_history_ed": self.profit_history_ed,
@@ -517,6 +524,16 @@ class BestResponseAlgorithmMS:
             "clearing_price_history": self.clearing_price_history,
         }
         
+        if use_nn_policy:
+            if nn_policy_weights is not None:
+                results["nn_policy_weights"] = nn_policy_weights
+            if self.nn_policy_weights_history:
+                results["nn_policy_weights_history"] = self.nn_policy_weights_history
+        else:
+            final_thetas = self.theta_history[-1] if self.theta_history else {}
+            results["theta_history"] = self.theta_history
+            results["final_thetas"] = final_thetas
+
         return results
 
     @staticmethod

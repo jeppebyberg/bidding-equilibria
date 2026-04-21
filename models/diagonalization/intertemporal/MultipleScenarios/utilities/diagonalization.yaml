@@ -1,4 +1,4 @@
 #Diagonalization algorithm configuration
 diagonalization:
-  max_iterations: 20
+  max_iterations: 5
   conv_tolerance: 1e-2

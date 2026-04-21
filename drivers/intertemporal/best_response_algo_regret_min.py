@@ -68,6 +68,7 @@ class BestResponseAlgorithmRegretMin:
         self.players_config = players_config
         self.feature_matrix_by_player = feature_matrix_by_player
         self.features = features
+        self.NN_nodes = NN_nodes
 
         # Extract basic data for compatibility with ED model from scenarios_df
         # Auto-detect generator names from capacity columns
@@ -106,6 +107,7 @@ class BestResponseAlgorithmRegretMin:
             players_config=self.players_config,
             p_init=self.P_init,
             feature_matrix_by_player=self.feature_matrix_by_player,
+            NN_nodes=self.NN_nodes,
         )
 
         # Accumulated history: list of scenario snapshots (one S-row df per iteration)
@@ -118,6 +120,8 @@ class BestResponseAlgorithmRegretMin:
         self.bid_history: List[List[List[List[float]]]] = []
         # theta_history[i][player_idx][g] — theta 
         self.theta_history: List[Dict[int, Dict[int, np.ndarray]]] = []
+        # nn_policy_weights_history[i][player_idx] — NN policy weights for each solved iteration
+        self.nn_policy_weights_history: List[Dict[int, Dict[str, Any]]] = []
         # profit_history_mpec[i][player_idx] — MPEC total profit (summed across current scenarios in regret min)
         self.profit_history_mpec: List[List[float]] = []
         # profit_history_mpec_scenario[i][s][player_idx] — MPEC per-scenario profits (across current scenarios in regret min)
@@ -280,7 +284,7 @@ class BestResponseAlgorithmRegretMin:
 
     # Per-player solve
 
-    def solve_strategic_player_problem(self, player_id: int) -> Tuple[float, List[float], Dict[int, np.ndarray]]:
+    def solve_strategic_player_problem(self, player_id: int) -> Tuple[float, List[float], Dict[int, Any]]:
         """
         Solve the regret-min MPEC for one strategic player.
 
@@ -305,11 +309,15 @@ class BestResponseAlgorithmRegretMin:
             players_config=self.players_config,
             feature_matrix_by_player=self.feature_matrix_by_player,
             p_init=self.P_init,
+            NN_nodes=self.NN_nodes,
         )
         self.mpec_model.build_model(player_id)
         self.mpec_model.solve()
 
-        theta = self.mpec_model.get_optimal_theta()
+        if self.NN_nodes is None:
+            policy_weights = self.mpec_model.get_optimal_theta()
+        else:
+            policy_weights = self.mpec_model.get_optimal_nn_policy_weights()
 
         # Profits on ALL accumulated rows
         all_profits = self.mpec_model.get_scenario_profits()
@@ -320,7 +328,7 @@ class BestResponseAlgorithmRegretMin:
 
         total_profit = sum(current_profits)
 
-        return total_profit, current_profits, theta
+        return total_profit, current_profits, policy_weights
 
     # ED validation for second convergence check
 
@@ -400,7 +408,7 @@ class BestResponseAlgorithmRegretMin:
 
             iteration_profits_mpec: List[Optional[float]] = [None] * num_players
             iteration_profits_mpec_scenario: List[Optional[List[float]]] = [None] * num_players
-            iteration_thetas: Dict[int, Dict[int, np.ndarray]] = {}
+            iteration_policy_weights: Dict[int, Any] = {}
 
             for player_idx, player_config in enumerate(self.players_config):
                 player_id = player_config['id']
@@ -408,13 +416,13 @@ class BestResponseAlgorithmRegretMin:
                 print(f"  Solving for player {player_id} (controls generators {controlled})...")
 
                 # Solve MPEC problem for this player 
-                total_profit, scenario_profits, theta = self.solve_strategic_player_problem(player_id)
+                total_profit, scenario_profits, policy_weights = self.solve_strategic_player_problem(player_id)
 
                 self.scenarios_df = self.mpec_model.update_current_base_scenario_bids(scenarios_df=self.scenarios_df, num_base_scenarios=S, controlled_generators=controlled)
 
                 iteration_profits_mpec[player_idx] = total_profit
                 iteration_profits_mpec_scenario[player_idx] = scenario_profits
-                iteration_thetas[player_id] = theta
+                iteration_policy_weights[player_id] = policy_weights
 
             # Record history
             iteration_bids = []
@@ -426,7 +434,10 @@ class BestResponseAlgorithmRegretMin:
                 iteration_bids.append(scenario_bid_matrix)
 
             self.bid_history.append(iteration_bids)
-            self.theta_history.append(iteration_thetas)
+            if self.NN_nodes is None:
+                self.theta_history.append(iteration_policy_weights)
+            else:
+                self.nn_policy_weights_history.append(iteration_policy_weights)
             self.profit_history_mpec.append(iteration_profits_mpec)
             self.profit_history_mpec_scenario.append(iteration_profits_mpec_scenario)
 
@@ -439,9 +450,9 @@ class BestResponseAlgorithmRegretMin:
                 for i, pc in enumerate(self.players_config)
             )
             print(f"  MPEC profits: {mpec_str}")
-            # Print theta for each player
-            # for pid, th in iteration_thetas.items():
-            #     print(f"  theta[P{pid}] = {np.round(th, 4)}")
+            # Print policy weights for each player if needed
+            # for pid, weights in iteration_policy_weights.items():
+            #     print(f"  policy[P{pid}] = {weights}")
 
             # Convergence checks
             if self.iteration > 0:
@@ -517,24 +528,28 @@ class BestResponseAlgorithmRegretMin:
         dispatches, prices, player_profits, total_player_profits = self.calculate_ED()
         scenario_welfare = [sum(player_profits[s]) for s in range(len(player_profits))]
 
-        scenario_bids = []
-        for s in range(self.num_base_scenarios):
-            scenario_bid_matrix = [
-                list(self.scenarios_df.at[s, f"{gen_name}_bid_profile"])
-                for gen_name in self.generator_names
-            ]
-            scenario_bids.append(scenario_bid_matrix)
+        # scenario_bids = []
+        # for s in range(self.num_base_scenarios):
+        #     scenario_bid_matrix = [
+        #         list(self.scenarios_df.at[s, f"{gen_name}_bid_profile"])
+        #         for gen_name in self.generator_names
+        #     ]
+        #     scenario_bids.append(scenario_bid_matrix)
 
-        # Collect final theta per player
-        final_thetas = self.theta_history[-1] if self.theta_history else {}
+        nn_policy_weights = None
+        use_nn_policy = getattr(self.mpec_model, "NN_nodes", None) is not None
+        if use_nn_policy:
+            try:
+                nn_policy_weights = self.mpec_model.get_optimal_nn_policy_weights()
+            except ValueError:
+                nn_policy_weights = None
 
-        return {
+        results = {
             "iterations": self.iteration,
             "num_scenarios": self.num_base_scenarios,
             "generator_costs": self.cost_vector.copy(),
+            "features": self.features.copy(),
             "bid_history": self.bid_history,
-            "theta_history": self.theta_history,
-            "final_thetas": final_thetas,
             "profit_history_mpec": self.profit_history_mpec,
             "profit_history_mpec_scenario": self.profit_history_mpec_scenario,
             "profit_history_ed": self.profit_history_ed,
@@ -542,6 +557,18 @@ class BestResponseAlgorithmRegretMin:
             "dispatch_history": self.dispatch_history,
             "clearing_price_history": self.clearing_price_history,
         }
+
+        if use_nn_policy:
+            if nn_policy_weights is not None:
+                results["nn_policy_weights"] = nn_policy_weights
+            if self.nn_policy_weights_history:
+                results["nn_policy_weights_history"] = self.nn_policy_weights_history
+        else:
+            final_thetas = self.theta_history[-1] if self.theta_history else {}
+            results["theta_history"] = self.theta_history
+            results["final_thetas"] = final_thetas
+
+        return results
     
     @staticmethod
     def _json_default_serializer(obj: Any) -> Any:
@@ -646,6 +673,9 @@ if __name__ == "__main__":
 
     features = fb.features  # List of feature names in the order they appear in the feature vectors for each generator
 
+    ### THIS SHOULD BE PUT ELSEWHERE IN THE FUTURE, BUT FOR NOW IT'S CONVENIENT TO HAVE IT HERE FOR TESTING PURPOSES.
+    NN_nodes = 4  # Number of nodes for the neural network policy (if used). Set to None to disable NN and use linear policy instead.
+
     # Run algorithm
     algo = BestResponseAlgorithmRegretMin(
         scenarios_df=scenarios_df,
@@ -653,7 +683,8 @@ if __name__ == "__main__":
         ramps_df=ramps_df,
         players_config=players_config,
         feature_matrix_by_player=feature_matrix_by_player,
-        features=features
+        features=features,
+        NN_nodes=NN_nodes
     )
     
     start = time.perf_counter()
