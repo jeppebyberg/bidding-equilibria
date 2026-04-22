@@ -12,13 +12,16 @@ class PoAOptimization:
     def __init__(
             self,
             P_init,
+            num_time_steps: int = 24,
             reference_case: str = "test_case1",
             feature_normalizer_stats_path: str = "results/feature_normalizer_stats.json",
-        big_m_complementarity: float = 1e6,
-        policy_results_path: Optional[str] = None,
-        policy_data: Optional[Dict[str, Any]] = None,
+            big_m_complementarity: float = 1e6,
+            policy_results_path: Optional[str] = None,
+            policy_data: Optional[Dict[str, Any]] = None,
     ):
         self.P_init = P_init
+        self.num_time_steps = num_time_steps
+
         self.reference_case = reference_case
         self.feature_normalizer_stats_path = Path(feature_normalizer_stats_path)
         self.big_m_complementarity = float(big_m_complementarity)
@@ -45,6 +48,27 @@ class PoAOptimization:
         elif policy_results_path is not None:
             self.get_policy_stats(policy_results_path=policy_results_path)
 
+    @staticmethod
+    def _is_wind_generator(generator: Dict[str, Any]) -> bool:
+        """Classify wind generators from the name pattern used in reference cases (e.g., W3)."""
+        name_value = str(generator.get("name", "")).strip()
+        if not name_value:
+            return False
+        return name_value[0].upper() == "W"
+
+    def _build_generator_type_sets(self) -> None:
+        """Create disjoint index sets for wind and conventional generators."""
+        self.wind_generator_ids = [
+            gen_idx
+            for gen_idx, generator in enumerate(self.generators)
+            if self._is_wind_generator(generator)
+        ]
+        self.conventional_generator_ids = [
+            gen_idx
+            for gen_idx in range(self.num_generators)
+            if gen_idx not in self.wind_generator_ids
+        ]
+
     def _load_reference_case_setup(self) -> None:
         """Load generator/time-step setup from intertemporal reference cases."""
         try:
@@ -64,7 +88,6 @@ class PoAOptimization:
             raise ValueError(f"Failed to load reference case '{self.reference_case}': {exc}") from exc
 
         self.num_generators = int(num_generators)
-        self.num_time_steps = int(time_steps)
         self.generators = generators
         self.players_config = players
         self.demand = float(demand)
@@ -73,11 +96,14 @@ class PoAOptimization:
         self.cost_vector = [float(v) for v in cost_vector]
         self.ramp_vector_up = [float(v) for v in r_rates_up_list]
         self.ramp_vector_down = [float(v) for v in r_rates_down_list]
+        self._build_generator_type_sets()
 
         self.base_case = {
             "case_name": self.reference_case,
             "num_generators": self.num_generators,
             "generators": self.generators,
+            "wind_generators": self.wind_generator_ids,
+            "conventional_generators": self.conventional_generator_ids,
             "players": self.players_config,
             "demand": self.demand,
             "pmax_list": self.pmax_list,
@@ -85,7 +111,6 @@ class PoAOptimization:
             "cost_vector": self.cost_vector,
             "ramp_vector_up": self.ramp_vector_up,
             "ramp_vector_down": self.ramp_vector_down,
-            "time_steps": self.num_time_steps,
         }
 
         if not self.validate_base_setup():
@@ -117,6 +142,8 @@ class PoAOptimization:
         
         # Define sets
         self.model.n_gen = Set(initialize=range(self.num_generators))
+        self.model.n_gen_wind = Set(initialize=self.wind_generator_ids)
+        self.model.n_gen_conventional = Set(initialize=self.conventional_generator_ids)
         self.model.time_steps = Set(initialize=range(self.num_time_steps))
         self.model.time_steps_plus_1 = Set(initialize=range(self.num_time_steps + 1)) # For ramp constraints
         self.model.time_steps_minus_1 = Set(initialize=range(1, self.num_time_steps)) 
@@ -154,120 +181,6 @@ class PoAOptimization:
                 "min": np.asarray(player_stats.get("min", []), dtype=np.float64),
                 "max": np.asarray(player_stats.get("max", []), dtype=np.float64),
             }
-
-    def modify_decision_variables_from_normalization_stats(self, t: int, gen_idx: int) -> List[Any]:
-        """
-        Convert PoA decision variables into a normalized policy feature vector.
-
-        This function applies the same min-max normalization used in policy training.
-        """
-        if self.feature_min is None or self.feature_max is None:
-            self.get_feature_normalization_stats()
-
-        if t not in self.model.time_steps:
-            raise ValueError(f"Invalid time index {t}")
-        if gen_idx not in self.model.n_gen:
-            raise ValueError(f"Invalid generator index {gen_idx}")
-
-        def _generator_to_player_id(local_gen_idx: int) -> Optional[int]:
-            for player in self.players_config:
-                if local_gen_idx in player.get("controlled_generators", []):
-                    return int(player["id"])
-            return None
-
-        def _private_feature_value(feature_name: str, local_t: int, player_id: int):
-            if feature_name == "player_cost":
-                controlled = next(
-                    p["controlled_generators"]
-                    for p in self.players_config
-                    if int(p["id"]) == int(player_id)
-                )
-                if not controlled:
-                    return 0.0
-                return float(sum(self.cost_vector[g] for g in controlled) / len(controlled))
-
-            if feature_name == "player_capacity":
-                controlled = next(
-                    p["controlled_generators"]
-                    for p in self.players_config
-                    if int(p["id"]) == int(player_id)
-                )
-                return sum(self.model.P_max[g, local_t] for g in controlled)
-
-            raise ValueError(f"Unsupported private feature '{feature_name}'")
-
-        def _raw_feature_expression(feature_name: str, local_t: int, local_gen_idx: int):
-            player_id = _generator_to_player_id(local_gen_idx)
-            wind_gen_indices = [
-                g["id"]
-                for g in self.generators
-                if str(g.get("name", "")).startswith("W")
-            ]
-
-            if feature_name == "bias":
-                return 1.0
-            if feature_name == "demand":
-                return self.model.D[local_t]
-            if feature_name == "demand_sq":
-                return self.model.D[local_t] * self.model.D[local_t]
-            if feature_name == "wind_forecast":
-                return sum(self.model.P_max[i, local_t] for i in wind_gen_indices) if wind_gen_indices else 0.0
-            if feature_name == "total_capacity":
-                return sum(self.model.P_max[i, local_t] for i in self.model.n_gen)
-
-            if feature_name in {"player_cost", "player_capacity"}:
-                if player_id is None:
-                    return 0.0
-                return _private_feature_value(feature_name, local_t, player_id)
-
-            if feature_name == "scarcity_ratio":
-                total_cap = sum(self.model.P_max[i, local_t] for i in self.model.n_gen)
-                return self.model.D[local_t] / total_cap
-
-            if feature_name == "residual_demand":
-                wind = sum(self.model.P_max[i, local_t] for i in wind_gen_indices) if wind_gen_indices else 0.0
-                return self.model.D[local_t] - wind
-
-            if feature_name in {
-                "supply_intercept",
-                "supply_slope",
-                "supply_curve",
-                "demand_tm1",
-                "wind_tm1",
-                "total_capacity_tm1",
-            }:
-                return 0.0
-
-            raise ValueError(f"Unsupported feature '{feature_name}' in PoA feature conversion")
-
-        player_id = _generator_to_player_id(gen_idx)
-        player_private = self.player_private_min_max.get(player_id, None) if player_id is not None else None
-        private_name_to_pos = {name: idx for idx, name in enumerate(self.private_feature_names)}
-
-        normalized_features: List[Any] = []
-        for f_idx, f_name in enumerate(self.feature_names):
-            raw_expr = _raw_feature_expression(f_name, t, gen_idx)
-
-            if (
-                player_private is not None
-                and f_name in private_name_to_pos
-                and private_name_to_pos[f_name] < len(player_private["min"])
-                and private_name_to_pos[f_name] < len(player_private["max"])
-            ):
-                pos = private_name_to_pos[f_name]
-                f_min = float(player_private["min"][pos])
-                f_max = float(player_private["max"][pos])
-            else:
-                f_min = float(self.feature_min[f_idx])
-                f_max = float(self.feature_max[f_idx])
-
-            denom = f_max - f_min
-            if abs(denom) <= self.normalization_epsilon:
-                normalized_features.append(1.0)
-            else:
-                normalized_features.append((raw_expr - f_min) / denom)
-
-        return normalized_features
 
     def get_policy_stats(
         self,
@@ -394,7 +307,7 @@ class PoAOptimization:
 
     def _build_optimal_variables(self) -> None:
         self.model.P_opt = Var(self.model.n_gen, self.model.time_steps, within=NonNegativeReals)  # Production levels in optimal solution
-        self.model.lambda_var_opt = Var(self.model.time_steps, domain=Reals) # Market clearing price
+        self.model.lambda_var_opt = Var(self.model.time_steps, domain=Reals) # Market clearing price 
         self.model.mu_upper_bound_opt = Var(self.model.n_gen, self.model.time_steps, domain=NonNegativeReals)  # Upper bound duals
         self.model.mu_lower_bound_opt = Var(self.model.n_gen, self.model.time_steps, domain=NonNegativeReals)  # Lower bound duals
         self.model.mu_ramp_up_opt = Var(self.model.n_gen, self.model.time_steps_plus_1, domain=NonNegativeReals)  # Ramp up duals
@@ -428,15 +341,128 @@ class PoAOptimization:
         def demand_upper_rule(m, t):
             return m.D[t] <= 150
 
-        def capacity_upper_rule(m, i, t):
+        def conventional_capacity_rule(m, i, t):
+            return m.P_max[i, t] == self.pmax_list[int(i)]
+
+        def wind_capacity_upper_rule(m, i, t):
             return m.P_max[i, t] >= 25
-        def capacity_lower_rule(m, i, t):
+        def wind_capacity_lower_rule(m, i, t):
             return m.P_max[i, t] <= 150
 
         self.model.demand_lower_bound_constraints = Constraint(self.model.time_steps, rule=demand_lower_rule)
         self.model.demand_upper_bound_constraints = Constraint(self.model.time_steps, rule=demand_upper_rule)
-        self.model.capacity_upper_bound_constraints = Constraint(self.model.n_gen, self.model.time_steps, rule=capacity_upper_rule)
-        self.model.capacity_lower_bound_constraints = Constraint(self.model.n_gen, self.model.time_steps, rule=capacity_lower_rule)
+        self.model.conventional_capacity_constraints = Constraint(self.model.n_gen_conventional, self.model.time_steps, rule=conventional_capacity_rule)
+        self.model.wind_capacity_upper_bound_constraints = Constraint(self.model.n_gen_wind, self.model.time_steps, rule=wind_capacity_upper_rule)
+        self.model.wind_capacity_lower_bound_constraints = Constraint(self.model.n_gen_wind, self.model.time_steps, rule=wind_capacity_lower_rule)
+
+    def modify_decision_variables_from_normalization_stats(self, t: int, gen_idx: int) -> List[Any]:
+        """
+        Convert PoA decision variables into a normalized policy feature vector.
+
+        This function applies the same min-max normalization used in policy training.
+        """
+        if self.feature_min is None or self.feature_max is None:
+            self.get_feature_normalization_stats()
+
+        if t not in self.model.time_steps:
+            raise ValueError(f"Invalid time index {t}")
+        if gen_idx not in self.model.n_gen:
+            raise ValueError(f"Invalid generator index {gen_idx}")
+
+        def _generator_to_player_id(local_gen_idx: int) -> Optional[int]:
+            for player in self.players_config:
+                if local_gen_idx in player.get("controlled_generators", []):
+                    return int(player["id"])
+            return None
+
+        def _private_feature_value(feature_name: str, local_t: int, player_id: int):
+            if feature_name == "player_cost":
+                controlled = next(
+                    p["controlled_generators"]
+                    for p in self.players_config
+                    if int(p["id"]) == int(player_id)
+                )
+                if not controlled:
+                    return 0.0
+                return float(sum(self.cost_vector[g] for g in controlled) / len(controlled))
+
+            if feature_name == "player_capacity":
+                controlled = next(
+                    p["controlled_generators"]
+                    for p in self.players_config
+                    if int(p["id"]) == int(player_id)
+                )
+                return sum(self.model.P_max[g, local_t] for g in controlled)
+
+            raise ValueError(f"Unsupported private feature '{feature_name}'")
+
+        def _raw_feature_expression(feature_name: str, local_t: int, local_gen_idx: int):
+            player_id = _generator_to_player_id(local_gen_idx)
+
+            if feature_name == "bias":
+                return 1.0
+            if feature_name == "demand":
+                return self.model.D[local_t]
+            if feature_name == "demand_sq":
+                return self.model.D[local_t] * self.model.D[local_t]
+            if feature_name == "wind_forecast":
+                return sum(self.model.P_max[i, local_t] for i in self.model.n_gen_wind)
+            if feature_name == "total_capacity":
+                return sum(self.model.P_max[i, local_t] for i in self.model.n_gen)
+
+            if feature_name in {"player_cost", "player_capacity"}:
+                if player_id is None:
+                    return 0.0
+                return _private_feature_value(feature_name, local_t, player_id)
+
+            if feature_name == "scarcity_ratio":
+                total_cap = sum(self.model.P_max[i, local_t] for i in self.model.n_gen)
+                return self.model.D[local_t] / total_cap
+
+            if feature_name == "residual_demand":
+                wind = sum(self.model.P_max[i, local_t] for i in self.model.n_gen_wind)
+                return self.model.D[local_t] - wind
+
+            if feature_name in {
+                "supply_intercept",
+                "supply_slope",
+                "supply_curve",
+                "demand_tm1",
+                "wind_tm1",
+                "total_capacity_tm1",
+            }:
+                return 0.0
+
+            raise ValueError(f"Unsupported feature '{feature_name}' in PoA feature conversion")
+
+        player_id = _generator_to_player_id(gen_idx)
+        player_private = self.player_private_min_max.get(player_id, None) if player_id is not None else None
+        private_name_to_pos = {name: idx for idx, name in enumerate(self.private_feature_names)}
+
+        normalized_features: List[Any] = []
+        for f_idx, f_name in enumerate(self.feature_names):
+            raw_expr = _raw_feature_expression(f_name, t, gen_idx)
+
+            if (
+                player_private is not None
+                and f_name in private_name_to_pos
+                and private_name_to_pos[f_name] < len(player_private["min"])
+                and private_name_to_pos[f_name] < len(player_private["max"])
+            ):
+                pos = private_name_to_pos[f_name]
+                f_min = float(player_private["min"][pos])
+                f_max = float(player_private["max"][pos])
+            else:
+                f_min = float(self.feature_min[f_idx])
+                f_max = float(self.feature_max[f_idx])
+
+            denom = f_max - f_min
+            if abs(denom) <= self.normalization_epsilon:
+                normalized_features.append(1.0)
+            else:
+                normalized_features.append((raw_expr - f_min) / denom)
+
+        return normalized_features
 
     def _build_policy_related_constraints(self) -> None:
         """Apply policy constraints in the same structure as the MPEC model."""
@@ -769,6 +795,25 @@ class PoAOptimization:
         self.model.cost_definition_opt = Constraint(rule=cost_opt_rule)
         self.model.PoA_constraint = Constraint(rule=PoA_rule)
 
+    def solve(self) -> None:
+        """
+        Solve the optimization model.
+        """
+
+        # Create solver
+        solver = SolverFactory("gurobi")
+
+        # Solve
+        results = solver.solve(self.model, tee=True)
+
+        # Check solver status
+        if not (results.solver.status == 'ok') and not (results.solver.termination_condition == 'optimal'):
+            print("Solver status:", results.solver.status)
+            print("Termination condition:", results.solver.termination_condition)
+            raise ValueError("Solver did not find an optimal solution")
+        else:
+            print("Solver found optimal solution with PoA =", self.model.C_eq.value / self.model.C_opt.value)
+
     def plot_demand_capacity_trajectory(
         self,
         save_path: str = "results/poa_demand_capacity_trajectory.png",
@@ -836,34 +881,17 @@ class PoAOptimization:
         else:
             plt.close(fig)
 
-    def solve(self) -> None:
-        """
-        Solve the optimization model.
-        """
-
-        # Create solver
-        solver = SolverFactory("gurobi")
-        # Helps Gurobi distinguish infeasible from unbounded when possible.
-        solver.options["DualReductions"] = 0
-
-        # Solve
-        results = solver.solve(self.model, tee=False)
-
-        # Check solver status
-        if not (results.solver.status == 'ok') and not (results.solver.termination_condition == 'optimal'):
-            print("Solver status:", results.solver.status)
-            print("Termination condition:", results.solver.termination_condition)
-            raise ValueError("Solver did not find an optimal solution")
-        else:
-            print("Solver found optimal solution with PoA =", self.model.C_eq.value / self.model.C_opt.value)
-
 if __name__ == "__main__":
     # Example usage
     example_reference_case = "test_case1"
     num_generators, *_ = load_setup_data(example_reference_case)
     P_init = np.ones(int(num_generators)) * 25
+
+    num_time_steps = 5
+
     poa_opt = PoAOptimization(
         P_init,
+        num_time_steps=num_time_steps,
         reference_case="test_case1",
         policy_results_path="results/best_response_results.json",
     )
