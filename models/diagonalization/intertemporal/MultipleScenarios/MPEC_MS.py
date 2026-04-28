@@ -596,7 +596,7 @@ class MPECModel:
         solver = SolverFactory("gurobi")
 
         # Solve
-        results = solver.solve(self.model, tee=False)
+        results = solver.solve(self.model, tee=True)
 
         # Check solver status
         if not (results.solver.status == 'ok') and not (results.solver.termination_condition == 'optimal'):

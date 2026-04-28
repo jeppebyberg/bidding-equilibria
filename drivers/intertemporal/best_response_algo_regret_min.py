@@ -614,47 +614,63 @@ if __name__ == "__main__":
     from config.intertemporal.scenarios.scenario_generator import ScenarioManager
     from config.default_loader import load_test_case_config
     from models.diagonalization.features.feature_setup import FeatureBuilder, DEFAULT_FEATURES
+    from config.intertemporal.scenarios.scenario_generator_2 import ScenarioManagerV2
 
     import time
 
     # Generate scenarios for the algorithm
     TEST_CASE  = "test_case1"
 
-    test_config = load_test_case_config(TEST_CASE)
+    scenario_manager_2 = ScenarioManagerV2(TEST_CASE)
+    players_config_2   = scenario_manager_2.get_players_config()
 
-    demand_cfg = test_config["demand"]
-    capacity_cfg = test_config["capacity"]
+    scenarios_2 = scenario_manager_2.create_scenario_set_from_regimes(regime_set="policy_training")
 
-    # Scenario generation
-    scenario_manager = ScenarioManager(TEST_CASE)
-    players_config   = scenario_manager.get_players_config()
+    print(scenarios_2['description_text'])
 
-    # Demand
-    demand_scenarios = scenario_manager.generate_demand_scenarios(
-        demand_cfg["type"],
-        num_scenarios=demand_cfg["num_scenarios"],
-        min_factor=demand_cfg["min_factor"],
-        max_factor=demand_cfg["max_factor"],
-    )
-
-    # Capacity
-    capacity_scenarios = scenario_manager.generate_capacity_scenarios(
-        capacity_cfg["type"],
-        num_scenarios=capacity_cfg["num_scenarios"],
-        min_factor=capacity_cfg["min_factor"],
-        max_factor=capacity_cfg["max_factor"],
-    )
-
-    scenarios = scenario_manager.create_scenario_set(
-        demand_scenarios=demand_scenarios,
-        capacity_scenarios=capacity_scenarios,
-    )
-    scenarios_df = scenarios["scenarios_df"]
-    costs_df     = scenarios["costs_df"]
-    ramps_df     = scenarios["ramps_df"]
+    scenarios_df_2 = scenarios_2['scenarios_df']
+    costs_df_2 = scenarios_2['costs_df']
+    ramps_df_2 = scenarios_2['ramps_df']
 
     # Generator names from the DataFrame columns
-    generator_names = [c.replace("_cap", "") for c in scenarios_df.columns if c.endswith("_cap")]
+    generator_names = [c.replace("_cap", "") for c in scenarios_df_2.columns if c.endswith("_cap")]
+
+
+    # test_config = load_test_case_config(TEST_CASE)
+
+    # demand_cfg = test_config["demand"]
+    # capacity_cfg = test_config["capacity"]
+
+    # # Scenario generation
+    # scenario_manager = ScenarioManager(TEST_CASE)
+    # players_config   = scenario_manager.get_players_config()
+
+    # # Demand
+    # demand_scenarios = scenario_manager.generate_demand_scenarios(
+    #     demand_cfg["type"],
+    #     num_scenarios=demand_cfg["num_scenarios"],
+    #     min_factor=demand_cfg["min_factor"],
+    #     max_factor=demand_cfg["max_factor"],
+    # )
+
+    # # Capacity
+    # capacity_scenarios = scenario_manager.generate_capacity_scenarios(
+    #     capacity_cfg["type"],
+    #     num_scenarios=capacity_cfg["num_scenarios"],
+    #     min_factor=capacity_cfg["min_factor"],
+    #     max_factor=capacity_cfg["max_factor"],
+    # )
+
+    # scenarios = scenario_manager.create_scenario_set(
+    #     demand_scenarios=demand_scenarios,
+    #     capacity_scenarios=capacity_scenarios,
+    # )
+    # scenarios_df = scenarios["scenarios_df"]
+    # costs_df     = scenarios["costs_df"]
+    # ramps_df     = scenarios["ramps_df"]
+
+    # # Generator names from the DataFrame columns
+    # generator_names = [c.replace("_cap", "") for c in scenarios_df.columns if c.endswith("_cap")]
 
     # Build feature vectors per player
     fb = FeatureBuilder(TEST_CASE, DEFAULT_FEATURES)
@@ -662,10 +678,10 @@ if __name__ == "__main__":
     # compute_historical_supply_curve(reference_case=TEST_CASE, plot=True)
 
     feature_matrix_by_player = fb.build_intertemporal_feature_matrix_by_player_from_frames(
-        scenarios_df=scenarios_df,
-        costs_df=costs_df,
+        scenarios_df=scenarios_df_2,
+        costs_df=costs_df_2,
         generator_names=generator_names,
-        players_config=players_config,
+        players_config=players_config_2,
         fit_normalizer=True,
     )
 
@@ -678,10 +694,10 @@ if __name__ == "__main__":
 
     # Run algorithm
     algo = BestResponseAlgorithmRegretMin(
-        scenarios_df=scenarios_df,
-        costs_df=costs_df,
-        ramps_df=ramps_df,
-        players_config=players_config,
+        scenarios_df=scenarios_df_2,
+        costs_df=costs_df_2,
+        ramps_df=ramps_df_2,
+        players_config=players_config_2,
         feature_matrix_by_player=feature_matrix_by_player,
         features=features,
         NN_nodes=NN_nodes

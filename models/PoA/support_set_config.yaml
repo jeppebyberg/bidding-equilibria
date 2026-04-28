@@ -1,0 +1,41 @@
+# Support-set configurations for PoA and DRO-PoA analyses.
+#
+# The selected mapping is passed directly as support_set_config.
+# Accepted keys:
+#   demand_reference: scalar or length-T profile for \bar{D}_t
+#   demand_min, demand_max: D bounds
+#   demand_ramp: R^D
+#   demand_budget: B^D
+#   wind_reference: scalar/profile or per-generator mapping for \bar{P}^{max}_{i,t}
+#   wind_min, wind_max: scalar or per-generator mappings for wind bounds
+#   wind_ramp: R^G
+#   wind_budget: B^W
+#
+# Generator indices for test_case1:
+#   0: G1, 1: G2, 2: W3, 3: W4, 4: W5
+
+default_support_set: test_case1_base
+
+support_sets:
+  test_case1_base:
+    description: Baseline support set for test_case1 with moderate trajectory uncertainty.
+    demand_reference: 125.0
+    demand_min: 95.0
+    demand_max: 151.0
+    demand_ramp: 25.0
+    demand_budget: 250.0
+
+    wind_reference:
+      2: 35.0
+      3: 35.0
+      4: 35.0
+    wind_min:
+      2: 20.0
+      3: 20.0
+      4: 20.0
+    wind_max:
+      2: 50.0
+      3: 50.0
+      4: 50.0
+    wind_ramp: 20.0
+    wind_budget: 300.0

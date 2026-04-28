@@ -4,56 +4,107 @@ Script to run Economic Dispatch model for multiple scenarios using ScenarioManag
 
 from models.diagonalization.intertemporal.MultipleScenarios.economic_dispatch_MS import EconomicDispatchModel
 from config.intertemporal.scenarios.scenario_generator import ScenarioManager
+from config.intertemporal.scenarios.scenario_generator_2 import ScenarioManagerV2
 import numpy as np
 
-if __name__ == "__main__":
-    # Generate multiple demand scenarios using ScenarioManager
-    manager = ScenarioManager("test_case1")
-    
-    demand_linear = manager.generate_demand_scenarios("linear", num_scenarios=10, min_factor=0.8, max_factor=1.2)
-    capacity_linear = manager.generate_capacity_scenarios("linear", num_scenarios=3, min_factor=0.7, max_factor=1.0)
+def compute_p_init_from_ed(scenarios_df, costs_df, ramps_df):
+    """Solve ED and extract first time-step dispatch as [scenario][generator]."""
+    # Use neutral initial conditions: 50% of scenario capacity for every generator, because all generators can ramp more than 50% of their capacity.
+    initial_dispatch = []
+    for _, row in scenarios_df.iterrows():
+        initial_dispatch.append([
+            0.5 * float(row[f"{gen}_cap"])
+            for gen in generator_names
+        ])
 
-    # Create scenario set with separate DataFrames
-    print("=== Creating Scenario Set ===")
-    scenarios = manager.create_scenario_set(
-        demand_scenarios=demand_linear,
-        capacity_scenarios=capacity_linear
+    ed_for_p_init = EconomicDispatchModel(
+        scenarios_df,
+        costs_df,
+        ramps_df,
+        p_init=initial_dispatch,
     )
-    
-    print(scenarios['description_text'])
-    
-    scenarios_df = scenarios['scenarios_df']
-    costs_df = scenarios['costs_df']
-    ramps_df = scenarios['ramps_df']
+    ed_for_p_init.solve()
+    dispatches = ed_for_p_init.get_dispatches()
+    if dispatches is None:
+        raise RuntimeError("Economic dispatch did not return dispatches. Cannot compute p_init.")
+    return [list(dispatches[s][0]) for s in range(len(dispatches))]
 
-    print(f"\nDataFrames created:")
-    print(f"Scenarios DataFrame columns: {list(scenarios_df.columns)}")
-    print(f"Costs values: {costs_df.iloc[0].to_dict()}")
-    print(f"Ramps values: {ramps_df.iloc[0].to_dict()}")
+if __name__ == "__main__":
+
+    # # Generate multiple demand scenarios using ScenarioManager
+    # manager = ScenarioManager("test_case1")
+    
+    # demand_linear = manager.generate_demand_scenarios("linear", num_scenarios=10, min_factor=0.8, max_factor=1.2)
+    # capacity_linear = manager.generate_capacity_scenarios("linear", num_scenarios=3, min_factor=0.7, max_factor=1.0)
+
+    # # Create scenario set with separate DataFrames
+    # print("=== Creating Scenario Set ===")
+    # scenarios = manager.create_scenario_set(
+    #     demand_scenarios=demand_linear,
+    #     capacity_scenarios=capacity_linear
+    # )
+    
+    # print(scenarios['description_text'])
+    
+    # scenarios_df = scenarios['scenarios_df']
+    # costs_df = scenarios['costs_df']
+    # ramps_df = scenarios['ramps_df']
+
+    # print(f"\nDataFrames created:")
+    # print(f"Scenarios DataFrame columns: {list(scenarios_df.columns)}")
+    # print(f"Costs values: {costs_df.iloc[0].to_dict()}")
+    # print(f"Ramps values: {ramps_df.iloc[0].to_dict()}")
+
+    # generator_names = [c.replace("_cap", "") for c in scenarios_df.columns if c.endswith("_cap")]
+
+    # P_init = compute_p_init_from_ed(scenarios_df, costs_df, ramps_df)
+
+    # stop = True
+
+    # # Run economic dispatch 
+    # print("\n" + "="*60)
+    # print("=== RUNNING ECONOMIC DISPATCH ===")
+    # print("="*60)
+
+    # # Run economic dispatch using the new DataFrame constructor
+    # ed = EconomicDispatchModel(scenarios_df, costs_df, ramps_df, p_init=P_init)
+    # ed.solve()
+    
+    # all_dispatches = ed.get_dispatches()
+    # clearing_prices = ed.get_clearing_prices()
+    # all_profits = ed.get_generator_profits()
+    
+    # # Summary statistics
+    # print("=== Summary Statistics ===\n")
+    # avg_price = np.mean(clearing_prices)
+    # min_price = np.min(clearing_prices)
+    # max_price = np.max(clearing_prices)
+    
+    # print(f"Average clearing price: ${avg_price:.2f}/MWh")
+    # print(f"Price range: ${min_price:.2f} - ${max_price:.2f}/MWh")
+
+    # stop = True
+
+    manager_2 = ScenarioManagerV2("test_case1")
+    scenarios_2 = manager_2.create_scenario_set_from_regimes(regime_set="policy_training")
+
+    print(scenarios_2['description_text'])
+
+    scenarios_df_2 = scenarios_2['scenarios_df']
+    costs_df_2 = scenarios_2['costs_df']
+    ramps_df_2 = scenarios_2['ramps_df']
+
+    generator_names = [c.replace("_cap", "") for c in scenarios_df_2.columns if c.endswith("_cap")]
+
+    P_init_2 = compute_p_init_from_ed(scenarios_df_2, costs_df_2, ramps_df_2)
 
     # Run economic dispatch 
     print("\n" + "="*60)
     print("=== RUNNING ECONOMIC DISPATCH ===")
-    print("="*60)
-    
-    # Extract basic info for display
-    demand_col = [col for col in scenarios_df.columns if any(kw in col.lower() for kw in ['demand'])][0]
-    demand_list = scenarios_df[demand_col].tolist()
-    capacity_columns = [col for col in scenarios_df.columns if col.endswith('_cap')]
-    generator_names = [col.replace('_cap', '') for col in capacity_columns]
-
-    print(f"Demand range: {min(demand_list):.1f} - {max(demand_list):.1f} MW")
-    
-    # Show costs from the costs DataFrame
-    print("Generator costs (from costs_df):")
-    for gen_name in generator_names:
-        cost_col = f"{gen_name}_cost"
-        if cost_col in costs_df.columns:
-            cost = costs_df[cost_col].iloc[0]
-            print(f"  {gen_name}: ${cost:.2f}/MWh")
+    print("="*60)   
 
     # Run economic dispatch using the new DataFrame constructor
-    ed = EconomicDispatchModel(scenarios_df, costs_df, ramps_df)
+    ed = EconomicDispatchModel(scenarios_df_2, costs_df_2, ramps_df_2, p_init=P_init_2)
     ed.solve()
     
     all_dispatches = ed.get_dispatches()
@@ -70,3 +121,19 @@ if __name__ == "__main__":
     print(f"Price range: ${min_price:.2f} - ${max_price:.2f}/MWh")
 
     stop = True
+
+    # Extract basic info for display
+    demand_col = [col for col in scenarios_df_2.columns if any(kw in col.lower() for kw in ['demand'])][0]
+    demand_list = scenarios_df_2[demand_col].tolist()
+    capacity_columns = [col for col in scenarios_df_2.columns if col.endswith('_cap')]
+    generator_names = [col.replace('_cap', '') for col in capacity_columns]
+
+    print(f"Demand range: {min(demand_list):.1f} - {max(demand_list):.1f} MW")
+    
+    # Show costs from the costs DataFrame
+    print("Generator costs (from costs_df):")
+    for gen_name in generator_names:
+        cost_col = f"{gen_name}_cost"
+        if cost_col in costs_df_2.columns:
+            cost = costs_df_2[cost_col].iloc[0]
+            print(f"  {gen_name}: ${cost:.2f}/MWh")

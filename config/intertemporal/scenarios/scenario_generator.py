@@ -950,13 +950,14 @@ if __name__ == "__main__":
     for player in players_config:
         print(f"  • Player {player['id']} controls generators: {player['controlled_generators']}")
 
-    plt.plot(scenario_df['demand_profile'][0], label='Scenario 1 Demand Profile')
-    for i in range(3, 6):
-        plt.plot(scenario_df[f'W{i}_profile'][0], label=f'Scenario 1 Wind {i} Profile')
-    for i in range(3, 6):
-        plt.plot(scenario_df[f'W{i}_profile'][1], label=f'Scenario 2 Wind {i} Profile')
-    for i in range(3, 6):
-        plt.plot(scenario_df[f'W{i}_profile'][2], label=f'Scenario 3 Wind {i} Profile')
+    for i in range(25):
+        plt.plot(scenario_df['demand_profile'][i], label='Scenario 1 Demand Profile')
+    # for i in range(3, 6):
+    #     plt.plot(scenario_df[f'W{i}_profile'][0], label=f'Scenario 1 Wind {i} Profile')
+    # for i in range(3, 6):
+    #     plt.plot(scenario_df[f'W{i}_profile'][1], label=f'Scenario 2 Wind {i} Profile')
+    # for i in range(3, 6):
+    #     plt.plot(scenario_df[f'W{i}_profile'][2], label=f'Scenario 3 Wind {i} Profile')
     plt.xlabel('Time')
     plt.ylabel('Demand')
     plt.title('Demand Scenarios')

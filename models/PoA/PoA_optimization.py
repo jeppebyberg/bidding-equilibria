@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from pyomo.environ import *
 import pandas as pd
 import json
+import yaml
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -18,6 +19,7 @@ class PoAOptimization:
             big_m_complementarity: float = 1e6,
             policy_results_path: Optional[str] = None,
             policy_data: Optional[Dict[str, Any]] = None,
+            support_set_config: Optional[Dict[str, Any]] = None,
     ):
         self.P_init = P_init
         self.num_time_steps = num_time_steps
@@ -36,12 +38,14 @@ class PoAOptimization:
         # Policy payload loaded from BR results.
         self.policy_type: Optional[str] = None  # "linear" or "nn"
         self.policy_by_generator: Dict[int, Any] = {}
+        self.support_set_config = support_set_config or {}
 
         # Load setup directly from config/intertemporal/reference_cases.yaml.
         # This keeps PoA aligned with the same reference-case source as the BR scripts.
         self._load_reference_case_setup()
 
         self.get_feature_normalization_stats()
+        self._configure_support_set_parameters()
 
         if policy_data is not None:
             self.get_policy_stats(policy_data=policy_data)
@@ -273,6 +277,126 @@ class PoAOptimization:
         self.policy_type = policy_type
         self.policy_by_generator = {int(k): v for k, v in raw_map.items()}
 
+    @staticmethod
+    def load_support_set_config(
+        config_path: str = "models/PoA/support_set_config.yaml",
+        config_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Load one named support-set configuration from YAML."""
+        path = Path(config_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Support-set config not found: {path}")
+
+        with path.open("r", encoding="utf-8") as file_handle:
+            raw_config = yaml.safe_load(file_handle) or {}
+
+        if "support_sets" not in raw_config:
+            return raw_config
+
+        support_sets = raw_config.get("support_sets")
+        if not isinstance(support_sets, dict) or not support_sets:
+            raise ValueError("'support_sets' must be a non-empty mapping")
+
+        selected_name = config_name or raw_config.get("default_support_set") or next(iter(support_sets))
+        if selected_name not in support_sets:
+            available = ", ".join(support_sets.keys())
+            raise ValueError(f"Unknown support-set config '{selected_name}'. Available: {available}")
+
+        return support_sets[selected_name] or {}
+
+    @staticmethod
+    def _as_profile(value: Any, horizon: int, name: str) -> List[float]:
+        """Expand a scalar/profile value to one float per time step."""
+        if isinstance(value, (list, tuple, np.ndarray, pd.Series)):
+            profile = [float(v) for v in value]
+        else:
+            profile = [float(value)] * horizon
+
+        if len(profile) != horizon:
+            raise ValueError(f"{name} must have length {horizon}, got {len(profile)}")
+
+        return profile
+
+    def _feature_bound(self, feature_name: str, bound: str, default: float) -> float:
+        """Read min/max feature-normalizer bounds when available."""
+        if feature_name not in self.feature_names:
+            return float(default)
+
+        feature_idx = self.feature_names.index(feature_name)
+        values = self.feature_min if bound == "min" else self.feature_max
+        if values is None or feature_idx >= len(values):
+            return float(default)
+
+        return float(values[feature_idx])
+
+    @staticmethod
+    def _per_generator_config_value(config_value: Any, gen_idx: int, default: Any) -> Any:
+        """Read either a scalar/list config value or a per-generator mapping."""
+        if isinstance(config_value, dict):
+            return config_value.get(int(gen_idx), config_value.get(str(gen_idx), default))
+
+        if config_value is None:
+            return default
+
+        return config_value
+
+    def _configure_support_set_parameters(self) -> None:
+        """Set support-set parameters, using config overrides when provided."""
+        cfg = self.support_set_config
+
+        self.support_demand_reference = self._as_profile(
+            cfg.get("demand_reference", self.demand),
+            self.num_time_steps,
+            "demand_reference",
+        )
+        wind_reference_cfg = cfg.get("wind_reference")
+        self.support_wind_reference = {
+            int(i): self._as_profile(
+                self._per_generator_config_value(wind_reference_cfg, int(i), self.pmax_list[int(i)]),
+                self.num_time_steps,
+                f"wind_reference[{int(i)}]",
+            )
+            for i in self.wind_generator_ids
+        }
+
+        demand_min_default = self._feature_bound("demand", "min", 0.8 * self.demand)
+        demand_max_default = self._feature_bound("demand", "max", 1.2 * self.demand)
+        self.support_demand_min = float(cfg.get("demand_min", demand_min_default))
+        self.support_demand_max = float(cfg.get("demand_max", demand_max_default))
+        if self.support_demand_min > self.support_demand_max:
+            raise ValueError("support_set_config demand_min cannot exceed demand_max")
+
+        demand_range = self.support_demand_max - self.support_demand_min
+        self.support_demand_ramp = float(cfg.get("demand_ramp", demand_range))
+        self.support_demand_budget = float(cfg.get("demand_budget", self.num_time_steps * demand_range))
+
+        wind_total_min_default = self._feature_bound("wind_forecast", "min", 0.5 * sum(self.pmax_list[i] for i in self.wind_generator_ids))
+        wind_total_max_default = self._feature_bound("wind_forecast", "max", sum(self.pmax_list[i] for i in self.wind_generator_ids))
+        wind_count = max(len(self.wind_generator_ids), 1)
+        wind_min_default = wind_total_min_default / wind_count
+        wind_max_default = wind_total_max_default / wind_count
+
+        wind_min_cfg = cfg.get("wind_min")
+        wind_max_cfg = cfg.get("wind_max")
+        self.support_wind_min = {
+            int(i): float(self._per_generator_config_value(wind_min_cfg, int(i), wind_min_default))
+            for i in self.wind_generator_ids
+        }
+        self.support_wind_max = {
+            int(i): float(self._per_generator_config_value(wind_max_cfg, int(i), min(self.pmax_list[int(i)], wind_max_default)))
+            for i in self.wind_generator_ids
+        }
+        for i in self.wind_generator_ids:
+            if self.support_wind_min[int(i)] > self.support_wind_max[int(i)]:
+                raise ValueError(f"support_set_config wind_min cannot exceed wind_max for generator {int(i)}")
+
+        total_wind_range = sum(
+            self.support_wind_max[int(i)] - self.support_wind_min[int(i)]
+            for i in self.wind_generator_ids
+        )
+        self.support_wind_ramp = float(cfg.get("wind_ramp", max(total_wind_range, 0.0)))
+        self.support_wind_budget = float(cfg.get("wind_budget", self.num_time_steps * max(total_wind_range, 0.0)))
+
     def _build_variables(self) -> None:
         # Decision variables needed for PoA feature conversion.
         self._build_PoA_variables()
@@ -288,6 +412,10 @@ class PoAOptimization:
         self.model.C_eq = Var(domain=Reals)
         self.model.C_opt = Var(domain=Reals)
         self.model.PoA = Var(domain=Reals)
+
+        # Auxiliary variables for support set deviations and budgets
+        self.model.D_abs_deviation = Var(self.model.time_steps, within=NonNegativeReals)
+        self.model.P_max_abs_deviation = Var(self.model.n_gen, self.model.time_steps, within=NonNegativeReals)
 
     def _build_equilibrium_variables(self) -> None:
         self.model.P_eq = Var(self.model.n_gen, self.model.time_steps, within=NonNegativeReals)  # Production levels in equilibrium
@@ -324,7 +452,7 @@ class PoAOptimization:
         self.model.objective = Objective(expr = self.model.PoA, sense=maximize)
 
     def _build_constraints(self) -> None:
-        self._build_realistic_constraints()
+        self._build_support_set()
         self._build_policy_related_constraints()
         self._build_lower_level_equilibrium_constraints()
         self._build_lower_level_optimal_constraints()
@@ -334,26 +462,87 @@ class PoAOptimization:
         self._build_KKT_complementarity_optimal_constraints()
         self._build_PoA_constraints()
 
-    def _build_realistic_constraints(self) -> None:
-        "DRO part: Constraints that ensure the model represents a realistic market setting, such as demand-supply balance, generator capacity limits, etc."
+    def _build_support_set(self) -> None:
+        """DRO support set for demand and realized generator capacities."""
+        if self.support_demand_ramp < 0:
+            raise ValueError("support_set_config demand_ramp must be non-negative")
+        if self.support_demand_budget < 0:
+            raise ValueError("support_set_config demand_budget must be non-negative")
+        if self.support_wind_ramp < 0:
+            raise ValueError("support_set_config wind_ramp must be non-negative")
+        if self.support_wind_budget < 0:
+            raise ValueError("support_set_config wind_budget must be non-negative")
+
         def demand_lower_rule(m, t):
-            return m.D[t] >= 40 
+            return m.D[t] >= self.support_demand_min
+
         def demand_upper_rule(m, t):
-            return m.D[t] <= 150
+            return m.D[t] <= self.support_demand_max
+
+        def demand_ramp_up_rule(m, t):
+            return m.D[t] - m.D[t - 1] <= self.support_demand_ramp
+
+        def demand_ramp_down_rule(m, t):
+            return m.D[t - 1] - m.D[t] <= self.support_demand_ramp
+
+        # Budget constraints 
+        def demand_abs_deviation_pos_rule(m, t):
+            return m.D_abs_deviation[t] >= m.D[t] - self.support_demand_reference[int(t)]
+
+        def demand_abs_deviation_neg_rule(m, t):
+            return m.D_abs_deviation[t] >= self.support_demand_reference[int(t)] - m.D[t]
+
+        def demand_budget_rule(m):
+            return sum(m.D_abs_deviation[t] for t in m.time_steps) <= self.support_demand_budget
+
+        self.model.demand_lower_bound_constraints = Constraint(self.model.time_steps, rule=demand_lower_rule)
+        self.model.demand_upper_bound_constraints = Constraint(self.model.time_steps, rule=demand_upper_rule)
+        self.model.demand_ramp_up_constraints = Constraint(self.model.time_steps_minus_1, rule=demand_ramp_up_rule)
+        self.model.demand_ramp_down_constraints = Constraint(self.model.time_steps_minus_1, rule=demand_ramp_down_rule)
+        self.model.demand_abs_deviation_pos_constraints = Constraint(self.model.time_steps, rule=demand_abs_deviation_pos_rule)
+        self.model.demand_abs_deviation_neg_constraints = Constraint(self.model.time_steps, rule=demand_abs_deviation_neg_rule)
+        self.model.demand_budget_constraint = Constraint(rule=demand_budget_rule)
 
         def conventional_capacity_rule(m, i, t):
             return m.P_max[i, t] == self.pmax_list[int(i)]
 
-        def wind_capacity_upper_rule(m, i, t):
-            return m.P_max[i, t] >= 25
         def wind_capacity_lower_rule(m, i, t):
-            return m.P_max[i, t] <= 150
+            return m.P_max[i, t] >= self.support_wind_min[int(i)]
 
-        self.model.demand_lower_bound_constraints = Constraint(self.model.time_steps, rule=demand_lower_rule)
-        self.model.demand_upper_bound_constraints = Constraint(self.model.time_steps, rule=demand_upper_rule)
+        def wind_capacity_upper_rule(m, i, t):
+            return m.P_max[i, t] <= self.support_wind_max[int(i)]
+
+        def wind_ramp_up_rule(m, i, t):
+            return m.P_max[i, t] - m.P_max[i, t - 1] <= self.support_wind_ramp
+
+        def wind_ramp_down_rule(m, i, t):
+            return m.P_max[i, t - 1] - m.P_max[i, t] <= self.support_wind_ramp
+
+        def capacity_reference(i: int, t: int) -> float:
+            if i in self.wind_generator_ids:
+                return self.support_wind_reference[i][t]
+            return self.pmax_list[i]
+
+        def capacity_abs_deviation_pos_rule(m, i, t):
+            return m.P_max_abs_deviation[i, t] >= m.P_max[i, t] - capacity_reference(int(i), int(t))
+
+        def capacity_abs_deviation_neg_rule(m, i, t):
+            return m.P_max_abs_deviation[i, t] >= capacity_reference(int(i), int(t)) - m.P_max[i, t]
+
+        def wind_budget_rule(m):
+            return (
+                sum(m.P_max_abs_deviation[i, t] for i in m.n_gen for t in m.time_steps)
+                <= self.support_wind_budget
+            )
+
         self.model.conventional_capacity_constraints = Constraint(self.model.n_gen_conventional, self.model.time_steps, rule=conventional_capacity_rule)
-        self.model.wind_capacity_upper_bound_constraints = Constraint(self.model.n_gen_wind, self.model.time_steps, rule=wind_capacity_upper_rule)
         self.model.wind_capacity_lower_bound_constraints = Constraint(self.model.n_gen_wind, self.model.time_steps, rule=wind_capacity_lower_rule)
+        self.model.wind_capacity_upper_bound_constraints = Constraint(self.model.n_gen_wind, self.model.time_steps, rule=wind_capacity_upper_rule)
+        self.model.wind_ramp_up_constraints = Constraint(self.model.n_gen_wind, self.model.time_steps_minus_1, rule=wind_ramp_up_rule)
+        self.model.wind_ramp_down_constraints = Constraint(self.model.n_gen_wind, self.model.time_steps_minus_1, rule=wind_ramp_down_rule)
+        self.model.capacity_abs_deviation_pos_constraints = Constraint(self.model.n_gen, self.model.time_steps, rule=capacity_abs_deviation_pos_rule)
+        self.model.capacity_abs_deviation_neg_constraints = Constraint(self.model.n_gen, self.model.time_steps, rule=capacity_abs_deviation_neg_rule)
+        self.model.wind_budget_constraint = Constraint(rule=wind_budget_rule)
 
     def modify_decision_variables_from_normalization_stats(self, t: int, gen_idx: int) -> List[Any]:
         """
@@ -887,7 +1076,7 @@ if __name__ == "__main__":
     num_generators, *_ = load_setup_data(example_reference_case)
     P_init = np.ones(int(num_generators)) * 25
 
-    num_time_steps = 5
+    num_time_steps = 24
 
     poa_opt = PoAOptimization(
         P_init,

@@ -1,0 +1,122 @@
+# default_regime_set: thesis_default
+
+regime_sets:
+  policy_training:
+    description: Regime-driven stochastic demand and wind setup.
+    seed: 42
+    wind_idiosyncratic_share: 0.1
+    enforce_dispatch_feasibility: true
+    max_draw_attempts: 500
+
+    regimes:
+      - name: normal
+        n_scenarios: 3
+        mu_D: 110.0
+        A_D: 0.125
+        rho_D: 0.85
+        sigma_D: 1.8
+        mu_W: 0.70
+        A_W: 0.15
+        peak_W: 14.0
+        rho_W: 0.80
+        sigma_W: 0.05
+        Corr: -0.25
+
+      - name: high_demand
+        n_scenarios: 3
+        mu_D: 130.0
+        A_D: 0.125
+        rho_D: 0.85
+        sigma_D: 1.8
+        mu_W: 0.70
+        A_W: 0.15
+        peak_W: 14.0
+        rho_W: 0.80
+        sigma_W: 0.05
+        Corr: -0.25
+
+      - name: normal_peak_shift_wind
+        n_scenarios: 3
+        mu_D: 110.0
+        A_D: 0.125
+        rho_D: 0.85
+        sigma_D: 1.8
+        mu_W: 0.70
+        A_W: 0.15
+        peak_W: 1.0
+        rho_W: 0.80
+        sigma_W: 0.05
+        Corr: -0.25
+
+      - name: high_demand_peak_shift_wind
+        n_scenarios: 3
+        mu_D: 130.0
+        A_D: 0.125
+        rho_D: 0.85
+        sigma_D: 1.8
+        mu_W: 0.70
+        A_W: 0.15
+        peak_W: 1.0
+        rho_W: 0.80
+        sigma_W: 0.05
+        Corr: -0.25
+
+  PoA_analysis:
+    description: Regime-driven stochastic demand and wind setup.
+    seed: 42
+    wind_idiosyncratic_share: 0.1
+    enforce_dispatch_feasibility: true
+    max_draw_attempts: 500
+
+    regimes:
+      - name: normal
+        n_scenarios: 50
+        mu_D: 110.0
+        A_D: 0.125
+        rho_D: 0.85
+        sigma_D: 1.8
+        mu_W: 0.70
+        A_W: 0.15
+        peak_W: 14.0
+        rho_W: 0.80
+        sigma_W: 0.05
+        Corr: -0.25
+
+      - name: high_demand
+        n_scenarios: 50
+        mu_D: 130.0
+        A_D: 0.125
+        rho_D: 0.85
+        sigma_D: 1.8
+        mu_W: 0.70
+        A_W: 0.15
+        peak_W: 14.0
+        rho_W: 0.80
+        sigma_W: 0.05
+        Corr: -0.25
+
+      - name: normal_peak_shift_wind
+        n_scenarios: 50
+        mu_D: 110.0
+        A_D: 0.125
+        rho_D: 0.85
+        sigma_D: 1.8
+        mu_W: 0.70
+        A_W: 0.15
+        peak_W: 1.0
+        rho_W: 0.80
+        sigma_W: 0.05
+        Corr: -0.25
+
+      - name: high_demand_peak_shift_wind
+        n_scenarios: 50
+        mu_D: 130.0
+        A_D: 0.125
+        rho_D: 0.85
+        sigma_D: 1.8
+        mu_W: 0.70
+        A_W: 0.15
+        peak_W: 1.0
+        rho_W: 0.80
+        sigma_W: 0.05
+        Corr: -0.25
