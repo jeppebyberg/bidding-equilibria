@@ -70,7 +70,7 @@ regime_sets:
 
     regimes:
       - name: normal
-        n_scenarios: 50
+        n_scenarios: 5
         mu_D: 110.0
         A_D: 0.125
         rho_D: 0.85
@@ -83,7 +83,7 @@ regime_sets:
         Corr: -0.25
 
       - name: high_demand
-        n_scenarios: 50
+        n_scenarios: 5
         mu_D: 130.0
         A_D: 0.125
         rho_D: 0.85
@@ -96,7 +96,7 @@ regime_sets:
         Corr: -0.25
 
       - name: normal_peak_shift_wind
-        n_scenarios: 50
+        n_scenarios: 5
         mu_D: 110.0
         A_D: 0.125
         rho_D: 0.85
@@ -109,7 +109,7 @@ regime_sets:
         Corr: -0.25
 
       - name: high_demand_peak_shift_wind
-        n_scenarios: 50
+        n_scenarios: 5
         mu_D: 130.0
         A_D: 0.125
         rho_D: 0.85

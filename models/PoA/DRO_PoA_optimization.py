@@ -506,7 +506,8 @@ class PoAOptimization:
     def _build_objective(self) -> None:
         self.model.objective = Objective(
             expr=sum(
-                self.model.PoA[k] - self.eta * self.model.wasserstein_distance[k]
+                self.model.PoA[k]
+                - self.eta * self.model.wasserstein_distance[k]
                 for k in self.model.scenarios
             ) / self.num_empirical_scenarios,
             sense=maximize,
@@ -1068,7 +1069,7 @@ class PoAOptimization:
 
         def cost_opt_rule(m, k):
             return m.C_opt[k] == sum(self.cost_vector[i] * m.P_opt[k, i, t] for i in m.n_gen for t in m.time_steps)
-        
+
         def PoA_rule(m, k):
             return m.C_eq[k] - m.C_opt[k] == m.PoA[k]
 
@@ -1389,7 +1390,7 @@ if __name__ == "__main__":
     num_generators, *_ = load_setup_data(example_reference_case)
     P_init = np.ones(int(num_generators)) * 25
 
-    eta_grid = [4.0, 5.0]
+    eta_grid = [4.0]
     epsilon = 1.0
 
     # Use max_scenarios_per_regime while developing; remove it for the full PoA_analysis run.
@@ -1400,8 +1401,10 @@ if __name__ == "__main__":
         reference_case=example_reference_case,
         regime_set="PoA_analysis",
         support_set_name="test_case1_base",
-        policy_results_path="results/best_response_results.json",
+        policy_results_path="results/gradient_policy_training_results.json",
         max_scenarios_per_regime=2,
-        tee=False,
+        tee=True,
     )
     print(dro_results.to_string(index=False))
+
+    stop = True

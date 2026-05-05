@@ -18,24 +18,24 @@ default_support_set: test_case1_base
 
 support_sets:
   test_case1_base:
-    description: Baseline support set for test_case1 with moderate trajectory uncertainty.
+    description: Loosened support set for test_case1 with broad trajectory uncertainty.
     demand_reference: 125.0
-    demand_min: 95.0
-    demand_max: 151.0
-    demand_ramp: 25.0
-    demand_budget: 250.0
+    demand_min: 80.0
+    demand_max: 175.0
+    demand_ramp: 95.0
+    demand_budget: 1200.0
 
     wind_reference:
       2: 35.0
       3: 35.0
       4: 35.0
     wind_min:
-      2: 20.0
-      3: 20.0
-      4: 20.0
+      2: 0.0
+      3: 0.0
+      4: 0.0
     wind_max:
       2: 50.0
       3: 50.0
       4: 50.0
-    wind_ramp: 20.0
-    wind_budget: 300.0
+    wind_ramp: 50.0
+    wind_budget: 2520.0

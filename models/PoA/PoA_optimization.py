@@ -117,25 +117,6 @@ class PoAOptimization:
             "ramp_vector_down": self.ramp_vector_down,
         }
 
-        if not self.validate_base_setup():
-            raise ValueError(f"Reference case '{self.reference_case}' failed validation checks")
-
-    def validate_base_setup(self) -> bool:
-        """Validate that the base setup is properly configured."""
-        try:
-            # Basic validation checks
-            if self.base_case['num_generators'] <= 0:
-                return False
-            if self.base_case['demand'] <= 0:
-                return False
-            total_capacity = sum(self.base_case['pmax_list'])
-            if total_capacity <= self.base_case['demand']:
-                print(f"Warning: Total capacity ({total_capacity}) is less than or equal to demand ({self.base_case['demand']})")
-            
-            return True
-        except Exception:
-            return False
-
     def _build_model(self) -> None:
         """
         Build the complete MPEC model structure.
@@ -1076,13 +1057,13 @@ if __name__ == "__main__":
     num_generators, *_ = load_setup_data(example_reference_case)
     P_init = np.ones(int(num_generators)) * 25
 
-    num_time_steps = 24
+    num_time_steps = 8
 
     poa_opt = PoAOptimization(
         P_init,
         num_time_steps=num_time_steps,
         reference_case="test_case1",
-        policy_results_path="results/best_response_results.json",
+        policy_results_path="results/gradient_policy_training_results.json",
     )
     poa_opt._build_model()
     poa_opt.solve()
