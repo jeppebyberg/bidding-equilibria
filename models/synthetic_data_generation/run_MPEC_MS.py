@@ -24,20 +24,14 @@ def compute_p_init_from_ed(scenarios_df, costs_df, ramps_df):
         return [list(dispatches[s][0]) for s in range(len(dispatches))]
 
 if __name__ == "__main__":
-    from models.diagonalization.intertemporal.MultipleScenarios.MPEC_MS import MPECModel
+    from models.synthetic_data_generation.MPEC_MS import MPECModel
     from models.diagonalization.intertemporal.MultipleScenarios.economic_dispatch_MS import EconomicDispatchModel
     from config.intertemporal.scenarios.scenario_generator_2 import ScenarioManagerV2
     from config.default_loader import load_test_case_config
-    from models.diagonalization.features.feature_setup import FeatureBuilder, DEFAULT_FEATURES
+
+    import time
 
     TEST_CASE  = "test_case1"
-
-    # test_config = load_test_case_config(TEST_CASE)
-
-    # demand_cfg = test_config["demand"]
-    # capacity_cfg = test_config["capacity"]
-
-
 
     # Scenario generation
     scenario_manager = ScenarioManagerV2(TEST_CASE)
@@ -58,15 +52,6 @@ if __name__ == "__main__":
 
     # Solve ED once and use first time-step dispatch as initial condition for MPEC ramps.
 
-    feature_builder = FeatureBuilder(TEST_CASE, DEFAULT_FEATURES)
-    feature_matrix_by_player = feature_builder.build_intertemporal_feature_matrix_by_player_from_frames(
-        scenarios_df=scenarios_df,
-        costs_df=costs_df,
-        generator_names=generator_names,
-        players_config=players_config,
-        fit_normalizer=True,
-    )
-
     P_init = compute_p_init_from_ed(scenarios_df, costs_df, ramps_df)
 
     mpec_model = MPECModel(
@@ -75,8 +60,6 @@ if __name__ == "__main__":
         ramps_df,
         players_config,
         p_init=P_init,
-        feature_matrix_by_player=feature_matrix_by_player,
-        NN_nodes=4,  # Must be an even number to have equal positive and negative parts
     )
 
     # Build model for strategic player 0
@@ -85,10 +68,14 @@ if __name__ == "__main__":
     
     # Try to solve
 
+    start = time.perf_counter()
     print("\nAttempting to solve MPEC model...")
-    mpec_model.solve()
+    mpec_model.solve(tee = False, parallel=True, max_workers=8)
     print("MPEC model solved successfully!")
+    end = time.perf_counter()
+    print(f"MPEC solve time: {end - start:.2f} seconds")
     
+
     # Update bid scenarios with optimal values
     print("\n=== Updating Bid Scenarios ===")
     scenarios_df = mpec_model.update_bids_with_optimal_values(scenarios_df)
@@ -98,7 +85,7 @@ if __name__ == "__main__":
     mpec_model.build_model(1)
 
     print("\nAttempting to solve MPEC model...")
-    mpec_model.solve()
+    mpec_model.solve(parallel=True, max_workers=8)
     print("MPEC model solved successfully!")
 
     # Update bid scenarios with optimal values

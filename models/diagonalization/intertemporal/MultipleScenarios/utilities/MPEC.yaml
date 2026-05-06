@@ -1,13 +1,13 @@
 # MPEC model configuration parameters
 mpec_config:
   # Big-M values for complementarity constraints
-  big_m_complementarity: 1000.0
+  big_m_complementarity: 1000000.0
   
   # Big-M values for bid separation constraints  
   big_m_bid_separation: 1200.0
   
   # Big-M value for activation constraints
-  big_m_activation: 10000.0
+  big_m_activation: 1000000.0
 
   # Epsilon value for bid separation constraints
   bid_separation_epsilon: 0.1
