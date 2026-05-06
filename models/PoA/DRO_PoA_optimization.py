@@ -18,7 +18,7 @@ class PoAOptimization:
             num_time_steps: int = 24,
             reference_case: str = "test_case1",
             feature_normalizer_stats_path: str = "results/feature_normalizer_stats.json",
-            big_m_complementarity: float = 1e6,
+            big_m_complementarity: float = 1e8,
             policy_results_path: Optional[str] = None,
             policy_data: Optional[Dict[str, Any]] = None,
             support_set_config: Optional[Dict[str, Any]] = None,
@@ -198,6 +198,102 @@ class PoAOptimization:
         else:
             payload = policy_data
 
+        def _canonical_policy_type(raw_policy_type: Any) -> str:
+            local_policy_type = str(raw_policy_type or "").lower()
+            if local_policy_type in {"linear", "affine"}:
+                return "linear"
+            if local_policy_type in {"nn", "one_hidden_layer_relu", "one-hidden-layer-relu"}:
+                return "nn"
+            return local_policy_type
+
+        def _controlled_generators_for_player(player_id: int) -> List[int]:
+            controlled = next(
+                (
+                    p.get("controlled_generators", [])
+                    for p in self.players_config
+                    if int(p.get("id")) == int(player_id)
+                ),
+                None,
+            )
+            if controlled is None:
+                raise ValueError(f"No player config found for policy player {player_id}")
+            return [int(g) for g in controlled]
+
+        def _flatten_gradient_nn_policy_payload(local_payload: Dict[str, Any]) -> Dict[int, Dict[str, Any]]:
+            """
+            Convert gradient_policy_training.py final_policy_params to PoA's per-generator NN schema.
+
+            Training schema per player:
+                Gamma: input weights, shape (n_owned, n_nodes, n_features)
+                gamma: hidden bias, shape (n_owned, n_nodes)
+                Theta: output weights, shape (n_owned, n_nodes)
+                rho: output bias, shape (n_owned,)
+
+            PoA schema per generator:
+                gamma: input weights, shape (n_nodes, n_features)
+                Theta: hidden bias, shape (n_nodes,)
+                Gamma: output weights, shape (n_nodes,)
+                output_bias: scalar
+            """
+            final_params = local_payload.get("final_policy_params", {})
+            if not isinstance(final_params, dict) or not final_params:
+                raise ValueError("final_policy_params must be a non-empty mapping")
+
+            per_generator: Dict[int, Dict[str, Any]] = {}
+            for player_key, raw_params in final_params.items():
+                player_id = int(player_key)
+                controlled = _controlled_generators_for_player(player_id)
+
+                input_weights = np.asarray(raw_params.get("Gamma", []), dtype=np.float64)
+                hidden_bias = np.asarray(raw_params.get("gamma", []), dtype=np.float64)
+                output_weights = np.asarray(raw_params.get("Theta", []), dtype=np.float64)
+                output_bias = np.asarray(raw_params.get("rho", []), dtype=np.float64)
+
+                if input_weights.ndim != 3:
+                    raise ValueError(
+                        f"Player {player_id}: final_policy_params.Gamma must have shape "
+                        f"(n_owned, n_nodes, n_features), got {input_weights.shape}"
+                    )
+
+                n_owned, n_nodes, n_features = input_weights.shape
+                expected_hidden_shape = (n_owned, n_nodes)
+                if hidden_bias.shape != expected_hidden_shape:
+                    raise ValueError(
+                        f"Player {player_id}: final_policy_params.gamma must have shape "
+                        f"{expected_hidden_shape}, got {hidden_bias.shape}"
+                    )
+                if output_weights.shape != expected_hidden_shape:
+                    raise ValueError(
+                        f"Player {player_id}: final_policy_params.Theta must have shape "
+                        f"{expected_hidden_shape}, got {output_weights.shape}"
+                    )
+                if output_bias.shape != (n_owned,):
+                    raise ValueError(
+                        f"Player {player_id}: final_policy_params.rho must have shape "
+                        f"({n_owned},), got {output_bias.shape}"
+                    )
+                if len(controlled) != n_owned:
+                    raise ValueError(
+                        f"Player {player_id}: policy has {n_owned} owned-generator blocks, "
+                        f"but player config controls {len(controlled)} generators"
+                    )
+
+                if n_features != len(self.feature_names):
+                    raise ValueError(
+                        f"Player {player_id}: NN feature dimension {n_features} does not match "
+                        f"loaded normalizer feature dimension {len(self.feature_names)}"
+                    )
+
+                for local_idx, gen_idx in enumerate(controlled):
+                    per_generator[int(gen_idx)] = {
+                        "gamma": input_weights[local_idx].astype(float).tolist(),
+                        "Theta": hidden_bias[local_idx].astype(float).tolist(),
+                        "Gamma": output_weights[local_idx].astype(float).tolist(),
+                        "output_bias": float(output_bias[local_idx]),
+                    }
+
+            return per_generator
+
         if (
             isinstance(payload, dict)
             and "policy_type" in payload
@@ -232,6 +328,11 @@ class PoAOptimization:
                         int(k): v for k, v in payload["nn_policy_weights"].items()
                     },
                 }
+            elif "final_policy_params" in payload and payload["final_policy_params"]:
+                extracted = {
+                    "policy_type": "nn",
+                    "policy_by_generator": _flatten_gradient_nn_policy_payload(payload),
+                }
             elif "nn_policy_weights_history" in payload and payload["nn_policy_weights_history"]:
                 latest = payload["nn_policy_weights_history"][-1]
                 per_generator: Dict[int, Any] = {}
@@ -260,12 +361,27 @@ class PoAOptimization:
         if policy_type not in {"linear", "nn"}:
             raise ValueError(f"Unsupported policy_type '{policy_type}'. Expected 'linear' or 'nn'.")
 
+        payload_features = payload.get("features", []) if isinstance(payload, dict) else []
+        if payload_features and list(payload_features) != list(self.feature_names):
+            raise ValueError(
+                "Policy feature order does not match loaded feature normalizer stats. "
+                f"Policy: {list(payload_features)}, normalizer: {self.feature_names}"
+            )
+
         raw_map = extracted.get("policy_by_generator", {})
         if not isinstance(raw_map, dict) or not raw_map:
             raise ValueError("policy_by_generator must be a non-empty dict")
 
         self.policy_type = policy_type
         self.policy_by_generator = {int(k): v for k, v in raw_map.items()}
+        if isinstance(payload, dict):
+            self.policy_metadata = {
+                "source_policy_type": payload.get("policy_type"),
+                "features": list(payload.get("features", [])),
+                "alpha_bounds": payload.get("alpha_bounds", {}),
+                "num_time_steps": payload.get("num_time_steps"),
+                "NN_nodes": payload.get("NN_nodes"),
+            }
 
     @staticmethod
     def load_support_set_config(
@@ -328,16 +444,40 @@ class PoAOptimization:
 
         return float(values[feature_idx])
 
-    @staticmethod
-    def _per_generator_config_value(config_value: Any, gen_idx: int, default: Any) -> Any:
+    def _per_generator_config_value(self, config_value: Any, gen_idx: int, default: Any) -> Any:
         """Read either a scalar/list config value or a per-generator mapping."""
         if isinstance(config_value, dict):
-            return config_value.get(int(gen_idx), config_value.get(str(gen_idx), default))
+            gen_name = self._generator_name(gen_idx)
+            lookup_keys = (int(gen_idx), str(gen_idx), gen_name, gen_name.upper(), gen_name.lower())
+            for key in lookup_keys:
+                if key in config_value:
+                    return config_value[key]
+            return default
 
         if config_value is None:
             return default
 
         return config_value
+
+    def _wind_generator_config_value(self, cfg: Dict[str, Any], field_name: str, gen_idx: int, default: Any) -> Any:
+        """Read wind support config from the grouped schema, falling back to legacy keys."""
+        grouped_cfg = cfg.get("wind_generators")
+        if isinstance(grouped_cfg, dict):
+            gen_name = self._generator_name(gen_idx)
+            lookup_keys = (int(gen_idx), str(gen_idx), gen_name, gen_name.upper(), gen_name.lower())
+            for key in lookup_keys:
+                if key not in grouped_cfg:
+                    continue
+                generator_cfg = grouped_cfg[key]
+                if isinstance(generator_cfg, dict) and field_name in generator_cfg:
+                    return generator_cfg[field_name]
+
+        legacy_key = {
+            "reference": "wind_reference",
+            "min": "wind_min",
+            "max": "wind_max",
+        }[field_name]
+        return self._per_generator_config_value(cfg.get(legacy_key), gen_idx, default)
 
     def _configure_support_set_parameters(self) -> None:
         """Set support-set parameters, using config overrides when provided."""
@@ -348,12 +488,11 @@ class PoAOptimization:
             self.num_time_steps,
             "demand_reference",
         )
-        wind_reference_cfg = cfg.get("wind_reference")
         self.support_wind_reference = {
             int(i): self._as_profile(
-                self._per_generator_config_value(wind_reference_cfg, int(i), self.pmax_list[int(i)]),
+                self._wind_generator_config_value(cfg, "reference", int(i), self.pmax_list[int(i)]),
                 self.num_time_steps,
-                f"wind_reference[{int(i)}]",
+                f"wind_generators[{self._generator_name(int(i))}].reference",
             )
             for i in self.wind_generator_ids
         }
@@ -375,14 +514,12 @@ class PoAOptimization:
         wind_min_default = wind_total_min_default / wind_count
         wind_max_default = wind_total_max_default / wind_count
 
-        wind_min_cfg = cfg.get("wind_min")
-        wind_max_cfg = cfg.get("wind_max")
         self.support_wind_min = {
-            int(i): float(self._per_generator_config_value(wind_min_cfg, int(i), wind_min_default))
+            int(i): float(self._wind_generator_config_value(cfg, "min", int(i), wind_min_default))
             for i in self.wind_generator_ids
         }
         self.support_wind_max = {
-            int(i): float(self._per_generator_config_value(wind_max_cfg, int(i), min(self.pmax_list[int(i)], wind_max_default)))
+            int(i): float(self._wind_generator_config_value(cfg, "max", int(i), min(self.pmax_list[int(i)], wind_max_default)))
             for i in self.wind_generator_ids
         }
         for i in self.wind_generator_ids:
@@ -1243,7 +1380,7 @@ class PoAOptimization:
         regime_set: str = "PoA_analysis",
         support_set_name: Optional[str] = None,
         feature_normalizer_stats_path: str = "results/feature_normalizer_stats.json",
-        big_m_complementarity: float = 1e6,
+        big_m_complementarity: float = 1e8,
         policy_results_path: Optional[str] = "results/best_response_results.json",
         policy_data: Optional[Dict[str, Any]] = None,
         solver_name: str = "gurobi",
@@ -1390,10 +1527,9 @@ if __name__ == "__main__":
     num_generators, *_ = load_setup_data(example_reference_case)
     P_init = np.ones(int(num_generators)) * 25
 
-    eta_grid = [4.0]
+    eta_grid = [0, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0]
     epsilon = 1.0
 
-    # Use max_scenarios_per_regime while developing; remove it for the full PoA_analysis run.
     dro_results = PoAOptimization.run_eta_sweep_by_regime(
         eta_values=eta_grid,
         epsilon=epsilon,
@@ -1401,9 +1537,9 @@ if __name__ == "__main__":
         reference_case=example_reference_case,
         regime_set="PoA_analysis",
         support_set_name="test_case1_base",
-        policy_results_path="results/gradient_policy_training_results.json",
-        max_scenarios_per_regime=2,
-        tee=True,
+        policy_results_path="results/gradient_policy_training_nn_results.json",
+        max_scenarios_per_regime=10,
+        tee=False,
     )
     print(dro_results.to_string(index=False))
 

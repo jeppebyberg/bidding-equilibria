@@ -35,9 +35,10 @@ class PoAOptimization:
         self.player_private_min_max: Dict[int, Dict[str, np.ndarray]] = {}
         self.normalization_epsilon = 1e-12
 
-        # Policy payload loaded from BR results.
+        # Policy payload loaded from BR/gradient-training results.
         self.policy_type: Optional[str] = None  # "linear" or "nn"
         self.policy_by_generator: Dict[int, Any] = {}
+        self.policy_metadata: Dict[str, Any] = {}
         self.support_set_config = support_set_config or {}
 
         # Load setup directly from config/intertemporal/reference_cases.yaml.
@@ -189,6 +190,102 @@ class PoAOptimization:
         else:
             payload = policy_data
 
+        def _canonical_policy_type(raw_policy_type: Any) -> str:
+            local_policy_type = str(raw_policy_type or "").lower()
+            if local_policy_type in {"linear", "affine"}:
+                return "linear"
+            if local_policy_type in {"nn", "one_hidden_layer_relu", "one-hidden-layer-relu"}:
+                return "nn"
+            return local_policy_type
+
+        def _controlled_generators_for_player(player_id: int) -> List[int]:
+            controlled = next(
+                (
+                    p.get("controlled_generators", [])
+                    for p in self.players_config
+                    if int(p.get("id")) == int(player_id)
+                ),
+                None,
+            )
+            if controlled is None:
+                raise ValueError(f"No player config found for policy player {player_id}")
+            return [int(g) for g in controlled]
+
+        def _flatten_gradient_nn_policy_payload(local_payload: Dict[str, Any]) -> Dict[int, Dict[str, Any]]:
+            """
+            Convert gradient_policy_training.py final_policy_params to PoA's per-generator NN schema.
+
+            Training schema per player:
+                Gamma: input weights, shape (n_owned, n_nodes, n_features)
+                gamma: hidden bias, shape (n_owned, n_nodes)
+                Theta: output weights, shape (n_owned, n_nodes)
+                rho: output bias, shape (n_owned,)
+
+            PoA schema per generator:
+                gamma: input weights, shape (n_nodes, n_features)
+                Theta: hidden bias, shape (n_nodes,)
+                Gamma: output weights, shape (n_nodes,)
+                output_bias: scalar
+            """
+            final_params = local_payload.get("final_policy_params", {})
+            if not isinstance(final_params, dict) or not final_params:
+                raise ValueError("final_policy_params must be a non-empty mapping")
+
+            per_generator: Dict[int, Dict[str, Any]] = {}
+            for player_key, raw_params in final_params.items():
+                player_id = int(player_key)
+                controlled = _controlled_generators_for_player(player_id)
+
+                input_weights = np.asarray(raw_params.get("Gamma", []), dtype=np.float64)
+                hidden_bias = np.asarray(raw_params.get("gamma", []), dtype=np.float64)
+                output_weights = np.asarray(raw_params.get("Theta", []), dtype=np.float64)
+                output_bias = np.asarray(raw_params.get("rho", []), dtype=np.float64)
+
+                if input_weights.ndim != 3:
+                    raise ValueError(
+                        f"Player {player_id}: final_policy_params.Gamma must have shape "
+                        f"(n_owned, n_nodes, n_features), got {input_weights.shape}"
+                    )
+
+                n_owned, n_nodes, n_features = input_weights.shape
+                expected_hidden_shape = (n_owned, n_nodes)
+                if hidden_bias.shape != expected_hidden_shape:
+                    raise ValueError(
+                        f"Player {player_id}: final_policy_params.gamma must have shape "
+                        f"{expected_hidden_shape}, got {hidden_bias.shape}"
+                    )
+                if output_weights.shape != expected_hidden_shape:
+                    raise ValueError(
+                        f"Player {player_id}: final_policy_params.Theta must have shape "
+                        f"{expected_hidden_shape}, got {output_weights.shape}"
+                    )
+                if output_bias.shape != (n_owned,):
+                    raise ValueError(
+                        f"Player {player_id}: final_policy_params.rho must have shape "
+                        f"({n_owned},), got {output_bias.shape}"
+                    )
+                if len(controlled) != n_owned:
+                    raise ValueError(
+                        f"Player {player_id}: policy has {n_owned} owned-generator blocks, "
+                        f"but player config controls {len(controlled)} generators"
+                    )
+
+                if n_features != len(self.feature_names):
+                    raise ValueError(
+                        f"Player {player_id}: NN feature dimension {n_features} does not match "
+                        f"loaded normalizer feature dimension {len(self.feature_names)}"
+                    )
+
+                for local_idx, gen_idx in enumerate(controlled):
+                    per_generator[int(gen_idx)] = {
+                        "gamma": input_weights[local_idx].astype(float).tolist(),
+                        "Theta": hidden_bias[local_idx].astype(float).tolist(),
+                        "Gamma": output_weights[local_idx].astype(float).tolist(),
+                        "output_bias": float(output_bias[local_idx]),
+                    }
+
+            return per_generator
+
         if (
             isinstance(payload, dict)
             and "policy_type" in payload
@@ -223,6 +320,11 @@ class PoAOptimization:
                         int(k): v for k, v in payload["nn_policy_weights"].items()
                     },
                 }
+            elif "final_policy_params" in payload and payload["final_policy_params"]:
+                extracted = {
+                    "policy_type": "nn",
+                    "policy_by_generator": _flatten_gradient_nn_policy_payload(payload),
+                }
             elif "nn_policy_weights_history" in payload and payload["nn_policy_weights_history"]:
                 latest = payload["nn_policy_weights_history"][-1]
                 per_generator: Dict[int, Any] = {}
@@ -247,9 +349,16 @@ class PoAOptimization:
             else:
                 raise ValueError("No supported policy payload found in policy input")
 
-        policy_type = str(extracted.get("policy_type", "")).lower()
+        policy_type = _canonical_policy_type(extracted.get("policy_type", ""))
         if policy_type not in {"linear", "nn"}:
             raise ValueError(f"Unsupported policy_type '{policy_type}'. Expected 'linear' or 'nn'.")
+
+        payload_features = payload.get("features", []) if isinstance(payload, dict) else []
+        if payload_features and list(payload_features) != list(self.feature_names):
+            raise ValueError(
+                "Policy feature order does not match loaded feature normalizer stats. "
+                f"Policy: {list(payload_features)}, normalizer: {self.feature_names}"
+            )
 
         raw_map = extracted.get("policy_by_generator", {})
         if not isinstance(raw_map, dict) or not raw_map:
@@ -257,6 +366,14 @@ class PoAOptimization:
 
         self.policy_type = policy_type
         self.policy_by_generator = {int(k): v for k, v in raw_map.items()}
+        if isinstance(payload, dict):
+            self.policy_metadata = {
+                "source_policy_type": payload.get("policy_type"),
+                "features": list(payload.get("features", [])),
+                "alpha_bounds": payload.get("alpha_bounds", {}),
+                "num_time_steps": payload.get("num_time_steps"),
+                "NN_nodes": payload.get("NN_nodes"),
+            }
 
     @staticmethod
     def load_support_set_config(
@@ -310,16 +427,46 @@ class PoAOptimization:
 
         return float(values[feature_idx])
 
-    @staticmethod
-    def _per_generator_config_value(config_value: Any, gen_idx: int, default: Any) -> Any:
+    def _generator_name(self, gen_idx: int) -> str:
+        generator = self.generators[int(gen_idx)]
+        if isinstance(generator, dict):
+            return str(generator.get("name", f"G{gen_idx}"))
+        return str(generator)
+
+    def _per_generator_config_value(self, config_value: Any, gen_idx: int, default: Any) -> Any:
         """Read either a scalar/list config value or a per-generator mapping."""
         if isinstance(config_value, dict):
-            return config_value.get(int(gen_idx), config_value.get(str(gen_idx), default))
+            gen_name = self._generator_name(gen_idx)
+            lookup_keys = (int(gen_idx), str(gen_idx), gen_name, gen_name.upper(), gen_name.lower())
+            for key in lookup_keys:
+                if key in config_value:
+                    return config_value[key]
+            return default
 
         if config_value is None:
             return default
 
         return config_value
+
+    def _wind_generator_config_value(self, cfg: Dict[str, Any], field_name: str, gen_idx: int, default: Any) -> Any:
+        """Read wind support config from the grouped schema, falling back to legacy keys."""
+        grouped_cfg = cfg.get("wind_generators")
+        if isinstance(grouped_cfg, dict):
+            gen_name = self._generator_name(gen_idx)
+            lookup_keys = (int(gen_idx), str(gen_idx), gen_name, gen_name.upper(), gen_name.lower())
+            for key in lookup_keys:
+                if key not in grouped_cfg:
+                    continue
+                generator_cfg = grouped_cfg[key]
+                if isinstance(generator_cfg, dict) and field_name in generator_cfg:
+                    return generator_cfg[field_name]
+
+        legacy_key = {
+            "reference": "wind_reference",
+            "min": "wind_min",
+            "max": "wind_max",
+        }[field_name]
+        return self._per_generator_config_value(cfg.get(legacy_key), gen_idx, default)
 
     def _configure_support_set_parameters(self) -> None:
         """Set support-set parameters, using config overrides when provided."""
@@ -330,12 +477,11 @@ class PoAOptimization:
             self.num_time_steps,
             "demand_reference",
         )
-        wind_reference_cfg = cfg.get("wind_reference")
         self.support_wind_reference = {
             int(i): self._as_profile(
-                self._per_generator_config_value(wind_reference_cfg, int(i), self.pmax_list[int(i)]),
+                self._wind_generator_config_value(cfg, "reference", int(i), self.pmax_list[int(i)]),
                 self.num_time_steps,
-                f"wind_reference[{int(i)}]",
+                f"wind_generators[{self._generator_name(int(i))}].reference",
             )
             for i in self.wind_generator_ids
         }
@@ -357,14 +503,12 @@ class PoAOptimization:
         wind_min_default = wind_total_min_default / wind_count
         wind_max_default = wind_total_max_default / wind_count
 
-        wind_min_cfg = cfg.get("wind_min")
-        wind_max_cfg = cfg.get("wind_max")
         self.support_wind_min = {
-            int(i): float(self._per_generator_config_value(wind_min_cfg, int(i), wind_min_default))
+            int(i): float(self._wind_generator_config_value(cfg, "min", int(i), wind_min_default))
             for i in self.wind_generator_ids
         }
         self.support_wind_max = {
-            int(i): float(self._per_generator_config_value(wind_max_cfg, int(i), min(self.pmax_list[int(i)], wind_max_default)))
+            int(i): float(self._wind_generator_config_value(cfg, "max", int(i), min(self.pmax_list[int(i)], wind_max_default)))
             for i in self.wind_generator_ids
         }
         for i in self.wind_generator_ids:
@@ -379,9 +523,7 @@ class PoAOptimization:
         self.support_wind_budget = float(cfg.get("wind_budget", self.num_time_steps * max(total_wind_range, 0.0)))
 
     def _build_variables(self) -> None:
-        # Decision variables needed for PoA feature conversion.
         self._build_PoA_variables()
-        # Additional blocks can be enabled as PoA formulation is completed.
         self._build_equilibrium_variables()
         self._build_complementarity_equilibrium_variables()
         self._build_optimal_variables()
@@ -972,9 +1114,9 @@ class PoAOptimization:
 
         # Create solver
         solver = SolverFactory("gurobi")
-
-        # Solve
+         
         results = solver.solve(self.model, tee=True)
+        self.solver_results = results
 
         # Check solver status
         if not (results.solver.status == 'ok') and not (results.solver.termination_condition == 'optimal'):
@@ -983,6 +1125,226 @@ class PoAOptimization:
             raise ValueError("Solver did not find an optimal solution")
         else:
             print("Solver found optimal solution with PoA =", self.model.C_eq.value / self.model.C_opt.value)
+
+    def _safe_value(self, expr: Any) -> Optional[float]:
+        raw_value = value(expr, exception=False)
+        if raw_value is None:
+            return None
+        return float(raw_value)
+
+    def _series_values(self, var: Any, first_index: Optional[int] = None) -> List[Optional[float]]:
+        values: List[Optional[float]] = []
+        for t in self.model.time_steps:
+            if first_index is None:
+                values.append(self._safe_value(var[t]))
+            else:
+                values.append(self._safe_value(var[first_index, t]))
+        return values
+
+    def extract_results(self) -> Dict[str, Any]:
+        """Extract solved PoA trajectories in a JSON-friendly structure."""
+        if not hasattr(self, "model"):
+            raise ValueError("Model is not built. Call _build_model() first.")
+
+        generator_names = [self._generator_name(i) for i in range(self.num_generators)]
+        time_steps = [int(t) for t in self.model.time_steps]
+
+        demand_profile = self._series_values(self.model.D)
+        eq_price_profile = self._series_values(self.model.lambda_var_eq)
+        opt_price_profile = self._series_values(self.model.lambda_var_opt)
+
+        generators: Dict[str, Dict[str, Any]] = {}
+        for i in self.model.n_gen:
+            gen_idx = int(i)
+            gen_name = self._generator_name(gen_idx)
+            generators[gen_name] = {
+                "index": gen_idx,
+                "cost": float(self.cost_vector[gen_idx]),
+                "is_wind": gen_idx in self.wind_generator_ids,
+                "capacity": self._series_values(self.model.P_max, gen_idx),
+                "policy_bid": self._series_values(self.model.alpha, gen_idx),
+                "equilibrium_dispatch": self._series_values(self.model.P_eq, gen_idx),
+                "optimal_dispatch": self._series_values(self.model.P_opt, gen_idx),
+            }
+
+        support_set = {
+            "demand": {
+                "reference": list(self.support_demand_reference),
+                "min": float(self.support_demand_min),
+                "max": float(self.support_demand_max),
+                "ramp": float(self.support_demand_ramp),
+                "budget": float(self.support_demand_budget),
+            },
+            "wind": {
+                self._generator_name(i): {
+                    "reference": list(self.support_wind_reference[int(i)]),
+                    "min": float(self.support_wind_min[int(i)]),
+                    "max": float(self.support_wind_max[int(i)]),
+                }
+                for i in self.wind_generator_ids
+            },
+            "wind_ramp": float(self.support_wind_ramp),
+            "wind_budget": float(self.support_wind_budget),
+        }
+
+        objective = {
+            "PoA": self._safe_value(self.model.PoA),
+            "C_eq": self._safe_value(self.model.C_eq),
+            "C_opt": self._safe_value(self.model.C_opt),
+        }
+        if objective["C_eq"] is not None and objective["C_opt"] not in (None, 0.0):
+            objective["C_eq_over_C_opt"] = objective["C_eq"] / objective["C_opt"]
+
+        solver_summary: Dict[str, Any] = {}
+        if hasattr(self, "solver_results"):
+            solver_summary = {
+                "status": str(self.solver_results.solver.status),
+                "termination_condition": str(self.solver_results.solver.termination_condition),
+            }
+
+        return {
+            "reference_case": self.reference_case,
+            "num_time_steps": self.num_time_steps,
+            "time_steps": time_steps,
+            "generator_names": generator_names,
+            "generator_costs": [float(v) for v in self.cost_vector],
+            "wind_generator_names": [self._generator_name(i) for i in self.wind_generator_ids],
+            "conventional_generator_names": [self._generator_name(i) for i in self.conventional_generator_ids],
+            "features": list(self.feature_names),
+            "policy_type": self.policy_type,
+            "policy_metadata": dict(self.policy_metadata),
+            "objective": objective,
+            "solver": solver_summary,
+            "support_set": support_set,
+            "demand_profile": demand_profile,
+            "equilibrium_price_profile": eq_price_profile,
+            "optimal_price_profile": opt_price_profile,
+            "generators": generators,
+        }
+
+    def save_results(self, output_path: str = "results/poa_optimization_results.json") -> Path:
+        """Save extracted PoA results to JSON."""
+        results = self.extract_results()
+        path = Path(output_path)
+        if path.suffix and path.suffix.lower() != ".json":
+            raise ValueError("output_path must end with .json or have no extension")
+        if not path.suffix:
+            path = path.with_suffix(".json")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as file_handle:
+            json.dump(results, file_handle, indent=2)
+        return path
+
+    def plot_generator_result_trajectories(
+        self,
+        output_dir: str = "results_viz/figures/poa_optimization",
+        show: bool = False,
+    ) -> None:
+        """Plot PoA trajectories in a gradient-policy-style stacked figure."""
+        results = self.extract_results()
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        time_axis = np.asarray(results["time_steps"], dtype=int)
+        demand = np.asarray(results["demand_profile"], dtype=float)
+        eq_price = np.asarray(results["equilibrium_price_profile"], dtype=float)
+        opt_price = np.asarray(results["optimal_price_profile"], dtype=float)
+
+        print("\n=== PoA Optimization Visualization ===")
+        print(f"Reference case: {results['reference_case']}")
+        print(f"PoA: {results['objective'].get('PoA')}")
+        print(f"Generators: {', '.join(results['generator_names'])}")
+
+        for gen_name, gen_results in results["generators"].items():
+            capacity = np.asarray(gen_results["capacity"], dtype=float)
+            bid = np.asarray(gen_results["policy_bid"], dtype=float)
+            cost_bid = np.full_like(time_axis, float(gen_results["cost"]), dtype=float)
+            eq_dispatch = np.asarray(gen_results["equilibrium_dispatch"], dtype=float)
+            opt_dispatch = np.asarray(gen_results["optimal_dispatch"], dtype=float)
+
+            fig, axes = plt.subplots(5, 1, figsize=(11, 12), sharex=True)
+            fig.suptitle(f"PoA Worst-Case Trajectory - {gen_name}", fontsize=14)
+
+            axes[0].plot(time_axis, demand, color="tab:blue", marker="o", linewidth=2.0)
+            axes[0].set_ylabel("Demand")
+            axes[0].set_title("Demand Trajectory")
+            axes[0].grid(True, alpha=0.3)
+
+            axes[1].plot(time_axis, capacity, color="tab:green", marker="o", linewidth=2.0)
+            axes[1].set_ylabel("MW")
+            axes[1].set_title(f"{gen_name} Available Capacity")
+            axes[1].grid(True, alpha=0.3)
+
+            axes[2].plot(time_axis, bid, color="tab:orange", marker="o", linewidth=2.0, label="Policy bid")
+            axes[2].plot(
+                time_axis,
+                eq_price,
+                color="tab:red",
+                marker="s",
+                linewidth=1.8,
+                linestyle="--",
+                label="Equilibrium price",
+            )
+            axes[2].set_ylabel("Price / Bid")
+            axes[2].set_title(f"{gen_name} Equilibrium Bid and Market Clearing Price")
+            axes[2].grid(True, alpha=0.3)
+            axes[2].legend(loc="best", fontsize=9)
+
+            axes[3].plot(
+                time_axis,
+                cost_bid,
+                color="tab:orange",
+                marker="o",
+                linewidth=2.0,
+                label="Optimal bid (cost)",
+            )
+            axes[3].plot(
+                time_axis,
+                opt_price,
+                color="tab:red",
+                marker="s",
+                linewidth=1.8,
+                linestyle="--",
+                label="Optimal price",
+            )
+            axes[3].set_ylabel("Price / Bid")
+            axes[3].set_title(f"{gen_name} Optimal Bid and Market Clearing Price")
+            axes[3].grid(True, alpha=0.3)
+            axes[3].legend(loc="best", fontsize=9)
+
+            axes[4].plot(
+                time_axis,
+                eq_dispatch,
+                color="tab:purple",
+                marker="o",
+                linewidth=2.0,
+                label="Equilibrium dispatch",
+            )
+            axes[4].plot(
+                time_axis,
+                opt_dispatch,
+                color="tab:gray",
+                marker="s",
+                linewidth=1.8,
+                linestyle="--",
+                label="Optimal dispatch",
+            )
+            axes[4].set_ylabel("MW")
+            axes[4].set_xlabel("Time step")
+            axes[4].set_title(f"{gen_name} Dispatch")
+            axes[4].grid(True, alpha=0.3)
+            axes[4].legend(loc="best", fontsize=9)
+
+            for ax in axes:
+                ax.set_xticks(time_axis)
+
+            fig.tight_layout(rect=[0, 0, 1, 0.97])
+            out = output_path / f"poa_{gen_name}.png"
+            fig.savefig(out, dpi=160, bbox_inches="tight")
+            print(f"[saved] {out}")
+            if show:
+                plt.show()
+            plt.close(fig)
 
     def plot_demand_capacity_trajectory(
         self,
@@ -1057,16 +1419,35 @@ if __name__ == "__main__":
     num_generators, *_ = load_setup_data(example_reference_case)
     P_init = np.ones(int(num_generators)) * 25
 
-    num_time_steps = 8
+    policy_results_path = "results/gradient_policy_training_nn_results.json"
+    with Path(policy_results_path).open("r", encoding="utf-8") as file_handle:
+        policy_results = json.load(file_handle)
+
+    num_time_steps = int(policy_results.get("num_time_steps", 8))
+
+    num_time_steps = 24
+    support_set_config = PoAOptimization.load_support_set_config(
+        config_path="models/PoA/support_set_config.yaml",
+        config_name="test_case1_base",
+    )
 
     poa_opt = PoAOptimization(
         P_init,
         num_time_steps=num_time_steps,
         reference_case="test_case1",
-        policy_results_path="results/gradient_policy_training_results.json",
+        feature_normalizer_stats_path="results/feature_normalizer_stats_gradient.json",
+        policy_data=policy_results,
+        support_set_config=support_set_config,
+        big_m_complementarity=1e8,
     )
     poa_opt._build_model()
     poa_opt.solve()
-    poa_opt.plot_demand_capacity_trajectory(show=True)
+    saved_results_path = poa_opt.save_results("results/poa_optimization_results.json")
+    print(f"Saved PoA results to {saved_results_path}")
+    poa_opt.plot_generator_result_trajectories(
+        output_dir="results_viz/figures/poa_optimization",
+        show=False,
+    )
+    # poa_opt.plot_demand_capacity_trajectory(show=True)
 
     stop = True
