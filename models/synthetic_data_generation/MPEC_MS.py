@@ -1,11 +1,83 @@
 from pyomo.environ import *
+from pyomo.contrib.fbbt.fbbt import fbbt, compute_bounds_on_expr
 import pandas as pd
 import numpy as np
+import os
+import math
+import warnings
 from typing import List, Optional, Dict, Any, Tuple
 import ast
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from models.diagonalization.intertemporal.MultipleScenarios.utilities.MPEC_utils import get_mpec_parameters
+
+
+def run_fbbt_for_big_m(model: ConcreteModel, logger=None) -> Any:
+    """
+    Run Pyomo FBBT before Big-M construction.
+
+    FBBT propagates current variable bounds through constraints. Here it is used
+    primarily to tighten primal slack Big-M values. It does not guarantee
+    globally minimal Big-M values, and it should not be treated as a substitute
+    for economic/manual dual bounds.
+    """
+    try:
+        result = fbbt(
+            model,
+            max_iter=20,
+            feasibility_tol=1e-8,
+            improvement_tol=1e-6,
+        )
+        if logger is not None:
+            logger.info("FBBT completed successfully.")
+        return result
+    except Exception as exc:
+        raise RuntimeError(f"FBBT failed before Big-M construction: {exc}") from exc
+
+
+def safe_expr_upper_bound(
+    expr: Any,
+    name: str,
+    min_value: float = 0.0,
+    fallback: Optional[float] = None,
+    stats: Optional[Dict[str, int]] = None,
+) -> float:
+    """
+    Compute a safe finite upper bound for a Big-M slack expression.
+
+    If FBBT/expression bounds cannot provide a finite upper bound, the configured
+    global Big-M is used only as an explicit fallback and a warning is emitted.
+    """
+    lb, ub = compute_bounds_on_expr(expr)
+
+    try:
+        ub_value = None if ub is None else float(value(ub))
+    except Exception:
+        ub_value = None
+
+    if ub_value is None or math.isnan(ub_value) or not math.isfinite(ub_value):
+        if stats is not None:
+            stats["missing_bounds"] = stats.get("missing_bounds", 0) + 1
+        if fallback is None:
+            raise ValueError(f"No finite upper bound for Big-M expression {name}")
+        if stats is not None:
+            stats["fallback_count"] = stats.get("fallback_count", 0) + 1
+        warnings.warn(
+            f"No finite upper bound for Big-M expression {name}; using fallback {fallback}.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return max(min_value, float(fallback))
+
+    if ub_value < 0.0:
+        if ub_value > -1e-7:
+            ub_value = 0.0
+        else:
+            raise ValueError(
+                f"Computed negative upper bound {ub_value} for nonnegative slack expression {name}"
+            )
+
+    return max(min_value, ub_value)
 
 
 class MPECModel:
@@ -59,6 +131,17 @@ class MPECModel:
         self.big_m_bid_separation = self.config.get("big_m_bid_separation")
         self.bid_separation_epsilon = self.config.get("bid_separation_epsilon")
         self.big_m_activation = self.config.get("big_m_activation")
+        if self.config.get("big_m_method") is not None:
+            self.big_m_method = str(self.config.get("big_m_method")).lower()
+        else:
+            self.big_m_method = "fbbt" if self.config.get("use_fbbt_big_m", True) else "global"
+        if self.big_m_method not in {"global", "fbbt", "manual"}:
+            raise ValueError(
+                f"Invalid big_m_method '{self.big_m_method}'. Expected one of: global, fbbt, manual."
+            )
+        self.manual_big_m_values = self.config.get("manual_big_m_values", {})
+        self.big_m_floor = float(self.config.get("big_m_floor", 1e-8))
+        self.print_big_m_summary = bool(self.config.get("print_big_m_summary", True))
         
         self.P_init = p_init
         self.players_config = players_config
@@ -192,9 +275,9 @@ class MPECModel:
             self.bid_scenarios.append(bid_scenario_by_time)
         
         # Extract costs
-        self.cost_vector = [costs_df[f"{gen}_cost"].iloc[0] for gen in self.generator_names]
-        self.ramp_vector_up = [ramps_df[f"{gen}_ramp_up"].iloc[0] for gen in self.generator_names]
-        self.ramp_vector_down = [ramps_df[f"{gen}_ramp_down"].iloc[0] for gen in self.generator_names]
+        self.cost_vector = [float(costs_df[f"{gen}_cost"].iloc[0]) for gen in self.generator_names]
+        self.ramp_vector_up = [float(ramps_df[f"{gen}_ramp_up"].iloc[0]) for gen in self.generator_names]
+        self.ramp_vector_down = [float(ramps_df[f"{gen}_ramp_down"].iloc[0]) for gen in self.generator_names]
 
     def build_model(self, strategic_player_id: int, scenario_index: Optional[int] = None) -> None:
         """
@@ -257,7 +340,7 @@ class MPECModel:
         self._build_lower_level_primal_variables()
         self._build_lower_level_dual_variables()
         self._build_complementarity_variables()
-        self._build_bid_seperation_variables()
+        # self._build_bid_seperation_variables()
 
     def _build_upper_level_primal_variables(self) -> None:
         """
@@ -299,8 +382,8 @@ class MPECModel:
         Function to build the bid separation variables for the MPEC model.
         """
         
-        # #Binary bid separation variables for strategic players vs competitors
-        # self.model.tau = Var(self.model.strategic_index, self.model.non_strategic_index, self.model.time_steps, domain=Binary)
+        #Binary bid separation variables for strategic players vs competitors
+        self.model.tau = Var(self.model.strategic_index, self.model.non_strategic_index, self.model.time_steps, domain=Binary)
 
     def _build_objective(self) -> None:
         """
@@ -433,42 +516,201 @@ class MPECModel:
         self.model.final_ramp_up_dual_constraint = Constraint(self.model.n_gen, rule=final_ramp_up_dual_rule)
         self.model.final_ramp_down_dual_constraint = Constraint(self.model.n_gen, rule=final_ramp_down_dual_rule)
 
+    def _upper_slack_expr(self, m, i: int, t: int):
+        s = self.scenario_index
+        return self.pmax_scenarios[s][t][i] - m.P[i, t]
+
+    def _lower_slack_expr(self, m, i: int, t: int):
+        s = self.scenario_index
+        return m.P[i, t] - self.pmin_scenarios[s][t][i]
+
+    def _ramp_up_slack_expr(self, m, i: int, t: int):
+        if t == 0:
+            return self.P_init[self.scenario_index][i] + self.ramp_vector_up[i] - m.P[i, 0]
+        return self.ramp_vector_up[i] - (m.P[i, t] - m.P[i, t - 1])
+
+    def _ramp_down_slack_expr(self, m, i: int, t: int):
+        if t == 0:
+            return m.P[i, 0] - self.P_init[self.scenario_index][i] + self.ramp_vector_down[i]
+        return self.ramp_vector_down[i] - (m.P[i, t - 1] - m.P[i, t])
+
+    def _manual_big_m_lookup(self, name: str, index: Tuple[int, int], fallback: float) -> float:
+        values = self.manual_big_m_values.get(name, {})
+        if not values:
+            warnings.warn(
+                f"No manual Big-M dictionary supplied for {name}; using fallback {fallback}.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            return float(fallback)
+
+        key_options = [
+            index,
+            str(index),
+            f"{index[0]},{index[1]}",
+            f"{index[0]}_{index[1]}",
+        ]
+        for key in key_options:
+            if key in values:
+                return max(self.big_m_floor, float(values[key]))
+
+        warnings.warn(
+            f"No manual Big-M value supplied for {name}{index}; using fallback {fallback}.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return float(fallback)
+
+    def _initialize_big_m_storage(self) -> None:
+        self.model._M_upper_slack = {}
+        self.model._M_lower_slack = {}
+        self.model._M_ramp_up_slack = {}
+        self.model._M_ramp_down_slack = {}
+        self.model._M_upper_dual = {}
+        self.model._M_lower_dual = {}
+        self.model._M_ramp_up_dual = {}
+        self.model._M_ramp_down_dual = {}
+        self.model._big_m_stats = {}
+
+    def _store_global_big_m_values(self) -> None:
+        fallback = float(self.big_m_complementarity)
+        for i in self.model.n_gen:
+            for t in self.model.time_steps:
+                idx = (i, t)
+                self.model._M_upper_slack[idx] = fallback
+                self.model._M_lower_slack[idx] = fallback
+                self.model._M_ramp_up_slack[idx] = fallback
+                self.model._M_ramp_down_slack[idx] = fallback
+                self.model._M_upper_dual[idx] = fallback
+                self.model._M_lower_dual[idx] = fallback
+                self.model._M_ramp_up_dual[idx] = fallback
+                self.model._M_ramp_down_dual[idx] = fallback
+
+    def _store_manual_big_m_values(self) -> None:
+        fallback = float(self.big_m_complementarity)
+        for i in self.model.n_gen:
+            for t in self.model.time_steps:
+                idx = (i, t)
+                self.model._M_upper_slack[idx] = self._manual_big_m_lookup("upper_slack", idx, fallback)
+                self.model._M_lower_slack[idx] = self._manual_big_m_lookup("lower_slack", idx, fallback)
+                self.model._M_ramp_up_slack[idx] = self._manual_big_m_lookup("ramp_up_slack", idx, fallback)
+                self.model._M_ramp_down_slack[idx] = self._manual_big_m_lookup("ramp_down_slack", idx, fallback)
+                self.model._M_upper_dual[idx] = self._manual_big_m_lookup("upper_dual", idx, fallback)
+                self.model._M_lower_dual[idx] = self._manual_big_m_lookup("lower_dual", idx, fallback)
+                self.model._M_ramp_up_dual[idx] = self._manual_big_m_lookup("ramp_up_dual", idx, fallback)
+                self.model._M_ramp_down_dual[idx] = self._manual_big_m_lookup("ramp_down_dual", idx, fallback)
+
+    def build_fbbt_slack_big_m_values(self) -> None:
+        """
+        Compute expression-specific Big-M values for primal slack expressions.
+
+        FBBT tightens variable bounds before ``compute_bounds_on_expr`` is used
+        on each complementarity slack. Dual Big-M values remain configured/global
+        because reliable dual bounds should come from economic information such
+        as bid ranges, price bounds, and stationarity structure.
+        """
+        run_fbbt_for_big_m(self.model)
+        fallback = float(self.big_m_complementarity)
+
+        bound_specs = [
+            ("upper_generation_slack", self.model._M_upper_slack, self._upper_slack_expr),
+            ("lower_generation_slack", self.model._M_lower_slack, self._lower_slack_expr),
+            ("ramp_up_slack", self.model._M_ramp_up_slack, self._ramp_up_slack_expr),
+            ("ramp_down_slack", self.model._M_ramp_down_slack, self._ramp_down_slack_expr),
+        ]
+
+        for label, storage, expr_builder in bound_specs:
+            stats = {"fallback_count": 0, "missing_bounds": 0}
+            for i in self.model.n_gen:
+                for t in self.model.time_steps:
+                    idx = (i, t)
+                    storage[idx] = safe_expr_upper_bound(
+                        expr_builder(self.model, i, t),
+                        f"{label}{idx}",
+                        min_value=self.big_m_floor,
+                        fallback=fallback,
+                        stats=stats,
+                    )
+            self.model._big_m_stats[label] = stats
+
+        for i in self.model.n_gen:
+            for t in self.model.time_steps:
+                idx = (i, t)
+                self.model._M_upper_dual[idx] = fallback
+                self.model._M_lower_dual[idx] = fallback
+                self.model._M_ramp_up_dual[idx] = fallback
+                self.model._M_ramp_down_dual[idx] = fallback
+
+    def _prepare_big_m_values(self) -> None:
+        self._initialize_big_m_storage()
+        if self.big_m_method == "global":
+            self._store_global_big_m_values()
+        elif self.big_m_method == "manual":
+            self._store_manual_big_m_values()
+        elif self.big_m_method == "fbbt":
+            self.build_fbbt_slack_big_m_values()
+        else:
+            raise ValueError(f"Unknown big_m_method '{self.big_m_method}'")
+
+        if self.print_big_m_summary:
+            self._print_big_m_summary()
+
+    def _print_big_m_summary(self) -> None:
+        def summarize(label: str, values: Dict[Tuple[int, int], float]) -> None:
+            data = [float(v) for v in values.values()]
+            stats = self.model._big_m_stats.get(label, {})
+            fallback_count = stats.get("fallback_count", 0)
+            missing_bounds = stats.get("missing_bounds", 0)
+            if not data:
+                print(f"{label} Big-M: no values")
+                return
+            print(
+                f"{label} Big-M: "
+                f"min={min(data):.6g}, max={max(data):.6g}, mean={float(np.mean(data)):.6g}, "
+                f"fallback_count={fallback_count}, missing_bounds={missing_bounds}"
+            )
+
+        print(f"Big-M method: {self.big_m_method}")
+        summarize("upper_generation_slack", self.model._M_upper_slack)
+        summarize("lower_generation_slack", self.model._M_lower_slack)
+        summarize("ramp_up_slack", self.model._M_ramp_up_slack)
+        summarize("ramp_down_slack", self.model._M_ramp_down_slack)
+
     def _build_KKT_complementarity_constraints(self) -> None:
         """
         Function to build the KKT complementarity constraints for the MPEC model. 
         """
-        BigM = self.big_m_complementarity
-        s = self.scenario_index
+        self._prepare_big_m_values()
 
         def upper_bound_complementarity_rule(m, i, t):
-            return -BigM * (1 - m.z_upper_bound[i, t]) <= m.P[i, t] - self.pmax_scenarios[s][t][i]
+            return self._upper_slack_expr(m, i, t) <= m._M_upper_slack[(i, t)] * m.z_upper_bound[i, t]
 
         def upper_bound_complementarity_rule_dual(m, i, t):
-            return m.mu_upper_bound[i, t] <= BigM * m.z_upper_bound[i, t]
+            return m.mu_upper_bound[i, t] <= m._M_upper_dual[(i, t)] * (1 - m.z_upper_bound[i, t])
         
         def lower_bound_complementarity_rule(m, i, t):
-            return -BigM * (1 - m.z_lower_bound[i, t]) <= -m.P[i, t] + self.pmin_scenarios[s][t][i]
+            return self._lower_slack_expr(m, i, t) <= m._M_lower_slack[(i, t)] * m.z_lower_bound[i, t]
 
         def lower_bound_complementarity_rule_dual(m, i, t):
-            return m.mu_lower_bound[i, t] <= BigM * m.z_lower_bound[i, t]
+            return m.mu_lower_bound[i, t] <= m._M_lower_dual[(i, t)] * (1 - m.z_lower_bound[i, t])
 
         def ramp_up_complementarity_rule(m, i, t):
-            return -BigM * (1 - m.z_ramp_up[i, t]) <= m.P[i, t] - m.P[i, t-1] - self.ramp_vector_up[i]
+            return self._ramp_up_slack_expr(m, i, t) <= m._M_ramp_up_slack[(i, t)] * m.z_ramp_up[i, t]
         
         def ramp_up_complementarity_initial_rule(m, i):
-            return -BigM * (1 - m.z_ramp_up[i, 0]) <= m.P[i, 0] - self.P_init[s][i] - self.ramp_vector_up[i]
+            return self._ramp_up_slack_expr(m, i, 0) <= m._M_ramp_up_slack[(i, 0)] * m.z_ramp_up[i, 0]
 
         def ramp_up_complementarity_rule_dual(m, i, t):
-            return m.mu_ramp_up[i, t] <= BigM * m.z_ramp_up[i, t]
+            return m.mu_ramp_up[i, t] <= m._M_ramp_up_dual[(i, t)] * (1 - m.z_ramp_up[i, t])
 
         def ramp_down_complementarity_rule(m, i, t):
-            return -BigM * (1 - m.z_ramp_down[i, t]) <= - m.P[i, t] + m.P[i, t-1] - self.ramp_vector_down[i]
+            return self._ramp_down_slack_expr(m, i, t) <= m._M_ramp_down_slack[(i, t)] * m.z_ramp_down[i, t]
 
         def ramp_down_complementarity_initial_rule(m, i):
-            return -BigM * (1 - m.z_ramp_down[i, 0]) <= - m.P[i, 0] + self.P_init[s][i] - self.ramp_vector_down[i]
+            return self._ramp_down_slack_expr(m, i, 0) <= m._M_ramp_down_slack[(i, 0)] * m.z_ramp_down[i, 0]
 
         def ramp_down_complementarity_rule_dual(m, i, t):
-            return m.mu_ramp_down[i, t] <= BigM * m.z_ramp_down[i, t]
+            return m.mu_ramp_down[i, t] <= m._M_ramp_down_dual[(i, t)] * (1 - m.z_ramp_down[i, t])
 
         self.model.upper_bound_complementarity_constraints = Constraint(self.model.n_gen, self.model.time_steps, rule=upper_bound_complementarity_rule)
         self.model.upper_bound_complementarity_constraints_dual = Constraint(self.model.n_gen, self.model.time_steps, rule=upper_bound_complementarity_rule_dual)
@@ -500,18 +742,35 @@ class MPECModel:
         self.model.alpha_upper_seperation_constraints = Constraint(self.model.strategic_index, self.model.non_strategic_index, self.model.time_steps, rule=alpha_upper_seperation)
         self.model.alpha_lower_seperation_constraints = Constraint(self.model.strategic_index, self.model.non_strategic_index, self.model.time_steps, rule=alpha_lower_seperation)
 
-    def solve(self, tee: bool = False, parallel: bool = True, max_workers: Optional[int] = None) -> None:
+    def solve(
+        self,
+        tee: bool = False,
+        parallel: bool = True,
+        max_workers: Optional[int] = None,
+        solver_threads: Optional[int] = None,
+        solver_options: Optional[Dict[str, Any]] = None,
+    ) -> None:
         """
         Solve the optimization model.
         """
         if self.model is None:
             if not parallel:
                 raise ValueError("No single-scenario model is built. Call build_model(..., scenario_index=s) or solve with parallel=True.")
-            self._solve_scenarios_parallel(max_workers=max_workers, tee=tee)
+            self._solve_scenarios_parallel(
+                max_workers=max_workers,
+                tee=tee,
+                solver_threads=solver_threads,
+                solver_options=solver_options,
+            )
             return
 
         # Create solver
         solver = SolverFactory("gurobi")
+        if solver_threads is not None:
+            solver.options["Threads"] = int(solver_threads)
+        if solver_options:
+            for option, value in solver_options.items():
+                solver.options[option] = value
 
         # Solve
         results = solver.solve(self.model, tee=tee)
@@ -522,17 +781,27 @@ class MPECModel:
             print("Termination condition:", results.solver.termination_condition)
             raise ValueError("Solver did not find an optimal solution")
 
-    def _solve_scenarios_parallel(self, max_workers: Optional[int] = None, tee: bool = False) -> None:
+    def _solve_scenarios_parallel(
+        self,
+        max_workers: Optional[int] = None,
+        tee: bool = False,
+        solver_threads: Optional[int] = None,
+        solver_options: Optional[Dict[str, Any]] = None,
+    ) -> None:
         if not hasattr(self, "strategic_player_id"):
             raise ValueError("Must call build_model(strategic_player_id) before solving model")
 
         optimal_bids = [None] * self.num_scenarios
         profits = [None] * self.num_scenarios
-        workers = max_workers or self.num_scenarios
+        if max_workers is None:
+            cpu_count = os.cpu_count() or 1
+            workers = min(self.num_scenarios, max(1, min(12, cpu_count)))
+        else:
+            workers = max(1, min(int(max_workers), self.num_scenarios))
 
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {
-                executor.submit(self._solve_one_scenario, s, tee): s
+                executor.submit(self._solve_one_scenario, s, tee, solver_threads, solver_options): s
                 for s in range(self.num_scenarios)
             }
             for future in as_completed(futures):
@@ -544,8 +813,14 @@ class MPECModel:
         self._parallel_optimal_bid_scenarios = optimal_bids
         self._parallel_scenario_profits = profits
 
-    def _solve_one_scenario(self, scenario_index: int, tee: bool) -> Tuple[List[List[float]], float]:
-        scenario_model = MPECModel(
+    def _solve_one_scenario(
+        self,
+        scenario_index: int,
+        tee: bool,
+        solver_threads: Optional[int],
+        solver_options: Optional[Dict[str, Any]],
+    ) -> Tuple[List[List[float]], float]:
+        scenario_model = self.__class__(
             self.scenarios_df.iloc[[scenario_index]].reset_index(drop=True),
             self.costs_df,
             self.ramps_df,
@@ -555,7 +830,12 @@ class MPECModel:
             config_overrides=self.config,
         )
         scenario_model.build_model(self.strategic_player_id, scenario_index=0)
-        scenario_model.solve(tee=tee, parallel=False)
+        scenario_model.solve(
+            tee=tee,
+            parallel=False,
+            solver_threads=solver_threads,
+            solver_options=solver_options,
+        )
         return scenario_model.get_optimal_bids()[0], scenario_model.get_scenario_profits()[0]
     
     def get_optimal_bids(self) -> List[List[List[float]]]:
@@ -668,4 +948,3 @@ class MPECModel:
         profits[s] = float(profit_scenario)
         
         return profits
-

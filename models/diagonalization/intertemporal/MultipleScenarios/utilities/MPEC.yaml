@@ -1,6 +1,16 @@
 # MPEC model configuration parameters
 mpec_config:
+  # Big-M construction method for KKT complementarity:
+  #   global: use big_m_complementarity for primal slacks and dual variables
+  #   fbbt: use Pyomo FBBT to tighten primal slack Big-M values
+  #   manual: use manual_big_m_values dictionaries where supplied
+  big_m_method: fbbt
+  use_fbbt_big_m: true
+  big_m_floor: 1.0e-8
+  print_big_m_summary: true
+
   # Big-M values for complementarity constraints
+  # Used for dual variables and as a fallback if FBBT cannot bound a slack.
   big_m_complementarity: 1000000.0
   
   # Big-M values for bid separation constraints  
