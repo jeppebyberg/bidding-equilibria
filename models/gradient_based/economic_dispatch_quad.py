@@ -1,5 +1,5 @@
 from pyomo.environ import *
-from typing import Dict, List, Any, Optional, Literal
+from typing import Dict, List, Any, Optional, Tuple
 import pandas as pd
 import ast
 import numpy as np
@@ -11,7 +11,10 @@ class EconomicDispatchQuadraticModel:
 
     This model optimizes dispatch across scenarios and time steps jointly,
     enforcing per-time power balance and ramp constraints between consecutive
-    time steps.
+    time steps. Dispatch variables use generator-local bidding blocks:
+    P[i, b, t, s] is block b local to physical generator i, while P_phys[i, t, s]
+    aggregates those local blocks for physical ramping. Generators may own
+    heterogeneous numbers of bidding blocks.
     """
 
     def __init__(self,
@@ -19,7 +22,6 @@ class EconomicDispatchQuadraticModel:
                  costs_df: pd.DataFrame,
                  ramps_df: pd.DataFrame,
                  p_init: Optional[List[List[float]]] = None,
-                 p_init_level: Literal["auto", "block", "physical"] = "auto",
                  beta_coeff: float = 0.01,
                  pmin_default: float = 0.0):
         """
@@ -44,25 +46,26 @@ class EconomicDispatchQuadraticModel:
             '<physical_generator>_ramp_down'. Physical generator ownership of
             blocks is inferred from names such as G1_B1 -> G1.
         p_init : Optional[List[List[float]]]
-            Initial dispatch levels indexed as [scenario][physical_generator]
-            by default. Block-level [scenario][block] input is also accepted
-            with p_init_level="block" or auto-detection. If
-            provided, the first time-step ramp constraints are enforced
-            against these values to mirror the MPEC formulation.
+            Initial dispatch levels indexed as either [scenario][block] or
+            [scenario][physical_generator]. The shape is inferred and converted
+            to physical-generator totals internally, because initial ramp
+            constraints are defined at the physical-generator level. If
+            provided, the first time-step ramp constraints are enforced against
+            these values to mirror the MPEC formulation.
         pmin_default : float
             Default minimum generation for all generators (default: 0.0)
         """
         self.P_init = p_init
-        self.p_init_level = p_init_level
         self.beta_coeff = beta_coeff
         self._extract_data(scenarios_df, costs_df, ramps_df, pmin_default)
 
         if self.P_init is not None:
-            self.P_init = self._normalize_p_init(self.P_init, p_init_level)
+            self.P_init = self._normalize_p_init(self.P_init)
 
         # Results (populated after solve)
         self.dispatches = None
         self.block_dispatches = None
+        self.block_dispatches_by_generator = None
         self.physical_dispatches = None
         self.clearing_prices = None
         self.dual_variables = None
@@ -184,6 +187,24 @@ class EconomicDispatchQuadraticModel:
             ]
             for idx in range(len(self.physical_generator_names))
         ]
+        self.blocks_by_generator: Dict[int, List[int]] = {
+            generator_idx: list(block_indices)
+            for generator_idx, block_indices in enumerate(self.physical_to_block_indices)
+        }
+        self.local_blocks_by_generator: Dict[int, List[int]] = {
+            generator_idx: list(range(len(block_indices)))
+            for generator_idx, block_indices in self.blocks_by_generator.items()
+        }
+        self.local_to_global_block: Dict[Tuple[int, int], int] = {
+            (generator_idx, local_block_idx): global_block_idx
+            for generator_idx, block_indices in self.blocks_by_generator.items()
+            for local_block_idx, global_block_idx in enumerate(block_indices)
+        }
+        self.global_to_local_block: Dict[int, Tuple[int, int]] = {
+            global_block_idx: (generator_idx, local_block_idx)
+            for (generator_idx, local_block_idx), global_block_idx in self.local_to_global_block.items()
+        }
+        self.generator_block_pairs: List[Tuple[int, int]] = list(self.local_to_global_block.keys())
         self.num_physical_generators = len(self.physical_generator_names)
         self.generator_names = list(self.physical_generator_names)
         self.num_generators = self.num_physical_generators
@@ -271,7 +292,7 @@ class EconomicDispatchQuadraticModel:
                 self.ramp_vector_up.append(float(ramps_df[f"{first_block}_ramp_up"].iloc[0]))
                 self.ramp_vector_down.append(float(ramps_df[f"{first_block}_ramp_down"].iloc[0]))
 
-    def _normalize_p_init(self, p_init: List[List[float]], p_init_level: str) -> List[List[float]]:
+    def _normalize_p_init(self, p_init: List[List[float]]) -> List[List[float]]:
         """Return physical initial output as [scenario][physical_generator]."""
         if len(p_init) != self.num_scenarios:
             raise ValueError(
@@ -281,34 +302,18 @@ class EconomicDispatchQuadraticModel:
         normalized: List[List[float]] = []
         for s, row in enumerate(p_init):
             values = [float(v) for v in row]
-            if p_init_level == "auto":
-                if len(values) == self.num_physical_generators:
-                    level = "physical"
-                elif len(values) == self.num_blocks:
-                    level = "block"
-                else:
-                    raise ValueError(
-                        f"p_init row {s} has {len(values)} values; expected either "
-                        f"{self.num_physical_generators} physical generators or {self.num_blocks} blocks"
-                    )
-            else:
-                level = p_init_level
-
-            if level == "physical":
-                if len(values) != self.num_physical_generators:
-                    raise ValueError(
-                        f"p_init row {s} must have {self.num_physical_generators} physical values"
-                    )
+            if len(values) == self.num_physical_generators:
                 normalized.append(values)
-            elif level == "block":
-                if len(values) != self.num_blocks:
-                    raise ValueError(f"p_init row {s} must have {self.num_blocks} block values")
+            elif len(values) == self.num_blocks:
                 normalized.append([
                     sum(values[b] for b in block_indices)
                     for block_indices in self.physical_to_block_indices
                 ])
             else:
-                raise ValueError("p_init_level must be 'auto', 'block', or 'physical'")
+                raise ValueError(
+                    f"p_init row {s} has {len(values)} values; expected either "
+                    f"{self.num_physical_generators} physical generators or {self.num_blocks} blocks"
+                )
 
         return normalized
 
@@ -317,18 +322,34 @@ class EconomicDispatchQuadraticModel:
     # ------------------------------------------------------------------
 
     def solve(self) -> None:
-        """Build and solve the intertemporal economic dispatch LP."""
+        """
+        Build and solve the intertemporal economic dispatch LP.
+
+        The optimization variable P[i, b, t, s] uses b as a local bidding-block
+        index for physical generator i. Flattened block results are reconstructed
+        after the solve for compatibility with the sensitivity code and scripts.
+        """
+        self.dispatches = None
+        self.block_dispatches = None
+        self.block_dispatches_by_generator = None
+        self.physical_dispatches = None
+        self.clearing_prices = None
+        self.dual_variables = None
+
         model = ConcreteModel()
 
         model.scenarios = Set(initialize=range(self.num_scenarios))
         model.time_steps = Set(initialize=range(self.num_time_steps))
         model.time_steps_minus_1 = Set(initialize=range(1, self.num_time_steps))
-        model.blocks = Set(initialize=range(self.num_blocks))
         model.physical_generators = Set(initialize=range(self.num_physical_generators))
-        model.P_block = Var(model.blocks, model.time_steps, model.scenarios, domain=Reals)
+        model.generator_blocks = Set(dimen=2, initialize=self.generator_block_pairs)
+        model.P = Var(model.generator_blocks, model.time_steps, model.scenarios, domain=Reals)
 
         def physical_dispatch_rule(m, g, t, s):
-            return sum(m.P_block[b, t, s] for b in self.physical_to_block_indices[g])
+            return sum(
+                m.P[g, b, t, s]
+                for b in self.local_blocks_by_generator[g]
+            )
 
         model.P_phys = Expression(
             model.physical_generators,
@@ -339,23 +360,28 @@ class EconomicDispatchQuadraticModel:
 
         model.objective = Objective(
             expr= 1 / self.num_scenarios * sum(
-                self.bid_scenarios[s][t][b] * model.P_block[b, t, s]
-              + self.beta_coeff * model.P_block[b, t, s]**2
+                self.bid_scenarios[s][t][self.local_to_global_block[(i, b)]] * model.P[i, b, t, s]
+              + self.beta_coeff * model.P[i, b, t, s]**2
                 for s in model.scenarios
                 for t in model.time_steps
-                for b in model.blocks
+                for (i, b) in model.generator_blocks
             ),
             sense=minimize
         )
 
         def power_balance_rule(m, t, s):
-            return self.demand_scenarios[s][t] - sum(m.P_block[b, t, s] for b in m.blocks) == 0
+            return self.demand_scenarios[s][t] - sum(
+                m.P[i, b, t, s]
+                for (i, b) in m.generator_blocks
+            ) == 0
         
-        def gen_max_rule(m, b, t, s):
-            return m.P_block[b, t, s] - self.pmax_scenarios[s][t][b] <= 0
+        def gen_max_rule(m, i, b, t, s):
+            global_block = self.local_to_global_block[(i, b)]
+            return m.P[i, b, t, s] - self.pmax_scenarios[s][t][global_block] <= 0
         
-        def gen_min_rule(m, b, t, s):
-            return - m.P_block[b, t, s] + self.pmin_scenarios[s][t][b] <= 0
+        def gen_min_rule(m, i, b, t, s):
+            global_block = self.local_to_global_block[(i, b)]
+            return - m.P[i, b, t, s] + self.pmin_scenarios[s][t][global_block] <= 0
 
         def ramp_up_rule(m, g, t, s):
             return m.P_phys[g, t, s] - m.P_phys[g, t - 1, s] - self.ramp_vector_up[g] <= 0
@@ -370,8 +396,8 @@ class EconomicDispatchQuadraticModel:
             return - m.P_phys[g, 0, s] + self.P_init[s][g] - self.ramp_vector_down[g] <= 0
 
         model.power_balance = Constraint(model.time_steps, model.scenarios, rule=power_balance_rule)
-        model.gen_max = Constraint(model.blocks, model.time_steps, model.scenarios, rule=gen_max_rule)
-        model.gen_min = Constraint(model.blocks, model.time_steps, model.scenarios, rule=gen_min_rule)
+        model.gen_max = Constraint(model.generator_blocks, model.time_steps, model.scenarios, rule=gen_max_rule)
+        model.gen_min = Constraint(model.generator_blocks, model.time_steps, model.scenarios, rule=gen_min_rule)
         
         model.ramp_up = Constraint(model.physical_generators, model.time_steps_minus_1, model.scenarios, rule=ramp_up_rule)
         model.ramp_down = Constraint(model.physical_generators, model.time_steps_minus_1, model.scenarios, rule=ramp_down_rule)
@@ -387,6 +413,9 @@ class EconomicDispatchQuadraticModel:
 
         if (results.solver.status == 'ok') and (results.solver.termination_condition == 'optimal'):
             self.dispatches = []
+            self.block_dispatches = []
+            self.block_dispatches_by_generator = []
+            self.physical_dispatches = []
             self.clearing_prices = []
             self.dual_variables = {
                 "lambda": [],
@@ -403,26 +432,49 @@ class EconomicDispatchQuadraticModel:
                 scenario_mu_min = []
                 scenario_mu_up = []
                 scenario_mu_down = []
+                scenario_block_dispatch = []
+                scenario_block_dispatch_by_generator = []
                 for t in range(self.num_time_steps):
-                    block_dispatch_t = [model.P_block[b, t, s].value for b in range(self.num_blocks)]
+                    block_dispatch_t = [0.0] * self.num_blocks
+                    block_dispatch_by_generator_t = []
+                    for i in range(self.num_physical_generators):
+                        generator_blocks_t = []
+                        for local_block in self.local_blocks_by_generator[i]:
+                            global_block = self.local_to_global_block[(i, local_block)]
+                            value = model.P[i, local_block, t, s].value
+                            block_dispatch_t[global_block] = value
+                            generator_blocks_t.append(value)
+                        block_dispatch_by_generator_t.append(generator_blocks_t)
                     physical_dispatch_t = [
                         sum(block_dispatch_t[b] for b in block_indices)
                         for block_indices in self.physical_to_block_indices
                     ]
+                    scenario_block_dispatch.append(block_dispatch_t)
+                    scenario_block_dispatch_by_generator.append(block_dispatch_by_generator_t)
                     scenario_dispatch.append(physical_dispatch_t)
                     balance_dual = self._scaled_dual(model, model.power_balance[t, s])
                     kkt_lambda = -balance_dual
                     scenario_lambda.append(kkt_lambda)
                     scenario_prices.append(kkt_lambda)
 
-                    scenario_mu_max.append([
-                        self._nonnegative_scaled_dual(model, model.gen_max[i, t, s])
-                        for i in range(self.num_blocks)
-                    ])
-                    scenario_mu_min.append([
-                        self._nonnegative_scaled_dual(model, model.gen_min[i, t, s])
-                        for i in range(self.num_blocks)
-                    ])
+                    mu_max_t = []
+                    mu_min_t = []
+                    for global_block in range(self.num_blocks):
+                        generator_idx, local_block = self.global_to_local_block[global_block]
+                        mu_max_t.append(
+                            self._nonnegative_scaled_dual(
+                                model,
+                                model.gen_max[generator_idx, local_block, t, s],
+                            )
+                        )
+                        mu_min_t.append(
+                            self._nonnegative_scaled_dual(
+                                model,
+                                model.gen_min[generator_idx, local_block, t, s],
+                            )
+                        )
+                    scenario_mu_max.append(mu_max_t)
+                    scenario_mu_min.append(mu_min_t)
                     scenario_mu_up.append([
                         self._nonnegative_scaled_dual(
                             model,
@@ -440,14 +492,8 @@ class EconomicDispatchQuadraticModel:
                         for i in range(self.num_physical_generators)
                     ])
 
-                if self.block_dispatches is None:
-                    self.block_dispatches = []
-                if self.physical_dispatches is None:
-                    self.physical_dispatches = []
-                self.block_dispatches.append([
-                    [model.P_block[b, t, s].value for b in range(self.num_blocks)]
-                    for t in range(self.num_time_steps)
-                ])
+                self.block_dispatches.append(scenario_block_dispatch)
+                self.block_dispatches_by_generator.append(scenario_block_dispatch_by_generator)
                 self.physical_dispatches.append(scenario_dispatch)
                 self.dispatches.append(scenario_dispatch)
                 self.clearing_prices.append(scenario_prices)
@@ -489,8 +535,17 @@ class EconomicDispatchQuadraticModel:
         return self.physical_dispatches
 
     def get_block_dispatches(self) -> List[List[List[float]]]:
-        """Return block dispatch as [scenario][time][block]."""
+        """Return flattened block dispatch as [scenario][time][global_block]."""
         return self.block_dispatches
+
+    def get_block_dispatches_by_generator(self) -> List[List[List[List[float]]]]:
+        """
+        Return local-block dispatch as [scenario][time][physical_generator][local_block].
+
+        The local_block index is generator-specific, so generators can have
+        different numbers of blocks.
+        """
+        return self.block_dispatches_by_generator
 
     def get_physical_dispatches(self) -> List[List[List[float]]]:
         """Return physical dispatch as [scenario][time][physical_generator]."""
@@ -505,6 +560,14 @@ class EconomicDispatchQuadraticModel:
     def get_block_to_physical_mapping(self) -> Dict[str, str]:
         return dict(self.block_to_physical)
 
+    def get_blocks_by_generator(self) -> Dict[int, List[int]]:
+        """Return physical generator index -> flattened global block indices."""
+        return {generator_idx: list(blocks) for generator_idx, blocks in self.blocks_by_generator.items()}
+
+    def get_local_to_global_block_mapping(self) -> Dict[Tuple[int, int], int]:
+        """Return (physical_generator, local_block) -> flattened global block index."""
+        return dict(self.local_to_global_block)
+
     def get_clearing_prices(self) -> List[List[float]]:
         """Return clearing prices as [scenario][time]."""
         return self.clearing_prices
@@ -515,7 +578,7 @@ class EconomicDispatchQuadraticModel:
 
         Shapes are:
         - lambda: [scenario][time]
-        - mu_max, mu_min: [scenario][time][block]
+        - mu_max, mu_min: [scenario][time][global_block]
         - mu_up, mu_down: [scenario][time][physical_generator]
 
         The inequality multipliers are returned as nonnegative KKT multipliers
@@ -529,9 +592,10 @@ class EconomicDispatchQuadraticModel:
         """
         Return one scenario's primal and dual solution arrays for sensitivity code.
 
-        P_block, mu_max, and mu_min are block-level. P_phys, mu_up, and
-        mu_down are physical-generator-level. P is kept as a compatibility
-        alias for physical dispatch.
+        P_block, mu_max, and mu_min are flattened global-block arrays. P_phys,
+        mu_up, and mu_down are physical-generator-level. P is kept as a
+        compatibility alias for block dispatch because KKT stationarity is now
+        block-level.
         """
         if self.block_dispatches is None or self.dual_variables is None:
             raise RuntimeError("Solve the economic dispatch model before requesting KKT data.")
@@ -541,7 +605,7 @@ class EconomicDispatchQuadraticModel:
             raise IndexError(f"scenario_idx must be in [0, {self.num_scenarios - 1}], got {s}")
 
         return {
-            "P": np.asarray(self.dispatches[s], dtype=np.float64).T,
+            "P": np.asarray(self.block_dispatches[s], dtype=np.float64).T,
             "P_block": np.asarray(self.block_dispatches[s], dtype=np.float64).T,
             "P_phys": np.asarray(self.physical_dispatches[s], dtype=np.float64).T,
             "lambda_": np.asarray(self.dual_variables["lambda"][s], dtype=np.float64),
@@ -578,6 +642,10 @@ class EconomicDispatchQuadraticModel:
             "ramp_up": np.asarray(self.ramp_vector_up, dtype=np.float64),
             "ramp_down": np.asarray(self.ramp_vector_down, dtype=np.float64),
             "p_initial": np.asarray(self.P_init[s], dtype=np.float64),
+            "physical_to_block_indices": [list(blocks) for blocks in self.physical_to_block_indices],
+            "block_to_physical_idx": list(self.block_to_physical_idx),
+            "num_physical_generators": self.num_physical_generators,
+            "num_blocks": self.num_blocks,
         }
 
     def get_generator_profits(self) -> List[List[float]]:
@@ -585,20 +653,21 @@ class EconomicDispatchQuadraticModel:
         Return total profit per physical generator in each scenario.
 
         Revenue is based on physical dispatch, while production cost is summed
-        over the bidding blocks owned by that physical generator.
+        over the generator-local bidding blocks owned by that physical generator.
         """
         all_profits = []
         for s in range(self.num_scenarios):
             profits = []
-            for g, block_indices in enumerate(self.physical_to_block_indices):
+            for g in range(self.num_physical_generators):
                 revenue_g = sum(
                     self.clearing_prices[s][t] * self.physical_dispatches[s][t][g]
                     for t in range(self.num_time_steps)
                 )
                 cost_g = sum(
-                    self.block_cost_vector[b] * self.block_dispatches[s][t][b]
+                    self.block_cost_vector[self.local_to_global_block[(g, local_block)]]
+                    * self.block_dispatches_by_generator[s][t][g][local_block]
                     for t in range(self.num_time_steps)
-                    for b in block_indices
+                    for local_block in self.local_blocks_by_generator[g]
                 )
                 profits.append(float(revenue_g - cost_g))
             all_profits.append(profits)
@@ -607,7 +676,8 @@ class EconomicDispatchQuadraticModel:
     def get_block_profits(self) -> List[List[float]]:
         """
         Return total profit per block in each scenario:
-        profits[s][b] = sum_t (lambda[s][t] - cost_block[b]) * P_block[s][t][b].
+        profits[s][global_block] =
+        sum_t (lambda[s][t] - cost_block[global_block]) * P_block[s][t][global_block].
         """
         all_profits = []
         for s in range(self.num_scenarios):

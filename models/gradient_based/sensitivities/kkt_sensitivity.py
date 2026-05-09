@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 import warnings
 
 import numpy as np
@@ -17,6 +17,7 @@ class EDSolution:
     mu_min: np.ndarray
     mu_up: np.ndarray
     mu_down: np.ndarray
+    P_phys: Optional[np.ndarray] = None
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,10 @@ class EDParameters:
     ramp_up: np.ndarray
     ramp_down: np.ndarray
     p_initial: np.ndarray
+    physical_to_block_indices: Optional[List[List[int]]] = None
+    block_to_physical_idx: Optional[List[int]] = None
+    num_physical_generators: Optional[int] = None
+    num_blocks: Optional[int] = None
 
 def flatten_time_major(x: np.ndarray) -> np.ndarray:
     """
@@ -65,43 +70,61 @@ def build_balance_matrix(n_gen: int, n_time: int) -> np.ndarray:
         M[t, start:start + n_gen] = 1.0
     return M
 
-def build_ramp_up_matrix(n_gen: int, n_time: int) -> Tuple[np.ndarray, np.ndarray]:
+def build_ramp_up_matrix(
+    n_gen: int,
+    n_time: int,
+    physical_to_block_indices: Optional[List[List[int]]] = None,
+    n_phys: Optional[int] = None,
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Build G_up and a generator index vector for ramp-up rows.
 
-    Row (i,t) of G_up @ P_vec corresponds to P[i,0] for t=0 and
-    P[i,t] - P[i,t-1] for t>0. The returned generator index vector maps each
+    Row (i,t) of G_up @ P_vec aggregates all blocks for physical generator i.
+    For t=0 it is sum_b P[i,b,0]; for t>0 it is
+    sum_b P[i,b,t] - sum_b P[i,b,t-1]. The returned generator index vector maps each
     ramp row to the generator whose ramp_up and p_initial parameters it uses.
     """
     n_gen, n_time = _validate_dimensions(n_gen, n_time)
-    G = np.zeros((n_gen * n_time, n_gen * n_time), dtype=np.float64)
-    row_generators = np.zeros(n_gen * n_time, dtype=np.int64)
+    block_groups = _normalize_block_groups(n_gen, physical_to_block_indices, n_phys)
+    n_phys = len(block_groups)
+    G = np.zeros((n_phys * n_time, n_gen * n_time), dtype=np.float64)
+    row_generators = np.zeros(n_phys * n_time, dtype=np.int64)
     for t in range(n_time):
-        for i in range(n_gen):
-            row = _time_major_index(i, t, n_gen)
-            G[row, _time_major_index(i, t, n_gen)] = 1.0
-            if t > 0:
-                G[row, _time_major_index(i, t - 1, n_gen)] = -1.0
+        for i, block_indices in enumerate(block_groups):
+            row = _time_major_index(i, t, n_phys)
+            for block_idx in block_indices:
+                G[row, _time_major_index(block_idx, t, n_gen)] = 1.0
+                if t > 0:
+                    G[row, _time_major_index(block_idx, t - 1, n_gen)] = -1.0
             row_generators[row] = i
     return G, row_generators
 
-def build_ramp_down_matrix(n_gen: int, n_time: int) -> Tuple[np.ndarray, np.ndarray]:
+def build_ramp_down_matrix(
+    n_gen: int,
+    n_time: int,
+    physical_to_block_indices: Optional[List[List[int]]] = None,
+    n_phys: Optional[int] = None,
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Build G_down and a generator index vector for ramp-down rows.
 
-    Row (i,t) of G_down @ P_vec corresponds to -P[i,0] for t=0 and
-    -P[i,t] + P[i,t-1] for t>0. The returned generator index vector maps each
+    Row (i,t) of G_down @ P_vec aggregates all blocks for physical generator i.
+    For t=0 it is -sum_b P[i,b,0]; for t>0 it is
+    -sum_b P[i,b,t] + sum_b P[i,b,t-1]. The returned generator index vector maps each
     ramp row to the generator whose ramp_down and p_initial parameters it uses.
     """
     n_gen, n_time = _validate_dimensions(n_gen, n_time)
-    G = np.zeros((n_gen * n_time, n_gen * n_time), dtype=np.float64)
-    row_generators = np.zeros(n_gen * n_time, dtype=np.int64)
+    block_groups = _normalize_block_groups(n_gen, physical_to_block_indices, n_phys)
+    n_phys = len(block_groups)
+    G = np.zeros((n_phys * n_time, n_gen * n_time), dtype=np.float64)
+    row_generators = np.zeros(n_phys * n_time, dtype=np.int64)
     for t in range(n_time):
-        for i in range(n_gen):
-            row = _time_major_index(i, t, n_gen)
-            G[row, _time_major_index(i, t, n_gen)] = -1.0
-            if t > 0:
-                G[row, _time_major_index(i, t - 1, n_gen)] = 1.0
+        for i, block_indices in enumerate(block_groups):
+            row = _time_major_index(i, t, n_phys)
+            for block_idx in block_indices:
+                G[row, _time_major_index(block_idx, t, n_gen)] = -1.0
+                if t > 0:
+                    G[row, _time_major_index(block_idx, t - 1, n_gen)] = 1.0
             row_generators[row] = i
     return G, row_generators
 
@@ -112,11 +135,16 @@ def build_kkt_jacobian(solution: EDSolution, params: EDParameters) -> np.ndarray
     The residual ordering is [balance, stationarity, max complementarity,
     min complementarity, ramp-up complementarity, ramp-down complementarity].
     """
-    n_gen, n_time = _validate_solution_and_params(solution, params)
+    n_gen, n_time, n_phys = _validate_solution_and_params(solution, params)
     n_p = n_gen * n_time
+    n_ramp = n_phys * n_time
     M = build_balance_matrix(n_gen, n_time)
-    G_up, up_generators = build_ramp_up_matrix(n_gen, n_time)
-    G_down, down_generators = build_ramp_down_matrix(n_gen, n_time)
+    G_up, up_generators = build_ramp_up_matrix(
+        n_gen, n_time, params.physical_to_block_indices, n_phys
+    )
+    G_down, down_generators = build_ramp_down_matrix(
+        n_gen, n_time, params.physical_to_block_indices, n_phys
+    )
 
     P_vec = flatten_time_major(solution.P)
     beta_vec = flatten_time_major(params.beta)
@@ -135,23 +163,29 @@ def build_kkt_jacobian(solution: EDSolution, params: EDParameters) -> np.ndarray
     g_down = G_down @ P_vec - R_down_vec
 
     zero_t_p = np.zeros((n_time, n_p), dtype=np.float64)
+    zero_t_r = np.zeros((n_time, n_ramp), dtype=np.float64)
     zero_p_t = np.zeros((n_p, n_time), dtype=np.float64)
     zero_p_p = np.zeros((n_p, n_p), dtype=np.float64)
+    zero_p_r = np.zeros((n_p, n_ramp), dtype=np.float64)
+    zero_r_t = np.zeros((n_ramp, n_time), dtype=np.float64)
+    zero_r_p = np.zeros((n_ramp, n_p), dtype=np.float64)
+    zero_r_r = np.zeros((n_ramp, n_ramp), dtype=np.float64)
     I_p = np.eye(n_p, dtype=np.float64)
 
     return np.block([
-        [-M, zero_t_p[:, :n_time], zero_t_p, zero_t_p, zero_t_p, zero_t_p],
+        [-M, zero_t_p[:, :n_time], zero_t_p, zero_t_p, zero_t_r, zero_t_r],
         [np.diag(beta_vec), -M.T, I_p, -I_p, G_up.T, G_down.T],
-        [np.diag(mu_max_vec), zero_p_t, np.diag(g_max), zero_p_p, zero_p_p, zero_p_p],
-        [-np.diag(mu_min_vec), zero_p_t, zero_p_p, np.diag(g_min), zero_p_p, zero_p_p],
-        [np.diag(mu_up_vec) @ G_up, zero_p_t, zero_p_p, zero_p_p, np.diag(g_up), zero_p_p],
-        [np.diag(mu_down_vec) @ G_down, zero_p_t, zero_p_p, zero_p_p, zero_p_p, np.diag(g_down)],
+        [np.diag(mu_max_vec), zero_p_t, np.diag(g_max), zero_p_p, zero_p_r, zero_p_r],
+        [-np.diag(mu_min_vec), zero_p_t, zero_p_p, np.diag(g_min), zero_p_r, zero_p_r],
+        [np.diag(mu_up_vec) @ G_up, zero_r_t, zero_r_p, zero_r_p, np.diag(g_up), zero_r_r],
+        [np.diag(mu_down_vec) @ G_down, zero_r_t, zero_r_p, zero_r_p, zero_r_r, np.diag(g_down)],
     ])
 
 def build_bid_derivative_alpha(
     player_generators: List[int],
     n_gen: int,
     n_time: int,
+    n_phys: Optional[int] = None,
 ) -> np.ndarray:
     """
     Build dF/dalpha_j for a player's owned generator-time bid coefficients.
@@ -163,8 +197,7 @@ def build_bid_derivative_alpha(
     owned_indices = _owned_time_major_indices(player_generators, n_gen, n_time)
     n_p = n_gen * n_time
 
-    # 5 is the number of generator-time residual blocks 
-    dim_f = n_time + 5 * n_p
+    dim_f = _kkt_residual_dimension(n_gen, n_time, n_gen if n_phys is None else int(n_phys))
     derivative = np.zeros((dim_f, len(owned_indices)), dtype=np.float64)
     for col, p_idx in enumerate(owned_indices):
         derivative[n_time + p_idx, col] = 1.0
@@ -175,6 +208,7 @@ def build_bid_derivative_beta(
     player_generators: List[int],
     n_gen: int,
     n_time: int,
+    n_phys: Optional[int] = None,
 ) -> np.ndarray:
     """
     Build dF/dbeta_j for a player's owned generator-time quadratic coefficients.
@@ -186,7 +220,7 @@ def build_bid_derivative_beta(
     _require_shape("solution.P", solution.P, (n_gen, n_time))
     owned_indices = _owned_time_major_indices(player_generators, n_gen, n_time)
     n_p = n_gen * n_time
-    dim_f = n_time + 5 * n_p
+    dim_f = _kkt_residual_dimension(n_gen, n_time, n_gen if n_phys is None else int(n_phys))
     P_vec = flatten_time_major(solution.P)
     derivative = np.zeros((dim_f, len(owned_indices)), dtype=np.float64)
     for col, p_idx in enumerate(owned_indices):
@@ -208,7 +242,7 @@ def compute_market_sensitivities(
     player's generator-time bid entries. If include_beta is true, the same
     sensitivities are also returned for beta.
     """
-    n_gen, n_time = _validate_solution_and_params(solution, params)
+    n_gen, n_time, n_phys = _validate_solution_and_params(solution, params)
     if regularization < 0:
         raise ValueError("regularization must be non-negative")
     if condition_warning_threshold <= 0:
@@ -227,7 +261,7 @@ def compute_market_sensitivities(
             stacklevel=2,
         )
 
-    A_alpha = build_bid_derivative_alpha(player_generators, n_gen, n_time)
+    A_alpha = build_bid_derivative_alpha(player_generators, n_gen, n_time, n_phys)
     dz_dalpha = -_solve_linear_system(J, A_alpha, "alpha")
 
     result: Dict[str, np.ndarray | float] = {
@@ -237,19 +271,27 @@ def compute_market_sensitivities(
     }
 
     if include_beta:
-        A_beta = build_bid_derivative_beta(solution, player_generators, n_gen, n_time)
+        A_beta = build_bid_derivative_beta(solution, player_generators, n_gen, n_time, n_phys)
         dz_dbeta = -_solve_linear_system(J, A_beta, "beta")
         result["dP_dbeta"] = dz_dbeta[:n_p, :]
         result["dlambda_dbeta"] = dz_dbeta[n_p:n_p + n_time, :]
 
     return result
 
-def _validate_solution_and_params(solution: EDSolution, params: EDParameters) -> Tuple[int, int]:
+def _validate_solution_and_params(solution: EDSolution, params: EDParameters) -> Tuple[int, int, int]:
     alpha = np.asarray(params.alpha, dtype=np.float64)
     if alpha.ndim != 2:
-        raise ValueError(f"params.alpha must have shape (n_gen, n_time), got {alpha.shape}")
+        raise ValueError(f"params.alpha must have shape (n_blocks, n_time), got {alpha.shape}")
     n_gen, n_time = alpha.shape
     _validate_dimensions(n_gen, n_time)
+    if params.num_blocks is not None and int(params.num_blocks) != n_gen:
+        raise ValueError(f"params.num_blocks={params.num_blocks} does not match alpha rows {n_gen}")
+    block_groups = _normalize_block_groups(
+        n_gen,
+        params.physical_to_block_indices,
+        params.num_physical_generators,
+    )
+    n_phys = len(block_groups)
 
     for name, value in (
         ("params.beta", params.beta),
@@ -258,10 +300,14 @@ def _validate_solution_and_params(solution: EDSolution, params: EDParameters) ->
         ("solution.P", solution.P),
         ("solution.mu_max", solution.mu_max),
         ("solution.mu_min", solution.mu_min),
+    ):
+        _require_shape(name, value, (n_gen, n_time))
+
+    for name, value in (
         ("solution.mu_up", solution.mu_up),
         ("solution.mu_down", solution.mu_down),
     ):
-        _require_shape(name, value, (n_gen, n_time))
+        _require_shape(name, value, (n_phys, n_time))
 
     for name, value in (
         ("params.demand", params.demand),
@@ -274,7 +320,10 @@ def _validate_solution_and_params(solution: EDSolution, params: EDParameters) ->
         ("params.ramp_down", params.ramp_down),
         ("params.p_initial", params.p_initial),
     ):
-        _require_shape(name, value, (n_gen,))
+        _require_shape(name, value, (n_phys,))
+
+    if solution.P_phys is not None:
+        _require_shape("solution.P_phys", solution.P_phys, (n_phys, n_time))
 
     beta = np.asarray(params.beta, dtype=np.float64)
     if not np.all(beta > 0.0):
@@ -289,7 +338,7 @@ def _validate_solution_and_params(solution: EDSolution, params: EDParameters) ->
     if not all(np.all(np.isfinite(np.asarray(arr, dtype=np.float64))) for arr in arrays):
         raise ValueError("All solution and parameter arrays must contain only finite values")
 
-    return int(n_gen), int(n_time)
+    return int(n_gen), int(n_time), int(n_phys)
 
 def _validate_dimensions(n_gen: int, n_time: int) -> Tuple[int, int]:
     n_gen = int(n_gen)
@@ -323,6 +372,44 @@ def _owned_time_major_indices(
         for i in owned:
             indices.append(_time_major_index(i, t, n_gen))
     return indices
+
+def _normalize_block_groups(
+    n_blocks: int,
+    physical_to_block_indices: Optional[List[List[int]]],
+    n_phys: Optional[int] = None,
+) -> List[List[int]]:
+    """Return physical-generator block groups; default is one block per generator."""
+    n_blocks = int(n_blocks)
+    if physical_to_block_indices is None:
+        if n_phys is not None and int(n_phys) != n_blocks:
+            raise ValueError(
+                "physical_to_block_indices is required when physical-generator "
+                "and bidding-block counts differ"
+            )
+        return [[i] for i in range(n_blocks)]
+
+    groups = [[int(block_idx) for block_idx in group] for group in physical_to_block_indices]
+    if n_phys is not None and len(groups) != int(n_phys):
+        raise ValueError(
+            f"physical_to_block_indices has {len(groups)} groups, expected {int(n_phys)}"
+        )
+    if any(len(group) == 0 for group in groups):
+        raise ValueError("Every physical generator must own at least one bidding block")
+
+    flattened = [block_idx for group in groups for block_idx in group]
+    invalid = [block_idx for block_idx in flattened if block_idx < 0 or block_idx >= n_blocks]
+    if invalid:
+        raise ValueError(f"physical_to_block_indices contains invalid block indices: {invalid}")
+    if sorted(flattened) != list(range(n_blocks)):
+        raise ValueError("physical_to_block_indices must cover every block exactly once")
+    return groups
+
+def _kkt_residual_dimension(n_blocks: int, n_time: int, n_phys: int) -> int:
+    n_blocks, n_time = _validate_dimensions(n_blocks, n_time)
+    n_phys = int(n_phys)
+    if n_phys <= 0:
+        raise ValueError(f"n_phys must be positive, got {n_phys}")
+    return n_time + 3 * n_blocks * n_time + 2 * n_phys * n_time
 
 def _ramp_rhs_vector(
     ramp: np.ndarray,

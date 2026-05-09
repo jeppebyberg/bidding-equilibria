@@ -45,6 +45,7 @@ class GradientBidTrainingKKTMS:
         max_iterations: int = 20,
         conv_tolerance: float = 1e-4,
         gradient_clip_norm: Optional[float] = None,
+        gradient_clip_mode: str = "per_block",
         alpha_min: Optional[float] = 0.0,
         alpha_max: Optional[float] = None,
         kkt_regularization: float = 1e-8,
@@ -66,6 +67,8 @@ class GradientBidTrainingKKTMS:
             raise ValueError(f"conv_tolerance must be nonnegative, got {conv_tolerance}")
         if gradient_clip_norm is not None and gradient_clip_norm <= 0:
             raise ValueError("gradient_clip_norm must be positive when provided")
+        if gradient_clip_mode not in {"per_block", "global"}:
+            raise ValueError("gradient_clip_mode must be either 'per_block' or 'global'")
         if alpha_min is not None and alpha_max is not None and alpha_min > alpha_max:
             raise ValueError("alpha_min cannot exceed alpha_max")
         if kkt_regularization < 0:
@@ -85,20 +88,17 @@ class GradientBidTrainingKKTMS:
         self.max_iterations = int(max_iterations)
         self.conv_tolerance = float(conv_tolerance)
         self.gradient_clip_norm = gradient_clip_norm
+        self.gradient_clip_mode = gradient_clip_mode
         self.alpha_min = alpha_min
         self.alpha_max = alpha_max
         self.kkt_regularization = float(kkt_regularization)
         self.condition_warning_threshold = float(condition_warning_threshold)
 
-        capacity_cols = [col for col in self.scenarios_df.columns if col.endswith("_cap")]
-        if not capacity_cols:
-            raise ValueError("No generator capacity columns found. Expected columns ending with '_cap'.")
-        self.generator_names = [col.replace("_cap", "") for col in capacity_cols]
-        self.num_generators = len(self.generator_names)
         self.num_scenarios = len(self.scenarios_df)
         self.num_time_steps = self._infer_num_time_steps()
+        self._initialize_block_mapping_from_ed()
         self.cost_vector = np.asarray(
-            [float(self.costs_df[f"{gen}_cost"].iloc[0]) for gen in self.generator_names],
+            [float(self.costs_df[f"{block}_cost"].iloc[0]) for block in self.block_names],
             dtype=np.float64,
         )
         self.player_index_by_id = {
@@ -120,6 +120,49 @@ class GradientBidTrainingKKTMS:
         self.iteration = 0
         self.results: Optional[Dict[str, Any]] = None
 
+    def _initialize_block_mapping_from_ed(self) -> None:
+        """
+        Reuse the ED model's ordering so training, ED solves, and KKT
+        sensitivities agree on flattened block and physical-generator indices.
+        """
+        mapping_model = EconomicDispatchQuadraticModel(
+            self.scenarios_df,
+            self.costs_df,
+            self.ramps_df,
+            p_init=None,
+            beta_coeff=self.beta_smooth,
+        )
+        self.block_names = mapping_model.get_block_names()
+        self.num_blocks = len(self.block_names)
+        self.physical_generator_names = mapping_model.get_physical_generator_names()
+        self.num_physical_generators = len(self.physical_generator_names)
+        self.block_to_physical = mapping_model.get_block_to_physical_mapping()
+        self.block_to_physical_idx = list(mapping_model.block_to_physical_idx)
+        self.physical_to_block_indices = [
+            list(blocks) for blocks in mapping_model.physical_to_block_indices
+        ]
+        self.blocks_by_generator = mapping_model.get_blocks_by_generator()
+        self.local_blocks_by_generator = {
+            int(generator_idx): list(local_blocks)
+            for generator_idx, local_blocks in mapping_model.local_blocks_by_generator.items()
+        }
+        self.local_to_global_block = mapping_model.get_local_to_global_block_mapping()
+        self.global_to_local_block = dict(mapping_model.global_to_local_block)
+        self.generator_block_pairs = list(mapping_model.generator_block_pairs)
+
+        # Backwards-compatible aliases for callers that still expect
+        # generator_names to mean physical units.
+        self.generator_names = list(self.physical_generator_names)
+        self.num_generators = self.num_physical_generators
+
+        if any(len(blocks) == 0 for blocks in self.physical_to_block_indices):
+            raise ValueError("Every physical generator must have at least one bidding block")
+        for block_name in self.block_names:
+            if f"{block_name}_cap" not in self.scenarios_df.columns:
+                raise ValueError(f"Missing block capacity column '{block_name}_cap'")
+            if f"{block_name}_cost" not in self.costs_df.columns:
+                raise ValueError(f"Missing block cost column '{block_name}_cost'")
+
     def _infer_num_time_steps(self) -> int:
         if "time_steps" in self.scenarios_df.columns:
             return int(self.scenarios_df["time_steps"].iloc[0])
@@ -134,12 +177,12 @@ class GradientBidTrainingKKTMS:
         return [float(v) for v in value]
 
     def _initialize_missing_bid_profiles(self) -> None:
-        for gen_idx, gen_name in enumerate(self.generator_names):
-            profile_col = f"{gen_name}_bid_profile"
-            bid_col = f"{gen_name}_bid"
+        for block_idx, block_name in enumerate(self.block_names):
+            profile_col = f"{block_name}_bid_profile"
+            bid_col = f"{block_name}_bid"
             if profile_col not in self.scenarios_df.columns:
                 self.scenarios_df[profile_col] = [
-                    [float(self.cost_vector[gen_idx])] * self.num_time_steps
+                    [float(self.cost_vector[block_idx])] * self.num_time_steps
                     for _ in range(self.num_scenarios)
                 ]
             for s in range(self.num_scenarios):
@@ -153,16 +196,55 @@ class GradientBidTrainingKKTMS:
                 self.scenarios_df.at[s, profile_col] = [float(v) for v in profile]
                 self.scenarios_df.at[s, bid_col] = float(profile[0])
 
+    def _coerce_index_or_name(self, value: Any, names: List[str], label: str) -> int:
+        if isinstance(value, str) and not value.strip().lstrip("-").isdigit():
+            if value not in names:
+                raise ValueError(f"Unknown {label} name '{value}'. Available: {names}")
+            return names.index(value)
+        idx = int(value)
+        if idx < 0 or idx >= len(names):
+            raise ValueError(f"{label} index {idx} is out of range [0, {len(names) - 1}]")
+        return idx
+
+    def _controlled_physical_generators(self, player_id: int) -> List[int]:
+        player = self._get_player_config(player_id)
+        if "controlled_generators" not in player:
+            return []
+        return [
+            self._coerce_index_or_name(value, self.physical_generator_names, "physical generator")
+            for value in player["controlled_generators"]
+        ]
+
+    def _controlled_blocks(self, player_id: int) -> List[int]:
+        player = self._get_player_config(player_id)
+        if "controlled_blocks" in player:
+            return [
+                self._coerce_index_or_name(value, self.block_names, "bidding block")
+                for value in player["controlled_blocks"]
+            ]
+
+        controlled_physical = self._controlled_physical_generators(player_id)
+        if not controlled_physical:
+            raise ValueError(
+                f"Player {player_id} must define either controlled_blocks or controlled_generators"
+            )
+        controlled_blocks: List[int] = []
+        for physical_idx in controlled_physical:
+            controlled_blocks.extend(self.physical_to_block_indices[int(physical_idx)])
+        return controlled_blocks
+
     def _controlled_generators(self, player_id: int) -> List[int]:
-        return [int(g) for g in self._get_player_config(player_id)["controlled_generators"]]
+        """Compatibility alias: bid variables are now controlled blocks."""
+        return self._controlled_blocks(player_id)
 
     def _compute_p_init_from_ed(self, scenarios_df: pd.DataFrame) -> List[List[float]]:
         initial_dispatch = []
         for _, row in scenarios_df.iterrows():
-            initial_dispatch.append([
-                0.5 * float(row[f"{gen}_cap"])
-                for gen in self.generator_names
-            ])
+            physical_initial = []
+            for block_indices in self.physical_to_block_indices:
+                physical_capacity = sum(float(row[f"{self.block_names[b]}_cap"]) for b in block_indices)
+                physical_initial.append(0.5 * physical_capacity)
+            initial_dispatch.append(physical_initial)
 
         ed_for_p_init = EconomicDispatchQuadraticModel(
             scenarios_df,
@@ -243,21 +325,29 @@ class GradientBidTrainingKKTMS:
         player_id: int,
         dispatches: List[List[List[float]]],
         clearing_prices: List[List[float]],
+        block_dispatches: Optional[List[List[List[float]]]] = None,
     ) -> Tuple[float, List[float]]:
-        controlled = self._controlled_generators(player_id)
+        controlled = self._controlled_blocks(player_id)
         profit_params = self._build_profit_params()
         c_linear = np.asarray(profit_params.c_linear, dtype=np.float64).reshape(-1)
         c_quadratic = np.asarray(profit_params.c_quadratic, dtype=np.float64).reshape(-1)
+        dispatch_source = block_dispatches if block_dispatches is not None else dispatches
+        first_width = len(dispatch_source[0][0]) if dispatch_source and dispatch_source[0] else 0
+        if first_width != self.num_blocks:
+            raise ValueError(
+                "compute_player_profit requires block-level dispatches with "
+                f"{self.num_blocks} entries per time step, got {first_width}"
+            )
         scenario_profits = []
         for s in range(self.num_scenarios):
             profit_s = 0.0
             for t in range(self.num_time_steps):
-                for gen_idx in controlled:
-                    p = float(dispatches[s][t][gen_idx])
+                for block_idx in controlled:
+                    p = float(dispatch_source[s][t][block_idx])
                     profit_s += (
                         float(clearing_prices[s][t]) * p
-                        - float(c_linear[gen_idx]) * p
-                        - 0.5 * float(c_quadratic[gen_idx]) * p**2
+                        - float(c_linear[block_idx]) * p
+                        - 0.5 * float(c_quadratic[block_idx]) * p**2
                     )
             scenario_profits.append(float(profit_s))
         return float(np.mean(scenario_profits)), scenario_profits
@@ -268,25 +358,27 @@ class GradientBidTrainingKKTMS:
     ) -> Tuple[Dict[int, np.ndarray], float, List[float], Dict[str, Any]]:
         ed = self._solve_training_ed_model()
         dispatches = ed.get_dispatches()
+        block_dispatches = ed.get_block_dispatches()
         clearing_prices = ed.get_clearing_prices()
         duals = self._extract_duals_from_ed(ed)
-        if dispatches is None or clearing_prices is None:
+        if dispatches is None or block_dispatches is None or clearing_prices is None:
             raise RuntimeError("ED solve did not return dispatches and clearing prices.")
 
         baseline_profit, baseline_scenario_profits = self.compute_player_profit(
             player_id,
             dispatches,
             clearing_prices,
+            block_dispatches=block_dispatches,
         )
 
-        controlled = self._controlled_generators(player_id)
+        controlled = self._controlled_blocks(player_id)
         scenario_gradients: Dict[int, np.ndarray] = {}
         scenario_diagnostics = []
         gradient_norms = []
         condition_numbers = []
 
         for s in range(self.num_scenarios):
-            solution_s = self._build_ed_solution_for_scenario(s, dispatches, clearing_prices, duals)
+            solution_s = self._build_ed_solution_for_scenario(s, ed)
             params_s = self._build_ed_params_for_scenario(s)
 
             market_sens = compute_market_sensitivities(
@@ -359,25 +451,27 @@ class GradientBidTrainingKKTMS:
         """
         ed = self._solve_training_ed_model()
         dispatches = ed.get_dispatches()
+        block_dispatches = ed.get_block_dispatches()
         clearing_prices = ed.get_clearing_prices()
         duals = self._extract_duals_from_ed(ed)
-        if dispatches is None or clearing_prices is None:
+        if dispatches is None or block_dispatches is None or clearing_prices is None:
             raise RuntimeError("ED solve did not return dispatches and clearing prices.")
 
         baseline_profit, baseline_scenario_profits = self.compute_player_profit(
             player_id,
             dispatches,
             clearing_prices,
+            block_dispatches=block_dispatches,
         )
 
-        controlled = self._controlled_generators(player_id)
+        controlled = self._controlled_blocks(player_id)
         scenario_diagnostics = []
         gradient_norms = []
         condition_numbers = []
         scenario_gradient_norms: Dict[int, float] = {}
 
         for s in range(self.num_scenarios):
-            solution_s = self._build_ed_solution_for_scenario(s, dispatches, clearing_prices, duals)
+            solution_s = self._build_ed_solution_for_scenario(s, ed)
             params_s = self._build_ed_params_for_scenario(s)
 
             market_sens = compute_market_sensitivities(
@@ -451,7 +545,7 @@ class GradientBidTrainingKKTMS:
         n_owned: int,
     ) -> None:
         n_alpha = int(n_owned) * self.num_time_steps
-        n_dispatch = self.num_generators * self.num_time_steps
+        n_dispatch = self.num_blocks * self.num_time_steps
         if np.asarray(market_sens["dP_dalpha"]).shape != (n_dispatch, n_alpha):
             raise ValueError(
                 "market_sens['dP_dalpha'] must have shape "
@@ -490,7 +584,7 @@ class GradientBidTrainingKKTMS:
         scenario_idx: int,
         gradient: np.ndarray,
     ) -> None:
-        controlled = self._controlled_generators(player_id)
+        controlled = self._controlled_blocks(player_id)
         n_owned = len(controlled)
         expected = n_owned * self.num_time_steps
         s = int(scenario_idx)
@@ -500,11 +594,7 @@ class GradientBidTrainingKKTMS:
         if not np.all(np.isfinite(grad)):
             raise ValueError(f"Non-finite gradient for scenario {s}")
 
-        # Scenario-wise clipping is used because bid labels are scenario-specific.
-        if self.gradient_clip_norm is not None:
-            grad_norm = float(np.linalg.norm(grad))
-            if grad_norm > float(self.gradient_clip_norm):
-                grad = grad * (float(self.gradient_clip_norm) / (grad_norm + 1e-12))
+        grad = self._clip_owned_bid_gradient(grad, n_owned)
 
         current = self._flatten_owned_bids_time_major(s, controlled)
         updated = current + self.current_learning_rate * grad
@@ -513,8 +603,8 @@ class GradientBidTrainingKKTMS:
             raise ValueError(f"Updated bids contain non-finite values for scenario {s}")
 
         updated_matrix = self._unflatten_owned_bids_time_major(updated, n_owned)
-        for local_idx, gen_idx in enumerate(controlled):
-            gen_name = self.generator_names[int(gen_idx)]
+        for local_idx, block_idx in enumerate(controlled):
+            gen_name = self.block_names[int(block_idx)]
             profile = [float(v) for v in updated_matrix[local_idx, :]]
             if len(profile) != self.num_time_steps:
                 raise ValueError(
@@ -528,10 +618,38 @@ class GradientBidTrainingKKTMS:
 
         self._validate_owned_bid_writeback(s, controlled, updated_matrix)
 
+    def _clip_owned_bid_gradient(self, gradient: np.ndarray, n_owned: int) -> np.ndarray:
+        """
+        Clip bid gradients without penalizing players that own many blocks.
+
+        The default ``per_block`` mode clips each controlled block's time
+        trajectory separately, so ``gradient_clip_norm`` has the same meaning
+        for every block regardless of how many blocks the player controls.
+        ``global`` preserves the old behavior: one norm over all owned
+        block-time bid variables.
+        """
+        grad = np.asarray(gradient, dtype=np.float64).reshape(-1)
+        if self.gradient_clip_norm is None:
+            return grad
+
+        clip_norm = float(self.gradient_clip_norm)
+        if self.gradient_clip_mode == "global":
+            grad_norm = float(np.linalg.norm(grad))
+            if grad_norm > clip_norm:
+                return grad * (clip_norm / (grad_norm + 1e-12))
+            return grad
+
+        grad_matrix = self._unflatten_owned_bids_time_major(grad, n_owned)
+        for block_local_idx in range(int(n_owned)):
+            block_grad_norm = float(np.linalg.norm(grad_matrix[block_local_idx, :]))
+            if block_grad_norm > clip_norm:
+                grad_matrix[block_local_idx, :] *= clip_norm / (block_grad_norm + 1e-12)
+        return grad_matrix.T.reshape(-1)
+
     def _flatten_owned_bids_time_major(self, scenario_idx: int, controlled: List[int]) -> np.ndarray:
         alpha = np.zeros((len(controlled), self.num_time_steps), dtype=np.float64)
-        for local_idx, gen_idx in enumerate(controlled):
-            gen_name = self.generator_names[int(gen_idx)]
+        for local_idx, block_idx in enumerate(controlled):
+            gen_name = self.block_names[int(block_idx)]
             profile = self._as_profile(
                 self.scenarios_df.at[int(scenario_idx), f"{gen_name}_bid_profile"],
                 f"{gen_name}_bid_profile",
@@ -556,8 +674,8 @@ class GradientBidTrainingKKTMS:
         controlled: List[int],
         expected_matrix: np.ndarray,
     ) -> None:
-        for local_idx, gen_idx in enumerate(controlled):
-            gen_name = self.generator_names[int(gen_idx)]
+        for local_idx, block_idx in enumerate(controlled):
+            gen_name = self.block_names[int(block_idx)]
             profile = self._as_profile(
                 self.scenarios_df.at[int(scenario_idx), f"{gen_name}_bid_profile"],
                 f"{gen_name}_bid_profile",
@@ -574,18 +692,18 @@ class GradientBidTrainingKKTMS:
     def _build_ed_solution_for_scenario(
         self,
         scenario_idx: int,
-        dispatches: List[List[List[float]]],
-        clearing_prices: List[List[float]],
-        duals: Dict[str, List[Any]],
+        ed: EconomicDispatchQuadraticModel,
     ) -> EDSolution:
-        s = int(scenario_idx)
+        data = ed.get_scenario_kkt_data(int(scenario_idx))
+        self._validate_scenario_kkt_data(data, int(scenario_idx))
         return EDSolution(
-            P=np.asarray(dispatches[s], dtype=np.float64).T,
-            lambda_=np.asarray(clearing_prices[s], dtype=np.float64),
-            mu_max=np.asarray(duals["mu_max"][s], dtype=np.float64).T,
-            mu_min=np.asarray(duals["mu_min"][s], dtype=np.float64).T,
-            mu_up=np.asarray(duals["mu_up"][s], dtype=np.float64).T,
-            mu_down=np.asarray(duals["mu_down"][s], dtype=np.float64).T,
+            P=np.asarray(data["P_block"], dtype=np.float64),
+            P_phys=np.asarray(data["P_phys"], dtype=np.float64),
+            lambda_=np.asarray(data["lambda_"], dtype=np.float64),
+            mu_max=np.asarray(data["mu_max"], dtype=np.float64),
+            mu_min=np.asarray(data["mu_min"], dtype=np.float64),
+            mu_up=np.asarray(data["mu_up"], dtype=np.float64),
+            mu_down=np.asarray(data["mu_down"], dtype=np.float64),
         )
 
     def _build_ed_params_for_scenario(self, scenario_idx: int) -> EDParameters:
@@ -593,7 +711,7 @@ class GradientBidTrainingKKTMS:
         return EDParameters(
             alpha=self._scenario_alpha_matrix(s),
             beta=np.full(
-                (self.num_generators, self.num_time_steps),
+                (self.num_blocks, self.num_time_steps),
                 2.0 * self.beta_smooth,
                 dtype=np.float64,
             ),
@@ -602,21 +720,25 @@ class GradientBidTrainingKKTMS:
                 dtype=np.float64,
             ),
             pmax=self._scenario_pmax_matrix(s),
-            pmin=np.zeros((self.num_generators, self.num_time_steps), dtype=np.float64),
+            pmin=self._scenario_pmin_matrix(s),
             ramp_up=np.asarray(
-                [float(self.ramps_df[f"{gen}_ramp_up"].iloc[0]) for gen in self.generator_names],
+                [float(self.ramps_df[f"{gen}_ramp_up"].iloc[0]) for gen in self.physical_generator_names],
                 dtype=np.float64,
             ),
             ramp_down=np.asarray(
-                [float(self.ramps_df[f"{gen}_ramp_down"].iloc[0]) for gen in self.generator_names],
+                [float(self.ramps_df[f"{gen}_ramp_down"].iloc[0]) for gen in self.physical_generator_names],
                 dtype=np.float64,
             ),
             p_initial=np.asarray(self.P_init[s], dtype=np.float64),
+            physical_to_block_indices=[list(blocks) for blocks in self.physical_to_block_indices],
+            block_to_physical_idx=list(self.block_to_physical_idx),
+            num_physical_generators=self.num_physical_generators,
+            num_blocks=self.num_blocks,
         )
 
     def _scenario_alpha_matrix(self, scenario_idx: int) -> np.ndarray:
-        alpha = np.zeros((self.num_generators, self.num_time_steps), dtype=np.float64)
-        for i, gen_name in enumerate(self.generator_names):
+        alpha = np.zeros((self.num_blocks, self.num_time_steps), dtype=np.float64)
+        for i, gen_name in enumerate(self.block_names):
             profile = self._as_profile(
                 self.scenarios_df.at[scenario_idx, f"{gen_name}_bid_profile"],
                 f"{gen_name}_bid_profile",
@@ -629,32 +751,73 @@ class GradientBidTrainingKKTMS:
         return alpha
 
     def _scenario_pmax_matrix(self, scenario_idx: int) -> np.ndarray:
-        pmax = np.zeros((self.num_generators, self.num_time_steps), dtype=np.float64)
-        for i, gen_name in enumerate(self.generator_names):
+        pmax = np.zeros((self.num_blocks, self.num_time_steps), dtype=np.float64)
+        for i, gen_name in enumerate(self.block_names):
             profile_col = f"{gen_name}_cap_profile"
-            wind_profile_col = f"{gen_name}_profile"
+            availability_profile_col = f"{gen_name}_profile"
             if profile_col in self.scenarios_df.columns:
                 profile = self._as_profile(self.scenarios_df.at[scenario_idx, profile_col], profile_col)
                 pmax[i, :] = profile
-            elif gen_name.startswith("W") and wind_profile_col in self.scenarios_df.columns:
-                profile = self._as_profile(self.scenarios_df.at[scenario_idx, wind_profile_col], wind_profile_col)
+            elif availability_profile_col in self.scenarios_df.columns:
+                profile = self._as_profile(
+                    self.scenarios_df.at[scenario_idx, availability_profile_col],
+                    availability_profile_col,
+                )
                 pmax[i, :] = profile
             else:
                 pmax[i, :] = float(self.scenarios_df.at[scenario_idx, f"{gen_name}_cap"])
         return pmax
 
+    def _scenario_pmin_matrix(self, scenario_idx: int) -> np.ndarray:
+        pmin = np.zeros((self.num_blocks, self.num_time_steps), dtype=np.float64)
+        for i, block_name in enumerate(self.block_names):
+            profile_col = f"{block_name}_pmin_profile"
+            static_col = f"{block_name}_pmin"
+            if profile_col in self.scenarios_df.columns:
+                profile = self._as_profile(self.scenarios_df.at[scenario_idx, profile_col], profile_col)
+                pmin[i, :] = profile
+            elif static_col in self.scenarios_df.columns:
+                pmin[i, :] = float(self.scenarios_df.at[scenario_idx, static_col])
+        return pmin
+
     def _build_profit_params(self) -> ProfitParameters:
         c_linear = np.asarray(
-            [float(self.costs_df[f"{gen}_cost"].iloc[0]) for gen in self.generator_names],
+            [float(self.costs_df[f"{block}_cost"].iloc[0]) for block in self.block_names],
             dtype=np.float64,
         )
-        c_quadratic = np.zeros(self.num_generators, dtype=np.float64)
-        for i, gen in enumerate(self.generator_names):
-            for col in (f"{gen}_quadratic_cost", f"{gen}_cost_quadratic", f"{gen}_quad_cost"):
+        c_quadratic = np.zeros(self.num_blocks, dtype=np.float64)
+        for i, block in enumerate(self.block_names):
+            for col in (f"{block}_quadratic_cost", f"{block}_cost_quadratic", f"{block}_quad_cost"):
                 if col in self.costs_df.columns:
                     c_quadratic[i] = float(self.costs_df[col].iloc[0])
                     break
         return ProfitParameters(c_linear=c_linear, c_quadratic=c_quadratic)
+
+    def _validate_scenario_kkt_data(self, data: Dict[str, np.ndarray], scenario_idx: int) -> None:
+        expected_block_shape = (self.num_blocks, self.num_time_steps)
+        expected_phys_shape = (self.num_physical_generators, self.num_time_steps)
+        for key in ("P_block", "mu_max", "mu_min"):
+            arr = np.asarray(data[key], dtype=np.float64)
+            if arr.shape != expected_block_shape:
+                raise ValueError(
+                    f"Scenario {scenario_idx}: {key} must have shape "
+                    f"{expected_block_shape}, got {arr.shape}"
+                )
+        for key in ("P_phys", "mu_up", "mu_down"):
+            arr = np.asarray(data[key], dtype=np.float64)
+            if arr.shape != expected_phys_shape:
+                raise ValueError(
+                    f"Scenario {scenario_idx}: {key} must have shape "
+                    f"{expected_phys_shape}, got {arr.shape}"
+                )
+        p_block = np.asarray(data["P_block"], dtype=np.float64)
+        p_phys = np.asarray(data["P_phys"], dtype=np.float64)
+        for physical_idx, block_indices in enumerate(self.physical_to_block_indices):
+            if not np.allclose(np.sum(p_block[block_indices, :], axis=0), p_phys[physical_idx, :]):
+                physical_name = self.physical_generator_names[physical_idx]
+                raise ValueError(
+                    f"Scenario {scenario_idx}: block dispatches do not sum to physical dispatch for {physical_name}"
+                )
 
     def run(self) -> Dict[str, Any]:
         print("=== Starting KKT Analytical Direct Bid Gradient Training ===")
@@ -663,8 +826,11 @@ class GradientBidTrainingKKTMS:
         print(f"lr_decay          : {self.learning_rate_decay}")
         print(f"min_learning_rate : {self.min_learning_rate}")
         print(f"max_iterations    : {self.max_iterations}")
+        print(f"gradient_clip_norm: {self.gradient_clip_norm}")
+        print(f"gradient_clip_mode: {self.gradient_clip_mode}")
         print(f"players           : {[p['id'] for p in self.players_config]}")
-        print(f"generators        : {self.generator_names}")
+        print(f"physical generators: {self.physical_generator_names}")
+        print(f"bidding blocks    : {self.block_names}")
 
         self._record_iteration_state()
 
@@ -738,8 +904,15 @@ class GradientBidTrainingKKTMS:
         return self.results
 
     def _record_iteration_state(self) -> None:
-        dispatches, prices = self.solve_training_ed()
-        player_profits, scenario_player_profits = self._compute_all_player_profits(dispatches, prices)
+        ed = self._solve_training_ed_model()
+        dispatches = ed.get_dispatches()
+        block_dispatches = ed.get_block_dispatches()
+        prices = ed.get_clearing_prices()
+        if dispatches is None or block_dispatches is None or prices is None:
+            raise RuntimeError("Quadratic ED solve did not return complete state.")
+        player_profits, scenario_player_profits = self._compute_all_player_profits(
+            dispatches, prices, block_dispatches=block_dispatches
+        )
         self.bid_history.append(self._snapshot_all_bids())
         self.profit_history_training.append(player_profits)
         self.profit_history_training_scenario.append(scenario_player_profits)
@@ -750,25 +923,44 @@ class GradientBidTrainingKKTMS:
         self,
         dispatches: List[List[List[float]]],
         clearing_prices: List[List[float]],
+        block_dispatches: Optional[List[List[List[float]]]] = None,
     ) -> Tuple[List[float], List[List[float]]]:
         player_profits = []
         scenario_by_player = [[0.0 for _ in self.players_config] for _ in range(self.num_scenarios)]
         for player_idx, player in enumerate(self.players_config):
-            avg_profit, scenario_profits = self.compute_player_profit(int(player["id"]), dispatches, clearing_prices)
+            avg_profit, scenario_profits = self.compute_player_profit(
+                int(player["id"]),
+                dispatches,
+                clearing_prices,
+                block_dispatches=block_dispatches,
+            )
             player_profits.append(avg_profit)
             for s, profit_s in enumerate(scenario_profits):
                 scenario_by_player[s][player_idx] = profit_s
         return player_profits, scenario_by_player
 
     def get_results(self) -> Dict[str, Any]:
-        dispatches, prices = self.solve_training_ed()
-        player_profits, scenario_player_profits = self._compute_all_player_profits(dispatches, prices)
+        ed = self._solve_training_ed_model()
+        dispatches = ed.get_dispatches()
+        block_dispatches = ed.get_block_dispatches()
+        prices = ed.get_clearing_prices()
+        if dispatches is None or block_dispatches is None or prices is None:
+            raise RuntimeError("Quadratic ED solve did not return complete results.")
+        player_profits, scenario_player_profits = self._compute_all_player_profits(
+            dispatches, prices, block_dispatches=block_dispatches
+        )
         return {
             "iterations": self.iteration,
             "num_scenarios": self.num_scenarios,
             "num_time_steps": self.num_time_steps,
             "generator_names": self.generator_names,
+            "physical_generator_names": self.physical_generator_names,
+            "block_names": self.block_names,
+            "block_to_physical": self.block_to_physical,
+            "block_to_physical_idx": self.block_to_physical_idx,
+            "blocks_by_generator": self.blocks_by_generator,
             "generator_costs": self.cost_vector.tolist(),
+            "block_costs": self.cost_vector.tolist(),
             "beta_smooth": self.beta_smooth,
             "learning_rate": self.learning_rate,
             "learning_rate_decay": self.learning_rate_decay,
@@ -777,6 +969,8 @@ class GradientBidTrainingKKTMS:
             "learning_rate_history": self.learning_rate_history,
             "max_iterations": self.max_iterations,
             "conv_tolerance": self.conv_tolerance,
+            "gradient_clip_norm": self.gradient_clip_norm,
+            "gradient_clip_mode": self.gradient_clip_mode,
             "kkt_regularization": self.kkt_regularization,
             "condition_warning_threshold": self.condition_warning_threshold,
             "alpha_bounds": {
@@ -797,6 +991,7 @@ class GradientBidTrainingKKTMS:
             "gradient_diagnostics_history": self.gradient_diagnostics_history,
             "kkt_condition_history": self.kkt_condition_history,
             "final_dispatches": dispatches,
+            "final_block_dispatches": block_dispatches,
             "final_clearing_prices": prices,
             "final_player_profits": player_profits,
             "final_player_profits_scenario": scenario_player_profits,
@@ -817,25 +1012,25 @@ class GradientBidTrainingKKTMS:
     def _snapshot_all_bids(self) -> List[List[List[float]]]:
         return [
             [
-                list(self.scenarios_df.at[s, f"{gen_name}_bid_profile"])
-                for gen_name in self.generator_names
+                list(self.scenarios_df.at[s, f"{block_name}_bid_profile"])
+                for block_name in self.block_names
             ]
             for s in range(self.num_scenarios)
         ]
 
     def _player_alpha_summary(self, player_id: int) -> Dict[str, float]:
-        return self._alpha_summary_for_generators(self._controlled_generators(player_id))
+        return self._alpha_summary_for_blocks(self._controlled_blocks(player_id))
 
     def _market_alpha_summary(self) -> Dict[str, float]:
-        return self._alpha_summary_for_generators(list(range(self.num_generators)))
+        return self._alpha_summary_for_blocks(list(range(self.num_blocks)))
 
-    def _alpha_summary_for_generators(self, generator_indices: List[int]) -> Dict[str, float]:
+    def _alpha_summary_for_blocks(self, block_indices: List[int]) -> Dict[str, float]:
         values = []
         deltas = []
         for s in range(self.num_scenarios):
-            for gen_idx in generator_indices:
-                gen_name = self.generator_names[int(gen_idx)]
-                cost = float(self.cost_vector[int(gen_idx)])
+            for block_idx in block_indices:
+                gen_name = self.block_names[int(block_idx)]
+                cost = float(self.cost_vector[int(block_idx)])
                 profile = self._as_profile(
                     self.scenarios_df.at[s, f"{gen_name}_bid_profile"],
                     f"{gen_name}_bid_profile",
@@ -883,6 +1078,8 @@ if __name__ == "__main__":
         seed=1,
     )
 
+    print(scenarios["description_text"])
+
     scenarios_df = scenarios["scenarios_df"]
     costs_df = scenarios["costs_df"]
     ramps_df = scenarios["ramps_df"]
@@ -894,12 +1091,12 @@ if __name__ == "__main__":
         players_config=players_config,
         beta_smooth=0.001,
         learning_rate=0.25,
-        learning_rate_decay=0.1,
+        learning_rate_decay=0.01,
         min_learning_rate=0.01,
-        max_iterations=100,
+        max_iterations=50,
         conv_tolerance=1e-4,
-        gradient_clip_norm=2.5,
-        kkt_regularization=1e-5,
+        gradient_clip_norm=5.0,
+        kkt_regularization=1e-10,
         alpha_min=0.0,
         alpha_max=None,
     )

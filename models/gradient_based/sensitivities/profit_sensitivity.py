@@ -58,7 +58,9 @@ def compute_player_profit(
     """
     Compute one player's profit for one scenario.
 
-    Profit is summed over the player's owned generators and all time periods:
+    In the bidding-block formulation, ``P`` rows are flattened bidding blocks
+    and ``player_generators`` should contain controlled block indices. Profit is
+    summed over the player's owned blocks and all time periods:
     ``lambda[t] * P[i,t] - c_linear[i,t] * P[i,t]
     - 0.5 * c_quadratic[i,t] * P[i,t]**2``.
     """
@@ -86,8 +88,9 @@ def compute_profit_sensitivity_dispatch(
     """
     Compute ``d pi_j / d P`` for one player's profit.
 
-    Owned generators have derivative ``lambda[t] - c_linear[i,t]
-    - c_quadratic[i,t] * P[i,t]``. Non-owned generators have derivative zero.
+    In the bidding-block formulation, rows of ``P`` are flattened blocks.
+    Owned blocks have derivative ``lambda[t] - c_linear[i,t]
+    - c_quadratic[i,t] * P[i,t]``. Non-owned blocks have derivative zero.
     If ``flatten`` is true, the result is returned in KKT-compatible
     time-major order with shape ``(n_gen * n_time,)``.
     """
@@ -116,8 +119,8 @@ def compute_profit_sensitivity_price(
     """
     Compute ``d pi_j / d lambda`` with shape ``(n_time,)``.
 
-    Each entry is total dispatch from the player's owned generators at that
-    time: ``sum_{i in Omega_j} P[i,t]``.
+    Each entry is total dispatch from the player's owned blocks at that time:
+    ``sum_{i in Omega_j} P[i,t]``.
     """
     P_arr = np.asarray(P, dtype=np.float64)
     if P_arr.ndim != 2:
