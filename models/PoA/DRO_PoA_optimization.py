@@ -8,15 +8,15 @@ import yaml
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-from config.intertemporal.utils.cases_utils import load_setup_data
-from config.intertemporal.scenarios.scenario_generator_2 import ScenarioManagerV2
+from config.utils.cases_utils import load_setup_data
+from config.scenarios.scenario_generator import ScenarioManager
 
 class PoAOptimization:
     def __init__(
             self,
             P_init,
             num_time_steps: int = 24,
-            reference_case: str = "test_case1",
+            reference_case: str = "test_case_bidding_blocks",
             feature_normalizer_stats_path: str = "results/feature_normalizer_stats.json",
             big_m_complementarity: float = 1e8,
             policy_results_path: Optional[str] = None,
@@ -47,7 +47,7 @@ class PoAOptimization:
         if self.eta < 0:
             raise ValueError("eta must be non-negative")
 
-        # Load setup directly from config/intertemporal/reference_cases.yaml.
+        # Load setup directly from config/reference_cases.yaml.
         # This keeps PoA aligned with the same reference-case source as the BR scripts.
         self._load_reference_case_setup()
 
@@ -1270,13 +1270,13 @@ class PoAOptimization:
     @classmethod
     def load_regime_scenarios(
         cls,
-        reference_case: str = "test_case1",
-        regime_config_path: str = "config/intertemporal/scenarios/regime_definitions.yaml",
+        reference_case: str = "test_case_bidding_blocks",
+        regime_config_path: str = "config/regime_definitions.yaml",
         regime_set: str = "PoA_analysis",
         seed: Optional[int] = None,
     ) -> pd.DataFrame:
-        """Generate empirical scenarios s^(k) from ScenarioManagerV2."""
-        manager = ScenarioManagerV2(base_case_reference=reference_case)
+        """Generate empirical scenarios s^(k) from ScenarioManager."""
+        manager = ScenarioManager(base_case_reference=reference_case)
         scenario_set = manager.create_scenario_set_from_regimes(
             regime_config_path=regime_config_path,
             regime_set=regime_set,
@@ -1288,7 +1288,7 @@ class PoAOptimization:
     def build_support_set_config_from_scenarios(
         cls,
         scenarios_df: pd.DataFrame,
-        reference_case: str = "test_case1",
+        reference_case: str = "test_case_bidding_blocks",
         regime: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Build support-set parameters from a regime's empirical scenarios."""
@@ -1375,8 +1375,8 @@ class PoAOptimization:
         P_init: Sequence[float],
         scenarios_df: Optional[pd.DataFrame] = None,
         regimes: Optional[Sequence[str]] = None,
-        reference_case: str = "test_case1",
-        regime_config_path: str = "config/intertemporal/scenarios/regime_definitions.yaml",
+        reference_case: str = "test_case_bidding_blocks",
+        regime_config_path: str = "config/regime_definitions.yaml",
         regime_set: str = "PoA_analysis",
         support_set_name: Optional[str] = None,
         feature_normalizer_stats_path: str = "results/feature_normalizer_stats.json",
@@ -1523,7 +1523,7 @@ class PoAOptimization:
             plt.close(fig)
 
 if __name__ == "__main__":
-    example_reference_case = "test_case1"
+    example_reference_case = "test_case_bidding_blocks"
     num_generators, *_ = load_setup_data(example_reference_case)
     P_init = np.ones(int(num_generators)) * 25
 
@@ -1536,7 +1536,7 @@ if __name__ == "__main__":
         P_init=P_init,
         reference_case=example_reference_case,
         regime_set="PoA_analysis",
-        support_set_name="test_case1_base",
+        support_set_name="test_case_bidding_blocks_base",
         policy_results_path="results/gradient_policy_training_nn_results.json",
         max_scenarios_per_regime=10,
         tee=False,

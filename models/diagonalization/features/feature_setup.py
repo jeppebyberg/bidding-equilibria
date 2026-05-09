@@ -35,7 +35,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 from models.diagonalization.intertemporal.MultipleScenarios.economic_dispatch_MS import EconomicDispatchModel
-from config.intertemporal.scenarios.scenario_generator import ScenarioManager
+from config.scenarios.scenario_generator import ScenarioManager
 from config.default_loader import load_test_case_config
 
 # YAML-based feature configuration loader
@@ -871,16 +871,16 @@ class FeatureBuilder:
 DEFAULT_FEATURES: List[str] = _FEATURE_CFG["default_features"]
 
 if __name__ == "__main__":
-    from config.intertemporal.scenarios.scenario_generator import ScenarioManager
-    from config.intertemporal.scenarios.scenario_generator_2 import ScenarioManagerV2
+    from config.scenarios.scenario_generator import ScenarioManager
+    from config.scenarios.scenario_generator import ScenarioManager
     
     # Configuration
-    TEST_CASE  = "test_case1"
+    TEST_CASE  = "test_case_bidding_blocks"
 
 # Generate scenarios for the algorithm
-    TEST_CASE  = "test_case1"
+    TEST_CASE  = "test_case_bidding_blocks"
 
-    scenario_manager_2 = ScenarioManagerV2(TEST_CASE)
+    scenario_manager_2 = ScenarioManager(TEST_CASE)
     players_config_2   = scenario_manager_2.get_players_config()
 
     scenarios_2 = scenario_manager_2.create_scenario_set_from_regimes(regime_set="policy_training")

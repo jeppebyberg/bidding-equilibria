@@ -7,14 +7,14 @@ import yaml
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from config.intertemporal.utils.cases_utils import load_setup_data
+from config.utils.cases_utils import load_setup_data
 
 class PoAOptimization:
     def __init__(
             self,
             P_init,
             num_time_steps: int = 24,
-            reference_case: str = "test_case1",
+            reference_case: str = "test_case_bidding_blocks",
             feature_normalizer_stats_path: str = "results/feature_normalizer_stats.json",
             big_m_complementarity: float = 1e6,
             policy_results_path: Optional[str] = None,
@@ -41,7 +41,7 @@ class PoAOptimization:
         self.policy_metadata: Dict[str, Any] = {}
         self.support_set_config = support_set_config or {}
 
-        # Load setup directly from config/intertemporal/reference_cases.yaml.
+        # Load setup directly from config/reference_cases.yaml.
         # This keeps PoA aligned with the same reference-case source as the BR scripts.
         self._load_reference_case_setup()
 
@@ -1415,7 +1415,7 @@ class PoAOptimization:
 
 if __name__ == "__main__":
     # Example usage
-    example_reference_case = "test_case1"
+    example_reference_case = "test_case_bidding_blocks"
     num_generators, *_ = load_setup_data(example_reference_case)
     P_init = np.ones(int(num_generators)) * 25
 
@@ -1428,13 +1428,13 @@ if __name__ == "__main__":
     num_time_steps = 24
     support_set_config = PoAOptimization.load_support_set_config(
         config_path="models/PoA/support_set_config.yaml",
-        config_name="test_case1_base",
+        config_name="test_case_bidding_blocks_base",
     )
 
     poa_opt = PoAOptimization(
         P_init,
         num_time_steps=num_time_steps,
-        reference_case="test_case1",
+        reference_case="test_case_bidding_blocks",
         feature_normalizer_stats_path="results/feature_normalizer_stats_gradient.json",
         policy_data=policy_results,
         support_set_config=support_set_config,

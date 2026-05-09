@@ -2,7 +2,7 @@
 Intertemporal best-response results visualization.
 
 This script reads results saved by:
-	drivers/intertemporal/best_response_algo_regret_min.py
+	models/diagonalization/intertemporal/best_response/best_response_algo_regret_min.py
 
 Expected default input:
 	results/best_response_results.json

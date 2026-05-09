@@ -5,7 +5,7 @@ Default inputs:
     results/gradient_policy_training_nn_results.json
     results/feature_normalizer_stats_gradient.json
 
-The script regenerates the scenario dataframe with ScenarioManagerV2, averages
+The script regenerates the scenario dataframe with ScenarioManager, averages
 the profiles within each regime, evaluates the saved final_policy_params on
 those mean trajectories, solves economic dispatch, and saves one four-panel
 figure per (regime, generator).
@@ -29,7 +29,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from config.intertemporal.scenarios.scenario_generator_2 import ScenarioManagerV2
+from config.scenarios.scenario_generator import ScenarioManager
 from models.diagonalization.features.feature_setup import FeatureBuilder
 from models.gradient_based.economic_dispatch_quad import EconomicDispatchQuadraticModel
 from models.gradient_based.sensitivities.policy_sensitivity import (
@@ -409,7 +409,7 @@ def parse_args() -> argparse.Namespace:
         default=Path("results/feature_normalizer_stats_gradient.json"),
         help="Path to saved feature normalizer stats",
     )
-    parser.add_argument("--case", default="test_case1", help="ScenarioManagerV2 base case reference")
+    parser.add_argument("--case", default="test_case_bidding_blocks", help="ScenarioManager base case reference")
     parser.add_argument("--regime-set", default="policy_training", help="Regime set name from regime_definitions.yaml")
     parser.add_argument("--seed", type=int, default=1, help="Scenario generation seed")
     parser.add_argument(
@@ -433,7 +433,7 @@ def main() -> None:
     if not args.results.exists():
         raise FileNotFoundError(f"Results file not found: {args.results}")
 
-    scenario_manager = ScenarioManagerV2(args.case)
+    scenario_manager = ScenarioManager(args.case)
     scenario_set = scenario_manager.create_scenario_set_from_regimes(
         regime_set=args.regime_set,
         seed=args.seed,

@@ -16,14 +16,14 @@ import os
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 sys.path.insert(0, project_root)
 
-from config.intertemporal.scenarios.scenario_generator import ScenarioManager
+from config.scenarios.scenario_generator import ScenarioManager
 from models.diagonalization.intertemporal.regret_minization.MPEC_regret_min import MPECModel
 
 
 if __name__ == "__main__":
     from config.default_loader import load_test_case_config
 
-    TEST_CASE  = "test_case1"
+    TEST_CASE  = "test_case_bidding_blocks"
 
     test_config = load_test_case_config(TEST_CASE)
 

@@ -3,8 +3,8 @@ Script to run Economic Dispatch model for multiple scenarios using ScenarioManag
 """
 
 from models.diagonalization.intertemporal.MultipleScenarios.economic_dispatch_MS import EconomicDispatchModel
-from config.intertemporal.scenarios.scenario_generator import ScenarioManager
-from config.intertemporal.scenarios.scenario_generator_2 import ScenarioManagerV2
+from config.scenarios.scenario_generator import ScenarioManager
+from config.scenarios.scenario_generator import ScenarioManager
 import numpy as np
 
 def compute_p_init_from_ed(scenarios_df, costs_df, ramps_df):
@@ -32,7 +32,7 @@ def compute_p_init_from_ed(scenarios_df, costs_df, ramps_df):
 if __name__ == "__main__":
 
     # # Generate multiple demand scenarios using ScenarioManager
-    # manager = ScenarioManager("test_case1")
+    # manager = ScenarioManager("test_case_bidding_blocks")
     
     # demand_linear = manager.generate_demand_scenarios("linear", num_scenarios=10, min_factor=0.8, max_factor=1.2)
     # capacity_linear = manager.generate_capacity_scenarios("linear", num_scenarios=3, min_factor=0.7, max_factor=1.0)
@@ -85,7 +85,7 @@ if __name__ == "__main__":
 
     # stop = True
 
-    manager_2 = ScenarioManagerV2("test_case1")
+    manager_2 = ScenarioManager("test_case_bidding_blocks")
     scenarios_2 = manager_2.create_scenario_set_from_regimes(regime_set="policy_training")
 
     print(scenarios_2['description_text'])

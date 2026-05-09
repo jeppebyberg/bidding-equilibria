@@ -1,0 +1,109 @@
+test_case_bidding_blocks:
+  demand:
+    - 150.0
+
+  time_steps:
+    - 12
+
+  generators:
+    - id: 0
+      name: "W1"
+      type: "wind"
+      pmin: 0.0
+      R_rate_up: 30.0
+      R_rate_down: 30.0
+      bidding_blocks:
+        - block_id: 0
+          name: "W1_B1"
+          pmax: 50.0
+          cost: 0.5
+
+    - id: 1
+      name: "W2"
+      type: "wind"
+      pmin: 0.0
+      R_rate_up: 30.0
+      R_rate_down: 30.0
+      bidding_blocks:
+        - block_id: 0
+          name: "W2_B1"
+          pmax: 50.0
+          cost: 1.0
+
+    - id: 2
+      name: "W3"
+      type: "wind"
+      pmin: 0.0
+      R_rate_up: 30.0
+      R_rate_down: 30.0
+      bidding_blocks:
+        - block_id: 0
+          name: "W3_B1"
+          pmax: 50.0
+          cost: 1.5
+
+    - id: 3
+      name: "G1"
+      type: "conventional"
+      pmin: 0.0
+      R_rate_up: 30.0
+      R_rate_down: 30.0
+      bidding_blocks:
+        - block_id: 0
+          name: "G1_B1"
+          pmax: 12.5
+          cost: 10.0
+        - block_id: 1
+          name: "G1_B2"
+          pmax: 12.5
+          cost: 20.0
+        - block_id: 2
+          name: "G1_B3"
+          pmax: 12.5
+          cost: 30.0
+        - block_id: 3
+          name: "G1_B4"
+          pmax: 12.5
+          cost: 40.0
+
+    - id: 4
+      name: "G2"
+      type: "conventional"
+      pmin: 0.0
+      R_rate_up: 30.0
+      R_rate_down: 30.0
+      bidding_blocks:
+        - block_id: 0
+          name: "G2_B1"
+          pmax: 12.5
+          cost: 15.0
+        - block_id: 1
+          name: "G2_B2"
+          pmax: 12.5
+          cost: 20.0
+        - block_id: 2
+          name: "G2_B3"
+          pmax: 12.5
+          cost: 25.0
+        - block_id: 3
+          name: "G2_B4"
+          pmax: 12.5
+          cost: 30.0
+
+
+
+  players:
+    - id: 0
+      controlled_generators: [0]
+
+    - id: 1
+      controlled_generators: [1]
+
+    - id: 2
+      controlled_generators: [2]
+
+    - id: 3
+      controlled_generators: [3]
+
+    - id: 4
+      controlled_generators: [4]

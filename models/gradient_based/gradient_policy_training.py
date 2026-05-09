@@ -915,12 +915,12 @@ class GradientPolicyTrainingKKTNNMS:
 if __name__ == "__main__":
     import time
 
-    from config.intertemporal.scenarios.scenario_generator_2 import ScenarioManagerV2
+    from config.scenarios.scenario_generator import ScenarioManager
     from models.diagonalization.features.feature_setup import FeatureBuilder, DEFAULT_FEATURES
 
-    TEST_CASE = "test_case1"
+    TEST_CASE = "test_case_bidding_blocks"
 
-    scenario_manager = ScenarioManagerV2(TEST_CASE)
+    scenario_manager = ScenarioManager(TEST_CASE)
     players_config = scenario_manager.get_players_config()
     scenarios = scenario_manager.create_scenario_set_from_regimes(
         regime_set="policy_training", 

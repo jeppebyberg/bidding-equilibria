@@ -29,7 +29,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from config.intertemporal.scenarios.scenario_generator_2 import ScenarioManagerV2
+from config.scenarios.scenario_generator import ScenarioManager
 from models.gradient_based.economic_dispatch_quad import EconomicDispatchQuadraticModel
 
 
@@ -332,7 +332,7 @@ def parse_args() -> argparse.Namespace:
         default=Path("results/gradient_bid_training_results.json"),
         help="Path to direct gradient bid training JSON results",
     )
-    parser.add_argument("--case", default="test_case1", help="ScenarioManagerV2 base case reference")
+    parser.add_argument("--case", default="test_case_bidding_blocks", help="ScenarioManager base case reference")
     parser.add_argument("--regime-set", default="policy_training", help="Regime set name from regime_definitions.yaml")
     parser.add_argument("--seed", type=int, default=1, help="Scenario generation seed")
     parser.add_argument(
@@ -356,7 +356,7 @@ def main() -> None:
     if not args.results.exists():
         raise FileNotFoundError(f"Results file not found: {args.results}")
 
-    scenario_manager = ScenarioManagerV2(args.case)
+    scenario_manager = ScenarioManager(args.case)
     scenario_set = scenario_manager.create_scenario_set_from_regimes(
         regime_set=args.regime_set,
         seed=args.seed,

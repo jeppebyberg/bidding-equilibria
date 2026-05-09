@@ -26,11 +26,11 @@ def compute_p_init_from_ed(scenarios_df, costs_df, ramps_df):
 if __name__ == "__main__":
     from models.diagonalization.intertemporal.MultipleScenarios.MPEC_MS import MPECModel
     from models.diagonalization.intertemporal.MultipleScenarios.economic_dispatch_MS import EconomicDispatchModel
-    from config.intertemporal.scenarios.scenario_generator_2 import ScenarioManagerV2
+    from config.scenarios.scenario_generator import ScenarioManager
     from config.default_loader import load_test_case_config
     from models.diagonalization.features.feature_setup import FeatureBuilder, DEFAULT_FEATURES
 
-    TEST_CASE  = "test_case1"
+    TEST_CASE  = "test_case_bidding_blocks"
 
     # test_config = load_test_case_config(TEST_CASE)
 
@@ -40,7 +40,7 @@ if __name__ == "__main__":
 
 
     # Scenario generation
-    scenario_manager = ScenarioManagerV2(TEST_CASE)
+    scenario_manager = ScenarioManager(TEST_CASE)
     players_config   = scenario_manager.get_players_config()
 
     scenarios = scenario_manager.create_scenario_set_from_regimes(regime_set="policy_training")
