@@ -1,0 +1,2031 @@
+{
+  "config": {
+    "bid_tolerance": 1e-06
+  },
+  "num_scenarios": 4,
+  "num_time_steps": 6,
+  "physical_generator_names": [
+    "G2",
+    "G1",
+    "W3",
+    "W2",
+    "W1"
+  ],
+  "block_names": [
+    "G2_B1",
+    "G2_B2",
+    "G1_B1",
+    "G1_B2",
+    "W3_B1",
+    "W3_B2",
+    "W2_B1",
+    "W2_B2",
+    "W1_B1",
+    "W1_B2"
+  ],
+  "block_to_physical": {
+    "G2_B1": "G2",
+    "G2_B2": "G2",
+    "G1_B1": "G1",
+    "G1_B2": "G1",
+    "W3_B1": "W3",
+    "W3_B2": "W3",
+    "W2_B1": "W2",
+    "W2_B2": "W2",
+    "W1_B1": "W1",
+    "W1_B2": "W1"
+  },
+  "block_costs": [
+    30.0,
+    40.0,
+    10.0,
+    20.0,
+    5.5,
+    5.51,
+    5.0,
+    5.01,
+    4.5,
+    4.51
+  ],
+  "player_blocks": {
+    "0": [
+      0,
+      1
+    ],
+    "1": [
+      2,
+      3
+    ],
+    "2": [
+      4,
+      5
+    ],
+    "3": [
+      6,
+      7
+    ],
+    "4": [
+      8,
+      9
+    ]
+  },
+  "final_bids": [
+    [
+      [
+        30.0,
+        30.0,
+        30.0,
+        30.0,
+        30.0,
+        30.0
+      ],
+      [
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0
+      ],
+      [
+        19.999999,
+        19.999999,
+        19.999999,
+        10.0,
+        10.0,
+        10.0
+      ],
+      [
+        20.0,
+        20.0,
+        20.0,
+        20.0,
+        20.0,
+        20.0
+      ],
+      [
+        5.5,
+        5.5,
+        5.5,
+        5.5,
+        5.5,
+        5.5
+      ],
+      [
+        5.51,
+        5.51,
+        5.51,
+        9.999999,
+        9.999999,
+        9.999999
+      ],
+      [
+        5.0,
+        5.0,
+        5.0,
+        5.0,
+        5.0,
+        5.0
+      ],
+      [
+        5.01,
+        5.01,
+        5.01,
+        5.01,
+        5.01,
+        5.01
+      ],
+      [
+        4.5,
+        4.5,
+        4.5,
+        4.5,
+        4.5,
+        4.5
+      ],
+      [
+        4.51,
+        4.51,
+        4.51,
+        4.51,
+        4.51,
+        4.51
+      ]
+    ],
+    [
+      [
+        30.0,
+        30.0,
+        30.0,
+        30.0,
+        30.0,
+        30.0
+      ],
+      [
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0
+      ],
+      [
+        19.999999,
+        19.999999,
+        19.999999,
+        19.999999,
+        10.0,
+        19.999999
+      ],
+      [
+        20.0,
+        20.0,
+        20.0,
+        20.0,
+        20.0,
+        20.0
+      ],
+      [
+        5.5,
+        5.5,
+        5.5,
+        5.5,
+        5.5,
+        5.5
+      ],
+      [
+        5.51,
+        5.51,
+        5.51,
+        5.51,
+        9.999999,
+        5.51
+      ],
+      [
+        5.0,
+        5.0,
+        5.0,
+        5.0,
+        5.0,
+        5.0
+      ],
+      [
+        5.01,
+        5.01,
+        5.01,
+        5.01,
+        5.01,
+        5.01
+      ],
+      [
+        4.5,
+        4.5,
+        4.5,
+        4.5,
+        4.5,
+        4.5
+      ],
+      [
+        4.51,
+        4.51,
+        4.51,
+        4.51,
+        4.51,
+        4.51
+      ]
+    ],
+    [
+      [
+        30.0,
+        30.0,
+        30.0,
+        30.0,
+        30.0,
+        30.0
+      ],
+      [
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0
+      ],
+      [
+        10.0,
+        19.999999,
+        19.999999,
+        10.0,
+        10.0,
+        10.0
+      ],
+      [
+        20.0,
+        20.0,
+        20.0,
+        29.999999,
+        29.999999,
+        20.0
+      ],
+      [
+        5.509999,
+        5.5,
+        5.5,
+        5.5,
+        5.5,
+        5.5
+      ],
+      [
+        5.51,
+        5.51,
+        5.51,
+        5.51,
+        5.51,
+        9.999999
+      ],
+      [
+        5.0,
+        5.0,
+        5.0,
+        5.0,
+        5.0,
+        5.0
+      ],
+      [
+        5.01,
+        5.01,
+        5.01,
+        5.01,
+        5.01,
+        5.01
+      ],
+      [
+        4.5,
+        4.5,
+        4.5,
+        4.5,
+        4.5,
+        4.5
+      ],
+      [
+        4.51,
+        4.51,
+        4.51,
+        4.51,
+        4.51,
+        4.51
+      ]
+    ],
+    [
+      [
+        30.0,
+        30.0,
+        30.0,
+        30.0,
+        30.0,
+        30.0
+      ],
+      [
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0,
+        40.0
+      ],
+      [
+        10.0,
+        19.999999,
+        10.0,
+        10.0,
+        10.0,
+        19.999999
+      ],
+      [
+        20.0,
+        20.0,
+        29.999999,
+        29.999999,
+        29.999999,
+        20.0
+      ],
+      [
+        5.5,
+        5.5,
+        5.5,
+        5.5,
+        5.5,
+        5.5
+      ],
+      [
+        9.999999,
+        5.51,
+        5.51,
+        5.51,
+        5.51,
+        5.51
+      ],
+      [
+        5.0,
+        5.0,
+        5.0,
+        5.0,
+        5.0,
+        5.0
+      ],
+      [
+        5.01,
+        5.01,
+        5.01,
+        5.01,
+        5.01,
+        5.01
+      ],
+      [
+        4.5,
+        4.5,
+        4.5,
+        4.5,
+        4.5,
+        4.5
+      ],
+      [
+        4.51,
+        4.51,
+        4.51,
+        4.51,
+        4.51,
+        4.51
+      ]
+    ]
+  ],
+  "final_dispatches": [
+    [
+      [
+        0.0,
+        1.4513908973871352,
+        33.70360809615884,
+        33.68466877309418,
+        32.88081293284038
+      ],
+      [
+        0.0,
+        15.58164624136667,
+        31.745307205042238,
+        31.706585173434053,
+        30.655545249893812
+      ],
+      [
+        0.0,
+        1.0883011960517663,
+        37.060619812621475,
+        37.152207560634515,
+        36.265647053658945
+      ],
+      [
+        0.0,
+        0.0,
+        39.19729192880722,
+        42.56565765198768,
+        41.819762369837974
+      ],
+      [
+        0.0,
+        0.0,
+        23.31354590285379,
+        43.59101918420215,
+        42.724197754257496
+      ],
+      [
+        0.0,
+        0.0,
+        26.629796348137532,
+        37.771264430693606,
+        36.88045669066708
+      ]
+    ],
+    [
+      [
+        0.0,
+        5.924949255428885,
+        34.880010120258206,
+        35.15742335005531,
+        35.27634524443121
+      ],
+      [
+        0.0,
+        17.4928440230029,
+        36.195302099830975,
+        36.876212328004435,
+        36.480611250715214
+      ],
+      [
+        0.0,
+        7.658945467867483,
+        40.53800567871039,
+        41.18751342935385,
+        41.019437292163026
+      ],
+      [
+        0.0,
+        15.379385640209474,
+        42.01655830939672,
+        42.307736196196544,
+        42.37281697963759
+      ],
+      [
+        0.0,
+        0.0,
+        41.58772753452574,
+        42.57448071998151,
+        42.13144505320439
+      ],
+      [
+        0.0,
+        21.168318172048426,
+        31.911197197049297,
+        32.23797716390899,
+        31.930433767112337
+      ]
+    ],
+    [
+      [
+        0.0,
+        0.0,
+        18.797323284891842,
+        41.07403618219585,
+        41.488119432736895
+      ],
+      [
+        0.0,
+        5.360855494474798,
+        35.20808363749938,
+        35.14216691529378,
+        35.75483180833388
+      ],
+      [
+        0.0,
+        21.475194501139477,
+        30.436005152998714,
+        30.51374110169409,
+        30.649981219137157
+      ],
+      [
+        0.0,
+        31.20849629347964,
+        30.973328118935516,
+        30.85995432229171,
+        30.920276005010052
+      ],
+      [
+        0.0,
+        27.144773387540074,
+        28.628178244650506,
+        28.216070826739514,
+        28.783433869467007
+      ],
+      [
+        0.0,
+        0.0,
+        32.085253453746375,
+        34.182891500492374,
+        35.052673788661984
+      ]
+    ],
+    [
+      [
+        0.0,
+        0.0,
+        29.165416109037434,
+        44.503640706267085,
+        43.7872007333174
+      ],
+      [
+        0.0,
+        7.3425278014259945,
+        40.57580001270461,
+        41.00701405472726,
+        40.465122520569
+      ],
+      [
+        0.0,
+        27.494772026654122,
+        33.93752669504175,
+        33.80564579045848,
+        33.36562886978221
+      ],
+      [
+        0.0,
+        47.05460291151576,
+        31.803837355052195,
+        31.63866450772242,
+        31.367978723853067
+      ],
+      [
+        0.0,
+        39.82008664913157,
+        29.718816808952127,
+        29.757755984323353,
+        29.33059350925979
+      ],
+      [
+        0.0,
+        19.108657289457565,
+        33.38319105796888,
+        34.005957622245184,
+        33.61766443608216
+      ]
+    ]
+  ],
+  "final_block_dispatches": [
+    [
+      [
+        0.0,
+        0.0,
+        1.4513908973871352,
+        0.0,
+        16.85180404807942,
+        16.85180404807942,
+        16.84233438654709,
+        16.84233438654709,
+        16.44040646642019,
+        16.44040646642019
+      ],
+      [
+        0.0,
+        0.0,
+        15.58164624136667,
+        0.0,
+        15.872653602521119,
+        15.872653602521119,
+        15.853292586717027,
+        15.853292586717027,
+        15.327772624946906,
+        15.327772624946906
+      ],
+      [
+        0.0,
+        0.0,
+        1.0883011960517663,
+        0.0,
+        18.530309906310737,
+        18.530309906310737,
+        18.576103780317258,
+        18.576103780317258,
+        18.132823526829473,
+        18.132823526829473
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        21.355499866530373,
+        17.841792062276845,
+        21.28282882599384,
+        21.28282882599384,
+        20.909881184918987,
+        20.909881184918987
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        21.696853711165737,
+        1.6166921916880526,
+        21.795509592101077,
+        21.795509592101077,
+        21.362098877128748,
+        21.362098877128748
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        18.644309877314676,
+        7.985486470822856,
+        18.885632215346803,
+        18.885632215346803,
+        18.44022834533354,
+        18.44022834533354
+      ]
+    ],
+    [
+      [
+        0.0,
+        0.0,
+        5.924949255428885,
+        0.0,
+        17.440005060129103,
+        17.440005060129103,
+        17.578711675027655,
+        17.578711675027655,
+        17.638172622215606,
+        17.638172622215606
+      ],
+      [
+        0.0,
+        0.0,
+        17.4928440230029,
+        0.0,
+        18.097651049915488,
+        18.097651049915488,
+        18.438106164002217,
+        18.438106164002217,
+        18.240305625357607,
+        18.240305625357607
+      ],
+      [
+        0.0,
+        0.0,
+        7.658945467867483,
+        0.0,
+        20.269002839355196,
+        20.269002839355196,
+        20.593756714676925,
+        20.593756714676925,
+        20.509718646081513,
+        20.509718646081513
+      ],
+      [
+        0.0,
+        0.0,
+        15.379385640209474,
+        0.0,
+        21.00827915469836,
+        21.00827915469836,
+        21.153868098098272,
+        21.153868098098272,
+        21.186408489818795,
+        21.186408489818795
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        21.083760949429585,
+        20.503966585096155,
+        21.287240359990754,
+        21.287240359990754,
+        21.065722526602194,
+        21.065722526602194
+      ],
+      [
+        0.0,
+        0.0,
+        21.168318172048426,
+        0.0,
+        15.955598598524649,
+        15.955598598524649,
+        16.118988581954493,
+        16.118988581954493,
+        15.965216883556169,
+        15.965216883556169
+      ]
+    ],
+    [
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        18.797323284891842,
+        0.0,
+        20.537018091097924,
+        20.537018091097924,
+        20.744059716368447,
+        20.744059716368447
+      ],
+      [
+        0.0,
+        0.0,
+        5.360855494474798,
+        0.0,
+        17.60404181874969,
+        17.60404181874969,
+        17.57108345764689,
+        17.57108345764689,
+        17.87741590416694,
+        17.87741590416694
+      ],
+      [
+        0.0,
+        0.0,
+        21.475194501139477,
+        0.0,
+        15.218002576499357,
+        15.218002576499357,
+        15.256870550847045,
+        15.256870550847045,
+        15.324990609568578,
+        15.324990609568578
+      ],
+      [
+        0.0,
+        0.0,
+        25.0,
+        6.208496293479641,
+        15.486664059467758,
+        15.486664059467758,
+        15.429977161145855,
+        15.429977161145855,
+        15.460138002505026,
+        15.460138002505026
+      ],
+      [
+        0.0,
+        0.0,
+        25.0,
+        2.1447733875400736,
+        14.314089122325253,
+        14.314089122325253,
+        14.108035413369757,
+        14.108035413369757,
+        14.391716934733504,
+        14.391716934733504
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        17.220456818208206,
+        14.86479663553817,
+        17.091445750246187,
+        17.091445750246187,
+        17.526336894330992,
+        17.526336894330992
+      ]
+    ],
+    [
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        21.860366977810482,
+        7.305049131226951,
+        22.251820353133542,
+        22.251820353133542,
+        21.8936003666587,
+        21.8936003666587
+      ],
+      [
+        0.0,
+        0.0,
+        7.3425278014259945,
+        0.0,
+        20.287900006352306,
+        20.287900006352306,
+        20.50350702736363,
+        20.50350702736363,
+        20.2325612602845,
+        20.2325612602845
+      ],
+      [
+        0.0,
+        0.0,
+        25.0,
+        2.494772026654122,
+        16.968763347520873,
+        16.968763347520873,
+        16.90282289522924,
+        16.90282289522924,
+        16.682814434891107,
+        16.682814434891107
+      ],
+      [
+        0.0,
+        0.0,
+        25.0,
+        22.054602911515758,
+        15.901918677526098,
+        15.901918677526098,
+        15.81933225386121,
+        15.81933225386121,
+        15.683989361926534,
+        15.683989361926534
+      ],
+      [
+        0.0,
+        0.0,
+        25.0,
+        14.820086649131568,
+        14.859408404476063,
+        14.859408404476063,
+        14.878877992161677,
+        14.878877992161677,
+        14.665296754629894,
+        14.665296754629894
+      ],
+      [
+        0.0,
+        0.0,
+        19.108657289457565,
+        0.0,
+        16.69159552898444,
+        16.69159552898444,
+        17.002978811122592,
+        17.002978811122592,
+        16.80883221804108,
+        16.80883221804108
+      ]
+    ]
+  ],
+  "final_clearing_prices": [
+    [
+      19.999999,
+      19.999999,
+      19.999999,
+      9.999999,
+      9.999999,
+      9.999999
+    ],
+    [
+      19.999999,
+      19.999999,
+      19.999999,
+      19.999999,
+      9.999999,
+      19.999999
+    ],
+    [
+      5.509999,
+      19.999999,
+      19.999999,
+      29.999999,
+      29.999999,
+      9.999999
+    ],
+    [
+      9.999999,
+      19.999999,
+      29.999999,
+      29.999999,
+      29.999999,
+      19.999999
+    ]
+  ],
+  "final_player_profits": {
+    "0": 0.0,
+    "1": 1091.8892901815175,
+    "2": 2715.1169710618215,
+    "3": 2891.043599322849,
+    "4": 2979.014670446719
+  },
+  "history": [
+    {
+      "iteration": 1,
+      "player_id": 0,
+      "baseline_profit": 0.0,
+      "accepted_profit": 0.0,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 1,
+      "player_id": 1,
+      "scenario_id": 3,
+      "time_id": 3,
+      "block_id": 3,
+      "block_name": "G1_B2",
+      "accepted_block": "G1_B2",
+      "old_bid": 20.0,
+      "new_bid": 29.999999,
+      "threshold_bid": 30.0,
+      "baseline_profit": 312.5,
+      "accepted_profit": 430.1364955151387,
+      "profit_improvement": 117.63649551513868,
+      "accepted": true
+    },
+    {
+      "iteration": 1,
+      "player_id": 2,
+      "scenario_id": 1,
+      "time_id": 4,
+      "block_id": 5,
+      "block_name": "W3_B2",
+      "accepted_block": "W3_B2",
+      "old_bid": 5.51,
+      "new_bid": 9.999999,
+      "threshold_bid": 10.0,
+      "baseline_profit": 1122.2948599474798,
+      "accepted_profit": 1168.977073708053,
+      "profit_improvement": 46.68221376057318,
+      "accepted": true
+    },
+    {
+      "iteration": 1,
+      "player_id": 3,
+      "baseline_profit": 1279.4597906038764,
+      "accepted_profit": 1279.4597906038764,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 1,
+      "player_id": 4,
+      "baseline_profit": 1379.6915259828083,
+      "accepted_profit": 1379.6915259828083,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 2,
+      "player_id": 0,
+      "baseline_profit": 0.0,
+      "accepted_profit": 0.0,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 2,
+      "player_id": 1,
+      "scenario_id": 3,
+      "time_id": 4,
+      "block_id": 3,
+      "block_name": "G1_B2",
+      "accepted_block": "G1_B2",
+      "old_bid": 20.0,
+      "new_bid": 29.999999,
+      "threshold_bid": 30.0,
+      "baseline_profit": 430.1364955151387,
+      "accepted_profit": 529.6867021829459,
+      "profit_improvement": 99.55020666780717,
+      "accepted": true
+    },
+    {
+      "iteration": 2,
+      "player_id": 2,
+      "scenario_id": 0,
+      "time_id": 3,
+      "block_id": 5,
+      "block_name": "W3_B2",
+      "accepted_block": "W3_B2",
+      "old_bid": 5.51,
+      "new_bid": 9.999999,
+      "threshold_bid": 10.0,
+      "baseline_profit": 1243.2741083007293,
+      "accepted_profit": 1287.2730586914922,
+      "profit_improvement": 43.99895039076296,
+      "accepted": true
+    },
+    {
+      "iteration": 2,
+      "player_id": 3,
+      "baseline_profit": 1401.6341131981876,
+      "accepted_profit": 1401.6341131981876,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 2,
+      "player_id": 4,
+      "baseline_profit": 1499.960675228512,
+      "accepted_profit": 1499.960675228512,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 3,
+      "player_id": 0,
+      "baseline_profit": 0.0,
+      "accepted_profit": 0.0,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 3,
+      "player_id": 1,
+      "scenario_id": 2,
+      "time_id": 3,
+      "block_id": 3,
+      "block_name": "G1_B2",
+      "accepted_block": "G1_B2",
+      "old_bid": 20.0,
+      "new_bid": 29.999999,
+      "threshold_bid": 30.0,
+      "baseline_profit": 529.6867021829459,
+      "accepted_profit": 607.7079351145209,
+      "profit_improvement": 78.02123293157501,
+      "accepted": true
+    },
+    {
+      "iteration": 3,
+      "player_id": 2,
+      "scenario_id": 2,
+      "time_id": 5,
+      "block_id": 5,
+      "block_name": "W3_B2",
+      "accepted_block": "W3_B2",
+      "old_bid": 5.51,
+      "new_bid": 9.999999,
+      "threshold_bid": 10.0,
+      "baseline_profit": 1364.7063712454992,
+      "accepted_profit": 1400.7220602260159,
+      "profit_improvement": 36.01568898051664,
+      "accepted": true
+    },
+    {
+      "iteration": 3,
+      "player_id": 3,
+      "baseline_profit": 1517.1542784525077,
+      "accepted_profit": 1517.1542784525077,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 3,
+      "player_id": 4,
+      "baseline_profit": 1616.6079750755728,
+      "accepted_profit": 1616.6079750755728,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 4,
+      "player_id": 0,
+      "baseline_profit": 0.0,
+      "accepted_profit": 0.0,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 4,
+      "player_id": 1,
+      "scenario_id": 3,
+      "time_id": 2,
+      "block_id": 3,
+      "block_name": "G1_B2",
+      "accepted_block": "G1_B2",
+      "old_bid": 20.0,
+      "new_bid": 29.999999,
+      "threshold_bid": 30.0,
+      "baseline_profit": 607.7079351145209,
+      "accepted_profit": 676.4448583074632,
+      "profit_improvement": 68.7369231929423,
+      "accepted": true
+    },
+    {
+      "iteration": 4,
+      "player_id": 2,
+      "scenario_id": 3,
+      "time_id": 0,
+      "block_id": 5,
+      "block_name": "W3_B2",
+      "accepted_block": "W3_B2",
+      "old_bid": 5.51,
+      "new_bid": 9.999999,
+      "threshold_bid": 10.0,
+      "baseline_profit": 1485.5658684792388,
+      "accepted_profit": 1518.3040407702792,
+      "profit_improvement": 32.73817229104043,
+      "accepted": true
+    },
+    {
+      "iteration": 4,
+      "player_id": 3,
+      "baseline_profit": 1651.6237100441172,
+      "accepted_profit": 1651.6237100441172,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 4,
+      "player_id": 4,
+      "baseline_profit": 1749.1731607849697,
+      "accepted_profit": 1749.1731607849697,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 5,
+      "player_id": 0,
+      "baseline_profit": 0.0,
+      "accepted_profit": 0.0,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 5,
+      "player_id": 1,
+      "scenario_id": 2,
+      "time_id": 4,
+      "block_id": 3,
+      "block_name": "G1_B2",
+      "accepted_block": "G1_B2",
+      "old_bid": 20.0,
+      "new_bid": 29.999999,
+      "threshold_bid": 30.0,
+      "baseline_profit": 676.4448583074632,
+      "accepted_profit": 744.3067849901199,
+      "profit_improvement": 67.86192668265676,
+      "accepted": true
+    },
+    {
+      "iteration": 5,
+      "player_id": 2,
+      "scenario_id": 0,
+      "time_id": 5,
+      "block_id": 5,
+      "block_name": "W3_B2",
+      "accepted_block": "W3_B2",
+      "old_bid": 5.51,
+      "new_bid": 9.999999,
+      "threshold_bid": 10.0,
+      "baseline_profit": 1589.8744792248608,
+      "accepted_profit": 1619.7664189681964,
+      "profit_improvement": 29.89193974333557,
+      "accepted": true
+    },
+    {
+      "iteration": 5,
+      "player_id": 3,
+      "baseline_profit": 1764.5621149375856,
+      "accepted_profit": 1764.5621149375856,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 5,
+      "player_id": 4,
+      "baseline_profit": 1862.5300416779385,
+      "accepted_profit": 1862.5300416779385,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 6,
+      "player_id": 0,
+      "baseline_profit": 0.0,
+      "accepted_profit": 0.0,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 6,
+      "player_id": 1,
+      "scenario_id": 2,
+      "time_id": 2,
+      "block_id": 2,
+      "block_name": "G1_B1",
+      "accepted_block": "G1_B1",
+      "old_bid": 10.0,
+      "new_bid": 19.999999,
+      "threshold_bid": 20.0,
+      "baseline_profit": 744.3067849901199,
+      "accepted_profit": 797.9947658741701,
+      "profit_improvement": 53.68798088405015,
+      "accepted": true
+    },
+    {
+      "iteration": 6,
+      "player_id": 2,
+      "scenario_id": 0,
+      "time_id": 4,
+      "block_id": 5,
+      "block_name": "W3_B2",
+      "accepted_block": "W3_B2",
+      "old_bid": 5.51,
+      "new_bid": 9.999999,
+      "threshold_bid": 10.0,
+      "baseline_profit": 1695.8564242416917,
+      "accepted_profit": 1722.0258736892588,
+      "profit_improvement": 26.169449447567104,
+      "accepted": true
+    },
+    {
+      "iteration": 6,
+      "player_id": 3,
+      "baseline_profit": 1889.777368199898,
+      "accepted_profit": 1889.777368199898,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 6,
+      "player_id": 4,
+      "baseline_profit": 1987.1128883613903,
+      "accepted_profit": 1987.1128883613903,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 7,
+      "player_id": 0,
+      "baseline_profit": 0.0,
+      "accepted_profit": 0.0,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 7,
+      "player_id": 1,
+      "scenario_id": 1,
+      "time_id": 5,
+      "block_id": 2,
+      "block_name": "G1_B1",
+      "accepted_block": "G1_B1",
+      "old_bid": 10.0,
+      "new_bid": 19.999999,
+      "threshold_bid": 20.0,
+      "baseline_profit": 797.9947658741701,
+      "accepted_profit": 850.9155560122115,
+      "profit_improvement": 52.92079013804141,
+      "accepted": true
+    },
+    {
+      "iteration": 7,
+      "player_id": 2,
+      "scenario_id": 2,
+      "time_id": 0,
+      "block_id": 4,
+      "block_name": "W3_B1",
+      "accepted_block": "W3_B1",
+      "old_bid": 5.5,
+      "new_bid": 5.509999,
+      "threshold_bid": 5.51,
+      "baseline_profit": 1801.8038587040824,
+      "accepted_profit": 1801.850847312964,
+      "profit_improvement": 0.046988608881747496,
+      "accepted": true
+    },
+    {
+      "iteration": 7,
+      "player_id": 3,
+      "baseline_profit": 1970.4749778721225,
+      "accepted_profit": 1970.4749778721225,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 7,
+      "player_id": 4,
+      "baseline_profit": 2067.042674723115,
+      "accepted_profit": 2067.042674723115,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 8,
+      "player_id": 0,
+      "baseline_profit": 0.0,
+      "accepted_profit": 0.0,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 8,
+      "player_id": 1,
+      "scenario_id": 3,
+      "time_id": 5,
+      "block_id": 2,
+      "block_name": "G1_B1",
+      "accepted_block": "G1_B1",
+      "old_bid": 10.0,
+      "new_bid": 19.999999,
+      "threshold_bid": 20.0,
+      "baseline_profit": 850.9155560122115,
+      "accepted_profit": 898.6871944586911,
+      "profit_improvement": 47.77163844647964,
+      "accepted": true
+    },
+    {
+      "iteration": 8,
+      "player_id": 2,
+      "baseline_profit": 1885.3088166120883,
+      "accepted_profit": 1885.3088166120883,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 8,
+      "player_id": 3,
+      "baseline_profit": 2055.4898634262463,
+      "accepted_profit": 2055.4898634262463,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 8,
+      "player_id": 4,
+      "baseline_profit": 2151.086827408904,
+      "accepted_profit": 2151.086827408904,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 9,
+      "player_id": 0,
+      "baseline_profit": 0.0,
+      "accepted_profit": 0.0,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 9,
+      "player_id": 1,
+      "scenario_id": 1,
+      "time_id": 1,
+      "block_id": 2,
+      "block_name": "G1_B1",
+      "accepted_block": "G1_B1",
+      "old_bid": 10.0,
+      "new_bid": 19.999999,
+      "threshold_bid": 20.0,
+      "baseline_profit": 898.6871944586911,
+      "accepted_profit": 942.4193001429874,
+      "profit_improvement": 43.73210568429624,
+      "accepted": true
+    },
+    {
+      "iteration": 9,
+      "player_id": 2,
+      "baseline_profit": 1975.7970628128403,
+      "accepted_profit": 1975.7970628128403,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 9,
+      "player_id": 3,
+      "baseline_profit": 2147.680385027204,
+      "accepted_profit": 2147.680385027204,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 9,
+      "player_id": 4,
+      "baseline_profit": 2242.2883464155393,
+      "accepted_profit": 2242.2883464155393,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 10,
+      "player_id": 0,
+      "baseline_profit": 0.0,
+      "accepted_profit": 0.0,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 10,
+      "player_id": 1,
+      "scenario_id": 0,
+      "time_id": 1,
+      "block_id": 2,
+      "block_name": "G1_B1",
+      "accepted_block": "G1_B1",
+      "old_bid": 10.0,
+      "new_bid": 19.999999,
+      "threshold_bid": 20.0,
+      "baseline_profit": 942.4193001429874,
+      "accepted_profit": 981.3734118509924,
+      "profit_improvement": 38.95411170800503,
+      "accepted": true
+    },
+    {
+      "iteration": 10,
+      "player_id": 2,
+      "baseline_profit": 2055.160322889119,
+      "accepted_profit": 2055.160322889119,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 10,
+      "player_id": 3,
+      "baseline_profit": 2226.946840034143,
+      "accepted_profit": 2226.946840034143,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 10,
+      "player_id": 4,
+      "baseline_profit": 2318.9272018763877,
+      "accepted_profit": 2318.9272018763877,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 11,
+      "player_id": 0,
+      "baseline_profit": 0.0,
+      "accepted_profit": 0.0,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 11,
+      "player_id": 1,
+      "scenario_id": 1,
+      "time_id": 3,
+      "block_id": 2,
+      "block_name": "G1_B1",
+      "accepted_block": "G1_B1",
+      "old_bid": 10.0,
+      "new_bid": 19.999999,
+      "threshold_bid": 20.0,
+      "baseline_profit": 981.3734118509924,
+      "accepted_profit": 1019.8218721066697,
+      "profit_improvement": 38.44846025567733,
+      "accepted": true
+    },
+    {
+      "iteration": 11,
+      "player_id": 2,
+      "baseline_profit": 2160.201708158471,
+      "accepted_profit": 2160.201708158471,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 11,
+      "player_id": 3,
+      "baseline_profit": 2332.7161699477,
+      "accepted_profit": 2332.7161699477,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 11,
+      "player_id": 4,
+      "baseline_profit": 2424.859233732277,
+      "accepted_profit": 2424.859233732277,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 12,
+      "player_id": 0,
+      "baseline_profit": 0.0,
+      "accepted_profit": 0.0,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 12,
+      "player_id": 1,
+      "scenario_id": 1,
+      "time_id": 2,
+      "block_id": 2,
+      "block_name": "G1_B1",
+      "accepted_block": "G1_B1",
+      "old_bid": 10.0,
+      "new_bid": 19.999999,
+      "threshold_bid": 20.0,
+      "baseline_profit": 1019.8218721066697,
+      "accepted_profit": 1038.969233861602,
+      "profit_improvement": 19.147361754932376,
+      "accepted": true
+    },
+    {
+      "iteration": 12,
+      "player_id": 2,
+      "baseline_profit": 2261.5467122207456,
+      "accepted_profit": 2261.5467122207456,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 12,
+      "player_id": 3,
+      "baseline_profit": 2435.684943224206,
+      "accepted_profit": 2435.684943224206,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 12,
+      "player_id": 4,
+      "baseline_profit": 2527.4078167078255,
+      "accepted_profit": 2527.4078167078255,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 13,
+      "player_id": 0,
+      "baseline_profit": 0.0,
+      "accepted_profit": 0.0,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 13,
+      "player_id": 1,
+      "scenario_id": 3,
+      "time_id": 1,
+      "block_id": 2,
+      "block_name": "G1_B1",
+      "accepted_block": "G1_B1",
+      "old_bid": 10.0,
+      "new_bid": 19.999999,
+      "threshold_bid": 20.0,
+      "baseline_profit": 1038.969233861602,
+      "accepted_profit": 1057.3255515295352,
+      "profit_improvement": 18.356317667933126,
+      "accepted": true
+    },
+    {
+      "iteration": 13,
+      "player_id": 2,
+      "baseline_profit": 2362.9862021085573,
+      "accepted_profit": 2362.9862021085573,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 13,
+      "player_id": 3,
+      "baseline_profit": 2538.2024681092707,
+      "accepted_profit": 2538.2024681092707,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 13,
+      "player_id": 4,
+      "baseline_profit": 2628.5706128929673,
+      "accepted_profit": 2628.5706128929673,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 14,
+      "player_id": 0,
+      "baseline_profit": 0.0,
+      "accepted_profit": 0.0,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 14,
+      "player_id": 1,
+      "scenario_id": 1,
+      "time_id": 0,
+      "block_id": 2,
+      "block_name": "G1_B1",
+      "accepted_block": "G1_B1",
+      "old_bid": 10.0,
+      "new_bid": 19.999999,
+      "threshold_bid": 20.0,
+      "baseline_profit": 1057.3255515295352,
+      "accepted_profit": 1072.13792318687,
+      "profit_improvement": 14.81237165733478,
+      "accepted": true
+    },
+    {
+      "iteration": 14,
+      "player_id": 2,
+      "baseline_profit": 2450.1862186892004,
+      "accepted_profit": 2450.1862186892004,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 14,
+      "player_id": 3,
+      "baseline_profit": 2626.0960176950534,
+      "accepted_profit": 2626.0960176950534,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 14,
+      "player_id": 4,
+      "baseline_profit": 2716.761467184959,
+      "accepted_profit": 2716.761467184959,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 15,
+      "player_id": 0,
+      "baseline_profit": 0.0,
+      "accepted_profit": 0.0,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 15,
+      "player_id": 1,
+      "scenario_id": 2,
+      "time_id": 1,
+      "block_id": 2,
+      "block_name": "G1_B1",
+      "accepted_block": "G1_B1",
+      "old_bid": 10.0,
+      "new_bid": 19.999999,
+      "threshold_bid": 20.0,
+      "baseline_profit": 1072.13792318687,
+      "accepted_profit": 1085.5400605828431,
+      "profit_improvement": 13.402137395973114,
+      "accepted": true
+    },
+    {
+      "iteration": 15,
+      "player_id": 2,
+      "baseline_profit": 2538.2064189809275,
+      "accepted_profit": 2538.2064189809275,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 15,
+      "player_id": 3,
+      "baseline_profit": 2713.951426197746,
+      "accepted_profit": 2713.951426197746,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 15,
+      "player_id": 4,
+      "baseline_profit": 2806.148537767086,
+      "accepted_profit": 2806.148537767086,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 16,
+      "player_id": 0,
+      "baseline_profit": 0.0,
+      "accepted_profit": 0.0,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 16,
+      "player_id": 1,
+      "scenario_id": 0,
+      "time_id": 0,
+      "block_id": 2,
+      "block_name": "G1_B1",
+      "accepted_block": "G1_B1",
+      "old_bid": 10.0,
+      "new_bid": 19.999999,
+      "threshold_bid": 20.0,
+      "baseline_profit": 1085.5400605828431,
+      "accepted_profit": 1089.1685374634633,
+      "profit_improvement": 3.6284768806201555,
+      "accepted": true
+    },
+    {
+      "iteration": 16,
+      "player_id": 2,
+      "baseline_profit": 2622.465430795423,
+      "accepted_profit": 2622.465430795423,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 16,
+      "player_id": 3,
+      "baseline_profit": 2798.1630897093146,
+      "accepted_profit": 2798.1630897093146,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 16,
+      "player_id": 4,
+      "baseline_profit": 2888.3505618789836,
+      "accepted_profit": 2888.3505618789836,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 17,
+      "player_id": 0,
+      "baseline_profit": 0.0,
+      "accepted_profit": 0.0,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 17,
+      "player_id": 1,
+      "scenario_id": 0,
+      "time_id": 2,
+      "block_id": 2,
+      "block_name": "G1_B1",
+      "accepted_block": "G1_B1",
+      "old_bid": 10.0,
+      "new_bid": 19.999999,
+      "threshold_bid": 20.0,
+      "baseline_profit": 1089.1685374634633,
+      "accepted_profit": 1091.8892901815175,
+      "profit_improvement": 2.7207527180542,
+      "accepted": true
+    },
+    {
+      "iteration": 17,
+      "player_id": 2,
+      "baseline_profit": 2715.1169710618215,
+      "accepted_profit": 2715.1169710618215,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 17,
+      "player_id": 3,
+      "baseline_profit": 2891.043599322849,
+      "accepted_profit": 2891.043599322849,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 17,
+      "player_id": 4,
+      "baseline_profit": 2979.014670446719,
+      "accepted_profit": 2979.014670446719,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 18,
+      "player_id": 0,
+      "baseline_profit": 0.0,
+      "accepted_profit": 0.0,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 18,
+      "player_id": 1,
+      "baseline_profit": 1091.8892901815175,
+      "accepted_profit": 1091.8892901815175,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 18,
+      "player_id": 2,
+      "baseline_profit": 2715.1169710618215,
+      "accepted_profit": 2715.1169710618215,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 18,
+      "player_id": 3,
+      "baseline_profit": 2891.043599322849,
+      "accepted_profit": 2891.043599322849,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    },
+    {
+      "iteration": 18,
+      "player_id": 4,
+      "baseline_profit": 2979.014670446719,
+      "accepted_profit": 2979.014670446719,
+      "accepted_block": null,
+      "old_bid": null,
+      "new_bid": null,
+      "profit_improvement": 0.0,
+      "accepted": false
+    }
+  ]
+}

@@ -358,16 +358,23 @@ class EconomicDispatchQuadraticModel:
             rule=physical_dispatch_rule,
         )
 
-        model.objective = Objective(
-            expr= 1 / self.num_scenarios * sum(
+        if abs(float(self.beta_coeff)) <= 0.0:
+            objective_expr = 1 / self.num_scenarios * sum(
+                self.bid_scenarios[s][t][self.local_to_global_block[(i, b)]] * model.P[i, b, t, s]
+                for s in model.scenarios
+                for t in model.time_steps
+                for (i, b) in model.generator_blocks
+            )
+        else:
+            objective_expr = 1 / self.num_scenarios * sum(
                 self.bid_scenarios[s][t][self.local_to_global_block[(i, b)]] * model.P[i, b, t, s]
               + self.beta_coeff * model.P[i, b, t, s]**2
                 for s in model.scenarios
                 for t in model.time_steps
                 for (i, b) in model.generator_blocks
-            ),
-            sense=minimize
-        )
+            )
+
+        model.objective = Objective(expr=objective_expr, sense=minimize)
 
         def power_balance_rule(m, t, s):
             return self.demand_scenarios[s][t] - sum(

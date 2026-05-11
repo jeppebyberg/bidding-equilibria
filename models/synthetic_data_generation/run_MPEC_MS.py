@@ -25,7 +25,7 @@ def compute_p_init_from_ed(scenarios_df, costs_df, ramps_df, generator_names):
 
 if __name__ == "__main__":
     from models.synthetic_data_generation.MPEC_MS import MPECModel
-    from models.diagonalization.intertemporal.MultipleScenarios.economic_dispatch_MS import EconomicDispatchModel
+    from models.synthetic_data_generation.economic_dispatch import EconomicDispatchModel
     from config.scenarios.scenario_generator import ScenarioManager
 
     import time

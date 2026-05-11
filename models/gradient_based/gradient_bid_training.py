@@ -46,6 +46,10 @@ class GradientBidTrainingKKTMS:
         conv_tolerance: float = 1e-4,
         gradient_clip_norm: Optional[float] = None,
         gradient_clip_mode: str = "per_block",
+        gradient_update_mode: str = "current",
+        gradient_history_window: int = 0,
+        bid_order_step_fraction: Optional[float] = 0.95,
+        bid_order_epsilon: Optional[float] = 1e-6,
         alpha_min: Optional[float] = 0.0,
         alpha_max: Optional[float] = None,
         kkt_regularization: float = 1e-8,
@@ -69,6 +73,14 @@ class GradientBidTrainingKKTMS:
             raise ValueError("gradient_clip_norm must be positive when provided")
         if gradient_clip_mode not in {"per_block", "global"}:
             raise ValueError("gradient_clip_mode must be either 'per_block' or 'global'")
+        if gradient_update_mode not in {"current", "history_average"}:
+            raise ValueError("gradient_update_mode must be either 'current' or 'history_average'")
+        if gradient_history_window < 0:
+            raise ValueError(f"gradient_history_window must be nonnegative, got {gradient_history_window}")
+        if bid_order_step_fraction is not None and not (0.0 < bid_order_step_fraction <= 1.0):
+            raise ValueError("bid_order_step_fraction must be in (0, 1] when provided")
+        if bid_order_epsilon is not None and bid_order_epsilon < 0.0:
+            raise ValueError("bid_order_epsilon must be nonnegative when provided")
         if alpha_min is not None and alpha_max is not None and alpha_min > alpha_max:
             raise ValueError("alpha_min cannot exceed alpha_max")
         if kkt_regularization < 0:
@@ -89,6 +101,12 @@ class GradientBidTrainingKKTMS:
         self.conv_tolerance = float(conv_tolerance)
         self.gradient_clip_norm = gradient_clip_norm
         self.gradient_clip_mode = gradient_clip_mode
+        self.gradient_update_mode = gradient_update_mode
+        self.gradient_history_window = int(gradient_history_window)
+        self.bid_order_step_fraction = (
+            None if bid_order_step_fraction is None else float(bid_order_step_fraction)
+        )
+        self.bid_order_epsilon = None if bid_order_epsilon is None else float(bid_order_epsilon)
         self.alpha_min = alpha_min
         self.alpha_max = alpha_max
         self.kkt_regularization = float(kkt_regularization)
@@ -116,6 +134,13 @@ class GradientBidTrainingKKTMS:
         self.gradient_norm_history: List[Dict[int, Dict[int, float]]] = []
         self.gradient_diagnostics_history: List[Dict[int, Dict[str, Any]]] = []
         self.kkt_condition_history: List[Dict[int, Dict[str, float]]] = []
+        self.step_norm_history: List[Dict[int, Dict[int, float]]] = []
+        self.last_bid_order_step_diagnostics: Dict[str, Any] = {
+            "bid_order_step_scale": 1.0,
+            "bid_order_limited_entries": 0,
+            "bid_order_epsilon": self.bid_order_epsilon,
+        }
+        self.gradient_history_snapshots: List[pd.DataFrame] = []
         self.learning_rate_history: List[float] = []
         self.iteration = 0
         self.results: Optional[Dict[str, Any]] = None
@@ -356,6 +381,24 @@ class GradientBidTrainingKKTMS:
         self,
         player_id: int,
     ) -> Tuple[Dict[int, np.ndarray], float, List[float], Dict[str, Any]]:
+        return self._compute_player_bid_gradients_for_df(player_id, self.scenarios_df)
+
+    def _compute_player_bid_gradients_for_df(
+        self,
+        player_id: int,
+        scenarios_df: pd.DataFrame,
+    ) -> Tuple[Dict[int, np.ndarray], float, List[float], Dict[str, Any]]:
+        original_scenarios_df = self.scenarios_df
+        self.scenarios_df = scenarios_df.copy(deep=True)
+        try:
+            return self._compute_player_bid_gradients_current_df(player_id)
+        finally:
+            self.scenarios_df = original_scenarios_df
+
+    def _compute_player_bid_gradients_current_df(
+        self,
+        player_id: int,
+    ) -> Tuple[Dict[int, np.ndarray], float, List[float], Dict[str, Any]]:
         ed = self._solve_training_ed_model()
         dispatches = ed.get_dispatches()
         block_dispatches = ed.get_block_dispatches()
@@ -438,6 +481,68 @@ class GradientBidTrainingKKTMS:
         }
         return scenario_gradients, baseline_profit, baseline_scenario_profits, diagnostics
 
+    def _historical_gradient_snapshots_for_update(self) -> List[pd.DataFrame]:
+        snapshots = self.gradient_history_snapshots
+        if self.gradient_history_window > 0 and len(snapshots) > self.gradient_history_window:
+            snapshots = snapshots[-self.gradient_history_window:]
+        if snapshots:
+            return snapshots
+        return [self.scenarios_df.copy(deep=True)]
+
+    def _compute_player_historical_average_bid_gradients(
+        self,
+        player_id: int,
+    ) -> Tuple[Dict[int, np.ndarray], float, List[float], Dict[str, Any]]:
+        snapshots = self._historical_gradient_snapshots_for_update()
+        accumulated_gradients: Dict[int, np.ndarray] = {}
+        snapshot_diagnostics = []
+        condition_numbers = []
+        latest_baseline_profit = 0.0
+        latest_scenario_profits: List[float] = []
+
+        for snapshot_idx, snapshot_df in enumerate(snapshots):
+            gradients, baseline_profit, scenario_profits, diagnostics = (
+                self._compute_player_bid_gradients_for_df(player_id, snapshot_df)
+            )
+            latest_baseline_profit = baseline_profit
+            latest_scenario_profits = scenario_profits
+            snapshot_diagnostics.append({
+                "snapshot": int(snapshot_idx),
+                "baseline_profit": float(baseline_profit),
+                "max_gradient_norm": float(diagnostics["max_gradient_norm"]),
+                "mean_gradient_norm": float(diagnostics["mean_gradient_norm"]),
+                "max_condition_number": float(diagnostics["max_condition_number"]),
+                "mean_condition_number": float(diagnostics["mean_condition_number"]),
+            })
+            condition_numbers.append(float(diagnostics["max_condition_number"]))
+            condition_numbers.append(float(diagnostics["mean_condition_number"]))
+            for scenario_idx, gradient in gradients.items():
+                if int(scenario_idx) not in accumulated_gradients:
+                    accumulated_gradients[int(scenario_idx)] = np.zeros_like(gradient)
+                accumulated_gradients[int(scenario_idx)] += np.asarray(gradient, dtype=np.float64)
+
+        averaged_gradients = {
+            int(scenario_idx): gradient / float(len(snapshots))
+            for scenario_idx, gradient in accumulated_gradients.items()
+        }
+        scenario_gradient_norms = {
+            int(scenario_idx): float(np.linalg.norm(gradient))
+            for scenario_idx, gradient in averaged_gradients.items()
+        }
+        gradient_norms = list(scenario_gradient_norms.values())
+
+        diagnostics = {
+            "scenario_diagnostics": [],
+            "scenario_gradient_norms": scenario_gradient_norms,
+            "snapshot_diagnostics": snapshot_diagnostics,
+            "num_history_snapshots": int(len(snapshots)),
+            "max_condition_number": float(np.max(condition_numbers)) if condition_numbers else 0.0,
+            "mean_condition_number": float(np.mean(condition_numbers)) if condition_numbers else 0.0,
+            "max_gradient_norm": float(np.max(gradient_norms)) if gradient_norms else 0.0,
+            "mean_gradient_norm": float(np.mean(gradient_norms)) if gradient_norms else 0.0,
+        }
+        return averaged_gradients, latest_baseline_profit, latest_scenario_profits, diagnostics
+
     def compute_and_update_player_bid_gradients(
         self,
         player_id: int,
@@ -445,97 +550,37 @@ class GradientBidTrainingKKTMS:
         """
         Compute and apply independent scenario-level bid gradients for one player.
 
-        The ED solve is done once at the player's pre-update bid profile. Each
-        scenario then gets its own dpi/dalpha vector and is updated immediately;
-        no gradient is averaged, shared, or reused across scenarios.
+        In ``current`` mode, the update uses only the gradient at the player's
+        pre-update bid profile. In ``history_average`` mode, the update uses
+        the average gradient over recorded complete-iteration bid profiles.
         """
-        ed = self._solve_training_ed_model()
-        dispatches = ed.get_dispatches()
-        block_dispatches = ed.get_block_dispatches()
-        clearing_prices = ed.get_clearing_prices()
-        duals = self._extract_duals_from_ed(ed)
-        if dispatches is None or block_dispatches is None or clearing_prices is None:
-            raise RuntimeError("ED solve did not return dispatches and clearing prices.")
-
-        baseline_profit, baseline_scenario_profits = self.compute_player_profit(
-            player_id,
-            dispatches,
-            clearing_prices,
-            block_dispatches=block_dispatches,
-        )
-
-        controlled = self._controlled_blocks(player_id)
-        scenario_diagnostics = []
-        gradient_norms = []
-        condition_numbers = []
-        scenario_gradient_norms: Dict[int, float] = {}
-
-        for s in range(self.num_scenarios):
-            solution_s = self._build_ed_solution_for_scenario(s, ed)
-            params_s = self._build_ed_params_for_scenario(s)
-
-            market_sens = compute_market_sensitivities(
-                solution=solution_s,
-                params=params_s,
-                player_generators=controlled,
-                include_beta=False,
-                regularization=self.kkt_regularization,
-                condition_warning_threshold=self.condition_warning_threshold,
+        if self.gradient_update_mode == "history_average":
+            scenario_gradients, baseline_profit, baseline_scenario_profits, diagnostics = (
+                self._compute_player_historical_average_bid_gradients(player_id)
+            )
+        else:
+            scenario_gradients, baseline_profit, baseline_scenario_profits, diagnostics = (
+                self._compute_player_bid_gradients_current_df(player_id)
             )
 
-            profit_sens = compute_profit_sensitivities(
-                P=solution_s.P,
-                lambda_=solution_s.lambda_,
-                profit_params=self._build_profit_params(),
-                player_generators=controlled,
-                flatten_dispatch=True,
-            )
+        step_norms = []
+        scenario_step_norms: Dict[int, float] = {}
+        scenario_bid_order_step_diagnostics: Dict[int, Dict[str, Any]] = {}
 
-            self._validate_bid_gradient_shapes(
-                market_sens=market_sens,
-                profit_sens=profit_sens,
-                n_owned=len(controlled),
-            )
-
-            dpi_dalpha = (
-                np.asarray(profit_sens["dpi_dP"], dtype=np.float64)
-                @ np.asarray(market_sens["dP_dalpha"], dtype=np.float64)
-                + np.asarray(profit_sens["dpi_dlambda"], dtype=np.float64)
-                @ np.asarray(market_sens["dlambda_dalpha"], dtype=np.float64)
-            )
-            dpi_dalpha = np.asarray(dpi_dalpha, dtype=np.float64).reshape(-1)
-            expected = len(controlled) * self.num_time_steps
-            if dpi_dalpha.shape != (expected,):
-                raise ValueError(f"dpi_dalpha must have shape {(expected,)}, got {dpi_dalpha.shape}")
-            if not np.all(np.isfinite(dpi_dalpha)):
-                raise ValueError(f"Non-finite bid gradient for player {player_id}, scenario {s}")
-
-            grad_norm = float(np.linalg.norm(dpi_dalpha))
-            condition_number = float(market_sens["condition_number"])
-            gradient_norms.append(grad_norm)
-            condition_numbers.append(condition_number)
-            scenario_gradient_norms[int(s)] = grad_norm
-            scenario_diagnostics.append({
-                "scenario": int(s),
-                "profit": float(profit_sens["profit"]),
-                "condition_number": condition_number,
-                "gradient_norm": grad_norm,
-            })
-
-            self._update_player_scenario_bids(
+        for s, gradient in scenario_gradients.items():
+            step_norm = self._update_player_scenario_bids(
                 player_id=player_id,
-                scenario_idx=s,
-                gradient=dpi_dalpha,
+                scenario_idx=int(s),
+                gradient=gradient,
             )
+            step_norms.append(step_norm)
+            scenario_step_norms[int(s)] = step_norm
+            scenario_bid_order_step_diagnostics[int(s)] = dict(self.last_bid_order_step_diagnostics)
 
-        diagnostics = {
-            "scenario_diagnostics": scenario_diagnostics,
-            "scenario_gradient_norms": scenario_gradient_norms,
-            "max_condition_number": float(np.max(condition_numbers)) if condition_numbers else 0.0,
-            "mean_condition_number": float(np.mean(condition_numbers)) if condition_numbers else 0.0,
-            "max_gradient_norm": float(np.max(gradient_norms)) if gradient_norms else 0.0,
-            "mean_gradient_norm": float(np.mean(gradient_norms)) if gradient_norms else 0.0,
-        }
+        diagnostics["scenario_step_norms"] = scenario_step_norms
+        diagnostics["scenario_bid_order_step_diagnostics"] = scenario_bid_order_step_diagnostics
+        diagnostics["max_step_norm"] = float(np.max(step_norms)) if step_norms else 0.0
+        diagnostics["mean_step_norm"] = float(np.mean(step_norms)) if step_norms else 0.0
         return baseline_profit, baseline_scenario_profits, diagnostics
 
     def _validate_bid_gradient_shapes(
@@ -583,7 +628,7 @@ class GradientBidTrainingKKTMS:
         player_id: int,
         scenario_idx: int,
         gradient: np.ndarray,
-    ) -> None:
+    ) -> float:
         controlled = self._controlled_blocks(player_id)
         n_owned = len(controlled)
         expected = n_owned * self.num_time_steps
@@ -597,8 +642,21 @@ class GradientBidTrainingKKTMS:
         grad = self._clip_owned_bid_gradient(grad, n_owned)
 
         current = self._flatten_owned_bids_time_major(s, controlled)
-        updated = current + self.current_learning_rate * grad
+        raw_step = self.current_learning_rate * grad
+        limited_step = self._limit_bid_step_to_order_region(
+            scenario_idx=s,
+            controlled=controlled,
+            current=current,
+            raw_step=raw_step,
+        )
+        self.last_bid_order_step_diagnostics = self._bid_order_step_diagnostics(
+            raw_step=raw_step,
+            limited_step=limited_step,
+        )
+        self.last_bid_order_step_diagnostics["bid_order_epsilon"] = self.bid_order_epsilon
+        updated = current + limited_step
         updated = self._clip_alpha_array(updated)
+        step_norm = float(np.linalg.norm(updated - current))
         if not np.all(np.isfinite(updated)):
             raise ValueError(f"Updated bids contain non-finite values for scenario {s}")
 
@@ -617,6 +675,115 @@ class GradientBidTrainingKKTMS:
             self.scenarios_df.at[s, f"{gen_name}_bid"] = profile[0]
 
         self._validate_owned_bid_writeback(s, controlled, updated_matrix)
+        return step_norm
+
+    def _limit_bid_step_to_order_region(
+        self,
+        scenario_idx: int,
+        controlled: List[int],
+        current: np.ndarray,
+        raw_step: np.ndarray,
+    ) -> np.ndarray:
+        """
+        Keep one KKT-gradient step inside the current local bid-order cell.
+
+        The implicit KKT sensitivity is a local derivative: it assumes the
+        active constraint/order structure remains the same over the step. If a
+        strategic bid jumps across the next neighboring bid in the merit order,
+        the update can land on the other side of the price setter using the old
+        derivative. This limiter shortens only the entries that would cross the
+        nearest neighboring bid at the same time step.
+        """
+        if self.bid_order_epsilon is None and self.bid_order_step_fraction is None:
+            return np.asarray(raw_step, dtype=np.float64).reshape(-1).copy()
+
+        current_vec = np.asarray(current, dtype=np.float64).reshape(-1)
+        step_vec = np.asarray(raw_step, dtype=np.float64).reshape(-1).copy()
+        if step_vec.shape != current_vec.shape:
+            raise ValueError(f"raw_step shape {step_vec.shape} does not match current shape {current_vec.shape}")
+
+        controlled_set = {int(block_idx) for block_idx in controlled}
+        market_alpha = self._scenario_alpha_matrix(int(scenario_idx))
+        epsilon = self.bid_order_epsilon
+        fraction = self.bid_order_step_fraction
+        tol = 1e-10
+
+        for t in range(self.num_time_steps):
+            other_bids = np.asarray(
+                [
+                    market_alpha[block_idx, t]
+                    for block_idx in range(self.num_blocks)
+                    if int(block_idx) not in controlled_set
+                ],
+                dtype=np.float64,
+            )
+            if other_bids.size == 0:
+                continue
+
+            for local_idx, _block_idx in enumerate(controlled):
+                flat_idx = t * len(controlled) + local_idx
+                step = float(step_vec[flat_idx])
+                if abs(step) <= tol:
+                    continue
+
+                bid = float(current_vec[flat_idx])
+
+                if step > 0.0:
+                    upper_neighbors = other_bids[other_bids > bid + tol]
+                    if upper_neighbors.size == 0:
+                        continue
+                    neighbor = float(np.min(upper_neighbors))
+                    max_step = (
+                        neighbor - float(epsilon) - bid
+                        if epsilon is not None
+                        else (neighbor - bid) * float(fraction)
+                    )
+                    if step > max_step:
+                        step_vec[flat_idx] = max(0.0, max_step)
+                else:
+                    lower_neighbors = other_bids[other_bids < bid - tol]
+                    if lower_neighbors.size == 0:
+                        continue
+                    neighbor = float(np.max(lower_neighbors))
+                    min_step = (
+                        neighbor + float(epsilon) - bid
+                        if epsilon is not None
+                        else (neighbor - bid) * float(fraction)
+                    )
+                    if step < min_step:
+                        step_vec[flat_idx] = min(0.0, min_step)
+
+        return step_vec
+
+    @staticmethod
+    def _bid_order_step_diagnostics(
+        raw_step: np.ndarray,
+        limited_step: np.ndarray,
+    ) -> Dict[str, Any]:
+        raw = np.asarray(raw_step, dtype=np.float64).reshape(-1)
+        limited = np.asarray(limited_step, dtype=np.float64).reshape(-1)
+        if raw.shape != limited.shape:
+            raise ValueError(f"raw_step shape {raw.shape} does not match limited_step shape {limited.shape}")
+
+        raw_norm = float(np.linalg.norm(raw))
+        limited_norm = float(np.linalg.norm(limited))
+        changed = np.abs(raw - limited) > 1e-12
+        return {
+            "bid_order_step_scale": (
+                float(limited_norm / raw_norm)
+                if raw_norm > 0.0
+                else 1.0
+            ),
+            "bid_order_limited_entries": int(np.count_nonzero(changed)),
+            "raw_step_norm_before_bid_order_limit": raw_norm,
+            "step_norm_after_bid_order_limit": limited_norm,
+            "raw_step_max_abs_before_bid_order_limit": (
+                float(np.max(np.abs(raw))) if raw.size else 0.0
+            ),
+            "step_max_abs_after_bid_order_limit": (
+                float(np.max(np.abs(limited))) if limited.size else 0.0
+            ),
+        }
 
     def _clip_owned_bid_gradient(self, gradient: np.ndarray, n_owned: int) -> np.ndarray:
         """
@@ -828,11 +995,15 @@ class GradientBidTrainingKKTMS:
         print(f"max_iterations    : {self.max_iterations}")
         print(f"gradient_clip_norm: {self.gradient_clip_norm}")
         print(f"gradient_clip_mode: {self.gradient_clip_mode}")
+        print(f"gradient_update_mode: {self.gradient_update_mode}")
+        print(f"gradient_history_window: {self.gradient_history_window}")
+        print(f"bid_order_epsilon: {self.bid_order_epsilon}")
         print(f"players           : {[p['id'] for p in self.players_config]}")
         print(f"physical generators: {self.physical_generator_names}")
         print(f"bidding blocks    : {self.block_names}")
 
         self._record_iteration_state()
+        self._record_gradient_history_snapshot()
 
         for iteration in range(1, self.max_iterations + 1):
             self.current_learning_rate = self._learning_rate_for_iteration(iteration)
@@ -840,6 +1011,7 @@ class GradientBidTrainingKKTMS:
             print(f"\n--- Iteration {iteration} ---")
             print(f"  active learning rate: {self.current_learning_rate:.6g}")
             iteration_gradient_norms: Dict[int, Dict[int, float]] = {}
+            iteration_step_norms: Dict[int, Dict[int, float]] = {}
             iteration_diagnostics: Dict[int, Dict[str, Any]] = {}
             iteration_conditions: Dict[int, Dict[str, float]] = {}
 
@@ -852,6 +1024,10 @@ class GradientBidTrainingKKTMS:
                     int(s): float(norm)
                     for s, norm in diagnostics["scenario_gradient_norms"].items()
                 }
+                iteration_step_norms[player_id] = {
+                    int(s): float(norm)
+                    for s, norm in diagnostics["scenario_step_norms"].items()
+                }
                 iteration_diagnostics[player_id] = diagnostics
                 iteration_conditions[player_id] = {
                     "max_condition_number": float(diagnostics["max_condition_number"]),
@@ -863,19 +1039,33 @@ class GradientBidTrainingKKTMS:
                 print(f"    pre-update profit          : {baseline_profit:.6f}")
                 print(f"    max scenario gradient norm : {diagnostics['max_gradient_norm']:.6f}")
                 print(f"    mean scenario gradient norm: {diagnostics['mean_gradient_norm']:.6f}")
+                print(f"    max scenario step norm     : {diagnostics['max_step_norm']:.6f}")
+                print(f"    mean scenario step norm    : {diagnostics['mean_step_norm']:.6f}")
                 print(f"    max condition number       : {diagnostics['max_condition_number']:.3e}")
                 print(f"    mean condition number      : {diagnostics['mean_condition_number']:.3e}")
+                if self.gradient_update_mode == "history_average":
+                    print(f"    history snapshots used     : {diagnostics['num_history_snapshots']}")
                 print(f"    post-update alpha min/max  : {alpha_summary['min']:.6f} / {alpha_summary['max']:.6f}")
 
             self.gradient_norm_history.append(iteration_gradient_norms)
+            self.step_norm_history.append(iteration_step_norms)
             self.gradient_diagnostics_history.append(iteration_diagnostics)
             self.kkt_condition_history.append(iteration_conditions)
             self._record_iteration_state()
+            self._record_gradient_history_snapshot()
 
             max_gradient_norm = max(
                 (
                     norm
                     for scenario_norms in iteration_gradient_norms.values()
+                    for norm in scenario_norms.values()
+                ),
+                default=0.0,
+            )
+            max_step_norm = max(
+                (
+                    norm
+                    for scenario_norms in iteration_step_norms.values()
                     for norm in scenario_norms.values()
                 ),
                 default=0.0,
@@ -887,6 +1077,7 @@ class GradientBidTrainingKKTMS:
             )
             print(f"  Training profits: {profit_str}")
             print(f"  Max gradient norm: {max_gradient_norm:.6f}")
+            print(f"  Max step norm: {max_step_norm:.6f}")
             market_alpha_summary = self._market_alpha_summary()
             print(
                 "  Market alpha trajectory min/max: "
@@ -918,6 +1109,9 @@ class GradientBidTrainingKKTMS:
         self.profit_history_training_scenario.append(scenario_player_profits)
         self.dispatch_history.append(dispatches)
         self.clearing_price_history.append(prices)
+
+    def _record_gradient_history_snapshot(self) -> None:
+        self.gradient_history_snapshots.append(self.scenarios_df.copy(deep=True))
 
     def _compute_all_player_profits(
         self,
@@ -971,6 +1165,11 @@ class GradientBidTrainingKKTMS:
             "conv_tolerance": self.conv_tolerance,
             "gradient_clip_norm": self.gradient_clip_norm,
             "gradient_clip_mode": self.gradient_clip_mode,
+            "gradient_update_mode": self.gradient_update_mode,
+            "gradient_history_window": self.gradient_history_window,
+            "bid_order_step_fraction": self.bid_order_step_fraction,
+            "bid_order_epsilon": self.bid_order_epsilon,
+            "num_gradient_history_snapshots": len(self.gradient_history_snapshots),
             "kkt_regularization": self.kkt_regularization,
             "condition_warning_threshold": self.condition_warning_threshold,
             "alpha_bounds": {
@@ -988,6 +1187,7 @@ class GradientBidTrainingKKTMS:
             "dispatch_history": self.dispatch_history,
             "clearing_price_history": self.clearing_price_history,
             "gradient_norm_history": self.gradient_norm_history,
+            "step_norm_history": self.step_norm_history,
             "gradient_diagnostics_history": self.gradient_diagnostics_history,
             "kkt_condition_history": self.kkt_condition_history,
             "final_dispatches": dispatches,
@@ -1089,13 +1289,15 @@ if __name__ == "__main__":
         costs_df=costs_df,
         ramps_df=ramps_df,
         players_config=players_config,
-        beta_smooth=0.001,
+        beta_smooth=0.01,
         learning_rate=0.25,
-        learning_rate_decay=0.01,
+        learning_rate_decay=0.1,
         min_learning_rate=0.01,
-        max_iterations=50,
+        max_iterations=200,
         conv_tolerance=1e-4,
-        gradient_clip_norm=5.0,
+        gradient_clip_norm=100.0,
+        gradient_update_mode="history_average",
+        gradient_history_window=0,
         kkt_regularization=1e-10,
         alpha_min=0.0,
         alpha_max=None,
