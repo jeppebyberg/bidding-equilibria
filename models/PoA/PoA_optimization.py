@@ -550,7 +550,7 @@ class PoAOptimization:
         self.model.mu_ramp_down_eq = Var(self.model.n_gen, self.model.time_steps_plus_1, domain=NonNegativeReals)  # Ramp down duals
 
     def _build_complementarity_equilibrium_variables(self) -> None:
-        #Complementarity variables for the upper and lower bounds (one per generator per scenario)
+        #Complementarity variables for the upper and lower bounds 
         self.model.z_upper_bound_eq = Var(self.model.n_gen, self.model.time_steps, domain=Binary)
         self.model.z_lower_bound_eq = Var(self.model.n_gen, self.model.time_steps, domain=Binary)
         self.model.z_ramp_up_eq = Var(self.model.n_gen, self.model.time_steps, domain=Binary)
@@ -565,7 +565,7 @@ class PoAOptimization:
         self.model.mu_ramp_down_opt = Var(self.model.n_gen, self.model.time_steps_plus_1, domain=NonNegativeReals)  # Ramp down duals
 
     def _build_complementarity_optimal_variables(self) -> None:
-        #Complementarity variables for the upper and lower bounds (one per generator per scenario)
+        #Complementarity variables for the upper and lower bounds
         self.model.z_upper_bound_opt = Var(self.model.n_gen, self.model.time_steps, domain=Binary)
         self.model.z_lower_bound_opt = Var(self.model.n_gen, self.model.time_steps, domain=Binary)
         self.model.z_ramp_up_opt = Var(self.model.n_gen, self.model.time_steps, domain=Binary)

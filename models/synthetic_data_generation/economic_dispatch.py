@@ -123,68 +123,32 @@ class EconomicDispatchModel:
             if str(col).endswith("_ramp_up")
         ]
 
-    def _extract_data(self, scenarios_df: pd.DataFrame, costs_df: pd.DataFrame, ramps_df: pd.DataFrame,
-                      pmin_default: float) -> None:
-        """Extract scenario and generator data from DataFrames."""
-        # Auto-detect demand profile column
-        demand_profile_col = None
-        for col in scenarios_df.columns:
-            if 'demand_profile' in col.lower():
-                demand_profile_col = col
-                break
+    def _initialize_block_mappings(self) -> None:
+        """Build physical-generator/block index mappings used by the ED model."""
+        physical_idx_by_name = {
+            name: idx
+            for idx, name in enumerate(self.physical_generator_names)
+        }
 
-        if demand_profile_col is None:
-            raise ValueError("No demand profile column found. Expected column name containing 'demand_profile'")
-
-        # Auto-detect block capacity columns. With block-aware scenario data,
-        # these are bidding blocks; old one-block cases continue to work.
-        capacity_cols = [col for col in scenarios_df.columns if col.endswith('_cap')]
-        if not capacity_cols:
-            raise ValueError("No generator capacity columns found. Expected columns ending with '_cap'")
-
-        self.block_names = [col.replace('_cap', '') for col in capacity_cols]
-        self.num_blocks = len(self.block_names)
-        ramp_physical_names = self._ramp_physical_names(ramps_df)
-        if ramp_physical_names:
-            self.physical_generator_names = ramp_physical_names
-            self.block_to_physical = {
-                block: self._infer_physical_from_block_name(block)
-                for block in self.block_names
-            }
-        else:
-            # Backwards-compatible fallback for old one-column-per-generator frames.
-            self.physical_generator_names = list(self.block_names)
-            self.block_to_physical = {name: name for name in self.block_names}
-
-        missing_mapping = [name for name in self.block_names if name not in self.block_to_physical]
-        if missing_mapping:
-            raise ValueError(f"Missing block_to_physical mapping for blocks: {missing_mapping}")
-
-        unknown_physical = sorted({
-            physical
-            for physical in self.block_to_physical.values()
-            if physical not in self.physical_generator_names
-        })
-        if unknown_physical:
-            available = ", ".join(self.physical_generator_names)
-            raise ValueError(
-                "Could not infer physical generator ownership for blocks. "
-                f"Unknown physical generators from block names: {unknown_physical}. "
-                f"Available ramp generators: {available}"
-            )
-
-        self.block_to_physical_idx = [
-            self.physical_generator_names.index(self.block_to_physical[block])
-            for block in self.block_names
-        ]
+        self.block_to_physical: Dict[str, str] = {}
+        self.block_to_physical_idx: List[int] = []
         self.physical_to_block_indices: List[List[int]] = [
-            [
-                block_idx
-                for block_idx, physical_idx in enumerate(self.block_to_physical_idx)
-                if physical_idx == idx
-            ]
-            for idx in range(len(self.physical_generator_names))
+            [] for _ in self.physical_generator_names
         ]
+
+        for block_idx, block_name in enumerate(self.block_names):
+            physical_name = self._infer_physical_from_block_name(block_name)
+            if physical_name not in physical_idx_by_name:
+                raise ValueError(
+                    f"Block '{block_name}' maps to physical generator '{physical_name}', "
+                    "but no matching ramp columns were found."
+                )
+
+            physical_idx = physical_idx_by_name[physical_name]
+            self.block_to_physical[block_name] = physical_name
+            self.block_to_physical_idx.append(physical_idx)
+            self.physical_to_block_indices[physical_idx].append(block_idx)
+
         self.blocks_by_generator: Dict[int, List[int]] = {
             generator_idx: list(block_indices)
             for generator_idx, block_indices in enumerate(self.physical_to_block_indices)
@@ -199,32 +163,47 @@ class EconomicDispatchModel:
             for local_block_idx, global_block_idx in enumerate(block_indices)
         }
         self.global_to_local_block: Dict[int, Tuple[int, int]] = {
-            global_block_idx: (generator_idx, local_block_idx)
-            for (generator_idx, local_block_idx), global_block_idx in self.local_to_global_block.items()
+            global_block_idx: local_block
+            for local_block, global_block_idx in self.local_to_global_block.items()
         }
-        self.generator_block_pairs: List[Tuple[int, int]] = list(self.local_to_global_block.keys())
+        self.generator_block_pairs: List[Tuple[int, int]] = list(self.local_to_global_block)
+
+    def _extract_data(self, scenarios_df: pd.DataFrame, costs_df: pd.DataFrame, ramps_df: pd.DataFrame,
+                      pmin_default: float) -> None:
+        """Extract scenario and generator data from DataFrames."""
+
+        #Demand column
+        demand_profile_col = 'demand_profile'
+
+        # Capacity columns
+        capacity_cols = [col for col in scenarios_df.columns if col.endswith('_cap')]
+
+        # Get the block names by stripping the '_cap' suffix from the capacity columns
+        self.block_names = [col.replace('_cap', '') for col in capacity_cols]
+        self.num_blocks = len(self.block_names)
+
+        # Get physical generator names from ramps_df _BxXx_
+        ramp_physical_names = self._ramp_physical_names(ramps_df)
+        self.physical_generator_names = ramp_physical_names
+
+        # Get number of generators and names
         self.num_physical_generators = len(self.physical_generator_names)
         self.generator_names = list(self.physical_generator_names)
-        self.num_generators = self.num_physical_generators
+
+        # Number of scenarios
         self.num_scenarios = len(scenarios_df)
 
-        # Infer horizon from explicit time_steps column or first demand profile.
-        if 'time_steps' in scenarios_df.columns:
-            self.num_time_steps = int(scenarios_df['time_steps'].iloc[0])
-        else:
-            first_profile = scenarios_df[demand_profile_col].iloc[0]
-            if isinstance(first_profile, str):
-                first_profile = ast.literal_eval(first_profile)
-            self.num_time_steps = len(first_profile)
-
-        if self.num_time_steps <= 0:
-            raise ValueError(f"Invalid time_steps value: {self.num_time_steps}")
+        # Number of time steps - get from the first scenario
+        self.num_time_steps = int(scenarios_df['time_steps'].iloc[0])
 
         # Extract per-scenario data
         self.demand_scenarios: List[List[float]] = []
         self.pmax_scenarios = []
         self.pmin_scenarios = []
         self.bid_scenarios = []
+
+        # Make the block mapping from helper function
+        self._initialize_block_mappings()
 
         for _, row in scenarios_df.iterrows():
             demand_profile = self._convert_profile(
@@ -256,13 +235,8 @@ class EconomicDispatchModel:
                     pmax_t.append(cap)
                     pmin_t.append(float(pmin_default))
                     bid_profile_col = f"{block}_bid_profile"
-                    if bid_profile_col in scenarios_df.columns:
-                        bid_profile = self._ensure_profile(row[bid_profile_col], self.num_time_steps, bid_profile_col)
-                        bid_t.append(float(bid_profile[t]))
-                    elif f"{block}_bid" in scenarios_df.columns:
-                        bid_t.append(float(row[f"{block}_bid"]))
-                    else:
-                        bid_t.append(float(costs_df[f"{block}_cost"].iloc[0]))
+                    bid_profile = self._ensure_profile(row[bid_profile_col], self.num_time_steps, bid_profile_col)
+                    bid_t.append(float(bid_profile[t]))
 
                 pmax_scenario_by_time.append(pmax_t)
                 pmin_scenario_by_time.append(pmin_t)
@@ -279,16 +253,8 @@ class EconomicDispatchModel:
         self.ramp_vector_up = []
         self.ramp_vector_down = []
         for physical in self.physical_generator_names:
-            if f"{physical}_ramp_up" in ramps_df.columns:
-                if f"{physical}_ramp_down" not in ramps_df.columns:
-                    raise ValueError(f"Missing ramp-down column for physical generator '{physical}'")
-                self.ramp_vector_up.append(float(ramps_df[f"{physical}_ramp_up"].iloc[0]))
-                self.ramp_vector_down.append(float(ramps_df[f"{physical}_ramp_down"].iloc[0]))
-            else:
-                # Backwards-compatible fallback for old frames.
-                first_block = self.block_names[self.physical_to_block_indices[len(self.ramp_vector_up)][0]]
-                self.ramp_vector_up.append(float(ramps_df[f"{first_block}_ramp_up"].iloc[0]))
-                self.ramp_vector_down.append(float(ramps_df[f"{first_block}_ramp_down"].iloc[0]))
+            self.ramp_vector_up.append(float(ramps_df[f"{physical}_ramp_up"].iloc[0]))
+            self.ramp_vector_down.append(float(ramps_df[f"{physical}_ramp_down"].iloc[0]))
 
     def _normalize_p_init(self, p_init: List[List[float]]) -> List[List[float]]:
         """Return physical initial output as [scenario][physical_generator]."""
@@ -353,10 +319,7 @@ class EconomicDispatchModel:
         model.objective = Objective(expr=objective_expr, sense=minimize)
 
         def power_balance_rule(m, t, s):
-            return self.demand_scenarios[s][t] - sum(
-                m.P[i, b, t, s]
-                for (i, b) in m.generator_blocks
-            ) == 0
+            return self.demand_scenarios[s][t] - sum(m.P[i, b, t, s] for (i, b) in m.generator_blocks) == 0
         
         def gen_max_rule(m, i, b, t, s):
             global_block = self.local_to_global_block[(i, b)]
@@ -368,7 +331,7 @@ class EconomicDispatchModel:
 
         def ramp_up_rule(m, g, t, s):
             return (
-                sum(m.P[g, b, t, s] for b in self.local_blocks_by_generator[g])
+                  sum(m.P[g, b, t, s] for b in self.local_blocks_by_generator[g])
                 - sum(m.P[g, b, t - 1, s] for b in self.local_blocks_by_generator[g])
                 - self.ramp_vector_up[g]
                 <= 0
@@ -376,7 +339,7 @@ class EconomicDispatchModel:
 
         def ramp_down_rule(m, g, t, s):
             return (
-                -sum(m.P[g, b, t, s] for b in self.local_blocks_by_generator[g])
+                - sum(m.P[g, b, t, s] for b in self.local_blocks_by_generator[g])
                 + sum(m.P[g, b, t - 1, s] for b in self.local_blocks_by_generator[g])
                 - self.ramp_vector_down[g]
                 <= 0
@@ -568,7 +531,7 @@ class EconomicDispatchModel:
 
     def get_dual_variables(self) -> Dict[str, List[Any]]:
         """
-        Return KKT-style ED dual variables.
+        Return ED dual variables.
 
         Shapes are:
         - lambda: [scenario][time]
@@ -582,105 +545,28 @@ class EconomicDispatchModel:
         """
         return self.dual_variables
 
-    def get_scenario_kkt_data(self, scenario_idx: int) -> Dict[str, np.ndarray]:
-        """
-        Return one scenario's primal and dual solution arrays for sensitivity code.
+if __name__ == "__main__":
+    from config.scenarios.scenario_generator import ScenarioManager
 
-        P_block, mu_max, and mu_min are flattened global-block arrays. P_phys,
-        mu_up, and mu_down are physical-generator-level. P is kept as a
-        compatibility alias for block dispatch because KKT stationarity is now
-        block-level.
-        """
-        if self.block_dispatches is None or self.dual_variables is None:
-            raise RuntimeError("Solve the economic dispatch model before requesting KKT data.")
+    case = "test_case_bidding_blocks"
+    regime_set = "debugging"
+    seed = 1
 
-        s = int(scenario_idx)
-        if s < 0 or s >= self.num_scenarios:
-            raise IndexError(f"scenario_idx must be in [0, {self.num_scenarios - 1}], got {s}")
+    scenario_manager = ScenarioManager(case)
+    scenarios = scenario_manager.create_scenario_set_from_regimes(
+        regime_set=regime_set,
+        seed=seed,
+    )
+    scenarios_df = scenarios["scenarios_df"]
+    costs_df = scenarios["costs_df"]
+    ramps_df = scenarios["ramps_df"]
+    players_config = scenario_manager.get_players_config()
 
-        return {
-            "P": np.asarray(self.block_dispatches[s], dtype=np.float64).T,
-            "P_block": np.asarray(self.block_dispatches[s], dtype=np.float64).T,
-            "P_phys": np.asarray(self.physical_dispatches[s], dtype=np.float64).T,
-            "lambda_": np.asarray(self.dual_variables["lambda"][s], dtype=np.float64),
-            "mu_max": np.asarray(self.dual_variables["mu_max"][s], dtype=np.float64).T,
-            "mu_min": np.asarray(self.dual_variables["mu_min"][s], dtype=np.float64).T,
-            "mu_up": np.asarray(self.dual_variables["mu_up"][s], dtype=np.float64).T,
-            "mu_down": np.asarray(self.dual_variables["mu_down"][s], dtype=np.float64).T,
-        }
+    ed_model = EconomicDispatchModel(
+        scenarios_df=scenarios_df,
+        costs_df=costs_df,
+        ramps_df=ramps_df,
+        p_init=None
+    )
 
-    def get_scenario_kkt_parameters(self, scenario_idx: int) -> Dict[str, np.ndarray]:
-        """
-        Return one scenario's ED parameters in the shape expected by kkt_sensitivity.py.
-
-        The quadratic ED objective in this model uses beta_coeff * P^2. The
-        sensitivity module writes the objective as 0.5 * beta * P^2, so this
-        method returns beta = 2 * beta_coeff.
-        """
-        s = int(scenario_idx)
-        if s < 0 or s >= self.num_scenarios:
-            raise IndexError(f"scenario_idx must be in [0, {self.num_scenarios - 1}], got {s}")
-        if self.P_init is None:
-            raise RuntimeError("p_init is required to build KKT parameter data with initial ramp constraints.")
-
-        return {
-            "alpha": np.asarray(self.bid_scenarios[s], dtype=np.float64).T,
-            "beta": np.full(
-                (self.num_blocks, self.num_time_steps),
-                2.0 * float(self.beta_coeff),
-                dtype=np.float64,
-            ),
-            "demand": np.asarray(self.demand_scenarios[s], dtype=np.float64),
-            "pmax": np.asarray(self.pmax_scenarios[s], dtype=np.float64).T,
-            "pmin": np.asarray(self.pmin_scenarios[s], dtype=np.float64).T,
-            "ramp_up": np.asarray(self.ramp_vector_up, dtype=np.float64),
-            "ramp_down": np.asarray(self.ramp_vector_down, dtype=np.float64),
-            "p_initial": np.asarray(self.P_init[s], dtype=np.float64),
-            "physical_to_block_indices": [list(blocks) for blocks in self.physical_to_block_indices],
-            "block_to_physical_idx": list(self.block_to_physical_idx),
-            "num_physical_generators": self.num_physical_generators,
-            "num_blocks": self.num_blocks,
-        }
-
-    def get_generator_profits(self) -> List[List[float]]:
-        """
-        Return total profit per physical generator in each scenario.
-
-        Revenue is based on physical dispatch, while production cost is summed
-        over the generator-local bidding blocks owned by that physical generator.
-        """
-        all_profits = []
-        for s in range(self.num_scenarios):
-            profits = []
-            for g in range(self.num_physical_generators):
-                revenue_g = sum(
-                    self.clearing_prices[s][t] * self.physical_dispatches[s][t][g]
-                    for t in range(self.num_time_steps)
-                )
-                cost_g = sum(
-                    self.block_cost_vector[self.local_to_global_block[(g, local_block)]]
-                    * self.block_dispatches_by_generator[s][t][g][local_block]
-                    for t in range(self.num_time_steps)
-                    for local_block in self.local_blocks_by_generator[g]
-                )
-                profits.append(float(revenue_g - cost_g))
-            all_profits.append(profits)
-        return all_profits
-
-    def get_block_profits(self) -> List[List[float]]:
-        """
-        Return total profit per block in each scenario:
-        profits[s][global_block] =
-        sum_t (lambda[s][t] - cost_block[global_block]) * P_block[s][t][global_block].
-        """
-        all_profits = []
-        for s in range(self.num_scenarios):
-            profits = []
-            for b in range(self.num_blocks):
-                profit_g = sum(
-                    (self.clearing_prices[s][t] - self.block_cost_vector[b]) * self.block_dispatches[s][t][b]
-                    for t in range(self.num_time_steps)
-                )
-                profits.append(float(profit_g))
-            all_profits.append(profits)
-        return all_profits
+    ed_model.solve()

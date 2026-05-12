@@ -44,4 +44,4 @@ support_sets:
         max: 50.0
 
     wind_ramp: 20.0
-    wind_budget: 150.0
+    wind_budget: 20.0

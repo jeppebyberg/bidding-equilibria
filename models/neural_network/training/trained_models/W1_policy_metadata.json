@@ -1,0 +1,37 @@
+{
+  "generator_name": "W1",
+  "input_dim": 11,
+  "output_dim": 2,
+  "feature_columns": [
+    "demand",
+    "total_wind_generation_capacity",
+    "total_generation_capacity",
+    "residual_demand",
+    "previous_generation_capacity",
+    "previous_demand",
+    "next_generation_capacity",
+    "next_demand",
+    "own_generation_capacity",
+    "previous_own_generation_capacity",
+    "next_own_generation_capacity"
+  ],
+  "target_columns": [
+    "target_bid_W1_B1",
+    "target_bid_W1_B2"
+  ],
+  "hidden_layers": [
+    11
+  ],
+  "activation": "relu",
+  "final_activation": "linear",
+  "train_size": 7680,
+  "test_size": 1920,
+  "test_fraction": 0.2,
+  "num_epochs_trained": 307,
+  "best_epoch": 257,
+  "best_test_loss": 1.7768919557662836e-06,
+  "learning_rate": 0.001,
+  "batch_size": 64,
+  "weight_decay": 0.0,
+  "random_state": 42
+}

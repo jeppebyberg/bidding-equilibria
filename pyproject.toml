@@ -23,10 +23,13 @@ classifiers = [
 ]
 
 dependencies = [
-    "numpy",
+    "numpy<2",
     "pandas", 
+    "matplotlib",
     "pyomo",
     "pyyaml",
+    "scikit-learn",
+    "torch",
 ]
 
 [project.optional-dependencies]

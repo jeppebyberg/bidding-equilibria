@@ -1,0 +1,67 @@
+[
+  {
+    "generator_name": "G1",
+    "input_dim": 11,
+    "output_dim": 2,
+    "number_of_target_bidding_blocks": 2,
+    "train_size": 7680,
+    "test_size": 1920,
+    "best_test_loss": 12.81124300956726,
+    "best_epoch": 469,
+    "model_path": "models\\neural_network\\training\\trained_models\\G1_policy.pt",
+    "metadata_path": "models\\neural_network\\training\\trained_models\\G1_policy_metadata.json",
+    "history_path": "models\\neural_network\\training\\training_results\\G1_training_history.json"
+  },
+  {
+    "generator_name": "G2",
+    "input_dim": 11,
+    "output_dim": 2,
+    "number_of_target_bidding_blocks": 2,
+    "train_size": 7680,
+    "test_size": 1920,
+    "best_test_loss": 2.9605290023937415e-07,
+    "best_epoch": 208,
+    "model_path": "models\\neural_network\\training\\trained_models\\G2_policy.pt",
+    "metadata_path": "models\\neural_network\\training\\trained_models\\G2_policy_metadata.json",
+    "history_path": "models\\neural_network\\training\\training_results\\G2_training_history.json"
+  },
+  {
+    "generator_name": "W1",
+    "input_dim": 11,
+    "output_dim": 2,
+    "number_of_target_bidding_blocks": 2,
+    "train_size": 7680,
+    "test_size": 1920,
+    "best_test_loss": 1.7768919557662836e-06,
+    "best_epoch": 257,
+    "model_path": "models\\neural_network\\training\\trained_models\\W1_policy.pt",
+    "metadata_path": "models\\neural_network\\training\\trained_models\\W1_policy_metadata.json",
+    "history_path": "models\\neural_network\\training\\training_results\\W1_training_history.json"
+  },
+  {
+    "generator_name": "W2",
+    "input_dim": 11,
+    "output_dim": 2,
+    "number_of_target_bidding_blocks": 2,
+    "train_size": 7680,
+    "test_size": 1920,
+    "best_test_loss": 0.00024960223686321115,
+    "best_epoch": 278,
+    "model_path": "models\\neural_network\\training\\trained_models\\W2_policy.pt",
+    "metadata_path": "models\\neural_network\\training\\trained_models\\W2_policy_metadata.json",
+    "history_path": "models\\neural_network\\training\\training_results\\W2_training_history.json"
+  },
+  {
+    "generator_name": "W3",
+    "input_dim": 11,
+    "output_dim": 2,
+    "number_of_target_bidding_blocks": 2,
+    "train_size": 7680,
+    "test_size": 1920,
+    "best_test_loss": 0.1732539032799347,
+    "best_epoch": 499,
+    "model_path": "models\\neural_network\\training\\trained_models\\W3_policy.pt",
+    "metadata_path": "models\\neural_network\\training\\trained_models\\W3_policy_metadata.json",
+    "history_path": "models\\neural_network\\training\\training_results\\W3_training_history.json"
+  }
+]

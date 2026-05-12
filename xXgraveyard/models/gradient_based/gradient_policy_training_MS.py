@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from models.gradient_based.economic_dispatch_quad import EconomicDispatchQuadraticModel
+from xXgraveyard.models.gradient_based.economic_dispatch_quad import EconomicDispatchQuadraticModel
 
 
 class GradientPolicyTrainingMS:

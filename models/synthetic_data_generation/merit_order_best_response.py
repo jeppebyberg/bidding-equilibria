@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import ast
 import json
-from copy import deepcopy
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -27,19 +26,15 @@ class MeritOrderEntry:
     dispatch: Optional[float] = None
     cumulative_capacity: float = 0.0
 
-
 class MeritOrderHeuristic:
     """
-    Discrete merit-order best-response search for block bid profiles.
+    One-pass merit-order bid inflation heuristic for block bid profiles.
 
-    The heuristic tests one local bid move of the form threshold_bid -
-    bid_tolerance, where the threshold is the nearest valid bid in the current
-    submitted merit order. A move is accepted only after re-solving ED and
-    observing a player-profit increase.
+    The heuristic solves ED once at the current bids. For each scenario and
+    time step, it identifies the marginal price-setting block from that ED
+    dispatch and raises only that block's bid to just below the nearest higher
+    opponent bid.
     """
-
-    MAX_ITERATIONS = 20
-    PROFIT_TOLERANCE = 1e-4
 
     def __init__(
         self,
@@ -330,47 +325,79 @@ class MeritOrderHeuristic:
             )
         return with_cumulative
 
-    def identify_marginal_block(
-        self, merit_order: Sequence[MeritOrderEntry], demand: float
-    ) -> Optional[MeritOrderEntry]:
-        for entry in merit_order:
-            if entry.cumulative_capacity >= float(demand) - self.bid_tolerance:
-                return entry
-        print(f"Warning: no marginal block found; demand {demand:.6f} exceeds merit-order capacity.")
-        return None
-
-    def get_candidate_threshold(
+    def identify_marginal_price_setter(
         self,
-        block_id: int,
-        merit_order: Sequence[MeritOrderEntry],
-        marginal_block: Optional[MeritOrderEntry],
-    ) -> Optional[float]:
-        if marginal_block is None:
+        scenario_id: int,
+        time_id: int,
+        bid_profile: List[List[List[float]]],
+        block_dispatches: List[List[List[float]]],
+        clearing_prices: List[List[float]],
+    ) -> Optional[MeritOrderEntry]:
+        merit_order = self.build_merit_order(
+            scenario_id,
+            time_id,
+            bid_profile,
+            block_dispatches=block_dispatches,
+        )
+        dispatched = [
+            entry
+            for entry in merit_order
+            if entry.dispatch is not None and float(entry.dispatch) > self.bid_tolerance
+        ]
+        if not dispatched:
             return None
 
-        marginal_position = next(
-            idx for idx, entry in enumerate(merit_order) if entry.block_id == marginal_block.block_id
-        )
-        true_cost = float(self.cost_vector[block_id])
-        candidates: List[Tuple[int, int, float]] = []
-        for idx, entry in enumerate(merit_order):
-            if entry.block_id == block_id:
-                continue
-            if entry.available_capacity <= self.bid_tolerance:
-                continue
-            if entry.bid <= true_cost + self.bid_tolerance:
-                continue
-            distance = abs(idx - marginal_position)
-            candidates.append((distance, idx, float(entry.bid)))
+        partially_dispatched = [
+            entry
+            for entry in dispatched
+            if float(entry.dispatch) < float(entry.available_capacity) - self.bid_tolerance
+        ]
+        if partially_dispatched:
+            return max(partially_dispatched, key=lambda entry: (entry.bid, entry.generator_id, entry.block_id))
 
-        seen = set()
-        for _, _, bid in sorted(candidates):
-            rounded = round(bid, 12)
-            if rounded in seen:
-                continue
-            seen.add(rounded)
-            return float(bid)
-        return None
+        price = float(clearing_prices[scenario_id][time_id])
+        price_consistent = [
+            entry
+            for entry in dispatched
+            if entry.bid <= price + self.bid_tolerance
+        ]
+        if price_consistent:
+            return max(price_consistent, key=lambda entry: (entry.bid, entry.generator_id, entry.block_id))
+
+        return max(dispatched, key=lambda entry: (entry.bid, entry.generator_id, entry.block_id))
+
+    def get_opponent_threshold(
+        self,
+        marginal_block: MeritOrderEntry,
+        merit_order: Sequence[MeritOrderEntry],
+    ) -> Optional[float]:
+        if marginal_block.player_id is None:
+            return None
+
+        opponent_entries = [
+            entry
+            for entry in merit_order
+            if entry.player_id != marginal_block.player_id
+            and entry.available_capacity > self.bid_tolerance
+            and entry.bid > marginal_block.bid + self.bid_tolerance
+        ]
+        if not opponent_entries:
+            return None
+        return float(min(entry.bid for entry in opponent_entries))
+
+    def get_same_player_blocks_to_inflate(
+        self,
+        marginal_block: MeritOrderEntry,
+        merit_order: Sequence[MeritOrderEntry],
+        candidate_bid: float,
+    ) -> List[MeritOrderEntry]:
+        return [
+            entry
+            for entry in merit_order
+            if entry.player_id == marginal_block.player_id
+            and entry.available_capacity > self.bid_tolerance
+            and entry.bid < float(candidate_bid) - self.bid_tolerance
+        ]
 
     def available_capacity(self, scenario_id: int, block_id: int, time_id: int) -> float:
         block_name = self.block_names[int(block_id)]
@@ -387,190 +414,147 @@ class MeritOrderHeuristic:
             return float(profile[time_id])
         return float(self.scenarios_df.at[scenario_id, f"{block_name}_cap"])
 
-    def demand(self, scenario_id: int, time_id: int) -> float:
-        profile = self._as_profile(self.scenarios_df.at[scenario_id, "demand_profile"], "demand_profile")
-        return float(profile[time_id])
-
     def run(self) -> Dict[str, Any]:
         print(
-            "Starting merit-order best-response heuristic: "
+            "Starting one-pass merit-order heuristic: "
             f"{self.num_scenarios} scenarios, {self.num_time_steps} time steps, "
             f"{self.num_blocks} blocks"
         )
         current_bids = self._snapshot_all_bids()
+        dispatches, block_dispatches, prices, _ = self.solve_ed_for_bids(current_bids)
+        baseline_profits = self.compute_all_player_profits(block_dispatches, prices)
 
-        for iteration in range(1, self.MAX_ITERATIONS + 1):
-            print(f"Iteration {iteration}/{self.MAX_ITERATIONS}")
-            any_update = False
-
-            for player in self.players_config:
-                player_id = int(player["id"])
-                dispatches, block_dispatches, prices, _ = self.solve_ed_for_bids(current_bids)
-                baseline_profits = self.compute_all_player_profits(block_dispatches, prices)
-                current_profit = float(baseline_profits[player_id])
-                best_profit = current_profit
-                best_update: Optional[Dict[str, Any]] = None
-                print(f"  Player {player_id} baseline profit: {current_profit:.4f}")
-
-                for scenario_id in range(self.num_scenarios):
-                    for time_id in range(self.num_time_steps):
-                        merit_order = self.build_merit_order(
-                            scenario_id,
-                            time_id,
-                            current_bids,
-                            block_dispatches=block_dispatches,
-                        )
-                        marginal_block = self.identify_marginal_block(
-                            merit_order,
-                            self.demand(scenario_id, time_id),
-                        )
-                        if self.debug:
-                            marginal = None if marginal_block is None else asdict(marginal_block)
-                            print(
-                                f"    Debug: s={scenario_id} t={time_id} "
-                                f"clearing_price={float(prices[scenario_id][time_id]):.6f} "
-                                f"marginal={marginal}"
-                            )
-
-                        for block_id in self.player_blocks[player_id]:
-                            if (
-                                self.available_capacity(scenario_id, block_id, time_id)
-                                <= self.bid_tolerance
-                            ):
-                                self._record_rejected_candidate(
-                                    iteration,
-                                    player_id,
-                                    scenario_id,
-                                    time_id,
-                                    block_id,
-                                    current_profit,
-                                    "no_capacity",
-                                )
-                                continue
-
-                            threshold_bid = self.get_candidate_threshold(
-                                block_id=block_id,
-                                merit_order=merit_order,
-                                marginal_block=marginal_block,
-                            )
-                            if threshold_bid is None:
-                                self._record_rejected_candidate(
-                                    iteration,
-                                    player_id,
-                                    scenario_id,
-                                    time_id,
-                                    block_id,
-                                    current_profit,
-                                    "no_threshold",
-                                )
-                                continue
-                            else:
-                                old_bid = float(current_bids[scenario_id][block_id][time_id])
-                                candidate_bid = float(threshold_bid) - self.bid_tolerance
-                                reason = self._candidate_rejection_reason(
-                                    block_id,
-                                    old_bid,
-                                    candidate_bid,
-                                )
-                                if reason is not None:
-                                    self._record_rejected_candidate(
-                                        iteration,
-                                        player_id,
-                                        scenario_id,
-                                        time_id,
-                                        block_id,
-                                        current_profit,
-                                        reason,
-                                        old_bid=old_bid,
-                                        new_bid=candidate_bid,
-                                        threshold_bid=float(threshold_bid),
-                                    )
-                                    continue
-
-                                trial_bids = deepcopy(current_bids)
-                                trial_bids[scenario_id][block_id][time_id] = candidate_bid
-                                _, trial_block_dispatches, trial_prices, _ = self.solve_ed_for_bids(
-                                    trial_bids
-                                )
-                                trial_profit, _ = self.compute_player_profit(
-                                    player_id,
-                                    trial_block_dispatches,
-                                    trial_prices,
-                                )
-
-                                if self.debug:
-                                    print(
-                                        f"    Debug candidate: player={player_id} "
-                                        f"s={scenario_id} t={time_id} block={self.block_names[block_id]} "
-                                        f"old={old_bid:.6f} new={candidate_bid:.6f} "
-                                        f"threshold={float(threshold_bid):.6f} "
-                                        f"baseline={current_profit:.6f} candidate={trial_profit:.6f}"
-                                    )
-                                if trial_profit > best_profit + self.PROFIT_TOLERANCE:
-                                    best_profit = float(trial_profit)
-                                    best_update = {
-                                        "iteration": int(iteration),
-                                        "player_id": int(player_id),
-                                        "scenario_id": int(scenario_id),
-                                        "time_id": int(time_id),
-                                        "block_id": int(block_id),
-                                        "block_name": self.block_names[block_id],
-                                        "accepted_block": self.block_names[block_id],
-                                        "old_bid": old_bid,
-                                        "new_bid": candidate_bid,
-                                        "threshold_bid": float(threshold_bid),
-                                        "baseline_profit": current_profit,
-                                        "accepted_profit": float(trial_profit),
-                                        "profit_improvement": float(trial_profit - current_profit),
-                                        "accepted": True,
-                                    }
-                                else:
-                                    self._record_rejected_candidate(
-                                        iteration,
-                                        player_id,
-                                        scenario_id,
-                                        time_id,
-                                        block_id,
-                                        current_profit,
-                                        "no_profit_improvement",
-                                        old_bid=old_bid,
-                                        new_bid=candidate_bid,
-                                        threshold_bid=float(threshold_bid),
-                                        candidate_profit=float(trial_profit),
-                                    )
-
-                if best_update is not None:
-                    self._apply_update(current_bids, best_update)
-                    self.history.append(best_update)
-                    any_update = True
-                    print(
-                        f"  Accepted: player {player_id}, block {best_update['block_name']}, "
-                        f"scenario {best_update['scenario_id']}, time {best_update['time_id']}, "
-                        f"bid {best_update['old_bid']:.4f} -> {best_update['new_bid']:.4f}, "
-                        f"profit {best_update['baseline_profit']:.4f} -> "
-                        f"{best_update['accepted_profit']:.4f}"
-                    )
-                else:
-                    print(f"  No profitable update for player {player_id}; profit remains {current_profit:.4f}")
+        for scenario_id in range(self.num_scenarios):
+            for time_id in range(self.num_time_steps):
+                merit_order = self.build_merit_order(
+                    scenario_id,
+                    time_id,
+                    current_bids,
+                    block_dispatches=block_dispatches,
+                )
+                marginal_block = self.identify_marginal_price_setter(
+                    scenario_id,
+                    time_id,
+                    current_bids,
+                    block_dispatches,
+                    prices,
+                )
+                if marginal_block is None:
                     self.history.append(
                         {
-                            "iteration": int(iteration),
-                            "player_id": int(player_id),
-                            "baseline_profit": current_profit,
-                            "accepted_profit": current_profit,
-                            "accepted_block": None,
-                            "old_bid": None,
-                            "new_bid": None,
-                            "profit_improvement": 0.0,
+                            "scenario_id": int(scenario_id),
+                            "time_id": int(time_id),
                             "accepted": False,
+                            "reason": "no_dispatched_block",
+                        }
+                    )
+                    continue
+
+                threshold_bid = self.get_opponent_threshold(marginal_block, merit_order)
+                if threshold_bid is None:
+                    self.history.append(
+                        {
+                            "scenario_id": int(scenario_id),
+                            "time_id": int(time_id),
+                            "block_id": int(marginal_block.block_id),
+                            "block_name": marginal_block.block_name,
+                            "player_id": marginal_block.player_id,
+                            "old_bid": float(marginal_block.bid),
+                            "accepted": False,
+                            "reason": "no_higher_opponent_bid",
+                        }
+                    )
+                    continue
+
+                candidate_bid = float(threshold_bid) - self.bid_tolerance
+                inflation_blocks = self.get_same_player_blocks_to_inflate(
+                    marginal_block,
+                    merit_order,
+                    candidate_bid,
+                )
+                valid_updates = []
+                rejected_updates = []
+                for block in inflation_blocks:
+                    reason = self._candidate_rejection_reason(
+                        block.block_id,
+                        float(block.bid),
+                        candidate_bid,
+                    )
+                    if reason is None:
+                        valid_updates.append(block)
+                    else:
+                        rejected_updates.append((block, reason))
+
+                if not valid_updates:
+                    self.history.append(
+                        {
+                            "scenario_id": int(scenario_id),
+                            "time_id": int(time_id),
+                            "block_id": int(marginal_block.block_id),
+                            "block_name": marginal_block.block_name,
+                            "player_id": marginal_block.player_id,
+                            "old_bid": float(marginal_block.bid),
+                            "new_bid": candidate_bid,
+                            "threshold_bid": float(threshold_bid),
+                            "accepted": False,
+                            "reason": "no_same_player_blocks_to_inflate",
+                        }
+                    )
+                    continue
+
+                for block, reason in rejected_updates:
+                    self.history.append(
+                        {
+                            "scenario_id": int(scenario_id),
+                            "time_id": int(time_id),
+                            "block_id": int(block.block_id),
+                            "block_name": block.block_name,
+                            "player_id": block.player_id,
+                            "old_bid": float(block.bid),
+                            "new_bid": candidate_bid,
+                            "threshold_bid": float(threshold_bid),
+                            "price_setter_block_id": int(marginal_block.block_id),
+                            "price_setter_block_name": marginal_block.block_name,
+                            "accepted": False,
+                            "reason": reason,
                         }
                     )
 
-            if not any_update:
-                print("No profitable deviations found. Stopping.")
-                break
+                updated_names = []
+                for block in valid_updates:
+                    update = {
+                        "scenario_id": int(scenario_id),
+                        "time_id": int(time_id),
+                        "block_id": int(block.block_id),
+                        "block_name": block.block_name,
+                        "accepted_block": block.block_name,
+                        "player_id": block.player_id,
+                        "old_bid": float(block.bid),
+                        "new_bid": candidate_bid,
+                        "threshold_bid": float(threshold_bid),
+                        "clearing_price": float(prices[scenario_id][time_id]),
+                        "dispatch": float(block.dispatch or 0.0),
+                        "price_setter_block_id": int(marginal_block.block_id),
+                        "price_setter_block_name": marginal_block.block_name,
+                        "accepted": True,
+                    }
+                    self._apply_update(current_bids, update)
+                    self.history.append(update)
+                    updated_names.append(block.block_name)
+                print(
+                    f"  Updated s={scenario_id} t={time_id}: "
+                    f"{', '.join(updated_names)} bids -> {candidate_bid:.4f}"
+                )
 
-        self.results = self.get_results(current_bids)
+        print(f"One-pass heuristic applied {sum(1 for row in self.history if row.get('accepted'))} bid updates.")
+        self.results = self.get_results(
+            current_bids,
+            dispatches=dispatches,
+            block_dispatches=block_dispatches,
+            prices=prices,
+            player_profits=baseline_profits,
+            dispatches_are_recleared=False,
+        )
         return self.results
 
     def _candidate_rejection_reason(
@@ -584,28 +568,6 @@ class MeritOrderHeuristic:
             return "non_finite_bid"
         return None
 
-    def _record_rejected_candidate(
-        self,
-        iteration: int,
-        player_id: int,
-        scenario_id: int,
-        time_id: int,
-        block_id: int,
-        baseline_profit: float,
-        reason: str,
-        old_bid: Optional[float] = None,
-        new_bid: Optional[float] = None,
-        threshold_bid: Optional[float] = None,
-        candidate_profit: Optional[float] = None,
-    ) -> None:
-        if self.debug:
-            print(
-                f"    Debug rejected: player={player_id} s={scenario_id} t={time_id} "
-                f"block={self.block_names[block_id]} reason={reason} old={old_bid} "
-                f"new={new_bid} threshold={threshold_bid} baseline={baseline_profit} "
-                f"candidate={candidate_profit}"
-            )
-
     def _apply_update(self, bids: List[List[List[float]]], update: Dict[str, Any]) -> None:
         s = int(update["scenario_id"])
         block_id = int(update["block_id"])
@@ -617,13 +579,29 @@ class MeritOrderHeuristic:
         self.scenarios_df.at[s, f"{block_name}_bid_profile"] = profile
         self.scenarios_df.at[s, f"{block_name}_bid"] = float(profile[0])
 
-    def get_results(self, bid_profile: Optional[List[List[List[float]]]] = None) -> Dict[str, Any]:
+    def get_results(
+        self,
+        bid_profile: Optional[List[List[List[float]]]] = None,
+        dispatches: Optional[List[List[List[float]]]] = None,
+        block_dispatches: Optional[List[List[List[float]]]] = None,
+        prices: Optional[List[List[float]]] = None,
+        player_profits: Optional[Dict[int, float]] = None,
+        dispatches_are_recleared: bool = True,
+    ) -> Dict[str, Any]:
         final_bids = self._snapshot_all_bids() if bid_profile is None else bid_profile
-        dispatches, block_dispatches, prices, _ = self.solve_ed_for_bids(final_bids)
-        final_profits = self.compute_all_player_profits(block_dispatches, prices)
+        if dispatches is None or block_dispatches is None or prices is None:
+            dispatches, block_dispatches, prices, _ = self.solve_ed_for_bids(final_bids)
+        final_profits = (
+            self.compute_all_player_profits(block_dispatches, prices)
+            if player_profits is None
+            else player_profits
+        )
         return {
             "config": {
                 "bid_tolerance": self.bid_tolerance,
+                "heuristic": "single_ed_marginal_price_setter_bid_inflation",
+                "ed_solves_in_run": 1,
+                "dispatches_are_recleared_after_bid_updates": bool(dispatches_are_recleared),
             },
             "num_scenarios": self.num_scenarios,
             "num_time_steps": self.num_time_steps,
@@ -665,84 +643,22 @@ class MeritOrderHeuristic:
             return {str(key): value for key, value in obj.items()}
         raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
-
-def apply_known_failure_case_bids(scenarios_df: pd.DataFrame) -> pd.DataFrame:
-    updated = scenarios_df.copy(deep=True).reset_index(drop=True)
-    example_bids = {
-        "W2_B1": 3.73,
-        "W3_B1": 4.15,
-        "W1_B1": 4.51,
-        "W1_B2": 4.51,
-        "G2_B1": 30.00,
-        "W2_B2": 30.51,
-        "W3_B2": 32.05,
-        "G1_B2": 33.50,
-        "G1_B1": 38.80,
-        "G2_B2": 40.00,
-    }
-    horizon = int(updated.at[0, "time_steps"]) if "time_steps" in updated.columns else 1
-    for block_name, bid in example_bids.items():
-        if f"{block_name}_bid_profile" in updated.columns:
-            updated.at[0, f"{block_name}_bid_profile"] = [float(bid)] * horizon
-            updated.at[0, f"{block_name}_bid"] = float(bid)
-    return updated.iloc[[0]].reset_index(drop=True)
-
-def build_known_failure_case() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, List[Dict[str, Any]]]:
-    scenario_manager = ScenarioManager("test_case_bidding_blocks")
-    scenarios = scenario_manager.create_scenario_set_from_regimes(
-        regime_set="policy_training",
-        seed=1,
-    )
-    scenarios_df = apply_known_failure_case_bids(scenarios["scenarios_df"])
-    scenarios_df.at[0, "demand_profile"] = [101.4] * int(scenarios_df.at[0, "time_steps"])
-
-    wind_availability = {
-        "W3": 20.391,
-        "W2": 20.537,
-        "W1": 20.744,
-    }
-    for physical_name, value in wind_availability.items():
-        first = True
-        availability_cols = [
-            col
-            for col in scenarios_df.columns
-            if col.startswith(f"{physical_name}_B")
-            and col.endswith("_profile")
-            and not col.endswith("_bid_profile")
-            and not col.endswith("_true_cost_profile")
-        ]
-        for col in availability_cols:
-            scenarios_df.at[0, col] = [float(value if first else 0.0)] * int(scenarios_df.at[0, "time_steps"])
-            first = False
-
-    return (
-        scenarios_df,
-        scenarios["costs_df"],
-        scenarios["ramps_df"],
-        scenario_manager.get_players_config(),
-    )
-
 if __name__ == "__main__":
     case = "test_case_bidding_blocks"
     regime_set = "policy_training"
     seed = 1
-    bid_tolerance = 1e-6
+    bid_tolerance = 1e-2
     output_path = "results/merit_order_best_response_results.json"
-    known_failure_case = False
-    debug = False
 
-    if known_failure_case:
-        scenarios_df, costs_df, ramps_df, players_config = build_known_failure_case()
-    else:
-        scenario_manager = ScenarioManager(case)
-        scenarios = scenario_manager.create_scenario_set_from_regimes(
-            regime_set=regime_set,
-            seed=seed,
-        )
-        scenarios_df = scenarios["scenarios_df"]
-        costs_df = scenarios["costs_df"]
-        ramps_df = scenarios["ramps_df"]
-        players_config = scenario_manager.get_players_config()
+    scenario_manager = ScenarioManager(case)
+    scenarios = scenario_manager.create_scenario_set_from_regimes(
+        regime_set=regime_set,
+        seed=seed,
+    )
+    scenarios_df = scenarios["scenarios_df"]
+    costs_df = scenarios["costs_df"]
+    ramps_df = scenarios["ramps_df"]
+    players_config = scenario_manager.get_players_config()
 
     heuristic = MeritOrderHeuristic(
         scenarios_df=scenarios_df,
@@ -751,7 +667,7 @@ if __name__ == "__main__":
         players_config=players_config,
         bid_tolerance=bid_tolerance,
     )
-    heuristic.debug = debug
     heuristic.run()
     saved_path = heuristic.save_results(output_path)
     print(f"Saved merit-order best-response results to {saved_path}")
+

@@ -3,7 +3,7 @@ test_case_bidding_blocks:
     - 150.0
 
   time_steps:
-    - 6
+    - 24
 
   generators:
     - id: 0

@@ -1,0 +1,580 @@
+{
+  "reference_case": "test_case_bidding_blocks",
+  "num_time_steps": 4,
+  "objective": {
+    "PoA_difference": 1643.2379124630834,
+    "C_eq": 5623.605072101593,
+    "C_opt": 3980.3671596385093,
+    "PoA_ratio": 1.4128357627722765
+  },
+  "demand_profile": [
+    144.03721157021002,
+    140.3059559756323,
+    126.05719450876096,
+    138.38847128344548
+  ],
+  "block_names": [
+    "G2_B1",
+    "G2_B2",
+    "G1_B1",
+    "G1_B2",
+    "W3_B1",
+    "W3_B2",
+    "W2_B1",
+    "W2_B2",
+    "W1_B1",
+    "W1_B2"
+  ],
+  "physical_generator_names": [
+    "G2",
+    "G1",
+    "W3",
+    "W2",
+    "W1"
+  ],
+  "block_to_physical": {
+    "G2_B1": "G2",
+    "G2_B2": "G2",
+    "G1_B1": "G1",
+    "G1_B2": "G1",
+    "W3_B1": "W3",
+    "W3_B2": "W3",
+    "W2_B1": "W2",
+    "W2_B2": "W2",
+    "W1_B1": "W1",
+    "W1_B2": "W1"
+  },
+  "physical_to_block_indices": {
+    "0": [
+      0,
+      1
+    ],
+    "1": [
+      2,
+      3
+    ],
+    "2": [
+      4,
+      5
+    ],
+    "3": [
+      6,
+      7
+    ],
+    "4": [
+      8,
+      9
+    ]
+  },
+  "generators": {
+    "G2": {
+      "physical_generator_index": 0,
+      "is_wind": false,
+      "physical_capacity_profile": [
+        50.0,
+        50.0,
+        50.0,
+        50.0
+      ],
+      "equilibrium_physical_dispatch": [
+        25.0,
+        25.0,
+        0.0,
+        25.0
+      ],
+      "optimal_physical_dispatch": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "blocks": [
+        {
+          "local_block_index": 0,
+          "global_block_index": 0,
+          "block_name": "G2_B1",
+          "capacity_profile": [
+            25.0,
+            25.0,
+            25.0,
+            25.0
+          ],
+          "alpha_profile": [
+            29.99897609598112,
+            29.99938727575646,
+            30.002842968173432,
+            29.998445628122987
+          ],
+          "equilibrium_dispatch": [
+            25.0,
+            25.0,
+            0.0,
+            25.0
+          ],
+          "optimal_dispatch": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "true_cost": 30.0
+        },
+        {
+          "local_block_index": 1,
+          "global_block_index": 1,
+          "block_name": "G2_B2",
+          "capacity_profile": [
+            25.0,
+            25.0,
+            25.0,
+            25.0
+          ],
+          "alpha_profile": [
+            40.000590531555176,
+            40.000380850797335,
+            39.9976622540293,
+            40.00090617179481
+          ],
+          "equilibrium_dispatch": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "optimal_dispatch": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "true_cost": 40.0
+        }
+      ]
+    },
+    "G1": {
+      "physical_generator_index": 1,
+      "is_wind": false,
+      "physical_capacity_profile": [
+        50.0,
+        50.0,
+        50.0,
+        50.0
+      ],
+      "equilibrium_physical_dispatch": [
+        14.037211570210019,
+        10.305955975632287,
+        35.67620875369175,
+        13.769457038514684
+      ],
+      "optimal_physical_dispatch": [
+        39.03721157021002,
+        35.30595597563229,
+        35.67620875369175,
+        38.76945703851469
+      ],
+      "blocks": [
+        {
+          "local_block_index": 0,
+          "global_block_index": 2,
+          "block_name": "G1_B1",
+          "capacity_profile": [
+            25.0,
+            25.0,
+            25.0,
+            25.0
+          ],
+          "alpha_profile": [
+            30.07126646704235,
+            30.007450526837264,
+            28.9642962779251,
+            29.998445628122987
+          ],
+          "equilibrium_dispatch": [
+            0.0,
+            0.0,
+            10.676208753691757,
+            0.0
+          ],
+          "optimal_dispatch": [
+            25.0,
+            25.0,
+            25.0,
+            25.0
+          ],
+          "true_cost": 10.0
+        },
+        {
+          "local_block_index": 1,
+          "global_block_index": 3,
+          "block_name": "G1_B2",
+          "capacity_profile": [
+            25.0,
+            25.0,
+            25.0,
+            25.0
+          ],
+          "alpha_profile": [
+            30.07126646704235,
+            29.99938727575646,
+            28.9642962779251,
+            29.998445628122987
+          ],
+          "equilibrium_dispatch": [
+            14.037211570210019,
+            10.305955975632287,
+            25.0,
+            13.769457038514684
+          ],
+          "optimal_dispatch": [
+            14.037211570210019,
+            10.305955975632287,
+            10.676208753691757,
+            13.769457038514684
+          ],
+          "true_cost": 20.0
+        }
+      ]
+    },
+    "W3": {
+      "physical_generator_index": 2,
+      "is_wind": true,
+      "physical_capacity_profile": [
+        35.0,
+        35.0,
+        35.0,
+        35.0
+      ],
+      "equilibrium_physical_dispatch": [
+        35.0,
+        35.0,
+        35.0,
+        35.0
+      ],
+      "optimal_physical_dispatch": [
+        35.0,
+        35.0,
+        35.0,
+        35.0
+      ],
+      "blocks": [
+        {
+          "local_block_index": 0,
+          "global_block_index": 4,
+          "block_name": "W3_B1",
+          "capacity_profile": [
+            35.0,
+            35.0,
+            35.0,
+            0.0
+          ],
+          "alpha_profile": [
+            5.441568557391873,
+            5.385952117366414,
+            5.779920358097632,
+            5.494385332736955
+          ],
+          "equilibrium_dispatch": [
+            35.0,
+            35.0,
+            35.0,
+            0.0
+          ],
+          "optimal_dispatch": [
+            35.0,
+            35.0,
+            35.0,
+            0.0
+          ],
+          "true_cost": 5.5
+        },
+        {
+          "local_block_index": 1,
+          "global_block_index": 5,
+          "block_name": "W3_B2",
+          "capacity_profile": [
+            0.0,
+            0.0,
+            0.0,
+            35.0
+          ],
+          "alpha_profile": [
+            5.450639992201539,
+            5.3808129905504085,
+            5.771622944982492,
+            5.495356616881235
+          ],
+          "equilibrium_dispatch": [
+            0.0,
+            0.0,
+            0.0,
+            35.0
+          ],
+          "optimal_dispatch": [
+            0.0,
+            0.0,
+            0.0,
+            35.0
+          ],
+          "true_cost": 5.51
+        }
+      ]
+    },
+    "W2": {
+      "physical_generator_index": 3,
+      "is_wind": true,
+      "physical_capacity_profile": [
+        35.0,
+        35.0,
+        20.3809857550692,
+        35.0
+      ],
+      "equilibrium_physical_dispatch": [
+        35.0,
+        35.0,
+        20.3809857550692,
+        35.0
+      ],
+      "optimal_physical_dispatch": [
+        35.0,
+        35.0,
+        20.3809857550692,
+        35.0
+      ],
+      "blocks": [
+        {
+          "local_block_index": 0,
+          "global_block_index": 6,
+          "block_name": "W2_B1",
+          "capacity_profile": [
+            35.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "alpha_profile": [
+            4.991227913856254,
+            5.051685741517926,
+            4.887304266190146,
+            5.059713003610349
+          ],
+          "equilibrium_dispatch": [
+            35.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "optimal_dispatch": [
+            35.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "true_cost": 5.0
+        },
+        {
+          "local_block_index": 1,
+          "global_block_index": 7,
+          "block_name": "W2_B2",
+          "capacity_profile": [
+            0.0,
+            35.0,
+            20.3809857550692,
+            35.0
+          ],
+          "alpha_profile": [
+            5.001053681204684,
+            5.0616378151082575,
+            4.896889521650072,
+            5.072233641981795
+          ],
+          "equilibrium_dispatch": [
+            0.0,
+            35.0,
+            20.3809857550692,
+            35.0
+          ],
+          "optimal_dispatch": [
+            0.0,
+            35.0,
+            20.3809857550692,
+            35.0
+          ],
+          "true_cost": 5.01
+        }
+      ]
+    },
+    "W1": {
+      "physical_generator_index": 4,
+      "is_wind": true,
+      "physical_capacity_profile": [
+        35.0,
+        35.0,
+        35.0,
+        29.6190142449308
+      ],
+      "equilibrium_physical_dispatch": [
+        35.0,
+        35.0,
+        35.0,
+        29.6190142449308
+      ],
+      "optimal_physical_dispatch": [
+        35.0,
+        35.0,
+        35.0,
+        29.6190142449308
+      ],
+      "blocks": [
+        {
+          "local_block_index": 0,
+          "global_block_index": 8,
+          "block_name": "W1_B1",
+          "capacity_profile": [
+            35.0,
+            35.0,
+            0.0,
+            0.0
+          ],
+          "alpha_profile": [
+            4.511163387964144,
+            4.475060999145126,
+            4.554968090819691,
+            4.456723126849491
+          ],
+          "equilibrium_dispatch": [
+            35.0,
+            35.0,
+            0.0,
+            0.0
+          ],
+          "optimal_dispatch": [
+            35.0,
+            35.0,
+            0.0,
+            0.0
+          ],
+          "true_cost": 4.5
+        },
+        {
+          "local_block_index": 1,
+          "global_block_index": 9,
+          "block_name": "W1_B2",
+          "capacity_profile": [
+            0.0,
+            0.0,
+            35.0,
+            29.6190142449308
+          ],
+          "alpha_profile": [
+            4.5269986335502335,
+            4.49848298696004,
+            4.548904076675957,
+            4.464265609429305
+          ],
+          "equilibrium_dispatch": [
+            0.0,
+            0.0,
+            35.0,
+            29.6190142449308
+          ],
+          "optimal_dispatch": [
+            0.0,
+            0.0,
+            35.0,
+            29.6190142449308
+          ],
+          "true_cost": 4.51
+        }
+      ]
+    }
+  },
+  "equilibrium_price_profile": [
+    30.07126646704235,
+    29.99938727575646,
+    28.9642962779251,
+    29.998445628122994
+  ],
+  "optimal_price_profile": [
+    20.0,
+    20.0,
+    20.0,
+    20.0
+  ],
+  "support_set": {
+    "demand": {
+      "reference": [
+        150.0,
+        150.0,
+        150.0,
+        150.0
+      ],
+      "min": 110.0,
+      "max": 175.0,
+      "ramp": 75.0,
+      "budget": 150.0
+    },
+    "wind": {
+      "W3": {
+        "reference": [
+          35.0,
+          35.0,
+          35.0,
+          35.0
+        ],
+        "min": 10.0,
+        "max": 50.0
+      },
+      "W2": {
+        "reference": [
+          35.0,
+          35.0,
+          35.0,
+          35.0
+        ],
+        "min": 10.0,
+        "max": 50.0
+      },
+      "W1": {
+        "reference": [
+          35.0,
+          35.0,
+          35.0,
+          35.0
+        ],
+        "min": 10.0,
+        "max": 50.0
+      }
+    },
+    "wind_ramp": 20.0,
+    "wind_budget": 20.0
+  },
+  "solver": {
+    "status": "ok",
+    "termination_condition": "optimal"
+  },
+  "policy_type": "neural_network",
+  "dual_bound_activity": [
+    {
+      "component": "mu_upper_eq",
+      "indices": [
+        3,
+        1,
+        0
+      ],
+      "value": 200.0,
+      "bound": 200.0,
+      "relative_to_bound": 1.0
+    },
+    {
+      "component": "mu_upper_eq",
+      "indices": [
+        4,
+        1,
+        0
+      ],
+      "value": 200.0,
+      "bound": 200.0,
+      "relative_to_bound": 1.0
+    }
+  ]
+}
