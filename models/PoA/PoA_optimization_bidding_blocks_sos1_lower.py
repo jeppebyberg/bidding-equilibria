@@ -1,19 +1,38 @@
+"""
+Standalone SOS1 experiment for KKT complementarity.
+
+This script is based on PoA_optimization_bidding_blocks.py, but replaces KKT
+Big-M complementarity constraints such as
+
+    0 <= mu_lower_eq[i,b,t] ⟂ P_eq[i,b,t] >= 0
+
+with solver-native SOS1 constraints over primal slacks and dual variables.
+
+This is intended as a computational experiment to compare Big-M binaries
+against solver-native SOS1 branching.
+"""
+
 from pyomo.environ import *
 import numpy as np
 import pandas as pd
 import json
 import yaml
 import ast
+import sys
 from pathlib import Path
 from typing import Any, Optional
 
 import time
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from config.scenarios.scenario_generator import ScenarioManager
 from models.synthetic_data_generation.economic_dispatch import EconomicDispatchModel
 
 
-class PoAOptimizationBiddingBlocks:
+class PoAOptimizationBiddingBlocksSOS1:
     """
     Block-aware Price of Anarchy optimization.
 
@@ -42,10 +61,14 @@ class PoAOptimizationBiddingBlocks:
         dual_bound_calibration_path: Optional[str | Path] = None,
         dual_bound_calibration_quantile: str = "max",
         use_dual_bound_calibration: bool = True,
-        support_set_ramp_dual_bounds_path: Optional[str | Path] = None,
+        use_optimal_kkt: bool = True, 
+        use_lower_bound_complementarity: bool = True,
+        big_m_relu: Optional[float] = None,
         reference_case: str = "test_case_bidding_blocks",
     ):
         self.scenarios_df = scenarios_df.reset_index(drop=True)
+        self.use_optimal_kkt = bool(use_optimal_kkt)
+        self.use_lower_bound_complementarity = bool(use_lower_bound_complementarity)
         self.costs_df = costs_df
         self.ramps_df = ramps_df
         self.requested_p_init = p_init
@@ -63,12 +86,6 @@ class PoAOptimizationBiddingBlocks:
             if dual_bound_calibration_path is not None
             else None
         )
-        self.support_set_ramp_dual_bounds_path = (
-            Path(support_set_ramp_dual_bounds_path)
-            if support_set_ramp_dual_bounds_path is not None
-            else None
-        )
-        self.support_set_ramp_dual_bounds: dict[str, Any] = {}
         self.dual_bound_calibration_quantile = str(dual_bound_calibration_quantile)
         self.dual_bound_calibration: dict[str, Any] = {}
         self.use_dual_bound_calibration = bool(use_dual_bound_calibration)
@@ -87,10 +104,7 @@ class PoAOptimizationBiddingBlocks:
         self.ramp_dual_bound = float(calibrated_bounds.get("ramp_dual_bound", ramp_dual_bound))
         if not calibrated_bounds:
             self._record_manual_dual_bounds()
-        if self.support_set_ramp_dual_bounds_path is not None:
-            self.support_set_ramp_dual_bounds = self.load_support_set_ramp_dual_bounds(
-                self.support_set_ramp_dual_bounds_path
-            )
+        self.big_m_relu = float(big_m_relu or big_m_complementarity)
         self.nn_relu_bounds: dict[str, dict[tuple[int, int], dict[str, Any]]] = {}
         self.nn_bound_warnings: list[str] = []
         self.reference_case = reference_case
@@ -457,17 +471,6 @@ class PoAOptimizationBiddingBlocks:
         }
         return bounds
 
-    @staticmethod
-    def load_support_set_ramp_dual_bounds(path: str | Path) -> dict[str, Any]:
-        bound_path = Path(path)
-        if not bound_path.exists():
-            raise FileNotFoundError(f"Support-set ramp dual bounds not found: {bound_path}")
-        with bound_path.open("r", encoding="utf-8") as file_handle:
-            payload = json.load(file_handle) or {}
-        if not isinstance(payload, dict):
-            raise ValueError(f"Invalid support-set ramp dual bounds format: {bound_path}")
-        return payload
-
     def _record_manual_dual_bounds(self) -> None:
         self.dual_bound_calibration = {
             "source": "manual",
@@ -500,94 +503,6 @@ class PoAOptimizationBiddingBlocks:
             self.ramp_dual_bound = float(ramp_dual_bound)
         self.use_dual_bound_calibration = False
         self._record_manual_dual_bounds()
-
-    def _indexed_dual_bounds(self) -> dict[str, Any]:
-        bounds = self.support_set_ramp_dual_bounds or {}
-        indexed = bounds.get("indexed_bounds", {}) if isinstance(bounds, dict) else {}
-        return indexed if isinstance(indexed, dict) else {}
-
-    def _global_support_dual_bound(self, key: str, fallback: float) -> float:
-        bounds = self.support_set_ramp_dual_bounds or {}
-        global_bounds = bounds.get("global_bounds", {}) if isinstance(bounds, dict) else {}
-        if isinstance(global_bounds, dict) and key in global_bounds:
-            return float(global_bounds[key])
-        return float(fallback)
-
-    @staticmethod
-    def _nested_lookup(payload: Any, keys: list[Any]) -> Optional[float]:
-        current = payload
-        for key in keys:
-            if not isinstance(current, dict):
-                return None
-            candidates = [key, str(key)]
-            if isinstance(key, str):
-                candidates.append(key.upper())
-                candidates.append(key.lower())
-            found = False
-            for candidate in candidates:
-                if candidate in current:
-                    current = current[candidate]
-                    found = True
-                    break
-            if not found:
-                return None
-        if current is None:
-            return None
-        return float(current)
-
-    def _lambda_lower_bound(self, time_idx: int) -> float:
-        indexed = self._indexed_dual_bounds()
-        value = self._nested_lookup(indexed.get("lambda_lb", {}), [time_idx])
-        if value is not None:
-            return value
-        return -self._global_support_dual_bound("lambda_ub", self.lambda_bound)
-
-    def _lambda_upper_bound(self, time_idx: int) -> float:
-        indexed = self._indexed_dual_bounds()
-        value = self._nested_lookup(indexed.get("lambda_ub", {}), [time_idx])
-        if value is not None:
-            return value
-        return self._global_support_dual_bound("lambda_ub", self.lambda_bound)
-
-    def _capacity_dual_upper_bound(
-        self,
-        bound_key: str,
-        physical_generator_idx: int,
-        local_block_idx: int,
-        time_idx: int,
-    ) -> float:
-        indexed = self._indexed_dual_bounds()
-        generator_name = self.physical_generator_names[int(physical_generator_idx)]
-        block_name = self.block_names[
-            self.local_to_global_block[(int(physical_generator_idx), int(local_block_idx))]
-        ]
-        value = self._nested_lookup(
-            indexed.get(bound_key, {}),
-            [generator_name, block_name, time_idx],
-        )
-        if value is None:
-            value = self._nested_lookup(
-                indexed.get(bound_key, {}),
-                [physical_generator_idx, local_block_idx, time_idx],
-            )
-        if value is not None:
-            return max(0.0, value)
-        return self._global_support_dual_bound(bound_key, self.capacity_dual_bound)
-
-    def _ramp_dual_upper_bound(
-        self,
-        bound_key: str,
-        physical_generator_idx: int,
-        time_idx: int,
-    ) -> float:
-        indexed = self._indexed_dual_bounds()
-        generator_name = self.physical_generator_names[int(physical_generator_idx)]
-        value = self._nested_lookup(indexed.get(bound_key, {}), [generator_name, time_idx])
-        if value is None:
-            value = self._nested_lookup(indexed.get(bound_key, {}), [physical_generator_idx, time_idx])
-        if value is not None:
-            return max(0.0, value)
-        return self._global_support_dual_bound(bound_key, self.ramp_dual_bound)
 
     def _block_capacity_big_m(self, physical_generator_idx: int, local_block_idx: int) -> float:
         global_block = self.local_to_global_block[(physical_generator_idx, local_block_idx)]
@@ -688,111 +603,53 @@ class PoAOptimizationBiddingBlocks:
     def _build_equilibrium_variables(self) -> None:
         self.model.P_eq = Var(self.model.generator_blocks, self.model.time_steps, domain=NonNegativeReals)
         self.model.alpha = Var(self.model.generator_blocks, self.model.time_steps, domain=Reals)
-        self.model.lambda_eq = Var(
-            self.model.time_steps,
-            domain=Reals,
-            bounds=lambda m, t: (self._lambda_lower_bound(int(t)), self._lambda_upper_bound(int(t))),
-        )
-        self.model.mu_upper_eq = Var(
-            self.model.generator_blocks,
-            self.model.time_steps,
-            domain=Reals,
-            bounds=lambda m, i, b, t: (
-                0.0,
-                self._capacity_dual_upper_bound("mu_max_ub", int(i), int(b), int(t)),
-            ),
-        )
-        self.model.mu_lower_eq = Var(
-            self.model.generator_blocks,
-            self.model.time_steps,
-            domain=Reals,
-            bounds=lambda m, i, b, t: (
-                0.0,
-                self._capacity_dual_upper_bound("mu_min_ub", int(i), int(b), int(t)),
-            ),
-        )
-        self.model.mu_ramp_up_eq = Var(
-            self.model.physical_generators,
-            self.model.time_steps_plus_1,
-            domain=Reals,
-            bounds=lambda m, i, t: (
-                0.0,
-                self._ramp_dual_upper_bound("rho_up_ub", int(i), int(t))
-                if int(t) < self.num_time_steps
-                else self._global_support_dual_bound("rho_up_ub", self.ramp_dual_bound),
-            ),
-        )
-        self.model.mu_ramp_down_eq = Var(
-            self.model.physical_generators,
-            self.model.time_steps_plus_1,
-            domain=Reals,
-            bounds=lambda m, i, t: (
-                0.0,
-                self._ramp_dual_upper_bound("rho_down_ub", int(i), int(t))
-                if int(t) < self.num_time_steps
-                else self._global_support_dual_bound("rho_down_ub", self.ramp_dual_bound),
-            ),
-        )
+        self.model.lambda_eq = Var(self.model.time_steps, domain=Reals, bounds=(-self.lambda_bound, self.lambda_bound))
+        self.model.mu_upper_eq = Var(self.model.generator_blocks, self.model.time_steps, domain=Reals, bounds=(0.0, self.capacity_dual_bound))
+        self.model.mu_lower_eq = Var(self.model.generator_blocks, self.model.time_steps, domain=Reals, bounds=(0.0, self.capacity_dual_bound))
+        self.model.mu_ramp_up_eq = Var(self.model.physical_generators, self.model.time_steps_plus_1, domain=Reals, bounds=(0.0, self.ramp_dual_bound))
+        self.model.mu_ramp_down_eq = Var(self.model.physical_generators, self.model.time_steps_plus_1, domain=Reals, bounds=(0.0, self.ramp_dual_bound))
 
     def _build_complementarity_equilibrium_variables(self) -> None:
-        self.model.z_upper_eq = Var(self.model.generator_blocks, self.model.time_steps, domain=Binary)
-        self.model.z_lower_eq = Var(self.model.generator_blocks, self.model.time_steps, domain=Binary)
-        self.model.z_ramp_up_eq = Var(self.model.physical_generators, self.model.time_steps, domain=Binary)
-        self.model.z_ramp_down_eq = Var(self.model.physical_generators, self.model.time_steps, domain=Binary)
+        self.model.s_upper_eq = Var(
+            self.model.generator_blocks,
+            self.model.time_steps,
+            domain=NonNegativeReals,
+        )
+        self.model.s_ramp_up_eq = Var(
+            self.model.physical_generators,
+            self.model.time_steps,
+            domain=NonNegativeReals,
+        )
+        self.model.s_ramp_down_eq = Var(
+            self.model.physical_generators,
+            self.model.time_steps,
+            domain=NonNegativeReals,
+        )
 
     def _build_optimal_variables(self) -> None:
         self.model.P_opt = Var(self.model.generator_blocks, self.model.time_steps, domain=NonNegativeReals)
-        self.model.lambda_opt = Var(
-            self.model.time_steps,
-            domain=Reals,
-            bounds=lambda m, t: (self._lambda_lower_bound(int(t)), self._lambda_upper_bound(int(t))),
-        )
-        self.model.mu_upper_opt = Var(
-            self.model.generator_blocks,
-            self.model.time_steps,
-            domain=Reals,
-            bounds=lambda m, i, b, t: (
-                0.0,
-                self._capacity_dual_upper_bound("mu_max_ub", int(i), int(b), int(t)),
-            ),
-        )
-        self.model.mu_lower_opt = Var(
-            self.model.generator_blocks,
-            self.model.time_steps,
-            domain=Reals,
-            bounds=lambda m, i, b, t: (
-                0.0,
-                self._capacity_dual_upper_bound("mu_min_ub", int(i), int(b), int(t)),
-            ),
-        )
-        self.model.mu_ramp_up_opt = Var(
-            self.model.physical_generators,
-            self.model.time_steps_plus_1,
-            domain=Reals,
-            bounds=lambda m, i, t: (
-                0.0,
-                self._ramp_dual_upper_bound("rho_up_ub", int(i), int(t))
-                if int(t) < self.num_time_steps
-                else self._global_support_dual_bound("rho_up_ub", self.ramp_dual_bound),
-            ),
-        )
-        self.model.mu_ramp_down_opt = Var(
-            self.model.physical_generators,
-            self.model.time_steps_plus_1,
-            domain=Reals,
-            bounds=lambda m, i, t: (
-                0.0,
-                self._ramp_dual_upper_bound("rho_down_ub", int(i), int(t))
-                if int(t) < self.num_time_steps
-                else self._global_support_dual_bound("rho_down_ub", self.ramp_dual_bound),
-            ),
-        )
+        self.model.lambda_opt = Var(self.model.time_steps, domain=Reals, bounds=(-self.lambda_bound, self.lambda_bound))
+        self.model.mu_upper_opt = Var(self.model.generator_blocks, self.model.time_steps, domain=Reals, bounds=(0.0, self.capacity_dual_bound))
+        self.model.mu_lower_opt = Var(self.model.generator_blocks, self.model.time_steps, domain=Reals, bounds=(0.0, self.capacity_dual_bound))
+        self.model.mu_ramp_up_opt = Var(self.model.physical_generators, self.model.time_steps_plus_1, domain=Reals, bounds=(0.0, self.ramp_dual_bound))
+        self.model.mu_ramp_down_opt = Var(self.model.physical_generators, self.model.time_steps_plus_1, domain=Reals, bounds=(0.0, self.ramp_dual_bound))
 
     def _build_complementarity_optimal_variables(self) -> None:
-        self.model.z_upper_opt = Var(self.model.generator_blocks, self.model.time_steps, domain=Binary)
-        self.model.z_lower_opt = Var(self.model.generator_blocks, self.model.time_steps, domain=Binary)
-        self.model.z_ramp_up_opt = Var(self.model.physical_generators, self.model.time_steps, domain=Binary)
-        self.model.z_ramp_down_opt = Var(self.model.physical_generators, self.model.time_steps, domain=Binary)
+        self.model.s_upper_opt = Var(
+            self.model.generator_blocks,
+            self.model.time_steps,
+            domain=NonNegativeReals,
+        )
+        self.model.s_ramp_up_opt = Var(
+            self.model.physical_generators,
+            self.model.time_steps,
+            domain=NonNegativeReals,
+        )
+        self.model.s_ramp_down_opt = Var(
+            self.model.physical_generators,
+            self.model.time_steps,
+            domain=NonNegativeReals,
+        )
 
     def _build_objective(self) -> None:
         self.model.objective = Objective(expr=self.model.PoA, sense=maximize)
@@ -800,20 +657,17 @@ class PoAOptimizationBiddingBlocks:
     def _build_constraints(self) -> None:
         self._build_support_set()
         self._build_policy_constraints()
-
         self._build_lower_level_equilibrium_constraints()
         self._build_lower_level_optimal_constraints()
-
         self._build_KKT_stationarity_equilibrium_constraints()
-        self._build_KKT_stationarity_optimal_constraints()
-
+        # self._build_KKT_stationarity_optimal_constraints()
         self._build_KKT_complementarity_equilibrium_constraints()
-        self._build_KKT_complementarity_optimal_constraints()
-
+        # self._build_KKT_complementarity_optimal_constraints()
         self._build_PoA_constraints()
 
-        self._build_valid_inequalities()
-        self._build_bid_monotonicity_constraints()
+        if self.use_optimal_kkt:
+            self._build_KKT_stationarity_optimal_constraints()
+            self._build_KKT_complementarity_optimal_constraints()
 
     # ------------------------------------------------------------------
     # Support set
@@ -1043,269 +897,167 @@ class PoAOptimizationBiddingBlocks:
     # ------------------------------------------------------------------
 
     def _build_KKT_complementarity_equilibrium_constraints(self) -> None:
-        BigM = self.big_m_complementarity
+        def upper_bound_slack_eq_rule(m, i, b, t):
+            return m.s_upper_eq[i, b, t] == m.P_max_block[i, b, t] - m.P_eq[i, b, t]
 
-        # def upper_bound_complementarity_eq_rule(m, i, b, t):
-        #     return -BigM * (1 - m.z_upper_eq[i, b, t]) <= m.P_eq[i, b, t] - m.P_max_block[i, b, t] 
-
-        def upper_bound_complementarity_eq_rule(m, i, b, t):
-            M_cap = self._block_capacity_big_m(int(i), int(b))
-            return -M_cap * (1 - m.z_upper_eq[i, b, t]) <= m.P_eq[i, b, t] - m.P_max_block[i, b, t]
-
-        def upper_bound_complementarity_dual_eq_rule(m, i, b, t):
-            return m.mu_upper_eq[i, b, t] <= (
-                self._capacity_dual_upper_bound("mu_max_ub", int(i), int(b), int(t))
-                * m.z_upper_eq[i, b, t]
-            )
-
-        def lower_bound_complementarity_eq_rule(m, i, b, t):
-            M_cap = self._block_capacity_big_m(int(i), int(b))
-            return -M_cap * (1 - m.z_lower_eq[i, b, t]) <= -m.P_eq[i, b, t]
-
-        def lower_bound_complementarity_dual_eq_rule(m, i, b, t):
-            return m.mu_lower_eq[i, b, t] <= (
-                self._capacity_dual_upper_bound("mu_min_ub", int(i), int(b), int(t))
-                * m.z_lower_eq[i, b, t]
-            )
-
-        # def ramp_up_complementarity_eq_rule(m, i, t):
-        #     return -BigM * (1 - m.z_ramp_up_eq[i, t]) <= sum(m.P_eq[i, b, t] for b in self.local_blocks_by_generator[int(i)]) - sum(m.P_eq[i, b, t - 1] for b in self.local_blocks_by_generator[int(i)]) - self.ramp_vector_up[int(i)]
-
-        def ramp_up_complementarity_eq_rule(m, i, t):
-            M_ramp_up = self._ramp_up_big_m(int(i))
-            return -M_ramp_up * (1 - m.z_ramp_up_eq[i, t]) <= (
-                sum(m.P_eq[i, b, t] for b in self.local_blocks_by_generator[int(i)])
-                - sum(m.P_eq[i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
-                - self.ramp_vector_up[int(i)]
-            )
-
-        # def ramp_up_initial_complementarity_eq_rule(m, i):
-        #     return -BigM * (1 - m.z_ramp_up_eq[i, 0]) <= sum(m.P_eq[i, b, 0] for b in self.local_blocks_by_generator[int(i)]) - self.p_init[int(i)] - self.ramp_vector_up[int(i)]
-
-        def ramp_up_initial_complementarity_eq_rule(m, i):
-            M_ramp_up_initial = self._ramp_up_initial_big_m(int(i))
-            return -M_ramp_up_initial * (1 - m.z_ramp_up_eq[i, 0]) <= (
-                sum(m.P_eq[i, b, 0] for b in self.local_blocks_by_generator[int(i)])
-                - self.p_init[int(i)]
-                - self.ramp_vector_up[int(i)]
-            )
-
-        def ramp_up_complementarity_dual_eq_rule(m, i, t):
-            return m.mu_ramp_up_eq[i, t] <= (
-                self._ramp_dual_upper_bound("rho_up_ub", int(i), int(t))
-                * m.z_ramp_up_eq[i, t]
-            )
-        
-        # def ramp_down_complementarity_eq_rule(m, i, t):
-        #     return -BigM * (1 - m.z_ramp_down_eq[i, t]) <= - sum(m.P_eq[i, b, t] for b in self.local_blocks_by_generator[int(i)]) + sum(m.P_eq[i, b, t - 1] for b in self.local_blocks_by_generator[int(i)]) - self.ramp_vector_down[int(i)]
-
-        def ramp_down_complementarity_eq_rule(m, i, t):
-            M_ramp_down = self._ramp_down_big_m(int(i))
-            return -M_ramp_down * (1 - m.z_ramp_down_eq[i, t]) <= (
-                -sum(m.P_eq[i, b, t] for b in self.local_blocks_by_generator[int(i)])
+        def ramp_up_slack_eq_rule(m, i, t):
+            if int(t) == 0:
+                return m.s_ramp_up_eq[i, t] == (
+                    self.ramp_vector_up[int(i)]
+                    - sum(m.P_eq[i, b, 0] for b in self.local_blocks_by_generator[int(i)])
+                    + self.p_init[int(i)]
+                )
+            return m.s_ramp_up_eq[i, t] == (
+                self.ramp_vector_up[int(i)]
+                - sum(m.P_eq[i, b, t] for b in self.local_blocks_by_generator[int(i)])
                 + sum(m.P_eq[i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
-                - self.ramp_vector_down[int(i)]
             )
 
-        # def ramp_down_initial_complementarity_eq_rule(m, i):
-        #     return -BigM * (1 - m.z_ramp_down_eq[i, 0]) <= - sum(m.P_eq[i, b, 0] for b in self.local_blocks_by_generator[int(i)]) + self.p_init[int(i)] - self.ramp_vector_down[int(i)]
-
-        def ramp_down_initial_complementarity_eq_rule(m, i):
-            M_ramp_down_initial = self._ramp_down_initial_big_m(int(i))
-            return -M_ramp_down_initial * (1 - m.z_ramp_down_eq[i, 0]) <= (
-                -sum(m.P_eq[i, b, 0] for b in self.local_blocks_by_generator[int(i)])
-                + self.p_init[int(i)]
-                - self.ramp_vector_down[int(i)]
+        def ramp_down_slack_eq_rule(m, i, t):
+            if int(t) == 0:
+                return m.s_ramp_down_eq[i, t] == (
+                    self.ramp_vector_down[int(i)]
+                    + sum(m.P_eq[i, b, 0] for b in self.local_blocks_by_generator[int(i)])
+                    - self.p_init[int(i)]
+                )
+            return m.s_ramp_down_eq[i, t] == (
+                self.ramp_vector_down[int(i)]
+                + sum(m.P_eq[i, b, t] for b in self.local_blocks_by_generator[int(i)])
+                - sum(m.P_eq[i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
             )
 
-        def ramp_down_complementarity_dual_eq_rule(m, i, t):
-            return m.mu_ramp_down_eq[i, t] <= (
-                self._ramp_dual_upper_bound("rho_down_ub", int(i), int(t))
-                * m.z_ramp_down_eq[i, t]
-            )
+        def upper_bound_sos_eq_rule(m, i, b, t):
+            return [m.s_upper_eq[i, b, t], m.mu_upper_eq[i, b, t]]
 
-        self.model.upper_bound_complementarity_eq       = Constraint(self.model.generator_blocks, self.model.time_steps, rule=upper_bound_complementarity_eq_rule)
-        self.model.upper_bound_complementarity_dual_eq  = Constraint(self.model.generator_blocks, self.model.time_steps, rule=upper_bound_complementarity_dual_eq_rule)
-        self.model.lower_bound_complementarity_eq       = Constraint(self.model.generator_blocks, self.model.time_steps, rule=lower_bound_complementarity_eq_rule)
-        self.model.lower_bound_complementarity_dual_eq  = Constraint(self.model.generator_blocks, self.model.time_steps, rule=lower_bound_complementarity_dual_eq_rule)
+        def lower_bound_sos_eq_rule(m, i, b, t):
+            return [m.P_eq[i, b, t], m.mu_lower_eq[i, b, t]]
 
-        self.model.ramp_up_complementarity_eq           = Constraint(self.model.physical_generators, self.model.time_steps_minus_1, rule=ramp_up_complementarity_eq_rule)
-        self.model.ramp_up_complementarity_dual_eq      = Constraint(self.model.physical_generators, self.model.time_steps, rule=ramp_up_complementarity_dual_eq_rule)
-        self.model.ramp_up_initial_complementarity_eq   = Constraint(self.model.physical_generators, rule=ramp_up_initial_complementarity_eq_rule)
+        def ramp_up_sos_eq_rule(m, i, t):
+            return [m.s_ramp_up_eq[i, t], m.mu_ramp_up_eq[i, t]]
 
-        self.model.ramp_down_complementarity_eq         = Constraint(self.model.physical_generators, self.model.time_steps_minus_1, rule=ramp_down_complementarity_eq_rule)
-        self.model.ramp_down_complementarity_dual_eq    = Constraint(self.model.physical_generators, self.model.time_steps, rule=ramp_down_complementarity_dual_eq_rule)
-        self.model.ramp_down_initial_complementarity_eq = Constraint(self.model.physical_generators, rule=ramp_down_initial_complementarity_eq_rule)
+        def ramp_down_sos_eq_rule(m, i, t):
+            return [m.s_ramp_down_eq[i, t], m.mu_ramp_down_eq[i, t]]
+
+        self.model.upper_bound_slack_eq = Constraint(
+            self.model.generator_blocks,
+            self.model.time_steps,
+            rule=upper_bound_slack_eq_rule,
+        )
+        self.model.ramp_up_slack_eq = Constraint(
+            self.model.physical_generators,
+            self.model.time_steps,
+            rule=ramp_up_slack_eq_rule,
+        )
+        self.model.ramp_down_slack_eq = Constraint(
+            self.model.physical_generators,
+            self.model.time_steps,
+            rule=ramp_down_slack_eq_rule,
+        )
+        self.model.upper_bound_sos_eq = SOSConstraint(
+            self.model.generator_blocks,
+            self.model.time_steps,
+            rule=upper_bound_sos_eq_rule,
+            sos=1,
+        )
+        self.model.lower_bound_sos_eq = SOSConstraint(
+            self.model.generator_blocks,
+            self.model.time_steps,
+            rule=lower_bound_sos_eq_rule,
+            sos=1,
+        )
+        self.model.ramp_up_sos_eq = SOSConstraint(
+            self.model.physical_generators,
+            self.model.time_steps,
+            rule=ramp_up_sos_eq_rule,
+            sos=1,
+        )
+        self.model.ramp_down_sos_eq = SOSConstraint(
+            self.model.physical_generators,
+            self.model.time_steps,
+            rule=ramp_down_sos_eq_rule,
+            sos=1,
+        )
 
     def _build_KKT_complementarity_optimal_constraints(self) -> None:
-        BigM = self.big_m_complementarity
+        def upper_bound_slack_opt_rule(m, i, b, t):
+            return m.s_upper_opt[i, b, t] == m.P_max_block[i, b, t] - m.P_opt[i, b, t]
 
-        # def upper_bound_complementarity_opt_rule(m, i, b, t):
-        #     return -BigM * (1 - m.z_upper_opt[i, b, t]) <= m.P_opt[i, b, t] - m.P_max_block[i, b, t] 
-
-        def upper_bound_complementarity_opt_rule(m, i, b, t):
-            M_cap = self._block_capacity_big_m(int(i), int(b))
-            return -M_cap * (1 - m.z_upper_opt[i, b, t]) <= m.P_opt[i, b, t] - m.P_max_block[i, b, t]
-    
-        def upper_bound_complementarity_dual_opt_rule(m, i, b, t):
-            return m.mu_upper_opt[i, b, t] <= (
-                self._capacity_dual_upper_bound("mu_max_ub", int(i), int(b), int(t))
-                * m.z_upper_opt[i, b, t]
-            )
-
-        # def lower_bound_complementarity_opt_rule(m, i, b, t):
-        #     return -BigM * (1 - m.z_lower_opt[i, b, t]) <= -m.P_opt[i, b, t]
-
-        def lower_bound_complementarity_opt_rule(m, i, b, t):
-            M_cap = self._block_capacity_big_m(int(i), int(b))
-            return -M_cap * (1 - m.z_lower_opt[i, b, t]) <= -m.P_opt[i, b, t]
-
-        def lower_bound_complementarity_dual_opt_rule(m, i, b, t):
-            return m.mu_lower_opt[i, b, t] <= (
-                self._capacity_dual_upper_bound("mu_min_ub", int(i), int(b), int(t))
-                * m.z_lower_opt[i, b, t]
-            )
-        
-        # def ramp_up_complementarity_opt_rule(m, i, t):
-        #     return -BigM * (1 - m.z_ramp_up_opt[i, t]) <= sum(m.P_opt[i, b, t] for b in self.local_blocks_by_generator[int(i)]) - sum(m.P_opt[i, b, t - 1] for b in self.local_blocks_by_generator[int(i)]) - self.ramp_vector_up[int(i)]
-
-        def ramp_up_complementarity_opt_rule(m, i, t):
-            M_ramp_up = self._ramp_up_big_m(int(i))
-            return -M_ramp_up * (1 - m.z_ramp_up_opt[i, t]) <= (
-                sum(m.P_opt[i, b, t] for b in self.local_blocks_by_generator[int(i)])
-                - sum(m.P_opt[i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
-                - self.ramp_vector_up[int(i)]
-            )
-
-        # def ramp_up_initial_complementarity_opt_rule(m, i):
-        #     return -BigM * (1 - m.z_ramp_up_opt[i, 0]) <= sum(m.P_opt[i, b, 0] for b in self.local_blocks_by_generator[int(i)]) - self.p_init[int(i)] - self.ramp_vector_up[int(i)]
-
-        def ramp_up_initial_complementarity_opt_rule(m, i):
-            M_ramp_up_initial = self._ramp_up_initial_big_m(int(i))
-            return -M_ramp_up_initial * (1 - m.z_ramp_up_opt[i, 0]) <= (
-                sum(m.P_opt[i, b, 0] for b in self.local_blocks_by_generator[int(i)])
-                - self.p_init[int(i)]
-                - self.ramp_vector_up[int(i)]
-            )
-
-        def ramp_up_complementarity_dual_opt_rule(m, i, t):
-            return m.mu_ramp_up_opt[i, t] <= (
-                self._ramp_dual_upper_bound("rho_up_ub", int(i), int(t))
-                * m.z_ramp_up_opt[i, t]
-            )
-
-        # def ramp_down_complementarity_opt_rule(m, i, t):
-        #     return -BigM * (1 - m.z_ramp_down_opt[i, t]) <= - sum(m.P_opt[i, b, t] for b in self.local_blocks_by_generator[int(i)]) + sum(m.P_opt[i, b, t - 1] for b in self.local_blocks_by_generator[int(i)]) - self.ramp_vector_down[int(i)]
-
-        def ramp_down_complementarity_opt_rule(m, i, t):
-            M_ramp_down = self._ramp_down_big_m(int(i))
-            return -M_ramp_down * (1 - m.z_ramp_down_opt[i, t]) <= (
-                -sum(m.P_opt[i, b, t] for b in self.local_blocks_by_generator[int(i)])
+        def ramp_up_slack_opt_rule(m, i, t):
+            if int(t) == 0:
+                return m.s_ramp_up_opt[i, t] == (
+                    self.ramp_vector_up[int(i)]
+                    - sum(m.P_opt[i, b, 0] for b in self.local_blocks_by_generator[int(i)])
+                    + self.p_init[int(i)]
+                )
+            return m.s_ramp_up_opt[i, t] == (
+                self.ramp_vector_up[int(i)]
+                - sum(m.P_opt[i, b, t] for b in self.local_blocks_by_generator[int(i)])
                 + sum(m.P_opt[i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
-                - self.ramp_vector_down[int(i)]
             )
 
-        # def ramp_down_initial_complementarity_opt_rule(m, i):
-        #     return -BigM * (1 - m.z_ramp_down_opt[i, 0]) <= - sum(m.P_opt[i, b, 0] for b in self.local_blocks_by_generator[int(i)]) + self.p_init[int(i)] - self.ramp_vector_down[int(i)]
-
-        def ramp_down_initial_complementarity_opt_rule(m, i):
-            M_ramp_down_initial = self._ramp_down_initial_big_m(int(i))
-            return -M_ramp_down_initial * (1 - m.z_ramp_down_opt[i, 0]) <= (
-                -sum(m.P_opt[i, b, 0] for b in self.local_blocks_by_generator[int(i)])
-                + self.p_init[int(i)]
-                - self.ramp_vector_down[int(i)]
+        def ramp_down_slack_opt_rule(m, i, t):
+            if int(t) == 0:
+                return m.s_ramp_down_opt[i, t] == (
+                    self.ramp_vector_down[int(i)]
+                    + sum(m.P_opt[i, b, 0] for b in self.local_blocks_by_generator[int(i)])
+                    - self.p_init[int(i)]
+                )
+            return m.s_ramp_down_opt[i, t] == (
+                self.ramp_vector_down[int(i)]
+                + sum(m.P_opt[i, b, t] for b in self.local_blocks_by_generator[int(i)])
+                - sum(m.P_opt[i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
             )
 
-        def ramp_down_complementarity_dual_opt_rule(m, i, t):
-            return m.mu_ramp_down_opt[i, t] <= (
-                self._ramp_dual_upper_bound("rho_down_ub", int(i), int(t))
-                * m.z_ramp_down_opt[i, t]
-            )
+        def upper_bound_sos_opt_rule(m, i, b, t):
+            return [m.s_upper_opt[i, b, t], m.mu_upper_opt[i, b, t]]
 
-        self.model.upper_bound_complementarity_opt       = Constraint(self.model.generator_blocks, self.model.time_steps, rule=upper_bound_complementarity_opt_rule)
-        self.model.upper_bound_complementarity_dual_opt  = Constraint(self.model.generator_blocks, self.model.time_steps, rule=upper_bound_complementarity_dual_opt_rule)
+        def lower_bound_sos_opt_rule(m, i, b, t):
+            return [m.P_opt[i, b, t], m.mu_lower_opt[i, b, t]]
 
-        self.model.lower_bound_complementarity_opt       = Constraint(self.model.generator_blocks, self.model.time_steps, rule=lower_bound_complementarity_opt_rule)
-        self.model.lower_bound_complementarity_dual_opt  = Constraint(self.model.generator_blocks, self.model.time_steps, rule=lower_bound_complementarity_dual_opt_rule)
+        def ramp_up_sos_opt_rule(m, i, t):
+            return [m.s_ramp_up_opt[i, t], m.mu_ramp_up_opt[i, t]]
 
-        self.model.ramp_up_complementarity_opt           = Constraint(self.model.physical_generators, self.model.time_steps_minus_1, rule=ramp_up_complementarity_opt_rule)
-        self.model.ramp_up_complementarity_dual_opt      = Constraint(self.model.physical_generators, self.model.time_steps, rule=ramp_up_complementarity_dual_opt_rule)
-        self.model.ramp_up_initial_complementarity_opt   = Constraint(self.model.physical_generators, rule=ramp_up_initial_complementarity_opt_rule)
+        def ramp_down_sos_opt_rule(m, i, t):
+            return [m.s_ramp_down_opt[i, t], m.mu_ramp_down_opt[i, t]]
 
-        self.model.ramp_down_complementarity_opt         = Constraint(self.model.physical_generators, self.model.time_steps_minus_1, rule=ramp_down_complementarity_opt_rule)
-        self.model.ramp_down_complementarity_dual_opt    = Constraint(self.model.physical_generators, self.model.time_steps, rule=ramp_down_complementarity_dual_opt_rule)
-        self.model.ramp_down_initial_complementarity_opt = Constraint(self.model.physical_generators, rule=ramp_down_initial_complementarity_opt_rule)
-
-    # ------------------------------------------------------------------
-    # Testing
-    # ------------------------------------------------------------------
-
-    def _build_valid_inequalities(self) -> None:
-        def no_simultaneous_upper_lower_eq_rule(m, i, b, t):
-            return m.z_lower_eq[i, b, t] + m.z_upper_eq[i, b, t] <= 1
-
-        self.model.no_simultaneous_upper_lower_eq = Constraint(
-            self.model.conventional_blocks,
+        self.model.upper_bound_slack_opt = Constraint(
+            self.model.generator_blocks,
             self.model.time_steps,
-            rule=no_simultaneous_upper_lower_eq_rule,
+            rule=upper_bound_slack_opt_rule,
         )
-
-        def no_simultaneous_ramp_up_down_eq_rule(m, i, t):
-            if self.ramp_vector_up[int(i)] + self.ramp_vector_down[int(i)] <= 1e-9:
-                return Constraint.Skip
-            return m.z_ramp_up_eq[i, t] + m.z_ramp_down_eq[i, t] <= 1
-
-        # self.model.no_simultaneous_ramp_up_down_eq = Constraint(
-        #     self.model.physical_generators,
-        #     self.model.time_steps,
-        #     rule=no_simultaneous_ramp_up_down_eq_rule,
-        # )
-
-    def _build_bid_monotonicity_constraints(self) -> None:
-        """
-        Enforce monotone nondecreasing bids across bidding blocks owned by the same
-        physical generator.
-
-        For each physical generator i, blocks are ordered by true marginal cost.
-        If two blocks have equal true cost, local block index is used as tie-breaker.
-
-        The constraint is:
-            alpha[i, b_low, t] <= alpha[i, b_high, t]
-
-        This prevents crossing bid blocks and reduces degeneracy in the ED/KKT
-        active-set structure.
-        """
-
-        ordered_adjacent_pairs: list[tuple[int, int, int]] = []
-
-        for i in range(self.num_physical_generators):
-            local_blocks = list(self.local_blocks_by_generator[int(i)])
-
-            if len(local_blocks) <= 1:
-                continue
-
-            def block_sort_key(local_block: int) -> tuple[float, int]:
-                global_block = self.local_to_global_block[(int(i), int(local_block))]
-                true_cost = float(self.block_cost_vector[global_block])
-                return true_cost, int(local_block)
-
-            ordered_blocks = sorted(local_blocks, key=block_sort_key)
-
-            for lower_block, upper_block in zip(ordered_blocks[:-1], ordered_blocks[1:]):
-                ordered_adjacent_pairs.append((int(i), int(lower_block), int(upper_block)))
-
-        self.model.bid_monotonicity_pairs = Set(
-            dimen=3,
-            initialize=ordered_adjacent_pairs,
-        )
-
-        def bid_monotonicity_rule(m, i, b_low, b_high, t):
-            return m.alpha[i, b_low, t] <= m.alpha[i, b_high, t]
-
-        self.model.bid_monotonicity_constraints = Constraint(
-            self.model.bid_monotonicity_pairs,
+        self.model.ramp_up_slack_opt = Constraint(
+            self.model.physical_generators,
             self.model.time_steps,
-            rule=bid_monotonicity_rule,
+            rule=ramp_up_slack_opt_rule,
+        )
+        self.model.ramp_down_slack_opt = Constraint(
+            self.model.physical_generators,
+            self.model.time_steps,
+            rule=ramp_down_slack_opt_rule,
+        )
+        self.model.upper_bound_sos_opt = SOSConstraint(
+            self.model.generator_blocks,
+            self.model.time_steps,
+            rule=upper_bound_sos_opt_rule,
+            sos=1,
+        )
+        self.model.lower_bound_sos_opt = SOSConstraint(
+            self.model.generator_blocks,
+            self.model.time_steps,
+            rule=lower_bound_sos_opt_rule,
+            sos=1,
+        )
+        self.model.ramp_up_sos_opt = SOSConstraint(
+            self.model.physical_generators,
+            self.model.time_steps,
+            rule=ramp_up_sos_opt_rule,
+            sos=1,
+        )
+        self.model.ramp_down_sos_opt = SOSConstraint(
+            self.model.physical_generators,
+            self.model.time_steps,
+            rule=ramp_down_sos_opt_rule,
+            sos=1,
         )
 
     # ------------------------------------------------------------------
@@ -1737,11 +1489,11 @@ class PoAOptimizationBiddingBlocks:
                 if not np.isfinite(L) or not np.isfinite(U):
                     warning = (
                         f"{generator_name}: non-finite NN ReLU bounds at linear layer "
-                        f"{linear_idx}, node {node}; falling back to +/-{100}"
+                        f"{linear_idx}, node {node}; falling back to +/-{self.big_m_relu}"
                     )
                     self.nn_bound_warnings.append(warning)
-                    L = -float(100)
-                    U = float(100)
+                    L = -float(self.big_m_relu)
+                    U = float(self.big_m_relu)
                     z_lower[node] = L
                     z_upper[node] = U
                     h_lower[node] = max(0.0, L)
@@ -1934,7 +1686,13 @@ class PoAOptimizationBiddingBlocks:
         if not hasattr(self, "model"):
             raise ValueError("Model is not built. Call build_model() first.")
         solver = SolverFactory("gurobi")
-        solver.options["IntFeasTol"] = 1e-8
+        solver.options["NumericFocus"] = 1
+        solver.options["IntFeasTol"] = 1e-6
+        solver.options["FeasibilityTol"] = 1e-6
+        solver.options["MIPGap"] = 1e-2
+        solver.options["MIPFocus"] = 1
+        solver.options["Heuristics"] = 0.5
+        solver.options["Threads"] = 0
         if time_limit is not None:
             solver.options["TimeLimit"] = float(time_limit)
         self.solver_results = solver.solve(self.model, tee=True)
@@ -1951,6 +1709,53 @@ class PoAOptimizationBiddingBlocks:
             self._safe_value(var[(*leading_indices, t)] if leading_indices else var[t])
             for t in range(self.num_time_steps)
         ]
+
+    def summarize_discrete_structure(self) -> dict[str, Any]:
+        if not hasattr(self, "model"):
+            raise ValueError("Model is not built. Call build_model() first.")
+        m = self.model
+        component_names = [
+            "z_upper_eq",
+            "z_lower_eq",
+            "z_ramp_up_eq",
+            "z_ramp_down_eq",
+            "z_upper_opt",
+            "z_lower_opt",
+            "z_ramp_up_opt",
+            "z_ramp_down_opt",
+            "nn_delta",
+        ]
+        binary_counts: dict[str, int] = {}
+        for component_name in component_names:
+            if not hasattr(m, component_name):
+                continue
+            component = getattr(m, component_name)
+            binary_counts[component_name] = sum(
+                1 for var_data in component.values() if var_data.is_binary()
+            )
+
+        sos1_component_sizes = {
+            "upper_bound_sos_eq": len(m.generator_blocks) * len(m.time_steps),
+            "lower_bound_sos_eq": len(m.generator_blocks) * len(m.time_steps),
+            "ramp_up_sos_eq": len(m.physical_generators) * len(m.time_steps),
+            "ramp_down_sos_eq": len(m.physical_generators) * len(m.time_steps),
+            "upper_bound_sos_opt": len(m.generator_blocks) * len(m.time_steps),
+            "lower_bound_sos_opt": len(m.generator_blocks) * len(m.time_steps),
+            "ramp_up_sos_opt": len(m.physical_generators) * len(m.time_steps),
+            "ramp_down_sos_opt": len(m.physical_generators) * len(m.time_steps),
+        }
+        sos1_counts = {
+            component_name: int(component_size)
+            for component_name, component_size in sos1_component_sizes.items()
+            if hasattr(m, component_name)
+        }
+
+        return {
+            "binary_counts": binary_counts,
+            "total_binaries": int(sum(binary_counts.values())),
+            "sos1_counts": sos1_counts,
+            "total_sos1_constraints": int(sum(sos1_counts.values())),
+        }
 
     def check_dual_bound_activity(self, tol: float = 1e-5) -> list[dict]:
         if not hasattr(self, "model"):
@@ -1973,40 +1778,35 @@ class PoAOptimizationBiddingBlocks:
             )
 
         capacity_components = (
-            ("mu_upper_eq", m.mu_upper_eq, "mu_max_ub"),
-            ("mu_lower_eq", m.mu_lower_eq, "mu_min_ub"),
-            ("mu_upper_opt", m.mu_upper_opt, "mu_max_ub"),
-            ("mu_lower_opt", m.mu_lower_opt, "mu_min_ub"),
+            ("mu_upper_eq", m.mu_upper_eq),
+            ("mu_lower_eq", m.mu_lower_eq),
+            ("mu_upper_opt", m.mu_upper_opt),
+            ("mu_lower_opt", m.mu_lower_opt),
         )
-        for component_name, var, bound_key in capacity_components:
+        for component_name, var in capacity_components:
             for i, b in m.generator_blocks:
                 for t in m.time_steps:
                     add_if_active(
                         component_name,
                         var,
                         (i, b, t),
-                        self._capacity_dual_upper_bound(
-                            bound_key,
-                            int(i),
-                            int(b),
-                            int(t),
-                        ),
+                        self.capacity_dual_bound,
                     )
 
         ramp_components = (
-            ("mu_ramp_up_eq", m.mu_ramp_up_eq, "rho_up_ub"),
-            ("mu_ramp_down_eq", m.mu_ramp_down_eq, "rho_down_ub"),
-            ("mu_ramp_up_opt", m.mu_ramp_up_opt, "rho_up_ub"),
-            ("mu_ramp_down_opt", m.mu_ramp_down_opt, "rho_down_ub"),
+            ("mu_ramp_up_eq", m.mu_ramp_up_eq),
+            ("mu_ramp_down_eq", m.mu_ramp_down_eq),
+            ("mu_ramp_up_opt", m.mu_ramp_up_opt),
+            ("mu_ramp_down_opt", m.mu_ramp_down_opt),
         )
-        for component_name, var, bound_key in ramp_components:
+        for component_name, var in ramp_components:
             for i in m.physical_generators:
                 for t in m.time_steps:
                     add_if_active(
                         component_name,
                         var,
                         (i, t),
-                        self._ramp_dual_upper_bound(bound_key, int(i), int(t)),
+                        self.ramp_dual_bound,
                     )
 
         return active_bounds
@@ -2130,21 +1930,16 @@ class PoAOptimizationBiddingBlocks:
                 for i, generator_name in enumerate(self.physical_generator_names)
                 if i not in self.nn_policy_generator_ids
             ],
+            "model_switches": {
+                "use_lower_bound_complementarity": self.use_lower_bound_complementarity,
+                "kkt_complementarity": "sos1",
+            },
+            "discrete_structure": self.summarize_discrete_structure(),
             "dual_bounds": {
                 "lambda_bound": float(self.lambda_bound),
                 "capacity_dual_bound": float(self.capacity_dual_bound),
                 "ramp_dual_bound": float(self.ramp_dual_bound),
                 "calibration": dict(self.dual_bound_calibration),
-                "support_set_ramp_dual_bounds_path": (
-                    str(self.support_set_ramp_dual_bounds_path)
-                    if self.support_set_ramp_dual_bounds_path is not None
-                    else None
-                ),
-                "support_set_ramp_dual_bounds_metadata": (
-                    dict(self.support_set_ramp_dual_bounds.get("metadata", {}))
-                    if isinstance(self.support_set_ramp_dual_bounds, dict)
-                    else {}
-                ),
             },
             "dual_bound_activity": dual_bound_activity,
             "nn_relu_bounds": self.summarize_nn_relu_bounds(),
@@ -2179,25 +1974,12 @@ if __name__ == "__main__":
     costs_df = scenarios["costs_df"]
     ramps_df = scenarios["ramps_df"]
 
-    support_set_config = PoAOptimizationBiddingBlocks.load_support_set_config(
+    support_set_config = PoAOptimizationBiddingBlocksSOS1.load_support_set_config(
         config_path="models/PoA/support_set_config.yaml",
         config_name="test_case_bidding_blocks_base",
     )
-    support_set_ramp_dual_bounds_path = Path(
-        "results/support_set_ramp_dual_bounds_bidding_blocks.json"
-    )
-    if support_set_ramp_dual_bounds_path.exists():
-        print(
-            "Using support-set ramp dual bounds from "
-            f"{support_set_ramp_dual_bounds_path}"
-        )
-    else:
-        print(
-            "Support-set ramp dual bounds file not found; using scalar dual bounds. "
-            f"Expected: {support_set_ramp_dual_bounds_path}"
-        )
 
-    optimizer = PoAOptimizationBiddingBlocks(
+    optimizer = PoAOptimizationBiddingBlocksSOS1(
         scenarios_df=scenarios_df,
         costs_df=costs_df,
         ramps_df=ramps_df,
@@ -2209,25 +1991,24 @@ if __name__ == "__main__":
         nn_normalization_stats_path="models/neural_network/features/generated/normalized/min_max_stats.json",
         # None means all generators with NN files use the NN policy.
         # Use [] for all true costs, or e.g. ["G2", "W1"] / [0, 4] for a subset.
-        nn_policy_generators=[1,2],
+        nn_policy_generators=None,
         big_m_complementarity=1000.0,
         lambda_bound=50.0,
-        capacity_dual_bound=60.02,
-        ramp_dual_bound=0.001,
+        capacity_dual_bound=200.0,
+        ramp_dual_bound=0.5,
+        use_optimal_kkt = False,
+        use_lower_bound_complementarity=True,
         dual_bound_calibration_path="results/dual_bound_calibration_from_merit_order.json",
-        dual_bound_calibration_quantile="q99",
+        dual_bound_calibration_quantile="max",
         use_dual_bound_calibration=False,
-        support_set_ramp_dual_bounds_path=(
-            support_set_ramp_dual_bounds_path
-            if support_set_ramp_dual_bounds_path.exists()
-            else None
-        ),
+        big_m_relu=51,
         reference_case=case,
     )
 
     start = time.perf_counter()
     optimizer.build_model()
-    optimizer.solve(time_limit = 200)
+    print(json.dumps(optimizer.summarize_discrete_structure(), indent=2))
+    optimizer.solve(time_limit=100)
     dual_bound_activity = optimizer.check_dual_bound_activity()
     print(json.dumps({"dual_bound_activity": dual_bound_activity}, indent=2))
     if dual_bound_activity:
@@ -2248,7 +2029,7 @@ if __name__ == "__main__":
             )
         if ramp_hits:
             print(f"  Ramp duals are hitting ramp_dual_bound={optimizer.ramp_dual_bound}.")
-    optimizer.save_results("results/poa_optimization_bidding_blocks_results.json")
+    optimizer.save_results("results/poa_optimization_bidding_blocks_sos1_all_results.json")
     end = time.perf_counter()
     print(f"Total time: {end - start}")
 

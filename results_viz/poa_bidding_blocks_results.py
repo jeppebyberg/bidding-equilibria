@@ -254,11 +254,11 @@ class PoABiddingBlocksVisualizer:
 
         for generator_name, generator in self.generators.items():
             fig, axes = plt.subplots(
-                2,
+                3,
                 1,
-                figsize=(11, 6.5),
+                figsize=(11, 8.5),
                 sharex=True,
-                gridspec_kw={"height_ratios": [1.25, 1.0]},
+                gridspec_kw={"height_ratios": [1.2, 1.0, 1.0]},
             )
 
             axes[0].plot(
@@ -285,12 +285,24 @@ class PoABiddingBlocksVisualizer:
             for block in generator["blocks"]:
                 axes[1].plot(
                     self.time,
+                    self._series(block["capacity_profile"]),
+                    marker="s",
+                    linewidth=1.7,
+                    label=f"{block['block_name']} capacity",
+                )
+            axes[1].set_ylabel("Block capacity (MW)")
+            axes[1].grid(True, alpha=0.25)
+            axes[1].legend(loc="best", ncol=3)
+
+            for block in generator["blocks"]:
+                axes[2].plot(
+                    self.time,
                     self._series(block["alpha_profile"]),
                     marker="o",
                     linewidth=1.7,
                     label=f"{block['block_name']} bid",
                 )
-            axes[1].plot(
+            axes[2].plot(
                 self.time,
                 eq_price,
                 color="black",
@@ -298,10 +310,10 @@ class PoABiddingBlocksVisualizer:
                 linewidth=2.0,
                 label="Equilibrium clearing price",
             )
-            axes[1].set_xlabel("Time step")
-            axes[1].set_ylabel("Bid / price")
-            axes[1].grid(True, alpha=0.25)
-            axes[1].legend(loc="best", ncol=3)
+            axes[2].set_xlabel("Time step")
+            axes[2].set_ylabel("Bid / price")
+            axes[2].grid(True, alpha=0.25)
+            axes[2].legend(loc="best", ncol=3)
 
             filename = f"poa_capacity_dispatch_bids_{generator_name}.png"
             saved_paths.append(self._save(fig, filename, show))

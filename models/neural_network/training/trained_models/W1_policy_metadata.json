@@ -20,16 +20,17 @@
     "target_bid_W1_B2"
   ],
   "hidden_layers": [
-    11
+    5,
+    5
   ],
   "activation": "relu",
   "final_activation": "linear",
   "train_size": 7680,
   "test_size": 1920,
   "test_fraction": 0.2,
-  "num_epochs_trained": 307,
-  "best_epoch": 257,
-  "best_test_loss": 1.7768919557662836e-06,
+  "num_epochs_trained": 176,
+  "best_epoch": 126,
+  "best_test_loss": 1.9149416592275276e-06,
   "learning_rate": 0.001,
   "batch_size": 64,
   "weight_decay": 0.0,
