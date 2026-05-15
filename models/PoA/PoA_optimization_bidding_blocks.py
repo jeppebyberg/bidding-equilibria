@@ -42,7 +42,7 @@ class PoAOptimizationBiddingBlocks:
         dual_bound_calibration_path: Optional[str | Path] = None,
         dual_bound_calibration_quantile: str = "max",
         use_dual_bound_calibration: bool = True,
-        support_set_ramp_dual_bounds_path: Optional[str | Path] = None,
+        # support_set_ramp_dual_bounds_path: Optional[str | Path] = None,
         reference_case: str = "test_case_bidding_blocks",
     ):
         self.scenarios_df = scenarios_df.reset_index(drop=True)
@@ -63,11 +63,11 @@ class PoAOptimizationBiddingBlocks:
             if dual_bound_calibration_path is not None
             else None
         )
-        self.support_set_ramp_dual_bounds_path = (
-            Path(support_set_ramp_dual_bounds_path)
-            if support_set_ramp_dual_bounds_path is not None
-            else None
-        )
+        # self.support_set_ramp_dual_bounds_path = (
+        #     Path(support_set_ramp_dual_bounds_path)
+        #     if support_set_ramp_dual_bounds_path is not None
+        #     else None
+        # )
         self.support_set_ramp_dual_bounds: dict[str, Any] = {}
         self.dual_bound_calibration_quantile = str(dual_bound_calibration_quantile)
         self.dual_bound_calibration: dict[str, Any] = {}
@@ -87,10 +87,10 @@ class PoAOptimizationBiddingBlocks:
         self.ramp_dual_bound = float(calibrated_bounds.get("ramp_dual_bound", ramp_dual_bound))
         if not calibrated_bounds:
             self._record_manual_dual_bounds()
-        if self.support_set_ramp_dual_bounds_path is not None:
-            self.support_set_ramp_dual_bounds = self.load_support_set_ramp_dual_bounds(
-                self.support_set_ramp_dual_bounds_path
-            )
+        # if self.support_set_ramp_dual_bounds_path is not None:
+        #     self.support_set_ramp_dual_bounds = self.load_support_set_ramp_dual_bounds(
+        #         self.support_set_ramp_dual_bounds_path
+        #     )
         self.nn_relu_bounds: dict[str, dict[tuple[int, int], dict[str, Any]]] = {}
         self.nn_bound_warnings: list[str] = []
         self.reference_case = reference_case
@@ -2202,7 +2202,7 @@ if __name__ == "__main__":
         costs_df=costs_df,
         ramps_df=ramps_df,
         p_init=None,
-        num_time_steps=8,
+        num_time_steps=4,
         support_set_config=support_set_config,
         nn_model_dir="models/neural_network/training/trained_models",
         # nn_model_dir=None,
@@ -2211,17 +2211,17 @@ if __name__ == "__main__":
         # Use [] for all true costs, or e.g. ["G2", "W1"] / [0, 4] for a subset.
         nn_policy_generators=[1,2],
         big_m_complementarity=1000.0,
-        lambda_bound=50.0,
-        capacity_dual_bound=60.02,
-        ramp_dual_bound=0.001,
+        lambda_bound=40.0,
+        capacity_dual_bound=40.02,
+        ramp_dual_bound=20.0,
         dual_bound_calibration_path="results/dual_bound_calibration_from_merit_order.json",
         dual_bound_calibration_quantile="q99",
         use_dual_bound_calibration=False,
-        support_set_ramp_dual_bounds_path=(
-            support_set_ramp_dual_bounds_path
-            if support_set_ramp_dual_bounds_path.exists()
-            else None
-        ),
+        # support_set_ramp_dual_bounds_path=(
+        #     support_set_ramp_dual_bounds_path
+        #     if support_set_ramp_dual_bounds_path.exists()
+        #     else None
+        # ),
         reference_case=case,
     )
 

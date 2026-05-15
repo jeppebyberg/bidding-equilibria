@@ -1022,23 +1022,25 @@ if __name__ == "__main__":
 
 	stop = True
 
-	# manager.plot_demand_profiles_by_regime(
-	# 	scenarios_df,
-	# 	title="Sampled Demand Profiles by Regime",
-	# 	max_profiles_per_regime=100,
-	# 	show_regime_mean=True,
-	# 	save_path="setup_viz/demand_profiles_by_regime.png",
-	# 	show=True,
-	# )
+	manager.plot_demand_profiles_by_regime(
+		scenarios_df,
+		title="Sampled Demand Profiles by Regime",
+		max_profiles_per_regime=100,
+		alpha=0.05,
+		show_regime_mean=True,
+		save_path="setup_viz/demand_profiles_by_regime.png",
+		show=True,
+	)
 
-	# manager.plot_wind_profiles_by_regime(
-	# 	scenarios_df,
-	# 	title="Sampled Wind Profiles by Regime",
-	# 	max_profiles_per_regime=100,
-	# 	show_regime_mean=True,
-	# 	save_path="setup_viz/wind_profiles_by_regime.png",
-	# 	show=True,
-	# )
+	manager.plot_wind_profiles_by_regime(
+		scenarios_df,
+		title="Sampled Wind Profiles by Regime",
+		max_profiles_per_regime=100,
+		alpha=0.05,
+		show_regime_mean=True,
+		save_path="setup_viz/wind_profiles_by_regime.png",
+		show=True,
+	)
 
 	manager.plot_generation_cost_curves(
 		title="Generation Cost Curves for Test Case with Bidding Blocks",

@@ -3,15 +3,15 @@ test_case_bidding_blocks:
     - 150.0
 
   time_steps:
-    - 24
+    - 8
 
   generators:
     - id: 0
       name: "G2"
       type: "conventional"
       pmin: 0.0
-      R_rate_up: 30.0
-      R_rate_down: 30.0
+      R_rate_up: 10.0
+      R_rate_down: 10.0
       bidding_blocks:
         - block_id: 0
           name: "G2_B1"
@@ -27,8 +27,8 @@ test_case_bidding_blocks:
       name: "G1"
       type: "conventional"
       pmin: 0.0
-      R_rate_up: 30.0
-      R_rate_down: 30.0
+      R_rate_up: 10.0
+      R_rate_down: 10.0
       bidding_blocks:
         - block_id: 0
           name: "G1_B1"
@@ -43,8 +43,8 @@ test_case_bidding_blocks:
       name: "W3"
       type: "wind"
       pmin: 0.0
-      R_rate_up: 50.0
-      R_rate_down: 50.0
+      R_rate_up: 10.0
+      R_rate_down: 10.0
       bidding_blocks:
         - block_id: 0
           name: "W3_B1"
@@ -59,8 +59,8 @@ test_case_bidding_blocks:
       name: "W2"
       type: "wind"
       pmin: 0.0
-      R_rate_up: 50.0
-      R_rate_down: 50.0
+      R_rate_up: 10.0
+      R_rate_down: 10.0
       bidding_blocks:
         - block_id: 0
           name: "W2_B1"
@@ -75,8 +75,8 @@ test_case_bidding_blocks:
       name: "W1"
       type: "wind"
       pmin: 0.0
-      R_rate_up: 50.0
-      R_rate_down: 50.0
+      R_rate_up: 10.0
+      R_rate_down: 10.0
       bidding_blocks:
         - block_id: 0
           name: "W1_B1"

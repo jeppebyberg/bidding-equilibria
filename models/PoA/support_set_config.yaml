@@ -27,7 +27,7 @@ support_sets:
     demand_min: 110.0
     demand_max: 170.0
     demand_ramp: 75.0
-    demand_budget: 150.0
+    demand_budget: 20.0
 
     wind_generators:
       W3:
