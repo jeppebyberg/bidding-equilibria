@@ -2,20 +2,20 @@
   "reference_case": "test_case_bidding_blocks",
   "num_time_steps": 8,
   "objective": {
-    "PoA_difference": 2450.000025479958,
-    "C_eq": 10445.511177213273,
-    "C_opt": 7995.511151733315,
-    "PoA_ratio": 1.306421938383368
+    "PoA_difference": 7.296529000361261,
+    "C_eq": 8380.169790059303,
+    "C_opt": 8372.873261058941,
+    "PoA_ratio": 1.0008714486381032
   },
   "demand_profile": [
-    143.21523922759354,
+    154.63518039401012,
     140.0,
     140.0,
-    132.30750847469847,
     140.0,
-    143.06055669719058,
+    139.99999633792237,
     140.0,
-    133.9682874500851
+    140.0,
+    145.36481594391284
   ],
   "block_names": [
     "G2_B1",
@@ -85,18 +85,18 @@
         50.0
       ],
       "equilibrium_physical_dispatch": [
-        25.0,
-        15.0,
-        10.0,
-        0.0,
-        10.0,
         20.0,
         10.0,
-        0.0
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.7296413315851639
       ],
       "optimal_physical_dispatch": [
-        15.0,
-        5.0,
+        20.0,
+        10.0,
         0.0,
         0.0,
         0.0,
@@ -130,18 +130,18 @@
             30.0
           ],
           "equilibrium_dispatch": [
-            25.0,
-            15.0,
-            10.0,
-            0.0,
-            10.0,
             20.0,
             10.0,
-            0.0
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.7296413315851639
           ],
           "optimal_dispatch": [
-            15.0,
-            5.0,
+            20.0,
+            10.0,
             0.0,
             0.0,
             0.0,
@@ -213,24 +213,24 @@
         50.0
       ],
       "equilibrium_physical_dispatch": [
-        18.838805631901,
-        25.0,
-        24.06854491284634,
-        26.703794311743835,
-        25.0,
-        21.933533516256553,
-        25.0,
+        35.0,
+        25.00000577991823,
+        35.0,
+        35.0,
+        34.99999633792379,
+        35.0,
+        35.0,
         25.0
       ],
       "optimal_physical_dispatch": [
-        28.838805631901117,
         35.0,
-        34.068544912844956,
-        26.70379423511637,
+        25.0,
         35.0,
-        41.933532312773224,
         35.0,
-        25.0
+        34.99999633792379,
+        35.0,
+        35.0,
+        25.72964133158458
       ],
       "blocks": [
         {
@@ -248,24 +248,24 @@
             25.0
           ],
           "alpha_profile": [
-            30.10333376125085,
-            29.896666242494632,
-            30.056587101892493,
-            29.703511952782506,
-            30.0,
-            30.01880739257701,
-            29.9811926074221,
-            29.716729154040078
+            22.861448757922087,
+            26.172251997121958,
+            26.172252197538704,
+            26.172252745575292,
+            26.172249300203617,
+            26.172252199353803,
+            25.76272587017658,
+            28.79523650523376
           ],
           "equilibrium_dispatch": [
-            0.0,
-            0.0,
-            0.0,
             25.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0
           ],
           "optimal_dispatch": [
             25.0,
@@ -294,34 +294,34 @@
             25.0
           ],
           "alpha_profile": [
-            30.10333376125085,
-            29.896666242494632,
-            30.023219050325793,
-            29.742917943202134,
-            29.98960411111487,
-            30.018807392576797,
-            29.973278265343748,
-            29.7140405034502
+            25.547491895737387,
+            27.900991039123415,
+            27.90099030630415,
+            27.90099074336412,
+            27.900988221117295,
+            27.900990313705524,
+            27.60287400012453,
+            30.0
           ],
           "equilibrium_dispatch": [
-            18.838805631901,
-            25.0,
-            24.06854491284634,
-            1.7037943117438346,
-            25.0,
-            21.933533516256553,
-            25.0,
-            25.0
-          ],
-          "optimal_dispatch": [
-            3.8388056319011152,
             10.0,
-            9.068544912844956,
-            1.7037942351163695,
+            5.779918227588611e-06,
             10.0,
-            16.933532312773224,
+            10.0,
+            9.99999633792379,
+            10.0,
             10.0,
             0.0
+          ],
+          "optimal_dispatch": [
+            10.0,
+            0.0,
+            10.0,
+            10.0,
+            9.99999633792379,
+            10.0,
+            10.0,
+            0.7296413315845811
           ],
           "true_cost": 20.0
         }
@@ -333,32 +333,32 @@
       "physical_capacity_profile": [
         35.0,
         35.0,
-        35.931455087155044,
         35.0,
         35.0,
         35.0,
         35.0,
-        34.999999286679675
+        35.0,
+        45.0
       ],
       "equilibrium_physical_dispatch": [
         35.0,
         35.0,
-        35.931455087155044,
         35.0,
         35.0,
         35.0,
         35.0,
-        34.99999928668101
+        35.0,
+        45.0
       ],
       "optimal_physical_dispatch": [
         35.0,
         35.0,
-        35.931455087155044,
         35.0,
         35.0,
         35.0,
         35.0,
-        34.999999286679675
+        35.0,
+        45.0
       ],
       "blocks": [
         {
@@ -368,42 +368,42 @@
           "capacity_profile": [
             17.5,
             17.5,
-            17.965727543577522,
             17.5,
             17.5,
             17.5,
             17.5,
-            17.499999643339837
+            17.5,
+            22.5
           ],
           "alpha_profile": [
-            4.609326189404934,
-            4.474355012722908,
-            5.047763581550655,
-            5.128140298834312,
-            5.02702850535559,
-            4.534323054753525,
-            4.84224246019444,
-            5.177086081178355
+            5.357483521161229,
+            5.496289768575047,
+            5.496289768852435,
+            5.496289763935015,
+            5.496289723823625,
+            5.4962897687049805,
+            5.483751751550324,
+            5.5634880521941055
           ],
           "equilibrium_dispatch": [
             17.5,
             17.5,
-            17.965727543577522,
             17.5,
             17.5,
             17.5,
             17.5,
-            17.499999643340505
+            17.5,
+            22.5
           ],
           "optimal_dispatch": [
             17.5,
             17.5,
-            17.965727543577522,
             17.5,
             17.5,
             17.5,
             17.5,
-            17.499999643339837
+            17.5,
+            22.5
           ],
           "true_cost": 5.5
         },
@@ -414,42 +414,42 @@
           "capacity_profile": [
             17.5,
             17.5,
-            17.965727543577522,
             17.5,
             17.5,
             17.5,
             17.5,
-            17.499999643339837
+            17.5,
+            22.5
           ],
           "alpha_profile": [
-            4.6193124287697005,
-            4.49044349053028,
-            5.060925217493052,
-            5.141471276012702,
-            5.041482479131258,
-            4.5461385200457896,
-            4.855017166281865,
-            5.1954302108334875
+            5.339161620923496,
+            5.510750957279386,
+            5.5107509576926486,
+            5.510750950366377,
+            5.510750890606084,
+            5.5107509574729665,
+            5.492071235334583,
+            5.610866906531278
           ],
           "equilibrium_dispatch": [
             17.5,
             17.5,
-            17.965727543577522,
             17.5,
             17.5,
             17.5,
             17.5,
-            17.499999643340505
+            17.5,
+            22.5
           ],
           "optimal_dispatch": [
             17.5,
             17.5,
-            17.965727543577522,
             17.5,
             17.5,
             17.5,
             17.5,
-            17.499999643339837
+            17.5,
+            22.5
           ],
           "true_cost": 5.51
         }
@@ -460,33 +460,33 @@
       "is_wind": true,
       "physical_capacity_profile": [
         35.0,
+        34.99999422008264,
         35.0,
         35.0,
         35.0,
         35.0,
         35.0,
-        35.0,
-        35.00000161557115
+        39.63517461232768
       ],
       "equilibrium_physical_dispatch": [
         35.0,
+        34.99999422008264,
         35.0,
         35.0,
         35.0,
         35.0,
-        34.99999939825794,
         35.0,
-        35.000001615570014
+        39.63517461232768
       ],
       "optimal_physical_dispatch": [
         35.0,
+        34.99999422008264,
         35.0,
         35.0,
         35.0,
         35.0,
         35.0,
-        35.0,
-        35.00000161557115
+        39.6351746123277
       ],
       "blocks": [
         {
@@ -495,13 +495,13 @@
           "block_name": "W2_B1",
           "capacity_profile": [
             17.5,
+            17.49999711004132,
             17.5,
             17.5,
             17.5,
             17.5,
             17.5,
-            17.5,
-            17.500000807785575
+            19.81758730616384
           ],
           "alpha_profile": [
             5.0,
@@ -515,23 +515,23 @@
           ],
           "equilibrium_dispatch": [
             17.5,
+            17.49999711004132,
             17.5,
             17.5,
             17.5,
             17.5,
-            17.499999398257938,
             17.5,
-            17.500000807785007
+            19.81758730616384
           ],
           "optimal_dispatch": [
             17.5,
+            17.49999711004132,
             17.5,
             17.5,
             17.5,
             17.5,
             17.5,
-            17.5,
-            17.500000807785575
+            19.81758730616384
           ],
           "true_cost": 5.0
         },
@@ -541,13 +541,13 @@
           "block_name": "W2_B2",
           "capacity_profile": [
             17.5,
+            17.49999711004132,
             17.5,
             17.5,
             17.5,
             17.5,
             17.5,
-            17.5,
-            17.500000807785575
+            19.81758730616384
           ],
           "alpha_profile": [
             5.01,
@@ -561,23 +561,23 @@
           ],
           "equilibrium_dispatch": [
             17.5,
+            17.49999711004132,
             17.5,
             17.5,
             17.5,
             17.5,
             17.5,
-            17.5,
-            17.500000807785007
+            19.81758730616384
           ],
           "optimal_dispatch": [
             17.5,
+            17.49999711004132,
             17.5,
             17.5,
             17.5,
             17.5,
             17.5,
-            17.5,
-            17.500000807785575
+            19.81758730616386
           ],
           "true_cost": 5.01
         }
@@ -587,34 +587,34 @@
       "physical_generator_index": 4,
       "is_wind": true,
       "physical_capacity_profile": [
-        29.376433595692202,
-        30.0,
+        29.635180394010284,
         35.0,
-        35.60371416295462,
         35.0,
-        31.127024384416693,
         35.0,
-        38.96828744999061
+        35.0,
+        35.0,
+        35.0,
+        35.0
       ],
       "equilibrium_physical_dispatch": [
-        29.376433595692163,
-        30.0,
+        29.635180394010295,
         35.0,
-        35.60371416295463,
-        35.00000064000473,
-        31.127024384416874,
         35.0,
-        38.968287449990626
+        35.0,
+        35.0,
+        35.0,
+        35.0,
+        35.0
       ],
       "optimal_physical_dispatch": [
-        29.376433595692223,
-        30.0,
+        29.635180394010256,
         35.0,
-        35.60371416295462,
         35.0,
-        31.127024384416693,
         35.0,
-        38.96828744999061
+        35.0,
+        35.0,
+        35.0,
+        35.0
       ],
       "blocks": [
         {
@@ -622,14 +622,14 @@
           "global_block_index": 8,
           "block_name": "W1_B1",
           "capacity_profile": [
-            14.688216797846101,
-            15.0,
+            14.817590197005142,
             17.5,
-            17.80185708147731,
             17.5,
-            15.563512192208346,
             17.5,
-            19.484143724995306
+            17.5,
+            17.5,
+            17.5,
+            17.5
           ],
           "alpha_profile": [
             4.5,
@@ -642,24 +642,24 @@
             4.5
           ],
           "equilibrium_dispatch": [
-            14.688216797846101,
-            15.0,
+            14.817590197005142,
             17.5,
-            17.80185708147731,
             17.5,
-            15.563512192208346,
             17.5,
-            19.484143724995306
+            17.5,
+            17.5,
+            17.5,
+            17.5
           ],
           "optimal_dispatch": [
-            14.688216797846101,
-            15.0,
+            14.817590197005142,
             17.5,
-            17.80185708147731,
             17.5,
-            15.563512192208346,
             17.5,
-            19.484143724995306
+            17.5,
+            17.5,
+            17.5,
+            17.5
           ],
           "true_cost": 4.5
         },
@@ -668,14 +668,14 @@
           "global_block_index": 9,
           "block_name": "W1_B2",
           "capacity_profile": [
-            14.688216797846101,
-            15.0,
+            14.817590197005142,
             17.5,
-            17.80185708147731,
             17.5,
-            15.563512192208346,
             17.5,
-            19.484143724995306
+            17.5,
+            17.5,
+            17.5,
+            17.5
           ],
           "alpha_profile": [
             4.51,
@@ -688,24 +688,24 @@
             4.51
           ],
           "equilibrium_dispatch": [
-            14.68821679784606,
-            15.0,
+            14.817590197005153,
             17.5,
-            17.801857081477323,
-            17.500000640004725,
-            15.563512192208528,
             17.5,
-            19.484143724995317
+            17.5,
+            17.5,
+            17.5,
+            17.5,
+            17.5
           ],
           "optimal_dispatch": [
-            14.688216797846122,
-            15.0,
+            14.817590197005114,
             17.5,
-            17.80185708147731,
             17.5,
-            15.563512192208346,
             17.5,
-            19.484143724995306
+            17.5,
+            17.5,
+            17.5,
+            17.5
           ],
           "true_cost": 4.51
         }
@@ -713,17 +713,17 @@
     }
   },
   "equilibrium_price_profile": [
-    30.103333761250013,
-    29.8966662387494,
-    30.023219050325267,
-    29.742917943203157,
-    30.0,
-    30.0188073925774,
-    29.98119260742247,
-    29.71672915404016
+    32.099008960877704,
+    27.900991039122793,
+    27.90099030630415,
+    27.900990743364016,
+    27.90098822111502,
+    27.900990313708178,
+    27.602874000123812,
+    30.0
   ],
   "optimal_price_profile": [
-    20.0,
+    40.0,
     20.0,
     20.0,
     20.0,
@@ -817,9 +817,1489 @@
   },
   "dual_bound_activity": [
     {
-      "component": "mu_ramp_up_eq",
+      "component": "mu_upper_eq",
+      "indices": [
+        0,
+        1,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_eq",
+      "indices": [
+        0,
+        1,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_eq",
+      "indices": [
+        0,
+        1,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_eq",
+      "indices": [
+        0,
+        1,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_eq",
+      "indices": [
+        0,
+        1,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_eq",
+      "indices": [
+        0,
+        1,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_eq",
+      "indices": [
+        0,
+        1,
+        6
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_eq",
+      "indices": [
+        0,
+        1,
+        7
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        0,
+        0,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        0,
+        0,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        0,
+        1,
+        0
+      ],
+      "value": 10.0,
+      "bound": 10.0,
+      "relative_to_bound": 1.0
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        0,
+        1,
+        1
+      ],
+      "value": 10.0,
+      "bound": 10.0,
+      "relative_to_bound": 1.0
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        2,
+        0,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        2,
+        0,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        2,
+        0,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        2,
+        0,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        2,
+        0,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        2,
+        0,
+        6
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        2,
+        1,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        2,
+        1,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        2,
+        1,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        2,
+        1,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        2,
+        1,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        2,
+        1,
+        6
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
       "indices": [
         3,
+        0,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        3,
+        0,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        3,
+        0,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        3,
+        0,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        3,
+        0,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        3,
+        0,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        3,
+        0,
+        6
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        3,
+        0,
+        7
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        3,
+        1,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        3,
+        1,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        3,
+        1,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        3,
+        1,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        3,
+        1,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        3,
+        1,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        3,
+        1,
+        6
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        3,
+        1,
+        7
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        0,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        0,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        0,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        0,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        0,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        0,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        0,
+        6
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        0,
+        7
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        1,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        1,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        1,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        1,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        1,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        1,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        1,
+        6
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        1,
+        7
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        0,
+        0,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        0,
+        0,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        0,
+        0,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        0,
+        0,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        0,
+        0,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        0,
+        0,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        0,
+        0,
+        6
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        0,
+        0,
+        7
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        0,
+        1,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        0,
+        1,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        0,
+        1,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        0,
+        1,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        0,
+        1,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        0,
+        1,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        0,
+        1,
+        6
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        0,
+        1,
+        7
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        1,
+        0,
+        0
+      ],
+      "value": 10.0,
+      "bound": 10.0,
+      "relative_to_bound": 1.0
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        1,
+        0,
+        1
+      ],
+      "value": 10.0,
+      "bound": 10.0,
+      "relative_to_bound": 1.0
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        1,
+        1,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        1,
+        1,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        0,
+        0,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        0,
+        0,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        0,
+        1,
+        0
+      ],
+      "value": 10.0,
+      "bound": 10.0,
+      "relative_to_bound": 1.0
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        0,
+        1,
+        1
+      ],
+      "value": 10.0,
+      "bound": 10.0,
+      "relative_to_bound": 1.0
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        1,
+        0,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        1,
+        0,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        1,
+        0,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        1,
+        0,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        1,
+        0,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        1,
+        0,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        1,
+        0,
+        6
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        1,
+        0,
+        7
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        2,
+        0,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        2,
+        0,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        2,
+        0,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        2,
+        0,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        2,
+        0,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        2,
+        0,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        2,
+        0,
+        6
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        2,
+        0,
+        7
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        2,
+        1,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        2,
+        1,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        3,
+        0,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        3,
+        0,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        3,
+        0,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        3,
+        0,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        3,
+        0,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        3,
+        0,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        3,
+        0,
+        6
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        3,
+        0,
+        7
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        3,
+        1,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        3,
+        1,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        3,
+        1,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        3,
+        1,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        3,
+        1,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        3,
+        1,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        3,
+        1,
+        6
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        3,
+        1,
+        7
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        0,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        0,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        0,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        0,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        0,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        0,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        0,
+        6
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        0,
+        7
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        1,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        1,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        1,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        1,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        1,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        1,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        1,
+        6
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        1,
+        7
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_up_eq",
+      "indices": [
+        0,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_up_opt",
+      "indices": [
+        0,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_up_opt",
+      "indices": [
+        0,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_up_opt",
+      "indices": [
+        0,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_up_opt",
+      "indices": [
+        1,
+        0
+      ],
+      "value": 20.0,
+      "bound": 20.0,
+      "relative_to_bound": 1.0
+    },
+    {
+      "component": "mu_ramp_up_opt",
+      "indices": [
+        2,
         0
       ],
       "value": 20.0,
@@ -829,38 +2309,38 @@
     {
       "component": "mu_ramp_down_opt",
       "indices": [
-        0,
+        1,
         0
       ],
-      "value": 20.0,
-      "bound": 20.0,
-      "relative_to_bound": 1.0
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
     }
   ],
   "nn_relu_bounds": {
     "G1": {
-      "num_hidden_neurons": 10,
-      "num_active": 1,
-      "num_inactive": 0,
+      "num_hidden_neurons": 14,
+      "num_active": 2,
+      "num_inactive": 3,
       "num_ambiguous": 9,
-      "min_L": -57.77384233011524,
-      "max_L": 0.47229855121926545,
-      "min_U": 0.44262181606720385,
-      "max_U": 73.60462808269304,
-      "max_M_minus": 57.77384233011524,
-      "max_M_plus": 73.60462808269304
+      "min_L": -22.00836373991013,
+      "max_L": 2.2655466826969475,
+      "min_U": -0.25239726670800555,
+      "max_U": 13.541034476673529,
+      "max_M_minus": 22.00836373991013,
+      "max_M_plus": 13.541034476673529
     },
     "W3": {
-      "num_hidden_neurons": 10,
-      "num_active": 4,
-      "num_inactive": 1,
-      "num_ambiguous": 5,
-      "min_L": -2.294610241863082,
-      "max_L": 0.5415835763655563,
-      "min_U": -0.43877628445625305,
-      "max_U": 5.499357947400178,
-      "max_M_minus": 2.294610241863082,
-      "max_M_plus": 5.499357947400178
+      "num_hidden_neurons": 14,
+      "num_active": 3,
+      "num_inactive": 0,
+      "num_ambiguous": 11,
+      "min_L": -5.363309641415689,
+      "max_L": 0.7801943651602651,
+      "min_U": 0.042058598399608946,
+      "max_U": 6.613458982822086,
+      "max_M_minus": 5.363309641415689,
+      "max_M_plus": 6.613458982822086
     }
   },
   "nn_bound_warnings": []

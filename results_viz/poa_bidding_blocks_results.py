@@ -277,6 +277,15 @@ class PoABiddingBlocksVisualizer:
                 linewidth=2.0,
                 label="Equilibrium dispatch",
             )
+            axes[0].plot(
+                self.time,
+                self._series(generator["optimal_physical_dispatch"]),
+                color="tab:blue",
+                marker="^",
+                linewidth=1.8,
+                linestyle="--",
+                label="Optimal dispatch",
+            )
             axes[0].set_title(f"{generator_name}: Capacity, Dispatch, Bids, and Price")
             axes[0].set_ylabel("MW")
             axes[0].grid(True, alpha=0.25)
@@ -560,7 +569,7 @@ def main() -> None:
     parser.add_argument(
         "--results",
         type=Path,
-        default=Path("results/poa_optimization_bidding_blocks_results_tightened_T8.json"),
+        default=Path("results/poa_optimization_bidding_blocks_results_tightened_T6.json"),
     )
     parser.add_argument(
         "--outdir",

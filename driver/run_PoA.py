@@ -4,7 +4,7 @@ import json
 import time
 
 from config.scenarios.scenario_generator import ScenarioManager
-from models.PoA.PoA_optimization_bidding_blocks_tmp import PoAOptimizationBiddingBlocks
+from models.PoA.PoA_optimization import PoAOptimization
 from models.PoA.PoA_tightening.bidding_blocks_tightening import (
     BiddingBlocksTighteningOptimizer,
 )
@@ -70,7 +70,7 @@ def load_scenario_data(config: PoARunConfig) -> dict:
 
 
 def load_support_set_config(config: PoARunConfig) -> dict:
-    return PoAOptimizationBiddingBlocks.load_support_set_config(
+    return PoAOptimization.load_support_set_config(
         config_path=config.support_set_config_path,
         config_name=config.support_set_config_name,
     )
@@ -78,8 +78,8 @@ def load_support_set_config(config: PoARunConfig) -> dict:
 
 def build_optimizer(
     config: PoARunConfig,
-    optimizer_cls: type[PoAOptimizationBiddingBlocks] = PoAOptimizationBiddingBlocks,
-) -> PoAOptimizationBiddingBlocks:
+    optimizer_cls: type[PoAOptimization] = PoAOptimization,
+) -> PoAOptimization:
     scenarios = load_scenario_data(config)
     support_set_config = load_support_set_config(config)
     return optimizer_cls(
@@ -128,7 +128,9 @@ def run_alpha_bounds(config: PoARunConfig) -> Path:
         "alpha_optimization_results": alpha_report["optimization_results"],
         "fixed_binaries": {},
         "slack_bounds": {},
+        "lambda_bounds": {},
         "tight_big_m": {},
+        "aggregate_dual_bounds": {},
     }
     output_path = write_json(config.alpha_bounds_path, payload)
 
@@ -200,7 +202,7 @@ def run_dual_big_m(config: PoARunConfig) -> Path:
 
 
 def run_final_poa(config: PoARunConfig) -> Path:
-    optimizer = build_optimizer(config, PoAOptimizationBiddingBlocks)
+    optimizer = build_optimizer(config, PoAOptimization)
     start = time.perf_counter()
     optimizer.load_tightening_report(config.tightening_report_path)
     optimizer.build_model()
@@ -212,7 +214,9 @@ def run_final_poa(config: PoARunConfig) -> Path:
     print("\nPoA solve with precomputed tightening complete")
     print(f"  Tightening report: {config.tightening_report_path}")
     print(f"  Applied fixed binaries: {applied_stats['fixed_binaries']}")
+    print(f"  Applied lambda bounds: {applied_stats['lambda_bounds']}")
     print(f"  Applied dual upper bounds: {applied_stats['dual_upper_bounds']}")
+    print(f"  Applied aggregate dual bounds: {applied_stats['aggregate_dual_bounds']}")
     print(f"  Applied alpha bounds: {applied_stats['alpha_bounds']}")
     print(f"  Results: {output_path}")
     print(f"  Runtime: {elapsed:.2f} seconds")

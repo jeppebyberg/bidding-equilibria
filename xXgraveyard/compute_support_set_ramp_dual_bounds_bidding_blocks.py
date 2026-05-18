@@ -41,7 +41,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from config.scenarios.scenario_generator import ScenarioManager
-from models.PoA.PoA_optimization_bidding_blocks import PoAOptimizationBiddingBlocks
+from xXgraveyard.PoA_optimization_bidding_blocks import PoAOptimizationBiddingBlocks
 
 
 DEFAULT_BID_LB = 0.0

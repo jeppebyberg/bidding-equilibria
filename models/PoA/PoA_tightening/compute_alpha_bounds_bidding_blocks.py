@@ -78,7 +78,9 @@ def main() -> None:
         # Empty placeholders keep this file compatible with load_tightening_report().
         "fixed_binaries": {},
         "slack_bounds": {},
+        "lambda_bounds": {},
         "tight_big_m": {},
+        "aggregate_dual_bounds": {},
     }
     with output_path.open("w", encoding="utf-8") as file_handle:
         json.dump(payload, file_handle, indent=2)

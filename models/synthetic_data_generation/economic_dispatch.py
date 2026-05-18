@@ -1,8 +1,9 @@
 from pyomo.environ import *
 from typing import Dict, List, Any, Optional, Tuple
 import pandas as pd
-import ast
 import numpy as np
+
+from models.helper import ensure_profile, parse_profile_exact_length
 
 
 class EconomicDispatchModel:
@@ -75,39 +76,11 @@ class EconomicDispatchModel:
     @staticmethod
     def _convert_profile(value: Any, expected_len: int, column_name: str) -> List[float]:
         """Convert profile-like input into a numeric list with expected length. This gives per row profile"""
-        if isinstance(value, str):
-            try:
-                parsed = ast.literal_eval(value)
-            except Exception as exc:
-                raise ValueError(f"Could not parse profile column '{column_name}': {exc}") from exc
-            value = parsed
-
-        if not isinstance(value, (list, tuple)):
-            raise ValueError(f"Column '{column_name}' must contain a list/tuple of length {expected_len}")
-
-        if len(value) != expected_len:
-            raise ValueError(
-                f"Profile length mismatch in column '{column_name}': expected {expected_len}, got {len(value)}"
-            )
-
-        try:
-            profile = [float(v) for v in value]
-        except Exception as exc:
-            raise ValueError(f"Profile column '{column_name}' contains non-numeric values") from exc
-
-        return profile
+        return parse_profile_exact_length(value, expected_len, column_name)
 
     @staticmethod
     def _ensure_profile(value: Any, expected_len: int, column_name: str) -> List[float]:
-        if isinstance(value, str):
-            try:
-                value = ast.literal_eval(value)
-            except Exception:
-                return [float(value)] * expected_len
-        if isinstance(value, (list, tuple)):
-            if len(value) == expected_len:
-                return [float(v) for v in value]
-        return [float(value)] * expected_len
+        return ensure_profile(value, expected_len, column_name)
 
     @staticmethod
     def _infer_physical_from_block_name(block_name: str) -> str:

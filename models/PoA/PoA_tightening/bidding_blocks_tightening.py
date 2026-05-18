@@ -3,13 +3,13 @@ import json
 from pyomo.environ import *
 from typing import Any, Optional
 
-from models.PoA.PoA_optimization_bidding_blocks_tmp import PoAOptimizationBiddingBlocks
+from models.PoA.PoA_optimization import PoAOptimization
 
 
-class BiddingBlocksTighteningOptimizer(PoAOptimizationBiddingBlocks):
+class BiddingBlocksTighteningOptimizer(PoAOptimization):
     """Optimizer subclass with the expensive tightening construction routines.
 
-    The base tmp class is kept focused on the final PoA model plus loading and
+    The base class is kept focused on the final PoA model plus loading and
     applying precomputed tightening reports. This subclass is used only by the
     alpha-bound and Big-M preprocessing scripts.
     """
@@ -51,7 +51,6 @@ class BiddingBlocksTighteningOptimizer(PoAOptimizationBiddingBlocks):
         self.model.alpha = Var(self.model.generator_blocks, self.model.time_steps, domain=Reals)
         self._build_support_set()
         self._build_policy_constraints()
-        self._build_bid_monotonicity_constraints()
         return self.model
 
     def _build_side_kkt_model(
@@ -84,14 +83,12 @@ class BiddingBlocksTighteningOptimizer(PoAOptimizationBiddingBlocks):
             if include_complementarity:
                 self._build_KKT_complementarity_equilibrium_constraints()
                 self._apply_fixed_binaries(self.model, fixed_binaries)
-                self._build_valid_inequalities()
             else:
                 for var_name in self._binary_components_for_side(side):
                     binary_var = getattr(self.model, var_name, None)
                     if binary_var is not None:
                         for index in binary_var:
                             binary_var[index].fix(0)
-            self._build_bid_monotonicity_constraints()
         elif side == "opt":
             self._build_optimal_variables()
             self._build_complementarity_optimal_variables()
@@ -294,16 +291,52 @@ class BiddingBlocksTighteningOptimizer(PoAOptimizationBiddingBlocks):
             ("opt", "ramp_down"): "mu_ramp_down_opt",
         }[(side, constraint_type)]
 
+    def _lambda_name(self, side: str) -> str:
+        return {
+            "eq": "lambda_eq",
+            "opt": "lambda_opt",
+        }[side]
+
+    def _aggregate_dual_bound_key(self, constraint_type: str) -> str:
+        return {
+            "upper": "mu_max_sum_ub",
+            "lower": "mu_min_sum_ub",
+            "ramp_up": "mu_ramp_up_sum_ub",
+            "ramp_down": "mu_ramp_down_sum_ub",
+        }[constraint_type]
+
+    def _aggregate_dual_expression(
+        self,
+        m: ConcreteModel,
+        side: str,
+        constraint_type: str,
+        time_idx: int,
+    ) -> Any:
+        dual_var = getattr(m, self._dual_name(side, constraint_type))
+        if constraint_type in {"upper", "lower"}:
+            return sum(
+                dual_var[i, b, int(time_idx)]
+                for i, b in self.generator_block_pairs
+            )
+        return sum(
+            dual_var[i, int(time_idx)]
+            for i in range(self.num_physical_generators)
+        )
+
     def _solve_tightening_model(
         self,
         m: ConcreteModel,
         solver_name: str,
         time_limit: Optional[float],
         tee: bool,
+        solver_options: Optional[dict[str, Any]] = None,
     ) -> tuple[bool, Any]:
         solver = SolverFactory(solver_name)
         if time_limit is not None:
             solver.options["TimeLimit"] = float(time_limit)
+        if solver_options:
+            for option_name, option_value in solver_options.items():
+                solver.options[option_name] = option_value
         results = solver.solve(m, tee=tee)
         termination = results.solver.termination_condition
         ok = termination in {
@@ -313,6 +346,78 @@ class BiddingBlocksTighteningOptimizer(PoAOptimizationBiddingBlocks):
         }
         return bool(ok), results
 
+    def run_lambda_bound_tightening(
+        self,
+        alpha_bounds: Optional[dict[tuple[int, int, int], dict[str, float]]] = None,
+        fixed_binaries: Optional[dict[str, dict[str, Any]]] = None,
+        solver_name: str = "gurobi",
+        time_limit: Optional[float] = None,
+        tee: bool = False,
+    ) -> dict[str, Any]:
+        """
+        Maximize and minimize each price dual before the dual Big-M programs.
+
+        These bounds replace the loose global lambda fallback in later
+        tightening models and in the final PoA model. The bounds are computed
+        over the same KKT-side systems used for dual Big-M tightening, including
+        any slack-certified binary fixings.
+        """
+        alpha_bounds = alpha_bounds or getattr(self, "alpha_bounds", None)
+        if alpha_bounds is None:
+            raise ValueError("Call compute_nn_certified_bid_bounds() before lambda tightening")
+        fixed_binaries = fixed_binaries or getattr(self, "fixed_binaries", {})
+
+        # Avoid constraining the bound-computation programs with stale lambda
+        # bounds from a previous report. Once recomputed, these bounds are used
+        # for the remaining dual Big-M programs in this run.
+        self.lambda_bounds = {}
+
+        lambda_bounds: dict[str, dict[str, Any]] = {}
+        tasks: list[tuple[str, int]] = [
+            (side, t)
+            for side in ("eq", "opt")
+            for t in range(self.num_time_steps)
+        ]
+        print(
+            f"\nLambda-bound optimization programs: {2 * len(tasks)}",
+            flush=True,
+        )
+
+        for program_idx, (side, time_idx) in enumerate(tasks, start=1):
+            lambda_name = self._lambda_name(side)
+            entry: dict[str, Any] = {}
+            for bound_name, sense in (("lower", minimize), ("upper", maximize)):
+                print(
+                    f"[Lambda {2 * (program_idx - 1) + (1 if bound_name == 'lower' else 2)}/"
+                    f"{2 * len(tasks)}] "
+                    f"{'minimize' if bound_name == 'lower' else 'maximize'} "
+                    f"{lambda_name}[{time_idx}]",
+                    flush=True,
+                )
+                m = self._build_side_kkt_model(
+                    side=side,
+                    alpha_bounds=alpha_bounds,
+                    include_complementarity=True,
+                    fixed_binaries=fixed_binaries,
+                )
+                lambda_expr = getattr(m, lambda_name)[int(time_idx)]
+                m.tightening_objective = Objective(expr=lambda_expr, sense=sense)
+                solved, results = self._solve_tightening_model(
+                    m,
+                    solver_name=solver_name,
+                    time_limit=time_limit,
+                    tee=tee,
+                )
+                entry[bound_name] = self._safe_value(lambda_expr) if solved else None
+                entry[f"{bound_name}_termination_condition"] = str(
+                    results.solver.termination_condition
+                )
+
+            lambda_bounds.setdefault(lambda_name, {})[str(int(time_idx))] = entry
+
+        self.lambda_bounds = lambda_bounds
+        return {"lambda_bounds": lambda_bounds}
+
     def run_slack_based_obbt(
         self,
         alpha_bounds: Optional[dict[tuple[int, int, int], dict[str, float]]] = None,
@@ -321,6 +426,8 @@ class BiddingBlocksTighteningOptimizer(PoAOptimizationBiddingBlocks):
         time_limit: Optional[float] = None,
         tee: bool = False,
         relax_complementarity: bool = False,
+        stop_at_zero_slack: bool = True,
+        slack_stop_tol: Optional[float] = None,
     ) -> dict[str, Any]:
         """
         Stage 2: minimize every constraint slack over the robust support model.
@@ -334,10 +441,20 @@ class BiddingBlocksTighteningOptimizer(PoAOptimizationBiddingBlocks):
         can be driven to zero only in a relaxation that violates active-set
         logic, it will no longer block binary fixing. Set relax_complementarity
         to True only for a cheap preliminary screen.
+
+        For Gurobi solves, stop_at_zero_slack uses BestObjStop on these slack
+        feasibility tests only. The slack objective is nonnegative, so once a
+        feasible incumbent has slack <= the tolerance, the tested zero-slack
+        KKT-side system is feasible and no tighter minimization certificate is
+        useful. This shortcut is intentionally not used for dual Big-M OBBT:
+        early incumbent dual values can create invalid overly tight Big-M bounds.
         """
         alpha_bounds = alpha_bounds or getattr(self, "alpha_bounds", None)
         if alpha_bounds is None:
             raise ValueError("Call compute_nn_certified_bid_bounds() before slack OBBT")
+
+        zero_slack_tol = float(slack_stop_tol if slack_stop_tol is not None else epsilon)
+        early_stop_enabled = bool(stop_at_zero_slack and solver_name == "gurobi")
 
         slack_bounds: dict[tuple[str, str, tuple[int, ...]], dict[str, Any]] = {}
         fixed_binaries: dict[str, dict[str, Any]] = {}
@@ -374,29 +491,66 @@ class BiddingBlocksTighteningOptimizer(PoAOptimizationBiddingBlocks):
             m.target_slack = Var(domain=NonNegativeReals)
             m.target_slack_definition = Constraint(expr=m.target_slack == slack_expr)
             m.tightening_objective = Objective(expr=m.target_slack, sense=minimize)
-            solved, results = self._solve_tightening_model(m, solver_name, time_limit, tee)
-            min_slack = self._safe_value(m.target_slack) if solved else None
-            is_inactive = min_slack is not None and min_slack >= float(epsilon)
+            solver_options = (
+                {"BestObjStop": zero_slack_tol}
+                if early_stop_enabled
+                else None
+            )
+            _solved, results = self._solve_tightening_model(
+                m,
+                solver_name=solver_name,
+                time_limit=time_limit,
+                tee=tee,
+                solver_options=solver_options,
+            )
+            termination = results.solver.termination_condition
+            incumbent_slack = self._safe_value(m.target_slack)
+            is_optimal = termination in {
+                TerminationCondition.optimal,
+                TerminationCondition.locallyOptimal,
+                TerminationCondition.globallyOptimal,
+            }
+
+            if incumbent_slack is not None and incumbent_slack <= zero_slack_tol:
+                result_classification = "zero_slack_feasible"
+                minimum_slack = 0.0 if incumbent_slack < 0.0 else float(incumbent_slack)
+                is_inactive = False
+            elif is_optimal and incumbent_slack is not None:
+                result_classification = "positive_slack_optimal"
+                minimum_slack = float(incumbent_slack)
+                is_inactive = minimum_slack >= float(epsilon)
+            else:
+                result_classification = "undetermined"
+                minimum_slack = None
+                is_inactive = False
 
             record_key = (side, constraint_type, index)
             slack_bounds[record_key] = {
-                "minimum_slack": min_slack,
+                "minimum_slack": minimum_slack,
+                "incumbent_slack_objective": incumbent_slack,
                 "robustly_inactive": bool(is_inactive),
-                "termination_condition": str(results.solver.termination_condition),
+                "early_stop_enabled": early_stop_enabled,
+                "slack_stop_tolerance": zero_slack_tol,
+                "termination_condition": str(termination),
+                "result_classification": result_classification,
             }
             if is_inactive:
                 var_name = self._binary_name(side, constraint_type)
                 fixed_binaries.setdefault(var_name, {})[self._json_key(index)] = {
                     "fixed_value": 0,
-                    "minimum_slack": float(min_slack),
+                    "minimum_slack": float(minimum_slack),
                     "side": side,
                     "constraint_type": constraint_type,
+                    "result_classification": result_classification,
                 }
 
         self.slack_bounds = slack_bounds
         self.fixed_binaries = fixed_binaries
         return {
             "epsilon": float(epsilon),
+            "stop_at_zero_slack": bool(stop_at_zero_slack),
+            "early_stop_enabled": early_stop_enabled,
+            "slack_stop_tolerance": zero_slack_tol,
             "slack_bounds": {
                 f"{side}:{constraint_type}:{self._json_key(index)}": value
                 for (side, constraint_type, index), value in slack_bounds.items()
@@ -425,6 +579,14 @@ class BiddingBlocksTighteningOptimizer(PoAOptimizationBiddingBlocks):
         if alpha_bounds is None:
             raise ValueError("Call compute_nn_certified_bid_bounds() before Big-M tightening")
         fixed_binaries = fixed_binaries or getattr(self, "fixed_binaries", {})
+
+        lambda_report = self.run_lambda_bound_tightening(
+            alpha_bounds=alpha_bounds,
+            fixed_binaries=fixed_binaries,
+            solver_name=solver_name,
+            time_limit=time_limit,
+            tee=tee,
+        )
 
         tight_big_m: dict[str, dict[str, Any]] = {}
         tasks: list[tuple[str, str, tuple[int, ...]]] = []
@@ -494,8 +656,67 @@ class BiddingBlocksTighteningOptimizer(PoAOptimizationBiddingBlocks):
                 "termination_condition": str(results.solver.termination_condition),
             }
 
+        # Use the certified componentwise bounds when maximizing aggregate dual
+        # sums. Individual dual maxima need not be jointly attainable, so these
+        # additional programs compute valid inequalities for the final PoA model
+        # that shrink the rectangular Big-M feasible region.
         self.tight_big_m = tight_big_m
-        return {"tight_big_m": tight_big_m}
+        aggregate_dual_bounds: dict[str, dict[str, dict[str, Any]]] = {}
+        aggregate_tasks: list[tuple[str, str, int]] = [
+            (side, constraint_type, t)
+            for side in ("eq", "opt")
+            for constraint_type in ("upper", "lower", "ramp_up", "ramp_down")
+            for t in range(self.num_time_steps)
+        ]
+        print(
+            f"\nAggregate dual-bound optimization programs: {len(aggregate_tasks)}",
+            flush=True,
+        )
+        for program_number, (side, constraint_type, time_idx) in enumerate(
+            aggregate_tasks,
+            start=1,
+        ):
+            bound_key = self._aggregate_dual_bound_key(constraint_type)
+            print(
+                f"[Aggregate dual bound {program_number}/{len(aggregate_tasks)}] "
+                f"maximize {bound_key}[{side},{time_idx}]",
+                flush=True,
+            )
+            m = self._build_side_kkt_model(
+                side=side,
+                alpha_bounds=alpha_bounds,
+                include_complementarity=True,
+                fixed_binaries=fixed_binaries,
+            )
+            aggregate_expr = self._aggregate_dual_expression(
+                m,
+                side,
+                constraint_type,
+                time_idx,
+            )
+            m.tightening_objective = Objective(expr=aggregate_expr, sense=maximize)
+            solved, results = self._solve_tightening_model(m, solver_name, time_limit, tee)
+            aggregate_bound = self._safe_value(aggregate_expr) if solved else None
+            details = {
+                "tight_big_m": aggregate_bound,
+                "side": side,
+                "constraint_type": constraint_type,
+                "termination_condition": str(results.solver.termination_condition),
+            }
+            aggregate_dual_bounds.setdefault(bound_key, {}).setdefault(side, {})[
+                str(int(time_idx))
+            ] = details
+            tight_big_m.setdefault(bound_key, {})[
+                f"{side},{int(time_idx)}"
+            ] = details
+
+        self.tight_big_m = tight_big_m
+        self.aggregate_dual_bounds = aggregate_dual_bounds
+        return {
+            "lambda_bounds": lambda_report["lambda_bounds"],
+            "tight_big_m": tight_big_m,
+            "aggregate_dual_bounds": aggregate_dual_bounds,
+        }
 
     def save_tightening_report(
         self,
@@ -512,7 +733,9 @@ class BiddingBlocksTighteningOptimizer(PoAOptimizationBiddingBlocks):
                 f"{side}:{constraint_type}:{self._json_key(index)}": value
                 for (side, constraint_type, index), value in getattr(self, "slack_bounds", {}).items()
             },
+            "lambda_bounds": getattr(self, "lambda_bounds", {}),
             "tight_big_m": getattr(self, "tight_big_m", {}),
+            "aggregate_dual_bounds": getattr(self, "aggregate_dual_bounds", {}),
             "alpha_bounds": self._jsonify_indexed_dict(getattr(self, "alpha_bounds", {})),
             "alpha_optimization_results": getattr(
                 self,
@@ -558,4 +781,3 @@ class BiddingBlocksTighteningOptimizer(PoAOptimizationBiddingBlocks):
             "big_m_tightening": big_m_report,
             "report_path": str(report_path),
         }
-

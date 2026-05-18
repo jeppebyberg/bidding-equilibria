@@ -26,18 +26,39 @@ class NeuralNetworkFeatureBuilder:
 
     BASE_FEATURE_COLUMNS = [
         "demand",
-        # "total_wind_generation_capacity",
+        "total_wind_generation_capacity",
         "total_generation_capacity",
         "residual_demand",
-        # "previous_generation_capacity",
-        # "previous_demand",
+        "previous_generation_capacity",
+        "previous_demand",
         "next_generation_capacity",
         "next_demand",
     ]
     OWN_FEATURE_COLUMNS = [
         "own_generation_capacity",
-        # "previous_own_generation_capacity",
+        "previous_own_generation_capacity",
         "next_own_generation_capacity",
+    ]
+    COST_FEATURE_COLUMNS = [
+        "average_true_cost",
+        "minimum_true_cost",
+        "maximum_true_cost",
+    ]
+    SUPPORTED_FEATURE_COLUMNS = [
+        "demand",
+        "total_wind_generation_capacity",
+        "total_generation_capacity",
+        "residual_demand",
+        "previous_generation_capacity",
+        "previous_demand",
+        "next_generation_capacity",
+        "next_demand",
+        "own_generation_capacity",
+        "previous_own_generation_capacity",
+        "next_own_generation_capacity",
+        "average_true_cost",
+        "minimum_true_cost",
+        "maximum_true_cost",
     ]
 
     def __init__(
@@ -45,11 +66,13 @@ class NeuralNetworkFeatureBuilder:
         scenarios_df: pd.DataFrame,
         costs_df: pd.DataFrame,
         results_path: str | Path = "results/merit_order_best_response_results.json",
+        feature_columns: list[str] | None = None,
     ) -> None:
         self.scenarios_df = scenarios_df.copy(deep=True).reset_index(drop=True)
         self.costs_df = costs_df
         self.results_path = Path(results_path)
         self.results = self._load_results(self.results_path)
+        self.feature_columns = self._resolve_feature_columns(feature_columns)
 
         self.physical_generator_names = [
             str(name) for name in self.results["physical_generator_names"]
@@ -132,13 +155,14 @@ class NeuralNetworkFeatureBuilder:
                     "next_own_generation_capacity": float(
                         own_capacity[scenario_id, next_time_id]
                     ),
+                    **self._compute_true_cost_features(block_indices),
                 }
                 for block_idx in block_indices:
                     block_name = self.block_names[block_idx]
                     row[f"target_bid_{block_name}"] = float(
                         self.final_bids[scenario_id][block_idx][time_id]
                     )
-                rows.append(row)
+                rows.append(self._select_output_columns(row, block_indices))
 
         dataframe = pd.DataFrame(rows)
         self._validate_generator_dataset(generator_name, dataframe, block_indices)
@@ -184,14 +208,7 @@ class NeuralNetworkFeatureBuilder:
         return saved_paths
 
     def get_feature_columns(self, df: pd.DataFrame) -> list[str]:
-        target_columns = {
-            column
-            for column in df.columns
-            if column.startswith(self.TARGET_COLUMN_PREFIX)
-        }
-        excluded_columns = self.METADATA_COLUMNS | target_columns
-        numeric_columns = df.select_dtypes(include=[np.number]).columns
-        return [column for column in numeric_columns if column not in excluded_columns]
+        return [column for column in self.feature_columns if column in df.columns]
 
     def fit_min_max_stats(
         self,
@@ -376,6 +393,17 @@ class NeuralNetworkFeatureBuilder:
                 )
         return own_capacity
 
+    def _compute_true_cost_features(self, block_indices: list[int]) -> dict[str, float]:
+        costs = [
+            float(self.costs_df[f"{self.block_names[block_idx]}_cost"].iloc[0])
+            for block_idx in block_indices
+        ]
+        return {
+            "average_true_cost": float(np.mean(costs)),
+            "minimum_true_cost": float(np.min(costs)),
+            "maximum_true_cost": float(np.max(costs)),
+        }
+
     def available_capacity(
         self,
         scenario_id: int,
@@ -447,7 +475,7 @@ class NeuralNetworkFeatureBuilder:
                 f"expected {expected_rows}."
             )
 
-        feature_columns = self.BASE_FEATURE_COLUMNS + self.OWN_FEATURE_COLUMNS
+        feature_columns = self.feature_columns
         target_columns = [
             f"target_bid_{self.block_names[block_idx]}" for block_idx in block_indices
         ]
@@ -467,6 +495,49 @@ class NeuralNetworkFeatureBuilder:
                 f"Generated dataframe for '{generator_name}' contains NaN values "
                 f"in columns: {nan_columns}"
             )
+
+    def _resolve_feature_columns(self, feature_columns: list[str] | None) -> list[str]:
+        selected = (
+            self.BASE_FEATURE_COLUMNS + self.OWN_FEATURE_COLUMNS
+            if feature_columns is None
+            else list(feature_columns)
+        )
+        unknown = [
+            column
+            for column in selected
+            if column not in self.SUPPORTED_FEATURE_COLUMNS
+        ]
+        if unknown:
+            raise ValueError(
+                "Unsupported NN feature columns: "
+                f"{unknown}. Supported columns: {self.SUPPORTED_FEATURE_COLUMNS}"
+            )
+        duplicates = sorted({column for column in selected if selected.count(column) > 1})
+        if duplicates:
+            raise ValueError(f"Duplicate NN feature columns are not allowed: {duplicates}")
+        if not selected:
+            raise ValueError("At least one NN feature column must be selected")
+        return selected
+
+    def _select_output_columns(
+        self,
+        row: dict[str, Any],
+        block_indices: list[int],
+    ) -> dict[str, Any]:
+        target_columns = [
+            f"target_bid_{self.block_names[block_idx]}" for block_idx in block_indices
+        ]
+        ordered_columns = [
+            "scenario_id",
+            "time_id",
+            "generator_name",
+            *self.feature_columns,
+            *target_columns,
+        ]
+        missing = [column for column in ordered_columns if column not in row]
+        if missing:
+            raise ValueError(f"Could not build selected NN feature columns: {missing}")
+        return {column: row[column] for column in ordered_columns}
 
     def _fit_min_max_stats_for_dataframe(
         self,

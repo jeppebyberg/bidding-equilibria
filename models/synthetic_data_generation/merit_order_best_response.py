@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -10,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from config.scenarios.scenario_generator import ScenarioManager
+from models.helper import infer_num_time_steps, parse_profile
 from models.synthetic_data_generation.economic_dispatch import EconomicDispatchModel
 
 
@@ -95,17 +95,11 @@ class MeritOrderHeuristic:
         ]
 
     def _infer_num_time_steps(self) -> int:
-        if "time_steps" in self.scenarios_df.columns:
-            return int(self.scenarios_df["time_steps"].iloc[0])
-        return len(self._as_profile(self.scenarios_df["demand_profile"].iloc[0], "demand_profile"))
+        return infer_num_time_steps(self.scenarios_df)
 
     @staticmethod
     def _as_profile(value: Any, column_name: str) -> List[float]:
-        if isinstance(value, str):
-            value = ast.literal_eval(value)
-        if not isinstance(value, (list, tuple, np.ndarray)):
-            raise ValueError(f"Column '{column_name}' must contain a list/tuple profile")
-        return [float(v) for v in value]
+        return parse_profile(value, column_name)
 
     def _initialize_missing_bid_profiles(self) -> None:
         for block_idx, block_name in enumerate(self.block_names):
@@ -670,4 +664,3 @@ if __name__ == "__main__":
     heuristic.run()
     saved_path = heuristic.save_results(output_path)
     print(f"Saved merit-order best-response results to {saved_path}")
-

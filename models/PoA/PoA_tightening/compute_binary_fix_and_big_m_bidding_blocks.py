@@ -64,6 +64,8 @@ def main() -> None:
         solver_name=solver_name,
         time_limit=time_limit,
         tee=False,
+        stop_at_zero_slack=True,
+        slack_stop_tol=epsilon,
     )
     big_m_report = optimizer.run_dual_big_m_tightening(
         alpha_bounds=optimizer.alpha_bounds,

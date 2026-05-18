@@ -1,0 +1,1817 @@
+{
+  "reference_case": "test_case_bidding_blocks",
+  "num_time_steps": 6,
+  "objective": {
+    "PoA_difference": 770.4361429938681,
+    "C_eq": 6527.805062976675,
+    "C_opt": 5757.368919982807,
+    "PoA_ratio": 1.1338174005698716
+  },
+  "demand_profile": [
+    139.26171313888992,
+    126.96556858386145,
+    145.0,
+    146.22728172275137,
+    121.22728172275137,
+    146.22728172275137
+  ],
+  "block_names": [
+    "G2_B1",
+    "G2_B2",
+    "G1_B1",
+    "G1_B2",
+    "W3_B1",
+    "W3_B2",
+    "W2_B1",
+    "W2_B2",
+    "W1_B1",
+    "W1_B2"
+  ],
+  "physical_generator_names": [
+    "G2",
+    "G1",
+    "W3",
+    "W2",
+    "W1"
+  ],
+  "block_to_physical": {
+    "G2_B1": "G2",
+    "G2_B2": "G2",
+    "G1_B1": "G1",
+    "G1_B2": "G1",
+    "W3_B1": "W3",
+    "W3_B2": "W3",
+    "W2_B1": "W2",
+    "W2_B2": "W2",
+    "W1_B1": "W1",
+    "W1_B2": "W1"
+  },
+  "physical_to_block_indices": {
+    "0": [
+      0,
+      1
+    ],
+    "1": [
+      2,
+      3
+    ],
+    "2": [
+      4,
+      5
+    ],
+    "3": [
+      6,
+      7
+    ],
+    "4": [
+      8,
+      9
+    ]
+  },
+  "generators": {
+    "G2": {
+      "physical_generator_index": 0,
+      "is_wind": false,
+      "physical_capacity_profile": [
+        50.0,
+        50.0,
+        50.0,
+        50.0,
+        50.0,
+        50.0
+      ],
+      "equilibrium_physical_dispatch": [
+        20.0,
+        0.0,
+        20.0,
+        20.0,
+        0.0,
+        20.0
+      ],
+      "optimal_physical_dispatch": [
+        5.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "blocks": [
+        {
+          "local_block_index": 0,
+          "global_block_index": 0,
+          "block_name": "G2_B1",
+          "capacity_profile": [
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0
+          ],
+          "alpha_profile": [
+            30.0,
+            30.0,
+            30.0,
+            30.0,
+            30.0,
+            30.0
+          ],
+          "equilibrium_dispatch": [
+            20.0,
+            0.0,
+            20.0,
+            20.0,
+            0.0,
+            20.0
+          ],
+          "optimal_dispatch": [
+            5.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "true_cost": 30.0
+        },
+        {
+          "local_block_index": 1,
+          "global_block_index": 1,
+          "block_name": "G2_B2",
+          "capacity_profile": [
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0
+          ],
+          "alpha_profile": [
+            40.0,
+            40.0,
+            40.0,
+            40.0,
+            40.0,
+            40.0
+          ],
+          "equilibrium_dispatch": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "optimal_dispatch": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "true_cost": 40.0
+        }
+      ]
+    },
+    "G1": {
+      "physical_generator_index": 1,
+      "is_wind": false,
+      "physical_capacity_profile": [
+        50.0,
+        50.0,
+        50.0,
+        50.0,
+        50.0,
+        50.0
+      ],
+      "equilibrium_physical_dispatch": [
+        20.0,
+        0.0,
+        20.0,
+        20.0,
+        0.0,
+        20.0
+      ],
+      "optimal_physical_dispatch": [
+        35.0,
+        20.0,
+        40.0,
+        40.0,
+        20.0,
+        40.0
+      ],
+      "blocks": [
+        {
+          "local_block_index": 0,
+          "global_block_index": 2,
+          "block_name": "G1_B1",
+          "capacity_profile": [
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0
+          ],
+          "alpha_profile": [
+            16.837673265845986,
+            25.424267914092194,
+            24.65288397586977,
+            18.38028818717622,
+            23.167362061384647,
+            26.095713466642714
+          ],
+          "equilibrium_dispatch": [
+            20.0,
+            0.0,
+            20.0,
+            20.0,
+            0.0,
+            20.0
+          ],
+          "optimal_dispatch": [
+            25.0,
+            20.0,
+            25.0,
+            25.0,
+            20.0,
+            25.0
+          ],
+          "true_cost": 10.0
+        },
+        {
+          "local_block_index": 1,
+          "global_block_index": 3,
+          "block_name": "G1_B2",
+          "capacity_profile": [
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0,
+            25.0
+          ],
+          "alpha_profile": [
+            23.66072686211367,
+            28.134407909157876,
+            27.189377526681564,
+            24.38098333222831,
+            26.92926049174091,
+            27.82868538490881
+          ],
+          "equilibrium_dispatch": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "optimal_dispatch": [
+            10.0,
+            0.0,
+            15.0,
+            15.0,
+            0.0,
+            15.0
+          ],
+          "true_cost": 20.0
+        }
+      ]
+    },
+    "W3": {
+      "physical_generator_index": 2,
+      "is_wind": true,
+      "physical_capacity_profile": [
+        29.261713138889917,
+        40.0,
+        35.0,
+        35.0,
+        47.38303849951693,
+        36.22728172275137
+      ],
+      "equilibrium_physical_dispatch": [
+        29.261713138889917,
+        40.0,
+        35.0,
+        35.0,
+        43.768739112742615,
+        36.22728172275137
+      ],
+      "optimal_physical_dispatch": [
+        29.261713138889917,
+        20.0,
+        35.0,
+        35.0,
+        23.768739112742615,
+        36.22728172275137
+      ],
+      "blocks": [
+        {
+          "local_block_index": 0,
+          "global_block_index": 4,
+          "block_name": "W3_B1",
+          "capacity_profile": [
+            14.630856569444958,
+            20.0,
+            17.5,
+            17.5,
+            23.691519249758464,
+            18.113640861375686
+          ],
+          "alpha_profile": [
+            4.772097056741093,
+            6.909354298990326,
+            4.762449812472923,
+            5.010895305550519,
+            7.643363715203584,
+            4.818471638146198
+          ],
+          "equilibrium_dispatch": [
+            14.630856569444958,
+            20.0,
+            17.5,
+            17.5,
+            20.07721986298415,
+            18.113640861375686
+          ],
+          "optimal_dispatch": [
+            14.630856569444958,
+            20.0,
+            17.5,
+            17.5,
+            23.691519249758464,
+            18.113640861375686
+          ],
+          "true_cost": 5.5
+        },
+        {
+          "local_block_index": 1,
+          "global_block_index": 5,
+          "block_name": "W3_B2",
+          "capacity_profile": [
+            14.630856569444958,
+            20.0,
+            17.5,
+            17.5,
+            23.691519249758464,
+            18.113640861375686
+          ],
+          "alpha_profile": [
+            4.793497720583685,
+            6.914825155807954,
+            4.783922380968111,
+            5.03051611344211,
+            7.643363715203584,
+            4.839526654250163
+          ],
+          "equilibrium_dispatch": [
+            14.630856569444958,
+            20.0,
+            17.5,
+            17.5,
+            23.691519249758464,
+            18.113640861375686
+          ],
+          "optimal_dispatch": [
+            14.630856569444958,
+            0.0,
+            17.5,
+            17.5,
+            0.07721986298415118,
+            18.113640861375686
+          ],
+          "true_cost": 5.51
+        }
+      ]
+    },
+    "W2": {
+      "physical_generator_index": 3,
+      "is_wind": true,
+      "physical_capacity_profile": [
+        35.0,
+        50.0,
+        35.0,
+        36.22728172275137,
+        35.0,
+        35.0
+      ],
+      "equilibrium_physical_dispatch": [
+        35.0,
+        50.0,
+        35.0,
+        36.22728172275137,
+        35.0,
+        35.0
+      ],
+      "optimal_physical_dispatch": [
+        35.0,
+        50.0,
+        35.0,
+        36.22728172275137,
+        35.0,
+        35.0
+      ],
+      "blocks": [
+        {
+          "local_block_index": 0,
+          "global_block_index": 6,
+          "block_name": "W2_B1",
+          "capacity_profile": [
+            17.5,
+            25.0,
+            17.5,
+            18.113640861375686,
+            17.5,
+            17.5
+          ],
+          "alpha_profile": [
+            5.0,
+            5.0,
+            5.0,
+            5.0,
+            5.0,
+            5.0
+          ],
+          "equilibrium_dispatch": [
+            17.5,
+            25.0,
+            17.5,
+            18.113640861375686,
+            17.5,
+            17.5
+          ],
+          "optimal_dispatch": [
+            17.5,
+            25.0,
+            17.5,
+            18.113640861375686,
+            17.5,
+            17.5
+          ],
+          "true_cost": 5.0
+        },
+        {
+          "local_block_index": 1,
+          "global_block_index": 7,
+          "block_name": "W2_B2",
+          "capacity_profile": [
+            17.5,
+            25.0,
+            17.5,
+            18.113640861375686,
+            17.5,
+            17.5
+          ],
+          "alpha_profile": [
+            5.01,
+            5.01,
+            5.01,
+            5.01,
+            5.01,
+            5.01
+          ],
+          "equilibrium_dispatch": [
+            17.5,
+            25.0,
+            17.5,
+            18.113640861375686,
+            17.5,
+            17.5
+          ],
+          "optimal_dispatch": [
+            17.5,
+            25.0,
+            17.5,
+            18.113640861375686,
+            17.5,
+            17.5
+          ],
+          "true_cost": 5.01
+        }
+      ]
+    },
+    "W1": {
+      "physical_generator_index": 4,
+      "is_wind": true,
+      "physical_capacity_profile": [
+        35.0,
+        36.96556858386146,
+        35.0,
+        35.0,
+        42.45854261000875,
+        35.0
+      ],
+      "equilibrium_physical_dispatch": [
+        35.0,
+        36.96556858386146,
+        35.0,
+        35.0,
+        42.45854261000875,
+        35.0
+      ],
+      "optimal_physical_dispatch": [
+        35.0,
+        36.96556858386146,
+        35.0,
+        35.0,
+        42.45854261000875,
+        35.0
+      ],
+      "blocks": [
+        {
+          "local_block_index": 0,
+          "global_block_index": 8,
+          "block_name": "W1_B1",
+          "capacity_profile": [
+            17.5,
+            18.48278429193073,
+            17.5,
+            17.5,
+            21.229271305004374,
+            17.5
+          ],
+          "alpha_profile": [
+            4.5,
+            4.5,
+            4.5,
+            4.5,
+            4.5,
+            4.5
+          ],
+          "equilibrium_dispatch": [
+            17.5,
+            18.48278429193073,
+            17.5,
+            17.5,
+            21.229271305004374,
+            17.5
+          ],
+          "optimal_dispatch": [
+            17.5,
+            18.48278429193073,
+            17.5,
+            17.5,
+            21.229271305004374,
+            17.5
+          ],
+          "true_cost": 4.5
+        },
+        {
+          "local_block_index": 1,
+          "global_block_index": 9,
+          "block_name": "W1_B2",
+          "capacity_profile": [
+            17.5,
+            18.48278429193073,
+            17.5,
+            17.5,
+            21.229271305004374,
+            17.5
+          ],
+          "alpha_profile": [
+            4.51,
+            4.51,
+            4.51,
+            4.51,
+            4.51,
+            4.51
+          ],
+          "equilibrium_dispatch": [
+            17.5,
+            18.48278429193073,
+            17.5,
+            17.5,
+            21.229271305004374,
+            17.5
+          ],
+          "optimal_dispatch": [
+            17.5,
+            18.48278429193073,
+            17.5,
+            17.5,
+            21.229271305004374,
+            17.5
+          ],
+          "true_cost": 4.51
+        }
+      ]
+    }
+  },
+  "equilibrium_price_profile": [
+    30.0,
+    6.914825155807954,
+    30.0,
+    30.0,
+    7.643363715203584,
+    30.0
+  ],
+  "optimal_price_profile": [
+    20.0,
+    5.5,
+    24.5,
+    20.0,
+    5.51,
+    24.490000000000002
+  ],
+  "support_set": {
+    "demand": {
+      "reference": [
+        140.0,
+        140.0,
+        140.0,
+        140.0,
+        140.0,
+        140.0
+      ],
+      "min": 121.0,
+      "max": 159.0,
+      "ramp": 25.0,
+      "budget": 50.0
+    },
+    "wind": {
+      "W3": {
+        "reference": [
+          35.0,
+          35.0,
+          35.0,
+          35.0,
+          35.0,
+          35.0
+        ],
+        "min": 20.0,
+        "max": 50.0
+      },
+      "W2": {
+        "reference": [
+          35.0,
+          35.0,
+          35.0,
+          35.0,
+          35.0,
+          35.0
+        ],
+        "min": 20.0,
+        "max": 50.0
+      },
+      "W1": {
+        "reference": [
+          35.0,
+          35.0,
+          35.0,
+          35.0,
+          35.0,
+          35.0
+        ],
+        "min": 20.0,
+        "max": 50.0
+      }
+    },
+    "wind_ramp": 15.0,
+    "wind_budget": 50.0
+  },
+  "solver": {
+    "status": "ok",
+    "termination_condition": "optimal"
+  },
+  "policy_type": "mixed_neural_network_true_cost",
+  "nn_policy_generators": [
+    "G1",
+    "W3"
+  ],
+  "true_cost_policy_generators": [
+    "G2",
+    "W2",
+    "W1"
+  ],
+  "dual_bounds": {
+    "lambda_bound": 4000.0,
+    "lambda_bounds": {
+      "lambda_eq": {
+        "0": {
+          "lower": 4.509999999994761,
+          "lower_termination_condition": "optimal",
+          "upper": 2080.538467314941,
+          "upper_termination_condition": "optimal"
+        },
+        "1": {
+          "lower": 4.509999999994761,
+          "lower_termination_condition": "optimal",
+          "upper": 135.0,
+          "upper_termination_condition": "optimal"
+        },
+        "2": {
+          "lower": 4.509999999994761,
+          "lower_termination_condition": "optimal",
+          "upper": 159.9800000000002,
+          "upper_termination_condition": "optimal"
+        },
+        "3": {
+          "lower": 4.509999999994761,
+          "lower_termination_condition": "optimal",
+          "upper": 159.98000000000002,
+          "upper_termination_condition": "optimal"
+        },
+        "4": {
+          "lower": 4.509999999994761,
+          "lower_termination_condition": "optimal",
+          "upper": 135.0,
+          "upper_termination_condition": "optimal"
+        },
+        "5": {
+          "lower": 4.509999999995671,
+          "lower_termination_condition": "optimal",
+          "upper": 100.0,
+          "upper_termination_condition": "optimal"
+        }
+      },
+      "lambda_opt": {
+        "0": {
+          "lower": 5.0,
+          "lower_termination_condition": "optimal",
+          "upper": 2038.99,
+          "upper_termination_condition": "optimal"
+        },
+        "1": {
+          "lower": 5.0,
+          "lower_termination_condition": "optimal",
+          "upper": 133.99000000000046,
+          "upper_termination_condition": "optimal"
+        },
+        "2": {
+          "lower": 5.0,
+          "lower_termination_condition": "optimal",
+          "upper": 157.99000000000046,
+          "upper_termination_condition": "optimal"
+        },
+        "3": {
+          "lower": 5.0,
+          "lower_termination_condition": "optimal",
+          "upper": 157.98000000000258,
+          "upper_termination_condition": "optimal"
+        },
+        "4": {
+          "lower": 5.0,
+          "lower_termination_condition": "optimal",
+          "upper": 133.5,
+          "upper_termination_condition": "optimal"
+        },
+        "5": {
+          "lower": 5.009999999995671,
+          "lower_termination_condition": "optimal",
+          "upper": 99.0,
+          "upper_termination_condition": "optimal"
+        }
+      }
+    },
+    "capacity_dual_bound": 4002.0000000000005,
+    "ramp_dual_bound": 2000.0
+  },
+  "dual_bound_activity": [
+    {
+      "component": "mu_upper_eq",
+      "indices": [
+        0,
+        1,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_eq",
+      "indices": [
+        0,
+        1,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_eq",
+      "indices": [
+        0,
+        1,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_eq",
+      "indices": [
+        0,
+        1,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_eq",
+      "indices": [
+        0,
+        1,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_eq",
+      "indices": [
+        0,
+        1,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        0,
+        0,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        0,
+        1,
+        0
+      ],
+      "value": 10.0,
+      "bound": 10.0,
+      "relative_to_bound": 1.0
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        0,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        0,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        0,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        0,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        0,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        0,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        1,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        1,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        1,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        1,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        1,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_eq",
+      "indices": [
+        4,
+        1,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        0,
+        1,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        0,
+        1,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        0,
+        1,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        0,
+        1,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        0,
+        1,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        0,
+        1,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        1,
+        0,
+        0
+      ],
+      "value": 10.0,
+      "bound": 10.0,
+      "relative_to_bound": 1.0
+    },
+    {
+      "component": "mu_upper_opt",
+      "indices": [
+        1,
+        1,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        0,
+        0,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        0,
+        1,
+        0
+      ],
+      "value": 10.0,
+      "bound": 10.0,
+      "relative_to_bound": 1.0
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        1,
+        0,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        2,
+        0,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        2,
+        0,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        2,
+        0,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        2,
+        0,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        2,
+        0,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        2,
+        1,
+        1
+      ],
+      "value": 0.009999999999999787,
+      "bound": 0.01000000010117219,
+      "relative_to_bound": 0.9999999898827597
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        3,
+        0,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        3,
+        0,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        3,
+        0,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        3,
+        0,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        3,
+        0,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        3,
+        0,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        3,
+        1,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        0,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        0,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        0,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        0,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        0,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        0,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        1,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        1,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        1,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        1,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        1,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_lower_opt",
+      "indices": [
+        4,
+        1,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_up_eq",
+      "indices": [
+        3,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_up_eq",
+      "indices": [
+        3,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_up_eq",
+      "indices": [
+        4,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_up_eq",
+      "indices": [
+        4,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_up_eq",
+      "indices": [
+        4,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_up_eq",
+      "indices": [
+        4,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_up_eq",
+      "indices": [
+        4,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_up_eq",
+      "indices": [
+        4,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_down_eq",
+      "indices": [
+        3,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_down_eq",
+      "indices": [
+        3,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_down_eq",
+      "indices": [
+        4,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_down_eq",
+      "indices": [
+        4,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_down_eq",
+      "indices": [
+        4,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_down_eq",
+      "indices": [
+        4,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_down_eq",
+      "indices": [
+        4,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_down_eq",
+      "indices": [
+        4,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_up_opt",
+      "indices": [
+        3,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_up_opt",
+      "indices": [
+        3,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_up_opt",
+      "indices": [
+        3,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_up_opt",
+      "indices": [
+        3,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_up_opt",
+      "indices": [
+        3,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_up_opt",
+      "indices": [
+        3,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_up_opt",
+      "indices": [
+        4,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_up_opt",
+      "indices": [
+        4,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_up_opt",
+      "indices": [
+        4,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_up_opt",
+      "indices": [
+        4,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_up_opt",
+      "indices": [
+        4,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_up_opt",
+      "indices": [
+        4,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_down_opt",
+      "indices": [
+        3,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_down_opt",
+      "indices": [
+        3,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_down_opt",
+      "indices": [
+        3,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_down_opt",
+      "indices": [
+        3,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_down_opt",
+      "indices": [
+        3,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_down_opt",
+      "indices": [
+        3,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_down_opt",
+      "indices": [
+        4,
+        0
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_down_opt",
+      "indices": [
+        4,
+        1
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_down_opt",
+      "indices": [
+        4,
+        2
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_down_opt",
+      "indices": [
+        4,
+        3
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_down_opt",
+      "indices": [
+        4,
+        4
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    },
+    {
+      "component": "mu_ramp_down_opt",
+      "indices": [
+        4,
+        5
+      ],
+      "value": 0.0,
+      "bound": 0.0,
+      "relative_to_bound": null
+    }
+  ],
+  "nn_relu_bounds": {
+    "G1": {
+      "num_hidden_neurons": 14,
+      "num_active": 3,
+      "num_inactive": 0,
+      "num_ambiguous": 11,
+      "min_L": -14.806634206377769,
+      "max_L": 2.558370583168002,
+      "min_U": 0.20784496702847302,
+      "max_U": 21.799048305258935,
+      "max_M_minus": 14.806634206377769,
+      "max_M_plus": 21.799048305258935
+    },
+    "W3": {
+      "num_hidden_neurons": 14,
+      "num_active": 1,
+      "num_inactive": 0,
+      "num_ambiguous": 13,
+      "min_L": -2.2713558203374684,
+      "max_L": 0.8187745375751662,
+      "min_U": 0.1804542336208153,
+      "max_U": 14.181317822274973,
+      "max_M_minus": 2.2713558203374684,
+      "max_M_plus": 14.181317822274973
+    }
+  },
+  "nn_bound_warnings": []
+}

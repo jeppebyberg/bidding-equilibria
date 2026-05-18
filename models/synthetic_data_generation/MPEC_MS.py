@@ -6,10 +6,10 @@ import os
 import math
 import warnings
 from typing import List, Optional, Dict, Any, Tuple
-import ast
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from models.diagonalization.intertemporal.MultipleScenarios.utilities.MPEC_utils import get_mpec_parameters
+from models.helper import find_demand_profile_column, infer_num_time_steps, parse_profile_exact_length
 
 
 def run_fbbt_for_big_m(model: ConcreteModel, logger=None) -> Any:
@@ -164,38 +164,14 @@ class MPECModel:
     @staticmethod
     def _convert_profile(value: Any, expected_len: int, column_name: str) -> List[float]:
         """Convert profile-like input into a numeric list with expected length."""
-        if isinstance(value, str):
-            try:
-                value = ast.literal_eval(value)
-            except Exception as exc:
-                raise ValueError(f"Could not parse profile column '{column_name}': {exc}") from exc
-
-        if not isinstance(value, (list, tuple)):
-            raise ValueError(f"Column '{column_name}' must contain a list/tuple of length {expected_len}")
-
-        if len(value) != expected_len:
-            raise ValueError(
-                f"Profile length mismatch in column '{column_name}': expected {expected_len}, got {len(value)}"
-            )
-
-        try:
-            return [float(v) for v in value]
-        except Exception as exc:
-            raise ValueError(f"Profile column '{column_name}' contains non-numeric values") from exc
+        return parse_profile_exact_length(value, expected_len, column_name)
 
     def _extract_scenario_data(self, scenarios_df: pd.DataFrame, costs_df: pd.DataFrame, ramps_df: pd.DataFrame,
                                pmin_default: float) -> None:
         """Extract scenario and generator data from DataFrames"""
         
         # Auto-detect demand column
-        demand_profile_col = None
-        for col in scenarios_df.columns:
-            if 'demand_profile' in col.lower():
-                demand_profile_col = col
-                break
-
-        if demand_profile_col is None:
-            raise ValueError("No demand profile column found. Expected column name containing 'demand_profile'")
+        demand_profile_col = find_demand_profile_column(scenarios_df)
         
         # Auto-detect generator capacity columns
         capacity_cols = [col for col in scenarios_df.columns if col.endswith('_cap')]
@@ -208,13 +184,7 @@ class MPECModel:
         self.num_scenarios = len(scenarios_df)
         
         # Infer horizon from explicit time_steps column or first demand profile.
-        if 'time_steps' in scenarios_df.columns:
-            self.num_time_steps = int(scenarios_df['time_steps'].iloc[0])
-        else:
-            first_profile = scenarios_df[demand_profile_col].iloc[0]
-            if isinstance(first_profile, str):
-                first_profile = ast.literal_eval(first_profile)
-            self.num_time_steps = len(first_profile)
+        self.num_time_steps = infer_num_time_steps(scenarios_df)
 
         if self.num_time_steps <= 0:
             raise ValueError(f"Invalid time_steps value: {self.num_time_steps}")
