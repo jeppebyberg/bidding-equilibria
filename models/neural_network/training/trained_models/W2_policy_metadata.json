@@ -17,19 +17,19 @@
     "target_bid_W2_B2"
   ],
   "hidden_layers": [
-    7,
-    7
+    11,
+    11
   ],
   "activation": "relu",
   "final_activation": "linear",
-  "train_size": 7680,
-  "test_size": 1920,
+  "train_size": 30720,
+  "test_size": 7680,
   "test_fraction": 0.2,
-  "num_epochs_trained": 223,
-  "best_epoch": 173,
-  "best_test_loss": 9.818627934995069e-07,
+  "num_epochs_trained": 133,
+  "best_epoch": 83,
+  "best_test_loss": 0.00018417639492511738,
   "learning_rate": 0.001,
-  "batch_size": 64,
+  "batch_size": 32,
   "weight_decay": 0.0,
   "random_state": 42
 }

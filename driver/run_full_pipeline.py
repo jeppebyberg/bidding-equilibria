@@ -556,10 +556,10 @@ if __name__ == "__main__":
         # Synthetic data / NN training scenarios.
         synthetic_time_steps=24,
         synthetic_scenarios_per_regime={
-            "normal": 100,
-            "high_demand": 100,
-            "normal_peak_shift_wind": 100,
-            "high_demand_peak_shift_wind": 100,
+            "normal": 400,
+            "high_demand": 400,
+            "normal_peak_shift_wind": 400,
+            "high_demand_peak_shift_wind": 400,
         },
 
         # PoA support set and optimization horizon.
@@ -594,20 +594,20 @@ if __name__ == "__main__":
         ],
 
         # Neural-network architecture and training.
-        hidden_layers=[7, 7],
+        hidden_layers=[11, 11],
         learning_rate=1e-3,
-        batch_size=64,
+        batch_size=32,
         num_epochs=500,
         patience=50,
 
         # Toggle expensive stages when reusing previous outputs.
-        run_scenario_generation=False,
-        run_heuristic_labels=False,
+        run_scenario_generation=True,
+        run_heuristic_labels=True,
         run_feature_building=False,
         run_nn_training=False,
-        run_poa_alpha_bounds=True,
-        run_poa_slack_binary_fix=True,
-        run_poa_dual_big_m=True,
-        run_poa_optimization=True,
+        run_poa_alpha_bounds=False,
+        run_poa_slack_binary_fix=False,
+        run_poa_dual_big_m=False,
+        run_poa_optimization=False,
     )
     main(run_config)

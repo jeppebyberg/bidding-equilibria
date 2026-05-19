@@ -1,10 +1,8 @@
-# default_regime_set: thesis_default
-
 regime_sets:
   policy_training:
     description: Regime-driven stochastic demand and wind setup.
+    # mu_D and sigma_D are in selected-reference-demand units.
     seed: 42
-    wind_idiosyncratic_share: 0.1
     enforce_dispatch_feasibility: true
     n_minus_one_margin: 0.0
     max_draw_attempts: 500
@@ -12,60 +10,48 @@ regime_sets:
     regimes:
       - name: normal
         n_scenarios: 100
-        mu_D: 110.0
-        A_D: 0.125
+        mu_D: 0.73
         rho_D: 0.85
-        sigma_D: 1.8
+        sigma_D: 0.012
         mu_W: 0.70
-        A_W: 0.15
         peak_W: 14.0
         rho_W: 0.80
         sigma_W: 0.05
-        Corr: -0.25
 
       - name: high_demand
         n_scenarios: 100
-        mu_D: 130.0
-        A_D: 0.125
+        mu_D: 0.87
         rho_D: 0.85
-        sigma_D: 1.8
+        sigma_D: 0.012
         mu_W: 0.70
-        A_W: 0.15
         peak_W: 14.0
         rho_W: 0.80
         sigma_W: 0.05
-        Corr: -0.25
 
       - name: normal_peak_shift_wind
         n_scenarios: 100
-        mu_D: 110.0
-        A_D: 0.125
+        mu_D: 0.73
         rho_D: 0.85
-        sigma_D: 1.8
+        sigma_D: 0.012
         mu_W: 0.70
-        A_W: 0.15
-        peak_W: 1.0
+        peak_W: 2.0
         rho_W: 0.80
         sigma_W: 0.05
-        Corr: -0.25
 
       - name: high_demand_peak_shift_wind
         n_scenarios: 100
-        mu_D: 130.0
-        A_D: 0.125
+        mu_D: 0.87
         rho_D: 0.85
-        sigma_D: 1.8
+        sigma_D: 0.012
         mu_W: 0.70
-        A_W: 0.15
-        peak_W: 1.0
+        peak_W: 2.0
         rho_W: 0.80
         sigma_W: 0.05
-        Corr: -0.25
 
   PoA_analysis:
     description: Regime-driven stochastic demand and wind setup.
+    # mu_D and sigma_D are in selected-reference-demand units.
     seed: 42
-    wind_idiosyncratic_share: 0.1
     enforce_dispatch_feasibility: true
     n_minus_one_margin: 0.0
     max_draw_attempts: 500
@@ -73,60 +59,48 @@ regime_sets:
     regimes:
       - name: normal
         n_scenarios: 2
-        mu_D: 110.0
-        A_D: 0.125
+        mu_D: 0.73
         rho_D: 0.85
-        sigma_D: 1.8
+        sigma_D: 0.012
         mu_W: 0.70
-        A_W: 0.15
         peak_W: 14.0
         rho_W: 0.80
         sigma_W: 0.05
-        Corr: -0.25
 
       - name: high_demand
         n_scenarios: 2
-        mu_D: 130.0
-        A_D: 0.125
+        mu_D: 0.87
         rho_D: 0.85
-        sigma_D: 1.8
+        sigma_D: 0.012
         mu_W: 0.70
-        A_W: 0.15
         peak_W: 14.0
         rho_W: 0.80
         sigma_W: 0.05
-        Corr: -0.25
 
       - name: normal_peak_shift_wind
         n_scenarios: 5
-        mu_D: 110.0
-        A_D: 0.125
+        mu_D: 0.73
         rho_D: 0.85
-        sigma_D: 1.8
+        sigma_D: 0.012
         mu_W: 0.70
-        A_W: 0.15
         peak_W: 1.0
         rho_W: 0.80
         sigma_W: 0.05
-        Corr: -0.25
 
       - name: high_demand_peak_shift_wind
         n_scenarios: 5
-        mu_D: 130.0
-        A_D: 0.125
+        mu_D: 0.87
         rho_D: 0.85
-        sigma_D: 1.8
+        sigma_D: 0.012
         mu_W: 0.70
-        A_W: 0.15
         peak_W: 1.0
         rho_W: 0.80
         sigma_W: 0.05
-        Corr: -0.25
 
   debugging:
     description: A simple regime with only a few scenarios for debugging.
+    # mu_D and sigma_D are in selected-reference-demand units.
     seed: 42
-    wind_idiosyncratic_share: 0.1
     enforce_dispatch_feasibility: true
     n_minus_one_margin: 0.0
     max_draw_attempts: 500
@@ -134,13 +108,10 @@ regime_sets:
     regimes:
       - name: normal
         n_scenarios: 2
-        mu_D: 110.0
-        A_D: 0.125
+        mu_D: 0.73
         rho_D: 0.85
-        sigma_D: 1.8
+        sigma_D: 0.012
         mu_W: 0.70
-        A_W: 0.15
         peak_W: 14.0
         rho_W: 0.80
         sigma_W: 0.05
-        Corr: -0.25

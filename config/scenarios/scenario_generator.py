@@ -12,6 +12,10 @@ import numpy as np
 import pandas as pd
 import yaml
 
+import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+
+
 if __package__ in {None, ""}:
 	sys.path.append(str(Path(__file__).resolve().parents[2]))
 
@@ -25,15 +29,12 @@ class RegimeParameters:
 	name: str
 	n_scenarios: int
 	mu_D: float
-	A_D: float
 	rho_D: float
 	sigma_D: float
 	mu_W: float
-	A_W: float
 	peak_W: float
 	rho_W: float
 	sigma_W: float
-	Corr: float
 
 
 class ScenarioManager:
@@ -145,7 +146,11 @@ class ScenarioManager:
 		if not isinstance(regime_raw, dict):
 			raise ValueError(f"Regime entry at index {index} must be a mapping")
 
-		regime_name = str(regime_raw.get("name", f"regime_{index + 1}"))
+		if "name" not in regime_raw:
+			raise ValueError(f"Regime entry at index {index} is missing required field 'name'")
+		regime_name = str(regime_raw["name"]).strip()
+		if not regime_name:
+			raise ValueError(f"Regime entry at index {index} has an empty 'name'")
 
 		n_scenarios = self._to_int(
 			self._get_value(
@@ -163,11 +168,6 @@ class ScenarioManager:
 			"mu_D",
 			regime_name,
 		)
-		A_D = self._to_float(
-			self._get_value(regime_raw, ["A_D"], required=True, context=regime_name),
-			"A_D",
-			regime_name,
-		)
 		rho_D = self._to_float(
 			self._get_value(regime_raw, ["rho_D"], required=True, context=regime_name),
 			"rho_D",
@@ -183,17 +183,12 @@ class ScenarioManager:
 			"mu_W",
 			regime_name,
 		)
-		A_W = self._to_float(
-			self._get_value(regime_raw, ["A_W"], default=0.0, context=regime_name),
-			"A_W",
-			regime_name,
-		)
 		peak_W = self._to_float(
 			self._get_value(
 				regime_raw,
-				["peak_W"],
-				default=12.0,
-				context=regime_name,
+				["peak_W", "tau_W"],
+				required=True,
+				context=f"regime '{regime_name}'",
 			),
 			"peak_W",
 			regime_name,
@@ -208,48 +203,34 @@ class ScenarioManager:
 			"sigma_W",
 			regime_name,
 		)
-		corr = self._to_float(
-			self._get_value(regime_raw, ["Corr"], required=True, context=regime_name),
-			"Corr",
-			regime_name,
-		)
 
 		if n_scenarios <= 0:
 			raise ValueError(f"Regime '{regime_name}': n_scenarios must be positive")
 		if mu_D <= 0:
 			raise ValueError(f"Regime '{regime_name}': mu_D must be positive")
-		if A_D < 0:
-			raise ValueError(f"Regime '{regime_name}': A_D must be non-negative")
 		if not -0.999 <= rho_D <= 0.999:
 			raise ValueError(f"Regime '{regime_name}': rho_D must be in [-0.999, 0.999]")
 		if sigma_D < 0:
 			raise ValueError(f"Regime '{regime_name}': sigma_D must be non-negative")
 		if not 0 <= mu_W <= 1:
 			raise ValueError(f"Regime '{regime_name}': mu_W must be in [0, 1]")
-		if A_W < 0:
-			raise ValueError(f"Regime '{regime_name}': A_W must be non-negative")
 		if not 0 <= peak_W <= 24:
-			raise ValueError(f"Regime '{regime_name}': peak_W must be in [0, 24]")
+			raise ValueError(f"Regime '{regime_name}': peak_W/tau_W must be in [0, 24]")
 		if not -0.999 <= rho_W <= 0.999:
 			raise ValueError(f"Regime '{regime_name}': rho_W must be in [-0.999, 0.999]")
 		if sigma_W < 0:
 			raise ValueError(f"Regime '{regime_name}': sigma_W must be non-negative")
-		if not -1 <= corr <= 1:
-			raise ValueError(f"Regime '{regime_name}': Corr must be in [-1, 1]")
 
 		return RegimeParameters(
 			name=regime_name,
 			n_scenarios=n_scenarios,
 			mu_D=mu_D,
-			A_D=A_D,
 			rho_D=rho_D,
 			sigma_D=sigma_D,
 			mu_W=mu_W,
-			A_W=A_W,
 			peak_W=peak_W,
 			rho_W=rho_W,
 			sigma_W=sigma_W,
-			Corr=corr,
 		)
 
 	def load_regime_configuration(
@@ -287,12 +268,6 @@ class ScenarioManager:
 		if not isinstance(regimes_raw, list) or not regimes_raw:
 			raise ValueError("Regime configuration must include a non-empty 'regimes' list")
 
-		wind_idio_share = float(
-			selected_config.get("wind_idiosyncratic_share", raw_config.get("wind_idiosyncratic_share", 0.25))
-		)
-		if not 0 <= wind_idio_share <= 1:
-			raise ValueError("wind_idiosyncratic_share must be in [0, 1]")
-
 		max_draw_attempts = int(selected_config.get("max_draw_attempts", raw_config.get("max_draw_attempts", 500)))
 		if max_draw_attempts <= 0:
 			raise ValueError("max_draw_attempts must be a positive integer")
@@ -324,7 +299,6 @@ class ScenarioManager:
 		return {
 			"name": selected_name,
 			"seed": seed,
-			"wind_idiosyncratic_share": wind_idio_share,
 			"max_draw_attempts": max_draw_attempts,
 			"enforce_dispatch_feasibility": enforce_feasibility,
 			"n_minus_one_margin": contingency_margin,
@@ -334,12 +308,12 @@ class ScenarioManager:
 
 	@staticmethod
 	def _build_demand_shape(horizon: int) -> np.ndarray:
-		"""Create a normalized daily shape with morning and afternoon/evening peaks."""
+		"""Create a positive mean-one daily demand multiplier profile."""
 		if horizon <= 0:
 			raise ValueError(f"horizon must be positive, got {horizon}")
 
 		if horizon == 1:
-			return np.array([0.0], dtype=float)
+			return np.array([1.0], dtype=float)
 
 		hours = np.linspace(0.0, 24.0, horizon)
 		morning_peak = np.exp(-0.5 * ((hours - 7.5) / 2.5) ** 2)
@@ -351,13 +325,15 @@ class ScenarioManager:
 		scale = np.max(np.abs(centered))
 
 		if scale <= 1e-12:
-			return np.zeros(horizon, dtype=float)
+			return np.ones(horizon, dtype=float)
 
-		return centered / scale
+		multiplier = 1.0 + 0.125 * (centered / scale)
+		multiplier = np.maximum(multiplier, 1e-9)
+		return multiplier / np.mean(multiplier)
 
 	@staticmethod
 	def _build_wind_shape(horizon: int, peak_hour: float, width: float = 4.0) -> np.ndarray:
-		"""Create a normalized circular daily shape with a configurable peak hour."""
+		"""Create a positive mean-one circular wind multiplier profile."""
 		if horizon <= 0:
 			raise ValueError(f"horizon must be positive, got {horizon}")
 		if not 0 <= peak_hour <= 24:
@@ -366,7 +342,7 @@ class ScenarioManager:
 			raise ValueError(f"width must be positive, got {width}")
 
 		if horizon == 1:
-			return np.array([0.0], dtype=float)
+			return np.array([1.0], dtype=float)
 
 		hours = np.linspace(0.0, 24.0, horizon, endpoint=False)
 		peak_hour = peak_hour % 24.0
@@ -376,66 +352,63 @@ class ScenarioManager:
 		scale = np.max(np.abs(centered))
 
 		if scale <= 1e-12:
-			return np.zeros(horizon, dtype=float)
+			return np.ones(horizon, dtype=float)
 
-		return centered / scale
-
-	@staticmethod
-	def _draw_correlated_normals(corr: float, horizon: int, rng: np.random.Generator) -> Tuple[np.ndarray, np.ndarray]:
-		covariance = np.array([[1.0, corr], [corr, 1.0]], dtype=float)
-		samples = rng.multivariate_normal(mean=[0.0, 0.0], cov=covariance, size=horizon)
-		return samples[:, 0], samples[:, 1]
+		multiplier = 1.0 + 0.15 * (centered / scale)
+		multiplier = np.maximum(multiplier, 1e-9)
+		return multiplier / np.mean(multiplier)
 
 	def _simulate_single_scenario(
 		self,
 		regime: RegimeParameters,
 		rng: np.random.Generator,
-		wind_idiosyncratic_share: float,
 	) -> Tuple[List[float], Dict[str, List[float]], float]:
 		"""Draw demand and physical-generator wind availability profiles."""
 		horizon = self.base_case["time_steps"]
 		demand_shape = self._build_demand_shape(horizon)
-		demand_trend = regime.mu_D * (1.0 + regime.A_D * demand_shape)
+		reference_demand = self.base_case["demand"]
+		# Demand is simulated in reference-demand units, so sigma_D is dimensionless
+		# like sigma_W, and the final demand profile is scaled back to MW.
+		demand_mean = reference_demand * regime.mu_D
 		wind_shape = self._build_wind_shape(horizon, regime.peak_W)
-		wind_mean = np.clip(regime.mu_W * (1.0 + regime.A_W * wind_shape), 0.0, 1.0)
+		# The deterministic shape functions are mean-one multiplier profiles;
+		# intraday amplitude is embedded in the shapes, not in regime parameters.
+		demand_trend = regime.mu_D * demand_shape
+		wind_trend = regime.mu_W * wind_shape
 
-		z_d, z_w_common = self._draw_correlated_normals(regime.Corr, horizon, rng)
+		z_d = rng.standard_normal(horizon)
 
 		demand_residual = np.zeros(horizon, dtype=float)
-		demand_stationary_scale = regime.sigma_D / np.sqrt(max(1.0 - regime.rho_D**2, 1e-8))
-		demand_residual[0] = demand_stationary_scale * z_d[0]
+		demand_residual[0] = regime.sigma_D * z_d[0]
 
 		for t in range(1, horizon):
 			demand_residual[t] = regime.rho_D * demand_residual[t - 1] + regime.sigma_D * z_d[t]
 
-		demand_profile = np.maximum(demand_trend + demand_residual, 1e-3)
+		demand_profile = reference_demand * np.maximum(demand_trend + demand_residual, 0.0)
 
 		generator_wind_profiles: Dict[str, List[float]] = {}
-		common_weight = np.sqrt(max(1.0 - wind_idiosyncratic_share**2, 0.0))
 
+		# Wind availability is generated separately for each physical wind generator:
+		# they share the regime-level deterministic shape and persistence parameters,
+		# but draw independent generator-specific innovations. This keeps the process
+		# interpretable without an extra wind_idiosyncratic_share parameter.
 		for gen_idx in self.wind_generator_indices:
 			generator = self.physical_generators[gen_idx]
 			gen_name = generator["physical_name"]
 			nominal_capacity = float(generator["pmax"])
 
-			z_w_idio = rng.standard_normal(horizon)
-			z_w = common_weight * z_w_common + wind_idiosyncratic_share * z_w_idio
+			z_w = rng.standard_normal(horizon)
 
-			wind_factor = np.zeros(horizon, dtype=float)
-			wind_stationary_scale = regime.sigma_W / np.sqrt(max(1.0 - regime.rho_W**2, 1e-8))
-			wind_factor[0] = wind_mean[0] + wind_stationary_scale * z_w[0]
+			wind_residual = np.zeros(horizon, dtype=float)
+			wind_residual[0] = regime.sigma_W * z_w[0]
 
 			for t in range(1, horizon):
-				wind_factor[t] = (
-					wind_mean[t]
-					+ regime.rho_W * (wind_factor[t - 1] - wind_mean[t - 1])
-					+ regime.sigma_W * z_w[t]
-				)
+				wind_residual[t] = regime.rho_W * wind_residual[t - 1] + regime.sigma_W * z_w[t]
 
-			wind_factor = np.clip(wind_factor, 0.0, 1.0)
+			wind_factor = np.clip(wind_trend + wind_residual, 0.0, 1.0)
 			generator_wind_profiles[gen_name] = [float(value * nominal_capacity) for value in wind_factor]
 
-		return [float(v) for v in demand_profile], generator_wind_profiles, regime.mu_D
+		return [float(v) for v in demand_profile], generator_wind_profiles, demand_mean
 
 	def _available_capacity_by_generator(
 		self,
@@ -540,6 +513,74 @@ class ScenarioManager:
 	def get_players_config(self) -> List[Dict[str, Any]]:
 		return self.players_config
 
+	def plot_shape_functions_by_regime(
+		self,
+		regime_config_path: Optional[str] = None,
+		regime_set: Optional[str] = None,
+		title: str = "Deterministic Shape Functions",
+		figsize: Tuple[float, float] = (11.0, 7.0),
+		save_path: Optional[str] = None,
+		show: bool = True,
+	):
+		"""Plot the mean-one deterministic demand and wind multiplier profiles."""
+		config = self.load_regime_configuration(regime_config_path=regime_config_path, regime_set=regime_set)
+
+		horizon = self.base_case["time_steps"]
+		time_index = range(horizon)
+		demand_shape = self._build_demand_shape(horizon)
+
+		peak_hours = sorted({float(regime.peak_W) for regime in config["regimes"]})
+
+		fig, axes = plt.subplots(
+			nrows=2,
+			ncols=1,
+			figsize=figsize,
+			sharex=True,
+		)
+
+		axes[0].plot(
+			time_index,
+			demand_shape,
+			linewidth=2.2,
+			label=f"h_D",
+		)
+		axes[0].axhline(1.0, color="black", linewidth=1.0, linestyle="--", alpha=0.55)
+		axes[0].set_title("Demand Shape")
+		axes[0].set_ylabel("Multiplier")
+		axes[0].grid(True, alpha=0.25)
+		axes[0].legend(loc="best")
+
+		cmap = plt.get_cmap("tab10")
+		for idx, peak_hour in enumerate(peak_hours):
+			wind_shape = self._build_wind_shape(horizon, peak_hour)
+			axes[1].plot(
+				time_index,
+				wind_shape,
+				linewidth=2.2,
+				color=cmap(idx % cmap.N),
+				label=f"h_W peak={peak_hour:g}",
+			)
+
+		axes[1].axhline(1.0, color="black", linewidth=1.0, linestyle="--", alpha=0.55)
+		axes[1].set_title("Wind Shape")
+		axes[1].set_xlabel("Time")
+		axes[1].set_ylabel("Multiplier")
+		axes[1].grid(True, alpha=0.25)
+		axes[1].legend(loc="best")
+
+		fig.suptitle(f"{title}")
+		fig.tight_layout(rect=[0.0, 0.0, 1.0, 0.95])
+
+		if save_path:
+			save_target = Path(save_path)
+			save_target.parent.mkdir(parents=True, exist_ok=True)
+			fig.savefig(save_target, dpi=200, bbox_inches="tight")
+
+		if show:
+			plt.show()
+
+		return fig, axes
+
 	def plot_generation_cost_curves(
 		self,
 		generator_names: Optional[List[str]] = None,
@@ -577,8 +618,6 @@ class ScenarioManager:
 			raise ValueError(f"Unknown physical generators: {unknown}")
 		if not selected_names:
 			raise ValueError(f"No generators match generator_type='{generator_type}'")
-
-		import matplotlib.pyplot as plt
 
 		fig, ax = plt.subplots(figsize=figsize)
 		cmap = plt.get_cmap("tab10")
@@ -709,9 +748,6 @@ class ScenarioManager:
 		if "demand_profile" not in scenarios_df.columns:
 			raise ValueError("scenarios_df must include a 'demand_profile' column")
 
-		import matplotlib.pyplot as plt
-		from matplotlib.lines import Line2D
-
 		horizon = self.base_case["time_steps"]
 		regimes = sorted(scenarios_df["regime"].dropna().astype(str).unique().tolist())
 		if not regimes:
@@ -818,8 +854,6 @@ class ScenarioManager:
 		if "regime" not in scenarios_df.columns:
 			raise ValueError("scenarios_df must include a 'regime' column")
 
-		import matplotlib.pyplot as plt
-		from matplotlib.lines import Line2D
 
 		all_wind_generators = [
 			block["block_name"]
@@ -950,7 +984,6 @@ class ScenarioManager:
 					demand_profile, generator_wind_profiles, demand_mean = self._simulate_single_scenario(
 						regime=regime,
 						rng=rng,
-						wind_idiosyncratic_share=config["wind_idiosyncratic_share"],
 					)
 
 					if not config["enforce_dispatch_feasibility"]:
@@ -965,7 +998,7 @@ class ScenarioManager:
 					raise ValueError(
 						f"Failed to draw a feasible scenario for regime '{regime.name}' "
 						f"after {config['max_draw_attempts']} attempts. "
-						"Try reducing mu_D/A_D/sigma_D, increasing mu_W, or relaxing N-1 strictness."
+						"Try reducing mu_D/sigma_D, increasing mu_W, or relaxing N-1 strictness."
 					)
 
 				accepted_scenario_count += 1
@@ -1021,6 +1054,14 @@ if __name__ == "__main__":
 	scenarios_df 
 
 	stop = True
+
+	manager.plot_shape_functions_by_regime(
+		str(default_yaml),
+		# regime_set="policy_training",
+		title="Deterministic Shape Functions",
+		save_path="setup_viz/shape_functions_by_regime.png",
+		show=True,
+	)
 
 	manager.plot_demand_profiles_by_regime(
 		scenarios_df,

@@ -9,8 +9,16 @@ import numpy as np
 import pandas as pd
 
 from config.scenarios.scenario_generator import ScenarioManager
-from models.helper import infer_num_time_steps, parse_profile
-from models.synthetic_data_generation.economic_dispatch import EconomicDispatchModel
+from models.helper import (
+    available_block_capacity,
+    block_cost_vector,
+    block_structure_from_dataframes,
+    coerce_index_or_name,
+    half_capacity_initial_dispatch,
+    infer_num_time_steps,
+    parse_profile_exact_length,
+)
+from models.synthetic_data_generation.economic_dispatch_clean import EconomicDispatchModel
 
 
 @dataclass(frozen=True)
@@ -54,11 +62,11 @@ class MeritOrderHeuristic:
         self.bid_tolerance = float(bid_tolerance)
         self.debug = False
 
-        self._initialize_block_mapping_from_ed()
+        self._initialize_block_structure()
         self.num_scenarios = len(self.scenarios_df)
-        self.num_time_steps = self._infer_num_time_steps()
+        self.num_time_steps = infer_num_time_steps(self.scenarios_df)
         self.cost_vector = np.asarray(
-            [float(self.costs_df[f"{block}_cost"].iloc[0]) for block in self.block_names],
+            block_cost_vector(self.costs_df, self.block_names),
             dtype=np.float64,
         )
         self._initialize_missing_bid_profiles()
@@ -78,28 +86,16 @@ class MeritOrderHeuristic:
 
         self._log_availability_interpretation()
 
-    def _initialize_block_mapping_from_ed(self) -> None:
-        mapping_model = EconomicDispatchModel(
-            self.scenarios_df,
-            self.costs_df,
-            self.ramps_df,
-            p_init=None,
-        )
-        self.block_names = mapping_model.get_block_names()
+    def _initialize_block_structure(self) -> None:
+        block_structure = block_structure_from_dataframes(self.scenarios_df, self.ramps_df)
+        self.block_names = list(block_structure.block_names)
         self.num_blocks = len(self.block_names)
-        self.physical_generator_names = mapping_model.get_physical_generator_names()
-        self.block_to_physical = mapping_model.get_block_to_physical_mapping()
-        self.block_to_physical_idx = list(mapping_model.block_to_physical_idx)
+        self.physical_generator_names = list(block_structure.physical_generator_names)
+        self.block_to_physical = dict(block_structure.block_to_physical)
+        self.block_to_physical_idx = list(block_structure.block_to_physical_idx)
         self.physical_to_block_indices = [
-            list(blocks) for blocks in mapping_model.physical_to_block_indices
+            list(blocks) for blocks in block_structure.physical_to_block_indices
         ]
-
-    def _infer_num_time_steps(self) -> int:
-        return infer_num_time_steps(self.scenarios_df)
-
-    @staticmethod
-    def _as_profile(value: Any, column_name: str) -> List[float]:
-        return parse_profile(value, column_name)
 
     def _initialize_missing_bid_profiles(self) -> None:
         for block_idx, block_name in enumerate(self.block_names):
@@ -111,11 +107,11 @@ class MeritOrderHeuristic:
                     for _ in range(self.num_scenarios)
                 ]
             for s in range(self.num_scenarios):
-                profile = self._as_profile(self.scenarios_df.at[s, profile_col], profile_col)
-                if len(profile) != self.num_time_steps:
-                    raise ValueError(
-                        f"{profile_col} must have length {self.num_time_steps}, got {len(profile)}"
-                    )
+                profile = parse_profile_exact_length(
+                    self.scenarios_df.at[s, profile_col],
+                    self.num_time_steps,
+                    profile_col,
+                )
                 self.scenarios_df.at[s, profile_col] = [float(v) for v in profile]
                 self.scenarios_df.at[s, bid_col] = float(profile[0])
 
@@ -123,11 +119,11 @@ class MeritOrderHeuristic:
         player = self._get_player_config(player_id)
         if "controlled_blocks" in player:
             return [
-                self._coerce_index_or_name(value, self.block_names, "bidding block")
+                coerce_index_or_name(value, self.block_names, "bidding block")
                 for value in player["controlled_blocks"]
             ]
         controlled_physical = [
-            self._coerce_index_or_name(value, self.physical_generator_names, "physical generator")
+            coerce_index_or_name(value, self.physical_generator_names, "physical generator")
             for value in player.get("controlled_generators", [])
         ]
         if not controlled_physical:
@@ -139,16 +135,6 @@ class MeritOrderHeuristic:
             controlled_blocks.extend(self.physical_to_block_indices[int(physical_idx)])
         return controlled_blocks
 
-    def _coerce_index_or_name(self, value: Any, names: List[str], label: str) -> int:
-        if isinstance(value, str) and not value.strip().lstrip("-").isdigit():
-            if value not in names:
-                raise ValueError(f"Unknown {label} name '{value}'. Available: {names}")
-            return names.index(value)
-        idx = int(value)
-        if idx < 0 or idx >= len(names):
-            raise ValueError(f"{label} index {idx} is out of range [0, {len(names) - 1}]")
-        return idx
-
     def _get_player_config(self, player_id: int) -> Dict[str, Any]:
         for player in self.players_config:
             if int(player["id"]) == int(player_id):
@@ -156,16 +142,11 @@ class MeritOrderHeuristic:
         raise KeyError(f"Unknown player_id: {player_id}")
 
     def _compute_p_init_from_ed(self, scenarios_df: pd.DataFrame) -> List[List[float]]:
-        initial_dispatch = []
-        for _, row in scenarios_df.iterrows():
-            physical_initial = []
-            for block_indices in self.physical_to_block_indices:
-                physical_capacity = sum(
-                    float(row[f"{self.block_names[b]}_cap"]) for b in block_indices
-                )
-                physical_initial.append(0.5 * physical_capacity)
-            initial_dispatch.append(physical_initial)
-
+        initial_dispatch = half_capacity_initial_dispatch(
+            scenarios_df,
+            self.block_names,
+            self.physical_to_block_indices,
+        )
         ed_for_p_init = EconomicDispatchModel(
             scenarios_df,
             self.costs_df,
@@ -238,8 +219,9 @@ class MeritOrderHeuristic:
     def _snapshot_all_bids(self) -> List[List[List[float]]]:
         return [
             [
-                self._as_profile(
+                parse_profile_exact_length(
                     self.scenarios_df.at[s, f"{block_name}_bid_profile"],
+                    self.num_time_steps,
                     f"{block_name}_bid_profile",
                 )
                 for block_name in self.block_names
@@ -395,18 +377,7 @@ class MeritOrderHeuristic:
 
     def available_capacity(self, scenario_id: int, block_id: int, time_id: int) -> float:
         block_name = self.block_names[int(block_id)]
-        profile_col = f"{block_name}_cap_profile"
-        availability_profile_col = f"{block_name}_profile"
-        if profile_col in self.scenarios_df.columns:
-            profile = self._as_profile(self.scenarios_df.at[scenario_id, profile_col], profile_col)
-            return float(profile[time_id])
-        if availability_profile_col in self.scenarios_df.columns:
-            profile = self._as_profile(
-                self.scenarios_df.at[scenario_id, availability_profile_col],
-                availability_profile_col,
-            )
-            return float(profile[time_id])
-        return float(self.scenarios_df.at[scenario_id, f"{block_name}_cap"])
+        return available_block_capacity(self.scenarios_df, block_name, scenario_id, time_id)
 
     def run(self) -> Dict[str, Any]:
         print(
@@ -568,9 +539,14 @@ class MeritOrderHeuristic:
         t = int(update["time_id"])
         bids[s][block_id][t] = float(update["new_bid"])
         block_name = self.block_names[block_id]
-        profile = self._as_profile(self.scenarios_df.at[s, f"{block_name}_bid_profile"], f"{block_name}_bid_profile")
+        profile_col = f"{block_name}_bid_profile"
+        profile = parse_profile_exact_length(
+            self.scenarios_df.at[s, profile_col],
+            self.num_time_steps,
+            profile_col,
+        )
         profile[t] = float(update["new_bid"])
-        self.scenarios_df.at[s, f"{block_name}_bid_profile"] = profile
+        self.scenarios_df.at[s, profile_col] = profile
         self.scenarios_df.at[s, f"{block_name}_bid"] = float(profile[0])
 
     def get_results(

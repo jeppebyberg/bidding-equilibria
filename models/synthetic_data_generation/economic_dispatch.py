@@ -1,9 +1,18 @@
 from pyomo.environ import *
 from typing import Dict, List, Any, Optional, Tuple
 import pandas as pd
-import numpy as np
 
-from models.helper import ensure_profile, parse_profile_exact_length
+from models.helper import (
+    BlockStructure,
+    available_block_capacity,
+    block_cost_vector,
+    block_structure_from_dataframes,
+    ensure_profile,
+    find_demand_profile_column,
+    infer_num_time_steps,
+    parse_profile_exact_length,
+    ramp_vectors,
+)
 
 
 class EconomicDispatchModel:
@@ -73,101 +82,37 @@ class EconomicDispatchModel:
     # Data extraction
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _convert_profile(value: Any, expected_len: int, column_name: str) -> List[float]:
-        """Convert profile-like input into a numeric list with expected length. This gives per row profile"""
-        return parse_profile_exact_length(value, expected_len, column_name)
-
-    @staticmethod
-    def _ensure_profile(value: Any, expected_len: int, column_name: str) -> List[float]:
-        return ensure_profile(value, expected_len, column_name)
-
-    @staticmethod
-    def _infer_physical_from_block_name(block_name: str) -> str:
-        if "_B" in block_name:
-            return block_name.rsplit("_B", 1)[0]
-        return block_name
-
-    @staticmethod
-    def _ramp_physical_names(ramps_df: pd.DataFrame) -> List[str]:
-        return [
-            str(col).removesuffix("_ramp_up")
-            for col in ramps_df.columns
-            if str(col).endswith("_ramp_up")
+    def _set_block_structure(self, block_structure: BlockStructure) -> None:
+        """Copy shared block/physical-generator mappings onto this model."""
+        self.block_names = list(block_structure.block_names)
+        self.num_blocks = len(self.block_names)
+        self.physical_generator_names = list(block_structure.physical_generator_names)
+        self.num_physical_generators = len(self.physical_generator_names)
+        self.generator_names = list(self.physical_generator_names)
+        self.block_to_physical = dict(block_structure.block_to_physical)
+        self.block_to_physical_idx = list(block_structure.block_to_physical_idx)
+        self.physical_to_block_indices = [
+            list(blocks) for blocks in block_structure.physical_to_block_indices
         ]
-
-    def _initialize_block_mappings(self) -> None:
-        """Build physical-generator/block index mappings used by the ED model."""
-        physical_idx_by_name = {
-            name: idx
-            for idx, name in enumerate(self.physical_generator_names)
+        self.blocks_by_generator = {
+            int(generator_idx): list(block_indices)
+            for generator_idx, block_indices in block_structure.blocks_by_generator.items()
         }
-
-        self.block_to_physical: Dict[str, str] = {}
-        self.block_to_physical_idx: List[int] = []
-        self.physical_to_block_indices: List[List[int]] = [
-            [] for _ in self.physical_generator_names
-        ]
-
-        for block_idx, block_name in enumerate(self.block_names):
-            physical_name = self._infer_physical_from_block_name(block_name)
-            if physical_name not in physical_idx_by_name:
-                raise ValueError(
-                    f"Block '{block_name}' maps to physical generator '{physical_name}', "
-                    "but no matching ramp columns were found."
-                )
-
-            physical_idx = physical_idx_by_name[physical_name]
-            self.block_to_physical[block_name] = physical_name
-            self.block_to_physical_idx.append(physical_idx)
-            self.physical_to_block_indices[physical_idx].append(block_idx)
-
-        self.blocks_by_generator: Dict[int, List[int]] = {
-            generator_idx: list(block_indices)
-            for generator_idx, block_indices in enumerate(self.physical_to_block_indices)
+        self.local_blocks_by_generator = {
+            int(generator_idx): list(block_indices)
+            for generator_idx, block_indices in block_structure.local_blocks_by_generator.items()
         }
-        self.local_blocks_by_generator: Dict[int, List[int]] = {
-            generator_idx: list(range(len(block_indices)))
-            for generator_idx, block_indices in self.blocks_by_generator.items()
-        }
-        self.local_to_global_block: Dict[Tuple[int, int], int] = {
-            (generator_idx, local_block_idx): global_block_idx
-            for generator_idx, block_indices in self.blocks_by_generator.items()
-            for local_block_idx, global_block_idx in enumerate(block_indices)
-        }
-        self.global_to_local_block: Dict[int, Tuple[int, int]] = {
-            global_block_idx: local_block
-            for local_block, global_block_idx in self.local_to_global_block.items()
-        }
-        self.generator_block_pairs: List[Tuple[int, int]] = list(self.local_to_global_block)
+        self.local_to_global_block = dict(block_structure.local_to_global_block)
+        self.global_to_local_block = dict(block_structure.global_to_local_block)
+        self.generator_block_pairs = list(block_structure.generator_block_pairs)
 
     def _extract_data(self, scenarios_df: pd.DataFrame, costs_df: pd.DataFrame, ramps_df: pd.DataFrame,
                       pmin_default: float) -> None:
         """Extract scenario and generator data from DataFrames."""
-
-        #Demand column
-        demand_profile_col = 'demand_profile'
-
-        # Capacity columns
-        capacity_cols = [col for col in scenarios_df.columns if col.endswith('_cap')]
-
-        # Get the block names by stripping the '_cap' suffix from the capacity columns
-        self.block_names = [col.replace('_cap', '') for col in capacity_cols]
-        self.num_blocks = len(self.block_names)
-
-        # Get physical generator names from ramps_df _BxXx_
-        ramp_physical_names = self._ramp_physical_names(ramps_df)
-        self.physical_generator_names = ramp_physical_names
-
-        # Get number of generators and names
-        self.num_physical_generators = len(self.physical_generator_names)
-        self.generator_names = list(self.physical_generator_names)
-
-        # Number of scenarios
+        demand_profile_col = find_demand_profile_column(scenarios_df)
+        self._set_block_structure(block_structure_from_dataframes(scenarios_df, ramps_df))
         self.num_scenarios = len(scenarios_df)
-
-        # Number of time steps - get from the first scenario
-        self.num_time_steps = int(scenarios_df['time_steps'].iloc[0])
+        self.num_time_steps = infer_num_time_steps(scenarios_df)
 
         # Extract per-scenario data
         self.demand_scenarios: List[List[float]] = []
@@ -175,11 +120,8 @@ class EconomicDispatchModel:
         self.pmin_scenarios = []
         self.bid_scenarios = []
 
-        # Make the block mapping from helper function
-        self._initialize_block_mappings()
-
-        for _, row in scenarios_df.iterrows():
-            demand_profile = self._convert_profile(
+        for scenario_id, (_, row) in enumerate(scenarios_df.iterrows()):
+            demand_profile = parse_profile_exact_length(
                 row[demand_profile_col],
                 self.num_time_steps,
                 demand_profile_col,
@@ -196,19 +138,15 @@ class EconomicDispatchModel:
                 bid_t = []
 
                 for block in self.block_names:
-                    cap = float(row[f"{block}_cap"])
-                    if f"{block}_profile" in scenarios_df.columns:
-                        wind_profile = self._convert_profile(
-                            row[f"{block}_profile"],
-                            self.num_time_steps,
-                            f"{block}_profile",
-                        )
-                        cap = wind_profile[t]
-
-                    pmax_t.append(cap)
+                    pmax_t.append(available_block_capacity(scenarios_df, block, scenario_id, t))
                     pmin_t.append(float(pmin_default))
                     bid_profile_col = f"{block}_bid_profile"
-                    bid_profile = self._ensure_profile(row[bid_profile_col], self.num_time_steps, bid_profile_col)
+                    bid_col = (
+                        bid_profile_col
+                        if bid_profile_col in scenarios_df.columns
+                        else f"{block}_bid"
+                    )
+                    bid_profile = ensure_profile(row[bid_col], self.num_time_steps, bid_col)
                     bid_t.append(float(bid_profile[t]))
 
                 pmax_scenario_by_time.append(pmax_t)
@@ -220,14 +158,12 @@ class EconomicDispatchModel:
             self.bid_scenarios.append(bid_scenario_by_time)
 
         # Extract static block costs and physical ramp limits.
-        self.cost_vector = [float(costs_df[f"{block}_cost"].iloc[0]) for block in self.block_names]
+        self.cost_vector = block_cost_vector(costs_df, self.block_names)
         self.block_cost_vector = list(self.cost_vector)
-
-        self.ramp_vector_up = []
-        self.ramp_vector_down = []
-        for physical in self.physical_generator_names:
-            self.ramp_vector_up.append(float(ramps_df[f"{physical}_ramp_up"].iloc[0]))
-            self.ramp_vector_down.append(float(ramps_df[f"{physical}_ramp_down"].iloc[0]))
+        self.ramp_vector_up, self.ramp_vector_down = ramp_vectors(
+            ramps_df,
+            self.physical_generator_names,
+        )
 
     def _normalize_p_init(self, p_init: List[List[float]]) -> List[List[float]]:
         """Return physical initial output as [scenario][physical_generator]."""
@@ -266,12 +202,7 @@ class EconomicDispatchModel:
         index for physical generator i. Flattened block results are reconstructed
         after the solve for compatibility with the sensitivity code and scripts.
         """
-        self.dispatches = None
-        self.block_dispatches = None
-        self.block_dispatches_by_generator = None
-        self.physical_dispatches = None
-        self.clearing_prices = None
-        self.dual_variables = None
+        self._reset_results()
 
         model = ConcreteModel()
 
@@ -342,99 +273,155 @@ class EconomicDispatchModel:
         results = solver.solve(model, tee=False)
 
         if (results.solver.status == 'ok') and (results.solver.termination_condition == 'optimal'):
-            self.dispatches = []
-            self.block_dispatches = []
-            self.block_dispatches_by_generator = []
-            self.physical_dispatches = []
-            self.clearing_prices = []
-            self.dual_variables = {
-                "lambda": [],
-                "mu_max": [],
-                "mu_min": [],
-                "mu_up": [],
-                "mu_down": [],
-            }
-            for s in range(self.num_scenarios):
-                scenario_dispatch = []
-                scenario_prices = []
-                scenario_lambda = []
-                scenario_mu_max = []
-                scenario_mu_min = []
-                scenario_mu_up = []
-                scenario_mu_down = []
-                scenario_block_dispatch = []
-                scenario_block_dispatch_by_generator = []
-                for t in range(self.num_time_steps):
-                    block_dispatch_t = [0.0] * self.num_blocks
-                    block_dispatch_by_generator_t = []
-                    for i in range(self.num_physical_generators):
-                        generator_blocks_t = []
-                        for local_block in self.local_blocks_by_generator[i]:
-                            global_block = self.local_to_global_block[(i, local_block)]
-                            value = model.P[i, local_block, t, s].value
-                            block_dispatch_t[global_block] = value
-                            generator_blocks_t.append(value)
-                        block_dispatch_by_generator_t.append(generator_blocks_t)
-                    physical_dispatch_t = [
-                        sum(block_dispatch_t[b] for b in block_indices)
-                        for block_indices in self.physical_to_block_indices
-                    ]
-                    scenario_block_dispatch.append(block_dispatch_t)
-                    scenario_block_dispatch_by_generator.append(block_dispatch_by_generator_t)
-                    scenario_dispatch.append(physical_dispatch_t)
-                    balance_dual = self._scaled_dual(model, model.power_balance[t, s])
-                    kkt_lambda = -balance_dual
-                    scenario_lambda.append(kkt_lambda)
-                    scenario_prices.append(kkt_lambda)
-
-                    mu_max_t = []
-                    mu_min_t = []
-                    for global_block in range(self.num_blocks):
-                        generator_idx, local_block = self.global_to_local_block[global_block]
-                        mu_max_t.append(
-                            self._nonnegative_scaled_dual(
-                                model,
-                                model.gen_max[generator_idx, local_block, t, s],
-                            )
-                        )
-                        mu_min_t.append(
-                            self._nonnegative_scaled_dual(
-                                model,
-                                model.gen_min[generator_idx, local_block, t, s],
-                            )
-                        )
-                    scenario_mu_max.append(mu_max_t)
-                    scenario_mu_min.append(mu_min_t)
-                    scenario_mu_up.append([
-                        self._nonnegative_scaled_dual(
-                            model,
-                            model.ramp_up_initial[i, s] if (t == 0 and self.P_init is not None) else model.ramp_up[i, t, s],
-                        )
-                        if not (t == 0 and self.P_init is None) else 0.0
-                        for i in range(self.num_physical_generators)
-                    ])
-                    scenario_mu_down.append([
-                        self._nonnegative_scaled_dual(
-                            model,
-                            model.ramp_down_initial[i, s] if (t == 0 and self.P_init is not None) else model.ramp_down[i, t, s],
-                        )
-                        if not (t == 0 and self.P_init is None) else 0.0
-                        for i in range(self.num_physical_generators)
-                    ])
-
-                self.block_dispatches.append(scenario_block_dispatch)
-                self.block_dispatches_by_generator.append(scenario_block_dispatch_by_generator)
-                self.physical_dispatches.append(scenario_dispatch)
-                self.dispatches.append(scenario_dispatch)
-                self.clearing_prices.append(scenario_prices)
-                self.dual_variables["lambda"].append(scenario_lambda)
-                self.dual_variables["mu_max"].append(scenario_mu_max)
-                self.dual_variables["mu_min"].append(scenario_mu_min)
-                self.dual_variables["mu_up"].append(scenario_mu_up)
-                self.dual_variables["mu_down"].append(scenario_mu_down)
+            self._store_solution_results(model)
         else:
             print("Solver status:", results.solver.status)
             print("Termination condition:", results.solver.termination_condition)
+
+    def _reset_results(self) -> None:
+        self.dispatches = None
+        self.block_dispatches = None
+        self.block_dispatches_by_generator = None
+        self.physical_dispatches = None
+        self.clearing_prices = None
+        self.dual_variables = None
+
+    def _block_dispatch_at(
+        self,
+        model: ConcreteModel,
+        scenario_id: int,
+        time_id: int,
+    ) -> Tuple[List[float], List[List[float]]]:
+        """Read flattened and generator-local block dispatch for one time step."""
+        block_dispatch = [0.0] * self.num_blocks
+        block_dispatch_by_generator = []
+        for generator_idx in range(self.num_physical_generators):
+            generator_blocks = []
+            for local_block in self.local_blocks_by_generator[generator_idx]:
+                global_block = self.local_to_global_block[(generator_idx, local_block)]
+                value = model.P[generator_idx, local_block, time_id, scenario_id].value
+                block_dispatch[global_block] = value
+                generator_blocks.append(value)
+            block_dispatch_by_generator.append(generator_blocks)
+        return block_dispatch, block_dispatch_by_generator
+
+    def _physical_dispatch_from_blocks(self, block_dispatch: List[float]) -> List[float]:
+        return [
+            sum(block_dispatch[block_idx] for block_idx in block_indices)
+            for block_indices in self.physical_to_block_indices
+        ]
+
+    def _capacity_duals_at(
+        self,
+        model: ConcreteModel,
+        scenario_id: int,
+        time_id: int,
+    ) -> Tuple[List[float], List[float]]:
+        mu_max = []
+        mu_min = []
+        for global_block in range(self.num_blocks):
+            generator_idx, local_block = self.global_to_local_block[global_block]
+            mu_max.append(
+                self._nonnegative_scaled_dual(
+                    model,
+                    model.gen_max[generator_idx, local_block, time_id, scenario_id],
+                )
+            )
+            mu_min.append(
+                self._nonnegative_scaled_dual(
+                    model,
+                    model.gen_min[generator_idx, local_block, time_id, scenario_id],
+                )
+            )
+        return mu_max, mu_min
+
+    def _ramp_duals_at(
+        self,
+        model: ConcreteModel,
+        scenario_id: int,
+        time_id: int,
+    ) -> Tuple[List[float], List[float]]:
+        if time_id == 0 and self.P_init is None:
+            zeros = [0.0] * self.num_physical_generators
+            return zeros, list(zeros)
+
+        mu_up = []
+        mu_down = []
+        for generator_idx in range(self.num_physical_generators):
+            ramp_up_constraint = (
+                model.ramp_up_initial[generator_idx, scenario_id]
+                if time_id == 0
+                else model.ramp_up[generator_idx, time_id, scenario_id]
+            )
+            ramp_down_constraint = (
+                model.ramp_down_initial[generator_idx, scenario_id]
+                if time_id == 0
+                else model.ramp_down[generator_idx, time_id, scenario_id]
+            )
+            mu_up.append(self._nonnegative_scaled_dual(model, ramp_up_constraint))
+            mu_down.append(self._nonnegative_scaled_dual(model, ramp_down_constraint))
+        return mu_up, mu_down
+
+    def _store_solution_results(self, model: ConcreteModel) -> None:
+        """Populate dispatch, price, and dual result containers after an optimal solve."""
+        self.dispatches = []
+        self.block_dispatches = []
+        self.block_dispatches_by_generator = []
+        self.physical_dispatches = []
+        self.clearing_prices = []
+        self.dual_variables = {
+            "lambda": [],
+            "mu_max": [],
+            "mu_min": [],
+            "mu_up": [],
+            "mu_down": [],
+        }
+
+        for scenario_id in range(self.num_scenarios):
+            scenario_dispatch = []
+            scenario_prices = []
+            scenario_lambda = []
+            scenario_mu_max = []
+            scenario_mu_min = []
+            scenario_mu_up = []
+            scenario_mu_down = []
+            scenario_block_dispatch = []
+            scenario_block_dispatch_by_generator = []
+
+            for time_id in range(self.num_time_steps):
+                block_dispatch, block_dispatch_by_generator = self._block_dispatch_at(
+                    model,
+                    scenario_id,
+                    time_id,
+                )
+                scenario_block_dispatch.append(block_dispatch)
+                scenario_block_dispatch_by_generator.append(block_dispatch_by_generator)
+                scenario_dispatch.append(self._physical_dispatch_from_blocks(block_dispatch))
+
+                kkt_lambda = -self._scaled_dual(
+                    model,
+                    model.power_balance[time_id, scenario_id],
+                )
+                scenario_lambda.append(kkt_lambda)
+                scenario_prices.append(kkt_lambda)
+
+                mu_max, mu_min = self._capacity_duals_at(model, scenario_id, time_id)
+                mu_up, mu_down = self._ramp_duals_at(model, scenario_id, time_id)
+                scenario_mu_max.append(mu_max)
+                scenario_mu_min.append(mu_min)
+                scenario_mu_up.append(mu_up)
+                scenario_mu_down.append(mu_down)
+
+            self.block_dispatches.append(scenario_block_dispatch)
+            self.block_dispatches_by_generator.append(scenario_block_dispatch_by_generator)
+            self.physical_dispatches.append(scenario_dispatch)
+            self.dispatches.append(scenario_dispatch)
+            self.clearing_prices.append(scenario_prices)
+            self.dual_variables["lambda"].append(scenario_lambda)
+            self.dual_variables["mu_max"].append(scenario_mu_max)
+            self.dual_variables["mu_min"].append(scenario_mu_min)
+            self.dual_variables["mu_up"].append(scenario_mu_up)
+            self.dual_variables["mu_down"].append(scenario_mu_down)
 
     def _scaled_dual(self, model: ConcreteModel, constraint: Constraint) -> float:
         """

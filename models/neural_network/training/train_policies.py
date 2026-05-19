@@ -19,9 +19,9 @@ FEATURE_DIR = Path("models/neural_network/features/generated/normalized")
 MODEL_DIR = Path("models/neural_network/training/trained_models")
 RESULT_DIR = Path("models/neural_network/training/training_results")
 
-HIDDEN_LAYERS = [5, 5]
+HIDDEN_LAYERS = [11, 11]
 LEARNING_RATE = 1e-3
-BATCH_SIZE = 64
+BATCH_SIZE = 128
 NUM_EPOCHS = 500
 WEIGHT_DECAY = 0.0
 TEST_SIZE = 0.2

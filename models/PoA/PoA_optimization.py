@@ -2200,7 +2200,17 @@ class PoAOptimization:
             lambda_var = getattr(m, lambda_name, None)
             if lambda_var is None:
                 continue
+            lambda_entries = (self.lambda_bounds or {}).get(lambda_name, {}) or {}
             for t in m.time_steps:
+                details = (
+                    lambda_entries.get(str(int(t)), lambda_entries.get(int(t)))
+                    if isinstance(lambda_entries, dict)
+                    else None
+                )
+                has_report_bound = isinstance(details, dict) and (
+                    self._optional_float_bound(details.get("lower")) is not None
+                    or self._optional_float_bound(details.get("upper")) is not None
+                )
                 lower = self._lambda_lower_bound(int(t), lambda_name)
                 upper = self._lambda_upper_bound(int(t), lambda_name)
                 current_lb = lambda_var[t].lb
@@ -2218,7 +2228,7 @@ class PoAOptimization:
                     )
                     lambda_var[t].setlb(lower)
                     lambda_var[t].setub(upper)
-                    if changed:
+                    if has_report_bound or changed:
                         applied += 1
         return applied
 
