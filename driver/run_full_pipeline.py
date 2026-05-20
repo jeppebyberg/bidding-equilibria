@@ -24,6 +24,7 @@ from models.PoA.PoA_optimization import PoAOptimization
 from models.PoA.PoA_tightening.bidding_blocks_tightening import (
     BiddingBlocksTighteningOptimizer,
 )
+from models.PoA.PoA_tightening.nn_relu_bounds import NNReLUBoundsOptimizer
 from models.synthetic_data_generation.merit_order_best_response import MeritOrderHeuristic
 
 
@@ -99,12 +100,17 @@ class FullPipelineConfig:
     preprocessing_time_limit: int = 200
     poa_time_limit: int = 400
     epsilon: float = 1e-6
+    # Parallelizes the independent tightening submodels inside the three PoA
+    # preprocessing stages. Keep Gurobi threads low when workers > 1.
+    poa_parallel_workers: int = 1
+    poa_solver_threads_per_worker: int | None = None
 
     # Step toggles. Turn expensive stages off when reusing previous outputs.
     run_scenario_generation: bool = True
     run_heuristic_labels: bool = True
     run_feature_building: bool = True
     run_nn_training: bool = True
+    run_poa_nn_relu_bounds: bool = True
     run_poa_alpha_bounds: bool = True
     run_poa_slack_binary_fix: bool = True
     run_poa_dual_big_m: bool = True
@@ -128,6 +134,10 @@ class FullPipelineConfig:
     @property
     def alpha_bounds_path(self) -> Path:
         return self.poa_result_dir / f"poa_bidding_blocks_alpha_bounds_T{self.horizon}.json"
+
+    @property
+    def nn_relu_bounds_path(self) -> Path:
+        return self.poa_result_dir / f"poa_nn_relu_bounds_report_T{self.horizon}.json"
 
     @property
     def slack_report_path(self) -> Path:
@@ -171,6 +181,7 @@ def main(config: FullPipelineConfig) -> None:
 
     if any(
         [
+            config.run_poa_nn_relu_bounds,
             config.run_poa_alpha_bounds,
             config.run_poa_slack_binary_fix,
             config.run_poa_dual_big_m,
@@ -187,6 +198,8 @@ def main(config: FullPipelineConfig) -> None:
             time_steps=config.poa_time_steps,
         )
 
+    if config.run_poa_nn_relu_bounds:
+        run_nn_relu_bounds(config)
     if config.run_poa_alpha_bounds:
         run_alpha_bounds(config)
     if config.run_poa_slack_binary_fix:
@@ -209,7 +222,7 @@ def print_pipeline_header(config: FullPipelineConfig) -> None:
         f"  poa_regime_set={config.poa_regime_set}, seed={config.poa_seed}\n"
         f"  hidden_layers={config.hidden_layers}, epochs={config.num_epochs}, "
         f"batch_size={config.batch_size}\n"
-        f"  solver={config.solver_name}"
+        f"  solver={config.solver_name}, poa_parallel_workers={config.poa_parallel_workers}"
     )
 
 
@@ -448,6 +461,37 @@ def build_poa_optimizer(
     )
 
 
+def run_nn_relu_bounds(config: FullPipelineConfig) -> Path:
+    optimizer = build_poa_optimizer(config, NNReLUBoundsOptimizer)
+    start = time.perf_counter()
+    output_path = optimizer.save_nn_relu_bounds_report(
+        output_path=config.nn_relu_bounds_path,
+        solver_name=config.solver_name,
+        time_limit=config.preprocessing_time_limit,
+        tee=False,
+    )
+    elapsed = time.perf_counter() - start
+
+    summary = optimizer.summarize_nn_relu_bounds()
+    total_fixed = sum(
+        int(details.get("num_active", 0)) + int(details.get("num_inactive", 0))
+        for details in summary.values()
+    )
+
+    print(f"\nNN ReLU preactivation-bound report complete: {output_path}")
+    print(f"NN ReLU bound runtime: {elapsed:.2f} seconds")
+    for generator_name in optimizer.nn_policy_generator_names:
+        details = summary.get(generator_name, {})
+        print(
+            f"  {generator_name}: "
+            f"active={int(details.get('num_active', 0))}, "
+            f"inactive={int(details.get('num_inactive', 0))}, "
+            f"ambiguous={int(details.get('num_ambiguous', 0))}"
+        )
+    print(f"Total fixed NN ReLU binaries: {total_fixed}")
+    return output_path
+
+
 def run_alpha_bounds(config: FullPipelineConfig) -> Path:
     optimizer = build_poa_optimizer(config, BiddingBlocksTighteningOptimizer)
     start = time.perf_counter()
@@ -455,6 +499,9 @@ def run_alpha_bounds(config: FullPipelineConfig) -> Path:
         solver_name=config.solver_name,
         time_limit=config.preprocessing_time_limit,
         tee=False,
+        parallel_workers=config.poa_parallel_workers,
+        solver_threads=config.poa_solver_threads_per_worker,
+        nn_relu_bounds_report_path=config.nn_relu_bounds_path,
     )
     elapsed = time.perf_counter() - start
 
@@ -494,6 +541,8 @@ def run_slack_binary_fix(config: FullPipelineConfig) -> Path:
         solver_name=config.solver_name,
         time_limit=config.preprocessing_time_limit,
         tee=False,
+        parallel_workers=config.poa_parallel_workers,
+        solver_threads=config.poa_solver_threads_per_worker,
     )
     output_path = optimizer.save_tightening_report(config.slack_report_path)
     elapsed = time.perf_counter() - start
@@ -515,6 +564,8 @@ def run_dual_big_m(config: FullPipelineConfig) -> Path:
         solver_name=config.solver_name,
         time_limit=config.preprocessing_time_limit,
         tee=False,
+        parallel_workers=config.poa_parallel_workers,
+        solver_threads=config.poa_solver_threads_per_worker,
     )
     output_path = optimizer.save_tightening_report(config.tightening_report_path)
     elapsed = time.perf_counter() - start
@@ -527,14 +578,19 @@ def run_dual_big_m(config: FullPipelineConfig) -> Path:
 def run_final_poa(config: FullPipelineConfig) -> Path:
     optimizer = build_poa_optimizer(config, PoAOptimization)
     start = time.perf_counter()
+    optimizer.load_nn_relu_bounds_report(config.nn_relu_bounds_path)
     optimizer.load_tightening_report(config.tightening_report_path)
     optimizer.build_model()
+    applied_nn_relu_stats = optimizer.apply_nn_relu_bounds_to_model()
     applied_stats = optimizer.apply_tightened_bounds_to_model()
     optimizer.solve(time_limit=config.poa_time_limit)
     output_path = optimizer.save_results(config.poa_results_path)
     elapsed = time.perf_counter() - start
 
     print(f"\nPoA optimization complete: {output_path}")
+    print(f"Applied active NN ReLU fixes: {applied_nn_relu_stats['delta_fixed_active']}")
+    print(f"Applied inactive NN ReLU fixes: {applied_nn_relu_stats['delta_fixed_inactive']}")
+    print(f"Ambiguous NN ReLUs left binary: {applied_nn_relu_stats['delta_left_ambiguous']}")
     print(f"Applied fixed binaries: {applied_stats['fixed_binaries']}")
     print(f"Applied lambda bounds: {applied_stats['lambda_bounds']}")
     print(f"Applied dual upper bounds: {applied_stats['dual_upper_bounds']}")
@@ -569,6 +625,8 @@ if __name__ == "__main__":
         poa_time_steps=None,
         horizon=6,
         poa_time_limit = None,
+        poa_parallel_workers=6,
+        poa_solver_threads_per_worker=1,
         support_set_config_name="test_case_bidding_blocks_base",
         poa_context_scenarios_per_regime={
             "normal": 1,
@@ -601,13 +659,14 @@ if __name__ == "__main__":
         patience=50,
 
         # Toggle expensive stages when reusing previous outputs.
-        run_scenario_generation=True,
-        run_heuristic_labels=True,
+        run_scenario_generation=False,
+        run_heuristic_labels=False,
         run_feature_building=False,
         run_nn_training=False,
+        run_poa_nn_relu_bounds=False,
         run_poa_alpha_bounds=False,
         run_poa_slack_binary_fix=False,
         run_poa_dual_big_m=False,
-        run_poa_optimization=False,
+        run_poa_optimization=True,
     )
     main(run_config)

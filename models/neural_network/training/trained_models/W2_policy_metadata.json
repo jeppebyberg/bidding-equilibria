@@ -1,7 +1,7 @@
 {
   "generator_name": "W2",
   "input_dim": 8,
-  "output_dim": 2,
+  "output_dim": 1,
   "feature_columns": [
     "demand",
     "total_wind_generation_capacity",
@@ -13,8 +13,7 @@
     "next_own_generation_capacity"
   ],
   "target_columns": [
-    "target_bid_W2_B1",
-    "target_bid_W2_B2"
+    "target_bid_W2_B1"
   ],
   "hidden_layers": [
     11,
@@ -25,9 +24,9 @@
   "train_size": 30720,
   "test_size": 7680,
   "test_fraction": 0.2,
-  "num_epochs_trained": 133,
-  "best_epoch": 83,
-  "best_test_loss": 0.00018417639492511738,
+  "num_epochs_trained": 59,
+  "best_epoch": 9,
+  "best_test_loss": 6.82293769038722e-08,
   "learning_rate": 0.001,
   "batch_size": 32,
   "weight_decay": 0.0,

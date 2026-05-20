@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 import pandas as pd
@@ -199,6 +199,58 @@ def build_block_structure(
         global_to_local_block=global_to_local_block,
         generator_block_pairs=list(local_to_global_block),
     )
+
+
+def target_columns_to_local_blocks(
+    generator_name: str,
+    target_columns: Sequence[str],
+    block_names: Sequence[str],
+    physical_generator_names: Sequence[str],
+    global_to_local_block: Mapping[int, tuple[int, int]],
+    local_blocks_by_generator: Mapping[int, Sequence[int]],
+    target_column_prefix: str = "target_bid_",
+) -> dict[int, int]:
+    """Map NN target bid columns to local block indices for one generator."""
+    block_names = [str(name) for name in block_names]
+    physical_generator_names = [str(name) for name in physical_generator_names]
+    generator_name = str(generator_name)
+    if generator_name not in physical_generator_names:
+        raise ValueError(
+            f"Unknown generator '{generator_name}'. "
+            f"Available: {physical_generator_names}"
+        )
+
+    generator_idx = physical_generator_names.index(generator_name)
+    output_to_local_block: dict[int, int] = {}
+    seen_local_blocks: set[int] = set()
+    for output_idx, column in enumerate(target_columns):
+        column = str(column)
+        if not column.startswith(target_column_prefix):
+            raise ValueError(
+                f"{generator_name}: target column must start with "
+                f"'{target_column_prefix}': {column}"
+            )
+        block_name = column.removeprefix(target_column_prefix)
+        if block_name not in block_names:
+            raise ValueError(f"{generator_name}: unknown target block '{block_name}'")
+
+        global_block = block_names.index(block_name)
+        block_generator_idx, local_block = global_to_local_block[global_block]
+        if block_generator_idx != generator_idx:
+            raise ValueError(
+                f"{generator_name}: target block '{block_name}' belongs to "
+                f"{physical_generator_names[block_generator_idx]}"
+            )
+        output_to_local_block[output_idx] = int(local_block)
+        seen_local_blocks.add(int(local_block))
+
+    expected = set(int(block) for block in local_blocks_by_generator[generator_idx])
+    if seen_local_blocks != expected:
+        raise ValueError(
+            f"{generator_name}: target columns must cover local blocks "
+            f"{sorted(expected)}, got {sorted(seen_local_blocks)}"
+        )
+    return output_to_local_block
 
 
 def block_structure_from_dataframes(

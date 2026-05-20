@@ -1,9 +1,248 @@
 ﻿from pathlib import Path
 import json
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pyomo.environ import *
 from typing import Any, Optional
 
 from models.PoA.PoA_optimization import PoAOptimization
+
+
+_PARALLEL_OPTIMIZER: Optional["BiddingBlocksTighteningOptimizer"] = None
+
+
+def _initialize_parallel_optimizer(state: dict[str, Any]) -> None:
+    global _PARALLEL_OPTIMIZER
+    _PARALLEL_OPTIMIZER = BiddingBlocksTighteningOptimizer(
+        scenarios_df=state["scenarios_df"],
+        costs_df=state["costs_df"],
+        ramps_df=state["ramps_df"],
+        p_init=state["p_init"],
+        num_time_steps=state["num_time_steps"],
+        support_set_config=state["support_set_config"],
+        nn_model_dir=state["nn_model_dir"],
+        nn_normalization_stats_path=state["nn_normalization_stats_path"],
+        nn_policy_generators=state["nn_policy_generators"],
+        reference_case=state["reference_case"],
+    )
+    for attr_name in (
+        "alpha_bounds",
+        "fixed_binaries",
+        "lambda_bounds",
+        "tight_big_m",
+        "aggregate_dual_bounds",
+    ):
+        if attr_name in state:
+            setattr(_PARALLEL_OPTIMIZER, attr_name, state[attr_name])
+    if state.get("nn_relu_bounds_report"):
+        _PARALLEL_OPTIMIZER._set_nn_relu_bounds_from_report(
+            state["nn_relu_bounds_report"]
+        )
+
+
+def _get_parallel_optimizer() -> "BiddingBlocksTighteningOptimizer":
+    if _PARALLEL_OPTIMIZER is None:
+        raise RuntimeError("Parallel optimizer worker was not initialized")
+    return _PARALLEL_OPTIMIZER
+
+
+def _bound_sense(bound_name: str) -> Any:
+    if bound_name == "lower":
+        return minimize
+    if bound_name == "upper":
+        return maximize
+    raise ValueError(f"Unknown bound name: {bound_name}")
+
+
+def _solve_parallel_alpha_bound(task: tuple[Any, ...]) -> dict[str, Any]:
+    index, bound_name, solver_name, time_limit, tee, solver_options = task
+    optimizer = _get_parallel_optimizer()
+    m = optimizer._build_alpha_bound_model()
+    alpha_expr = m.alpha[index]
+    m.tightening_objective = Objective(expr=alpha_expr, sense=_bound_sense(bound_name))
+    solved, results = optimizer._solve_tightening_model(
+        m,
+        solver_name=solver_name,
+        time_limit=time_limit,
+        tee=tee,
+        solver_options=solver_options,
+    )
+    return {
+        "index": index,
+        "bound_name": bound_name,
+        "value": optimizer._safe_value(alpha_expr) if solved else None,
+        "termination_condition": str(results.solver.termination_condition),
+    }
+
+
+def _solve_parallel_lambda_bound(task: tuple[Any, ...]) -> dict[str, Any]:
+    side, time_idx, bound_name, solver_name, time_limit, tee, solver_options = task
+    optimizer = _get_parallel_optimizer()
+    lambda_name = optimizer._lambda_name(side)
+    m = optimizer._build_side_kkt_model(
+        side=side,
+        alpha_bounds=optimizer.alpha_bounds,
+        include_complementarity=True,
+        fixed_binaries=optimizer.fixed_binaries,
+    )
+    lambda_expr = getattr(m, lambda_name)[int(time_idx)]
+    m.tightening_objective = Objective(expr=lambda_expr, sense=_bound_sense(bound_name))
+    solved, results = optimizer._solve_tightening_model(
+        m,
+        solver_name=solver_name,
+        time_limit=time_limit,
+        tee=tee,
+        solver_options=solver_options,
+    )
+    return {
+        "side": side,
+        "time_idx": int(time_idx),
+        "lambda_name": lambda_name,
+        "bound_name": bound_name,
+        "value": optimizer._safe_value(lambda_expr) if solved else None,
+        "termination_condition": str(results.solver.termination_condition),
+    }
+
+
+def _classify_slack_result(
+    termination: Any,
+    incumbent_slack: Optional[float],
+    epsilon: float,
+    zero_slack_tol: float,
+) -> tuple[str, Optional[float], bool]:
+    is_optimal = termination in {
+        TerminationCondition.optimal,
+        TerminationCondition.locallyOptimal,
+        TerminationCondition.globallyOptimal,
+    }
+    if incumbent_slack is not None and incumbent_slack <= zero_slack_tol:
+        minimum_slack = 0.0 if incumbent_slack < 0.0 else float(incumbent_slack)
+        return "zero_slack_feasible", minimum_slack, False
+    if is_optimal and incumbent_slack is not None:
+        minimum_slack = float(incumbent_slack)
+        return "positive_slack_optimal", minimum_slack, minimum_slack >= float(epsilon)
+    return "undetermined", None, False
+
+
+def _solve_parallel_slack_obbt(task: tuple[Any, ...]) -> dict[str, Any]:
+    (
+        side,
+        constraint_type,
+        index,
+        epsilon,
+        zero_slack_tol,
+        early_stop_enabled,
+        relax_complementarity,
+        solver_name,
+        time_limit,
+        tee,
+        solver_options,
+    ) = task
+    optimizer = _get_parallel_optimizer()
+    m = optimizer._build_side_kkt_model(
+        side=side,
+        alpha_bounds=optimizer.alpha_bounds,
+        include_complementarity=not relax_complementarity,
+        fixed_binaries=optimizer.fixed_binaries,
+    )
+    slack_expr = optimizer._slack_expression(m, side, constraint_type, index)
+    m.target_slack = Var(domain=NonNegativeReals)
+    m.target_slack_definition = Constraint(expr=m.target_slack == slack_expr)
+    m.tightening_objective = Objective(expr=m.target_slack, sense=minimize)
+
+    task_solver_options = dict(solver_options or {})
+    if early_stop_enabled:
+        task_solver_options["BestObjStop"] = zero_slack_tol
+
+    _solved, results = optimizer._solve_tightening_model(
+        m,
+        solver_name=solver_name,
+        time_limit=time_limit,
+        tee=tee,
+        solver_options=task_solver_options or None,
+    )
+    termination = results.solver.termination_condition
+    incumbent_slack = optimizer._safe_value(m.target_slack)
+    result_classification, minimum_slack, is_inactive = _classify_slack_result(
+        termination=termination,
+        incumbent_slack=incumbent_slack,
+        epsilon=epsilon,
+        zero_slack_tol=zero_slack_tol,
+    )
+    return {
+        "side": side,
+        "constraint_type": constraint_type,
+        "index": index,
+        "minimum_slack": minimum_slack,
+        "incumbent_slack_objective": incumbent_slack,
+        "robustly_inactive": bool(is_inactive),
+        "early_stop_enabled": early_stop_enabled,
+        "slack_stop_tolerance": zero_slack_tol,
+        "termination_condition": str(termination),
+        "result_classification": result_classification,
+    }
+
+
+def _solve_parallel_dual_big_m(task: tuple[Any, ...]) -> dict[str, Any]:
+    side, constraint_type, index, solver_name, time_limit, tee, solver_options = task
+    optimizer = _get_parallel_optimizer()
+    dual_name = optimizer._dual_name(side, constraint_type)
+    m = optimizer._build_side_kkt_model(
+        side=side,
+        alpha_bounds=optimizer.alpha_bounds,
+        include_complementarity=True,
+        fixed_binaries=optimizer.fixed_binaries,
+    )
+    dual_expr = getattr(m, dual_name)[index]
+    m.tightening_objective = Objective(expr=dual_expr, sense=maximize)
+    solved, results = optimizer._solve_tightening_model(
+        m,
+        solver_name=solver_name,
+        time_limit=time_limit,
+        tee=tee,
+        solver_options=solver_options,
+    )
+    return {
+        "side": side,
+        "constraint_type": constraint_type,
+        "index": index,
+        "dual_name": dual_name,
+        "tight_big_m": optimizer._safe_value(dual_expr) if solved else None,
+        "termination_condition": str(results.solver.termination_condition),
+    }
+
+
+def _solve_parallel_aggregate_dual_bound(task: tuple[Any, ...]) -> dict[str, Any]:
+    side, constraint_type, time_idx, solver_name, time_limit, tee, solver_options = task
+    optimizer = _get_parallel_optimizer()
+    bound_key = optimizer._aggregate_dual_bound_key(constraint_type)
+    m = optimizer._build_side_kkt_model(
+        side=side,
+        alpha_bounds=optimizer.alpha_bounds,
+        include_complementarity=True,
+        fixed_binaries=optimizer.fixed_binaries,
+    )
+    aggregate_expr = optimizer._aggregate_dual_expression(
+        m,
+        side,
+        constraint_type,
+        time_idx,
+    )
+    m.tightening_objective = Objective(expr=aggregate_expr, sense=maximize)
+    solved, results = optimizer._solve_tightening_model(
+        m,
+        solver_name=solver_name,
+        time_limit=time_limit,
+        tee=tee,
+        solver_options=solver_options,
+    )
+    return {
+        "side": side,
+        "constraint_type": constraint_type,
+        "time_idx": int(time_idx),
+        "bound_key": bound_key,
+        "tight_big_m": optimizer._safe_value(aggregate_expr) if solved else None,
+        "termination_condition": str(results.solver.termination_condition),
+    }
 
 
 class BiddingBlocksTighteningOptimizer(PoAOptimization):
@@ -15,6 +254,47 @@ class BiddingBlocksTighteningOptimizer(PoAOptimization):
     """
     # Robust slack-based OBBT and Big-M tightening
     # ------------------------------------------------------------------
+
+    def _parallel_optimizer_state(self, **extra_state: Any) -> dict[str, Any]:
+        state = {
+            "scenarios_df": self.scenarios_df,
+            "costs_df": self.costs_df,
+            "ramps_df": self.ramps_df,
+            "p_init": self.requested_p_init,
+            "num_time_steps": self.num_time_steps,
+            "support_set_config": self.support_set_config,
+            "nn_model_dir": str(self.nn_model_dir) if self.nn_model_dir is not None else None,
+            "nn_normalization_stats_path": (
+                str(self.nn_normalization_stats_path)
+                if self.nn_normalization_stats_path is not None
+                else None
+            ),
+            "nn_policy_generators": list(self.nn_policy_generator_ids),
+            "reference_case": self.reference_case,
+            "nn_relu_bounds_report": getattr(self, "nn_relu_bounds_report", {}) or {},
+        }
+        state.update(extra_state)
+        return state
+
+    @staticmethod
+    def _resolve_parallel_workers(
+        parallel_workers: Optional[int],
+        total_tasks: int,
+    ) -> int:
+        if total_tasks <= 1 or parallel_workers is None:
+            return 1
+        return min(max(1, int(parallel_workers)), int(total_tasks))
+
+    @staticmethod
+    def _solver_options_with_threads(
+        solver_name: str,
+        solver_threads: Optional[int],
+        extra_options: Optional[dict[str, Any]] = None,
+    ) -> Optional[dict[str, Any]]:
+        options = dict(extra_options or {})
+        if solver_threads is not None and solver_name == "gurobi":
+            options["Threads"] = int(solver_threads)
+        return options or None
 
     def _build_tightening_sets(self) -> None:
         """
@@ -114,6 +394,9 @@ class BiddingBlocksTighteningOptimizer(PoAOptimization):
         solver_name: str = "gurobi",
         time_limit: Optional[float] = None,
         tee: bool = False,
+        parallel_workers: Optional[int] = 1,
+        solver_threads: Optional[int] = None,
+        nn_relu_bounds_report_path: Optional[str | Path] = None,
     ) -> dict[str, Any]:
         """
         Stage 1: compute exact support-set bid bounds.
@@ -131,6 +414,13 @@ class BiddingBlocksTighteningOptimizer(PoAOptimization):
         if self.nn_policy_generator_ids and not self.nn_policies:
             self._load_nn_policies()
             self._load_nn_normalization_stats()
+        if nn_relu_bounds_report_path is not None:
+            self.load_nn_relu_bounds_report(nn_relu_bounds_report_path)
+        if self.nn_policy_generator_ids and not self.nn_relu_bounds:
+            raise ValueError(
+                "NN ReLU bounds are required before computing certified alpha bounds. "
+                "Run compute_nn_relu_bounds.py first or pass nn_relu_bounds_report_path."
+            )
 
         alpha_bounds: dict[tuple[int, int, int], dict[str, float]] = {}
         optimization_results: dict[str, dict[str, Any]] = {}
@@ -141,7 +431,63 @@ class BiddingBlocksTighteningOptimizer(PoAOptimization):
         ]
         total_programs = 2 * len(targets)
         program_number = 0
+        solver_options = self._solver_options_with_threads(solver_name, solver_threads)
         print(f"\nAlpha-bound optimization programs: {total_programs}", flush=True)
+
+        workers = self._resolve_parallel_workers(parallel_workers, total_programs)
+        if workers > 1:
+            print(f"Running alpha-bound programs with {workers} worker processes", flush=True)
+            parallel_tasks = [
+                (index, bound_name, solver_name, time_limit, tee, solver_options)
+                for index in targets
+                for bound_name in ("lower", "upper")
+            ]
+            result_by_task: dict[tuple[tuple[int, int, int], str], dict[str, Any]] = {}
+            with ProcessPoolExecutor(
+                max_workers=workers,
+                initializer=_initialize_parallel_optimizer,
+                initargs=(self._parallel_optimizer_state(),),
+            ) as executor:
+                future_to_task = {
+                    executor.submit(_solve_parallel_alpha_bound, task): task
+                    for task in parallel_tasks
+                }
+                for completed, future in enumerate(as_completed(future_to_task), start=1):
+                    result = future.result()
+                    index = tuple(result["index"])
+                    bound_name = str(result["bound_name"])
+                    result_by_task[(index, bound_name)] = result
+                    action = "minimize" if bound_name == "lower" else "maximize"
+                    print(
+                        f"[Alpha done {completed}/{total_programs}] {action} "
+                        f"alpha{index} -> {result['value']} "
+                        f"({result['termination_condition']})",
+                        flush=True,
+                    )
+
+            for index in targets:
+                lower_upper: dict[str, Optional[float]] = {"lower": None, "upper": None}
+                for bound_name in ("lower", "upper"):
+                    result = result_by_task[(index, bound_name)]
+                    lower_upper[bound_name] = result["value"]
+                    optimization_results[f"{self._json_key(index)}:{bound_name}"] = {
+                        "value": result["value"],
+                        "termination_condition": result["termination_condition"],
+                    }
+                if lower_upper["lower"] is None or lower_upper["upper"] is None:
+                    raise RuntimeError(f"Could not compute alpha bounds for index {index}")
+                alpha_bounds[index] = {
+                    "lower": float(lower_upper["lower"]),
+                    "upper": float(lower_upper["upper"]),
+                }
+
+            self.alpha_bounds = alpha_bounds
+            self.alpha_bound_optimization_results = optimization_results
+            return {
+                "alpha_bounds": self._jsonify_indexed_dict(alpha_bounds),
+                "optimization_results": optimization_results,
+                "num_optimization_programs": total_programs,
+            }
 
         for index in targets:
             lower_upper: dict[str, Optional[float]] = {"lower": None, "upper": None}
@@ -161,6 +507,7 @@ class BiddingBlocksTighteningOptimizer(PoAOptimization):
                     solver_name=solver_name,
                     time_limit=time_limit,
                     tee=tee,
+                    solver_options=solver_options,
                 )
                 bound_value = self._safe_value(alpha_expr) if solved else None
                 lower_upper[bound_name] = bound_value
@@ -353,6 +700,8 @@ class BiddingBlocksTighteningOptimizer(PoAOptimization):
         solver_name: str = "gurobi",
         time_limit: Optional[float] = None,
         tee: bool = False,
+        parallel_workers: Optional[int] = 1,
+        solver_threads: Optional[int] = None,
     ) -> dict[str, Any]:
         """
         Maximize and minimize each price dual before the dual Big-M programs.
@@ -382,6 +731,61 @@ class BiddingBlocksTighteningOptimizer(PoAOptimization):
             f"\nLambda-bound optimization programs: {2 * len(tasks)}",
             flush=True,
         )
+        solver_options = self._solver_options_with_threads(solver_name, solver_threads)
+        total_programs = 2 * len(tasks)
+        workers = self._resolve_parallel_workers(parallel_workers, total_programs)
+        if workers > 1:
+            print(f"Running lambda-bound programs with {workers} worker processes", flush=True)
+            parallel_tasks = [
+                (side, time_idx, bound_name, solver_name, time_limit, tee, solver_options)
+                for side, time_idx in tasks
+                for bound_name in ("lower", "upper")
+            ]
+            result_by_task: dict[tuple[str, int, str], dict[str, Any]] = {}
+            with ProcessPoolExecutor(
+                max_workers=workers,
+                initializer=_initialize_parallel_optimizer,
+                initargs=(
+                    self._parallel_optimizer_state(
+                        alpha_bounds=alpha_bounds,
+                        fixed_binaries=fixed_binaries,
+                        lambda_bounds={},
+                    ),
+                ),
+            ) as executor:
+                future_to_task = {
+                    executor.submit(_solve_parallel_lambda_bound, task): task
+                    for task in parallel_tasks
+                }
+                for completed, future in enumerate(as_completed(future_to_task), start=1):
+                    result = future.result()
+                    key = (
+                        str(result["side"]),
+                        int(result["time_idx"]),
+                        str(result["bound_name"]),
+                    )
+                    result_by_task[key] = result
+                    action = "minimize" if result["bound_name"] == "lower" else "maximize"
+                    print(
+                        f"[Lambda done {completed}/{total_programs}] {action} "
+                        f"{result['lambda_name']}[{result['time_idx']}] -> "
+                        f"{result['value']} ({result['termination_condition']})",
+                        flush=True,
+                    )
+
+            for side, time_idx in tasks:
+                lambda_name = self._lambda_name(side)
+                entry: dict[str, Any] = {}
+                for bound_name in ("lower", "upper"):
+                    result = result_by_task[(side, int(time_idx), bound_name)]
+                    entry[bound_name] = result["value"]
+                    entry[f"{bound_name}_termination_condition"] = result[
+                        "termination_condition"
+                    ]
+                lambda_bounds.setdefault(lambda_name, {})[str(int(time_idx))] = entry
+
+            self.lambda_bounds = lambda_bounds
+            return {"lambda_bounds": lambda_bounds}
 
         for program_idx, (side, time_idx) in enumerate(tasks, start=1):
             lambda_name = self._lambda_name(side)
@@ -407,6 +811,7 @@ class BiddingBlocksTighteningOptimizer(PoAOptimization):
                     solver_name=solver_name,
                     time_limit=time_limit,
                     tee=tee,
+                    solver_options=solver_options,
                 )
                 entry[bound_name] = self._safe_value(lambda_expr) if solved else None
                 entry[f"{bound_name}_termination_condition"] = str(
@@ -428,6 +833,8 @@ class BiddingBlocksTighteningOptimizer(PoAOptimization):
         relax_complementarity: bool = False,
         stop_at_zero_slack: bool = True,
         slack_stop_tol: Optional[float] = None,
+        parallel_workers: Optional[int] = 1,
+        solver_threads: Optional[int] = None,
     ) -> dict[str, Any]:
         """
         Stage 2: minimize every constraint slack over the robust support model.
@@ -448,6 +855,11 @@ class BiddingBlocksTighteningOptimizer(PoAOptimization):
         KKT-side system is feasible and no tighter minimization certificate is
         useful. This shortcut is intentionally not used for dual Big-M OBBT:
         early incumbent dual values can create invalid overly tight Big-M bounds.
+
+        With parallel_workers > 1, slack tests use the same starting fixed-binary
+        snapshot so every worker model is independent. Certificates remain valid,
+        though the result can be more conservative than the sequential cascading
+        pass that immediately reuses newly fixed binaries.
         """
         alpha_bounds = alpha_bounds or getattr(self, "alpha_bounds", None)
         if alpha_bounds is None:
@@ -473,6 +885,100 @@ class BiddingBlocksTighteningOptimizer(PoAOptimization):
         total_programs = len(tasks)
         mode = "relaxed LP" if relax_complementarity else "KKT MILP"
         print(f"\nSlack OBBT optimization programs: {total_programs} ({mode})", flush=True)
+        solver_options = self._solver_options_with_threads(solver_name, solver_threads)
+
+        workers = self._resolve_parallel_workers(parallel_workers, total_programs)
+        if workers > 1:
+            print(
+                f"Running slack OBBT programs with {workers} worker processes",
+                flush=True,
+            )
+            parallel_tasks = [
+                (
+                    side,
+                    constraint_type,
+                    index,
+                    float(epsilon),
+                    zero_slack_tol,
+                    early_stop_enabled,
+                    relax_complementarity,
+                    solver_name,
+                    time_limit,
+                    tee,
+                    solver_options,
+                )
+                for side, constraint_type, index in tasks
+            ]
+            result_by_task: dict[tuple[str, str, tuple[int, ...]], dict[str, Any]] = {}
+            with ProcessPoolExecutor(
+                max_workers=workers,
+                initializer=_initialize_parallel_optimizer,
+                initargs=(
+                    self._parallel_optimizer_state(
+                        alpha_bounds=alpha_bounds,
+                        fixed_binaries={},
+                    ),
+                ),
+            ) as executor:
+                future_to_task = {
+                    executor.submit(_solve_parallel_slack_obbt, task): task
+                    for task in parallel_tasks
+                }
+                for completed, future in enumerate(as_completed(future_to_task), start=1):
+                    result = future.result()
+                    record_key = (
+                        str(result["side"]),
+                        str(result["constraint_type"]),
+                        tuple(result["index"]),
+                    )
+                    result_by_task[record_key] = result
+                    print(
+                        f"[Slack OBBT done {completed}/{total_programs}] "
+                        f"side={result['side']}, constraint={result['constraint_type']}, "
+                        f"index={result['index']} -> {result['minimum_slack']} "
+                        f"({result['termination_condition']})",
+                        flush=True,
+                    )
+
+            for side, constraint_type, index in tasks:
+                record_key = (side, constraint_type, index)
+                result = result_by_task[record_key]
+                slack_bounds[record_key] = {
+                    "minimum_slack": result["minimum_slack"],
+                    "incumbent_slack_objective": result["incumbent_slack_objective"],
+                    "robustly_inactive": bool(result["robustly_inactive"]),
+                    "early_stop_enabled": result["early_stop_enabled"],
+                    "slack_stop_tolerance": result["slack_stop_tolerance"],
+                    "termination_condition": result["termination_condition"],
+                    "result_classification": result["result_classification"],
+                }
+                if result["robustly_inactive"]:
+                    var_name = self._binary_name(side, constraint_type)
+                    minimum_slack = result["minimum_slack"]
+                    fixed_binaries.setdefault(var_name, {})[self._json_key(index)] = {
+                        "fixed_value": 0,
+                        "minimum_slack": float(minimum_slack),
+                        "side": side,
+                        "constraint_type": constraint_type,
+                        "result_classification": result["result_classification"],
+                    }
+
+            self.slack_bounds = slack_bounds
+            self.fixed_binaries = fixed_binaries
+            return {
+                "epsilon": float(epsilon),
+                "stop_at_zero_slack": bool(stop_at_zero_slack),
+                "early_stop_enabled": early_stop_enabled,
+                "slack_stop_tolerance": zero_slack_tol,
+                "slack_bounds": {
+                    f"{side}:{constraint_type}:{self._json_key(index)}": value
+                    for (side, constraint_type, index), value in slack_bounds.items()
+                },
+                "fixed_binaries": fixed_binaries,
+                "num_fixed_binaries": int(
+                    sum(len(entries) for entries in fixed_binaries.values())
+                ),
+            }
 
         for program_number, (side, constraint_type, index) in enumerate(tasks, start=1):
             print(
@@ -491,38 +997,26 @@ class BiddingBlocksTighteningOptimizer(PoAOptimization):
             m.target_slack = Var(domain=NonNegativeReals)
             m.target_slack_definition = Constraint(expr=m.target_slack == slack_expr)
             m.tightening_objective = Objective(expr=m.target_slack, sense=minimize)
-            solver_options = (
-                {"BestObjStop": zero_slack_tol}
-                if early_stop_enabled
-                else None
+            task_solver_options = self._solver_options_with_threads(
+                solver_name,
+                solver_threads,
+                {"BestObjStop": zero_slack_tol} if early_stop_enabled else None,
             )
             _solved, results = self._solve_tightening_model(
                 m,
                 solver_name=solver_name,
                 time_limit=time_limit,
                 tee=tee,
-                solver_options=solver_options,
+                solver_options=task_solver_options,
             )
             termination = results.solver.termination_condition
             incumbent_slack = self._safe_value(m.target_slack)
-            is_optimal = termination in {
-                TerminationCondition.optimal,
-                TerminationCondition.locallyOptimal,
-                TerminationCondition.globallyOptimal,
-            }
-
-            if incumbent_slack is not None and incumbent_slack <= zero_slack_tol:
-                result_classification = "zero_slack_feasible"
-                minimum_slack = 0.0 if incumbent_slack < 0.0 else float(incumbent_slack)
-                is_inactive = False
-            elif is_optimal and incumbent_slack is not None:
-                result_classification = "positive_slack_optimal"
-                minimum_slack = float(incumbent_slack)
-                is_inactive = minimum_slack >= float(epsilon)
-            else:
-                result_classification = "undetermined"
-                minimum_slack = None
-                is_inactive = False
+            result_classification, minimum_slack, is_inactive = _classify_slack_result(
+                termination=termination,
+                incumbent_slack=incumbent_slack,
+                epsilon=float(epsilon),
+                zero_slack_tol=zero_slack_tol,
+            )
 
             record_key = (side, constraint_type, index)
             slack_bounds[record_key] = {
@@ -566,6 +1060,8 @@ class BiddingBlocksTighteningOptimizer(PoAOptimization):
         solver_name: str = "gurobi",
         time_limit: Optional[float] = None,
         tee: bool = False,
+        parallel_workers: Optional[int] = 1,
+        solver_threads: Optional[int] = None,
     ) -> dict[str, Any]:
         """
         Stage 3: maximize each dual variable after fixing robustly inactive
@@ -586,7 +1082,10 @@ class BiddingBlocksTighteningOptimizer(PoAOptimization):
             solver_name=solver_name,
             time_limit=time_limit,
             tee=tee,
+            parallel_workers=parallel_workers,
+            solver_threads=solver_threads,
         )
+        solver_options = self._solver_options_with_threads(solver_name, solver_threads)
 
         tight_big_m: dict[str, dict[str, Any]] = {}
         tasks: list[tuple[str, str, tuple[int, ...]]] = []
@@ -615,6 +1114,7 @@ class BiddingBlocksTighteningOptimizer(PoAOptimization):
             flush=True,
         )
 
+        pending_dual_tasks: list[tuple[str, str, tuple[int, ...]]] = []
         for side, constraint_type, index in tasks:
             dual_name = self._dual_name(side, constraint_type)
             binary_name = self._binary_name(side, constraint_type)
@@ -631,30 +1131,89 @@ class BiddingBlocksTighteningOptimizer(PoAOptimization):
                     "termination_condition": "fixed_binary_zero",
                 }
                 continue
+            pending_dual_tasks.append((side, constraint_type, index))
 
-            program_number += 1
-            print(
-                f"[Dual Big-M {program_number}/{total_programs}] "
-                f"maximize {dual_name}{index} for side={side}, "
-                f"constraint={constraint_type}",
-                flush=True,
-            )
-            m = self._build_side_kkt_model(
-                side=side,
-                alpha_bounds=alpha_bounds,
-                include_complementarity=True,
-                fixed_binaries=fixed_binaries,
-            )
-            dual_var = getattr(m, dual_name)
-            dual_expr = dual_var[index]
-            m.tightening_objective = Objective(expr=dual_expr, sense=maximize)
-            solved, results = self._solve_tightening_model(m, solver_name, time_limit, tee)
-            dual_bound = self._safe_value(dual_expr) if solved else None
-            tight_big_m.setdefault(dual_name, {})[key] = {
-                "tight_big_m": dual_bound,
-                "fixed_by_slack": False,
-                "termination_condition": str(results.solver.termination_condition),
-            }
+        workers = self._resolve_parallel_workers(parallel_workers, total_programs)
+        if workers > 1:
+            print(f"Running Dual Big-M programs with {workers} worker processes", flush=True)
+            parallel_tasks = [
+                (side, constraint_type, index, solver_name, time_limit, tee, solver_options)
+                for side, constraint_type, index in pending_dual_tasks
+            ]
+            result_by_task: dict[tuple[str, str, tuple[int, ...]], dict[str, Any]] = {}
+            with ProcessPoolExecutor(
+                max_workers=workers,
+                initializer=_initialize_parallel_optimizer,
+                initargs=(
+                    self._parallel_optimizer_state(
+                        alpha_bounds=alpha_bounds,
+                        fixed_binaries=fixed_binaries,
+                        lambda_bounds=self.lambda_bounds,
+                        tight_big_m={},
+                    ),
+                ),
+            ) as executor:
+                future_to_task = {
+                    executor.submit(_solve_parallel_dual_big_m, task): task
+                    for task in parallel_tasks
+                }
+                for completed, future in enumerate(as_completed(future_to_task), start=1):
+                    result = future.result()
+                    record_key = (
+                        str(result["side"]),
+                        str(result["constraint_type"]),
+                        tuple(result["index"]),
+                    )
+                    result_by_task[record_key] = result
+                    print(
+                        f"[Dual Big-M done {completed}/{total_programs}] "
+                        f"maximize {result['dual_name']}{result['index']} -> "
+                        f"{result['tight_big_m']} ({result['termination_condition']})",
+                        flush=True,
+                    )
+
+            for side, constraint_type, index in pending_dual_tasks:
+                result = result_by_task[(side, constraint_type, index)]
+                dual_name = self._dual_name(side, constraint_type)
+                key = self._json_key(index)
+                tight_big_m.setdefault(dual_name, {})[key] = {
+                    "tight_big_m": result["tight_big_m"],
+                    "fixed_by_slack": False,
+                    "termination_condition": result["termination_condition"],
+                }
+        else:
+            for side, constraint_type, index in pending_dual_tasks:
+                dual_name = self._dual_name(side, constraint_type)
+
+                program_number += 1
+                print(
+                    f"[Dual Big-M {program_number}/{total_programs}] "
+                    f"maximize {dual_name}{index} for side={side}, "
+                    f"constraint={constraint_type}",
+                    flush=True,
+                )
+                m = self._build_side_kkt_model(
+                    side=side,
+                    alpha_bounds=alpha_bounds,
+                    include_complementarity=True,
+                    fixed_binaries=fixed_binaries,
+                )
+                dual_var = getattr(m, dual_name)
+                dual_expr = dual_var[index]
+                m.tightening_objective = Objective(expr=dual_expr, sense=maximize)
+                solved, results = self._solve_tightening_model(
+                    m,
+                    solver_name,
+                    time_limit,
+                    tee,
+                    solver_options=solver_options,
+                )
+                dual_bound = self._safe_value(dual_expr) if solved else None
+                tight_big_m.setdefault(dual_name, {})[self._json_key(index)] = {
+                    "tight_big_m": dual_bound,
+                    "fixed_by_slack": False,
+                    "termination_condition": str(results.solver.termination_condition),
+                }
 
         # Use the certified componentwise bounds when maximizing aggregate dual
         # sums. Individual dual maxima need not be jointly attainable, so these
@@ -672,43 +1231,111 @@ class BiddingBlocksTighteningOptimizer(PoAOptimization):
             f"\nAggregate dual-bound optimization programs: {len(aggregate_tasks)}",
             flush=True,
         )
-        for program_number, (side, constraint_type, time_idx) in enumerate(
-            aggregate_tasks,
-            start=1,
-        ):
-            bound_key = self._aggregate_dual_bound_key(constraint_type)
+        aggregate_workers = self._resolve_parallel_workers(
+            parallel_workers,
+            len(aggregate_tasks),
+        )
+        if aggregate_workers > 1:
             print(
-                f"[Aggregate dual bound {program_number}/{len(aggregate_tasks)}] "
-                f"maximize {bound_key}[{side},{time_idx}]",
+                f"Running aggregate dual-bound programs with {aggregate_workers} "
+                "worker processes",
                 flush=True,
             )
-            m = self._build_side_kkt_model(
-                side=side,
-                alpha_bounds=alpha_bounds,
-                include_complementarity=True,
-                fixed_binaries=fixed_binaries,
-            )
-            aggregate_expr = self._aggregate_dual_expression(
-                m,
-                side,
-                constraint_type,
-                time_idx,
-            )
-            m.tightening_objective = Objective(expr=aggregate_expr, sense=maximize)
-            solved, results = self._solve_tightening_model(m, solver_name, time_limit, tee)
-            aggregate_bound = self._safe_value(aggregate_expr) if solved else None
-            details = {
-                "tight_big_m": aggregate_bound,
-                "side": side,
-                "constraint_type": constraint_type,
-                "termination_condition": str(results.solver.termination_condition),
-            }
-            aggregate_dual_bounds.setdefault(bound_key, {}).setdefault(side, {})[
-                str(int(time_idx))
-            ] = details
-            tight_big_m.setdefault(bound_key, {})[
-                f"{side},{int(time_idx)}"
-            ] = details
+            parallel_tasks = [
+                (side, constraint_type, time_idx, solver_name, time_limit, tee, solver_options)
+                for side, constraint_type, time_idx in aggregate_tasks
+            ]
+            result_by_task: dict[tuple[str, str, int], dict[str, Any]] = {}
+            with ProcessPoolExecutor(
+                max_workers=aggregate_workers,
+                initializer=_initialize_parallel_optimizer,
+                initargs=(
+                    self._parallel_optimizer_state(
+                        alpha_bounds=alpha_bounds,
+                        fixed_binaries=fixed_binaries,
+                        lambda_bounds=self.lambda_bounds,
+                        tight_big_m=tight_big_m,
+                    ),
+                ),
+            ) as executor:
+                future_to_task = {
+                    executor.submit(_solve_parallel_aggregate_dual_bound, task): task
+                    for task in parallel_tasks
+                }
+                for completed, future in enumerate(as_completed(future_to_task), start=1):
+                    result = future.result()
+                    result_by_task[
+                        (
+                            str(result["side"]),
+                            str(result["constraint_type"]),
+                            int(result["time_idx"]),
+                        )
+                    ] = result
+                    print(
+                        f"[Aggregate dual bound done {completed}/{len(aggregate_tasks)}] "
+                        f"maximize {result['bound_key']}[{result['side']},"
+                        f"{result['time_idx']}] -> {result['tight_big_m']} "
+                        f"({result['termination_condition']})",
+                        flush=True,
+                    )
+
+            for side, constraint_type, time_idx in aggregate_tasks:
+                result = result_by_task[(side, constraint_type, int(time_idx))]
+                bound_key = self._aggregate_dual_bound_key(constraint_type)
+                details = {
+                    "tight_big_m": result["tight_big_m"],
+                    "side": side,
+                    "constraint_type": constraint_type,
+                    "termination_condition": result["termination_condition"],
+                }
+                aggregate_dual_bounds.setdefault(bound_key, {}).setdefault(side, {})[
+                    str(int(time_idx))
+                ] = details
+                tight_big_m.setdefault(bound_key, {})[f"{side},{int(time_idx)}"] = details
+        else:
+            for program_number, (side, constraint_type, time_idx) in enumerate(
+                aggregate_tasks,
+                start=1,
+            ):
+                bound_key = self._aggregate_dual_bound_key(constraint_type)
+                print(
+                    f"[Aggregate dual bound {program_number}/{len(aggregate_tasks)}] "
+                    f"maximize {bound_key}[{side},{time_idx}]",
+                    flush=True,
+                )
+                m = self._build_side_kkt_model(
+                    side=side,
+                    alpha_bounds=alpha_bounds,
+                    include_complementarity=True,
+                    fixed_binaries=fixed_binaries,
+                )
+                aggregate_expr = self._aggregate_dual_expression(
+                    m,
+                    side,
+                    constraint_type,
+                    time_idx,
+                )
+                m.tightening_objective = Objective(expr=aggregate_expr, sense=maximize)
+                solved, results = self._solve_tightening_model(
+                    m,
+                    solver_name,
+                    time_limit,
+                    tee,
+                    solver_options=solver_options,
+                )
+                aggregate_bound = self._safe_value(aggregate_expr) if solved else None
+                details = {
+                    "tight_big_m": aggregate_bound,
+                    "side": side,
+                    "constraint_type": constraint_type,
+                    "termination_condition": str(results.solver.termination_condition),
+                }
+                aggregate_dual_bounds.setdefault(bound_key, {}).setdefault(side, {})[
+                    str(int(time_idx))
+                ] = details
+                tight_big_m.setdefault(bound_key, {})[
+                    f"{side},{int(time_idx)}"
+                ] = details
 
         self.tight_big_m = tight_big_m
         self.aggregate_dual_bounds = aggregate_dual_bounds
@@ -754,6 +1381,7 @@ class BiddingBlocksTighteningOptimizer(PoAOptimization):
         time_limit: Optional[float] = None,
         output_path: str | Path = "results/poa_bidding_blocks_tightening_report.json",
         tee: bool = False,
+        nn_relu_bounds_report_path: Optional[str | Path] = None,
     ) -> dict[str, Any]:
         """
         End-to-end Stage 1-4 driver.
@@ -762,6 +1390,7 @@ class BiddingBlocksTighteningOptimizer(PoAOptimization):
             solver_name=solver_name,
             time_limit=time_limit,
             tee=tee,
+            nn_relu_bounds_report_path=nn_relu_bounds_report_path,
         )
         slack_report = self.run_slack_based_obbt(
             epsilon=epsilon,

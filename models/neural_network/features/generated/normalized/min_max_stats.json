@@ -3,110 +3,110 @@
   "stats": {
     "G2": {
       "feature_min": {
-        "demand": 86.13412902157037,
-        "total_wind_generation_capacity": 58.41957236136206,
-        "total_generation_capacity": 158.41957236136204,
-        "residual_demand": -59.651854113073824,
-        "next_generation_capacity": 158.41957236136204,
-        "next_demand": 86.13412902157037,
+        "demand": 88.54878474153927,
+        "total_wind_generation_capacity": 64.53126171269652,
+        "total_generation_capacity": 164.53126171269653,
+        "residual_demand": -41.29408182694736,
+        "next_generation_capacity": 164.53126171269653,
+        "next_demand": 88.54878474153927,
         "own_generation_capacity": 50.0,
         "next_own_generation_capacity": 50.0
       },
       "feature_max": {
-        "demand": 155.765415388793,
-        "total_wind_generation_capacity": 150.0,
-        "total_generation_capacity": 250.0,
-        "residual_demand": 49.982878466611055,
-        "next_generation_capacity": 250.0,
-        "next_demand": 155.765415388793,
+        "demand": 156.42651758690673,
+        "total_wind_generation_capacity": 142.06552288130337,
+        "total_generation_capacity": 242.06552288130337,
+        "residual_demand": 49.99129699058797,
+        "next_generation_capacity": 242.06552288130337,
+        "next_demand": 156.42651758690673,
         "own_generation_capacity": 50.0,
         "next_own_generation_capacity": 50.0
       }
     },
     "G1": {
       "feature_min": {
-        "demand": 86.13412902157037,
-        "total_wind_generation_capacity": 58.41957236136206,
-        "total_generation_capacity": 158.41957236136204,
-        "residual_demand": -59.651854113073824,
-        "next_generation_capacity": 158.41957236136204,
-        "next_demand": 86.13412902157037,
+        "demand": 88.54878474153927,
+        "total_wind_generation_capacity": 64.53126171269652,
+        "total_generation_capacity": 164.53126171269653,
+        "residual_demand": -41.29408182694736,
+        "next_generation_capacity": 164.53126171269653,
+        "next_demand": 88.54878474153927,
         "own_generation_capacity": 50.0,
         "next_own_generation_capacity": 50.0
       },
       "feature_max": {
-        "demand": 155.765415388793,
-        "total_wind_generation_capacity": 150.0,
-        "total_generation_capacity": 250.0,
-        "residual_demand": 49.982878466611055,
-        "next_generation_capacity": 250.0,
-        "next_demand": 155.765415388793,
+        "demand": 156.42651758690673,
+        "total_wind_generation_capacity": 142.06552288130337,
+        "total_generation_capacity": 242.06552288130337,
+        "residual_demand": 49.99129699058797,
+        "next_generation_capacity": 242.06552288130337,
+        "next_demand": 156.42651758690673,
         "own_generation_capacity": 50.0,
         "next_own_generation_capacity": 50.0
       }
     },
     "W3": {
       "feature_min": {
-        "demand": 86.13412902157037,
-        "total_wind_generation_capacity": 58.41957236136206,
-        "total_generation_capacity": 158.41957236136204,
-        "residual_demand": -59.651854113073824,
-        "next_generation_capacity": 158.41957236136204,
-        "next_demand": 86.13412902157037,
-        "own_generation_capacity": 18.9984481590128,
-        "next_own_generation_capacity": 18.9984481590128
+        "demand": 88.54878474153927,
+        "total_wind_generation_capacity": 64.53126171269652,
+        "total_generation_capacity": 164.53126171269653,
+        "residual_demand": -41.29408182694736,
+        "next_generation_capacity": 164.53126171269653,
+        "next_demand": 88.54878474153927,
+        "own_generation_capacity": 15.373541598977392,
+        "next_own_generation_capacity": 15.373541598977392
       },
       "feature_max": {
-        "demand": 155.765415388793,
-        "total_wind_generation_capacity": 150.0,
-        "total_generation_capacity": 250.0,
-        "residual_demand": 49.982878466611055,
-        "next_generation_capacity": 250.0,
-        "next_demand": 155.765415388793,
+        "demand": 156.42651758690673,
+        "total_wind_generation_capacity": 142.06552288130337,
+        "total_generation_capacity": 242.06552288130337,
+        "residual_demand": 49.99129699058797,
+        "next_generation_capacity": 242.06552288130337,
+        "next_demand": 156.42651758690673,
         "own_generation_capacity": 50.0,
         "next_own_generation_capacity": 50.0
       }
     },
     "W2": {
       "feature_min": {
-        "demand": 86.13412902157037,
-        "total_wind_generation_capacity": 58.41957236136206,
-        "total_generation_capacity": 158.41957236136204,
-        "residual_demand": -59.651854113073824,
-        "next_generation_capacity": 158.41957236136204,
-        "next_demand": 86.13412902157037,
-        "own_generation_capacity": 19.15879266130621,
-        "next_own_generation_capacity": 19.15879266130621
+        "demand": 88.54878474153927,
+        "total_wind_generation_capacity": 64.53126171269652,
+        "total_generation_capacity": 164.53126171269653,
+        "residual_demand": -41.29408182694736,
+        "next_generation_capacity": 164.53126171269653,
+        "next_demand": 88.54878474153927,
+        "own_generation_capacity": 14.64368519395447,
+        "next_own_generation_capacity": 14.64368519395447
       },
       "feature_max": {
-        "demand": 155.765415388793,
-        "total_wind_generation_capacity": 150.0,
-        "total_generation_capacity": 250.0,
-        "residual_demand": 49.982878466611055,
-        "next_generation_capacity": 250.0,
-        "next_demand": 155.765415388793,
+        "demand": 156.42651758690673,
+        "total_wind_generation_capacity": 142.06552288130337,
+        "total_generation_capacity": 242.06552288130337,
+        "residual_demand": 49.99129699058797,
+        "next_generation_capacity": 242.06552288130337,
+        "next_demand": 156.42651758690673,
         "own_generation_capacity": 50.0,
         "next_own_generation_capacity": 50.0
       }
     },
     "W1": {
       "feature_min": {
-        "demand": 86.13412902157037,
-        "total_wind_generation_capacity": 58.41957236136206,
-        "total_generation_capacity": 158.41957236136204,
-        "residual_demand": -59.651854113073824,
-        "next_generation_capacity": 158.41957236136204,
-        "next_demand": 86.13412902157037,
-        "own_generation_capacity": 19.81115373747414,
-        "next_own_generation_capacity": 19.81115373747414
+        "demand": 88.54878474153927,
+        "total_wind_generation_capacity": 64.53126171269652,
+        "total_generation_capacity": 164.53126171269653,
+        "residual_demand": -41.29408182694736,
+        "next_generation_capacity": 164.53126171269653,
+        "next_demand": 88.54878474153927,
+        "own_generation_capacity": 17.48468815387558,
+        "next_own_generation_capacity": 17.48468815387558
       },
       "feature_max": {
-        "demand": 155.765415388793,
-        "total_wind_generation_capacity": 150.0,
-        "total_generation_capacity": 250.0,
-        "residual_demand": 49.982878466611055,
-        "next_generation_capacity": 250.0,
-        "next_demand": 155.765415388793,
+        "demand": 156.42651758690673,
+        "total_wind_generation_capacity": 142.06552288130337,
+        "total_generation_capacity": 242.06552288130337,
+        "residual_demand": 49.99129699058797,
+        "next_generation_capacity": 242.06552288130337,
+        "next_demand": 156.42651758690673,
         "own_generation_capacity": 50.0,
         "next_own_generation_capacity": 50.0
       }

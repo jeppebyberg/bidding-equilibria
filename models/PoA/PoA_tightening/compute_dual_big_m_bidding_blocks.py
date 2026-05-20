@@ -1,5 +1,10 @@
 from pathlib import Path
+import sys
 import time
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 from models.PoA.PoA_tightening.compute_binary_fix_and_big_m_bidding_blocks import (
     build_optimizer,

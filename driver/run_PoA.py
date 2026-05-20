@@ -27,6 +27,9 @@ class PoARunConfig:
     preprocessing_time_limit: int = 200
     poa_time_limit: int = 400
     epsilon: float = 1e-6
+    # Parallelizes independent tightening submodels; use low Gurobi threads per worker.
+    poa_parallel_workers: int = 1
+    poa_solver_threads_per_worker: int | None = None
 
     @property
     def alpha_bounds_path(self) -> Path:
@@ -110,6 +113,8 @@ def run_alpha_bounds(config: PoARunConfig) -> Path:
         solver_name=config.solver_name,
         time_limit=config.preprocessing_time_limit,
         tee=False,
+        parallel_workers=config.poa_parallel_workers,
+        solver_threads=config.poa_solver_threads_per_worker,
     )
     elapsed = time.perf_counter() - start
 
@@ -157,6 +162,8 @@ def run_slack_binary_fix(config: PoARunConfig) -> Path:
         solver_name=config.solver_name,
         time_limit=config.preprocessing_time_limit,
         tee=False,
+        parallel_workers=config.poa_parallel_workers,
+        solver_threads=config.poa_solver_threads_per_worker,
     )
     output_path = optimizer.save_tightening_report(config.slack_report_path)
     elapsed = time.perf_counter() - start
@@ -180,6 +187,8 @@ def run_dual_big_m(config: PoARunConfig) -> Path:
         solver_name=config.solver_name,
         time_limit=config.preprocessing_time_limit,
         tee=False,
+        parallel_workers=config.poa_parallel_workers,
+        solver_threads=config.poa_solver_threads_per_worker,
     )
     output_path = optimizer.save_tightening_report(config.tightening_report_path)
     elapsed = time.perf_counter() - start
@@ -230,7 +239,8 @@ def main() -> None:
         f"  case={config.case}\n"
         f"  regime_set={config.regime_set}\n"
         f"  seed={config.seed}\n"
-        f"  horizon={config.horizon}"
+        f"  horizon={config.horizon}\n"
+        f"  poa_parallel_workers={config.poa_parallel_workers}"
     )
 
     if RUN_ALPHA_BOUNDS:

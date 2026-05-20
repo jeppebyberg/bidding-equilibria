@@ -1,6 +1,11 @@
 from pathlib import Path
 import json
+import sys
 import time
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 from config.scenarios.scenario_generator import ScenarioManager
 from models.PoA.PoA_tightening.bidding_blocks_tightening import (
@@ -50,6 +55,7 @@ def build_optimizer() -> BiddingBlocksTighteningOptimizer:
 
 def main() -> None:
     output_path = Path("results/poa_bidding_blocks_alpha_bounds.json")
+    nn_relu_bounds_report_path = Path("results/poa_nn_relu_bounds_report.json")
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     optimizer = build_optimizer()
@@ -59,6 +65,7 @@ def main() -> None:
         solver_name="gurobi",
         time_limit=200,
         tee=False,
+        nn_relu_bounds_report_path=nn_relu_bounds_report_path,
     )
     elapsed = time.perf_counter() - start
 
@@ -90,6 +97,7 @@ def main() -> None:
     upper_values = [float(item["upper"]) for item in alpha_values]
 
     print("\nAlpha-bound computation complete")
+    print(f"  NN ReLU bounds: {nn_relu_bounds_report_path}")
     print(f"  Report: {output_path}")
     print(f"  Runtime: {elapsed:.2f} seconds")
     print(f"  Alpha entries: {len(alpha_values)}")

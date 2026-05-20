@@ -23,25 +23,121 @@ default_support_set: test_case_bidding_blocks_base
 support_sets:
   test_case_bidding_blocks_base:
     description: Loosened support set for test_case_bidding_blocks with broad trajectory uncertainty.
-    demand_reference: 140.0
-    demand_min: 121.0
-    demand_max: 159.0
+    demand_reference:
+      - 108.1
+      - 108.3
+      - 109.3
+      - 111.9
+      - 116.9
+      - 122.4
+      - 127.2
+      - 129.4
+      - 127.9
+      - 124.5
+      - 120.7
+      - 121.4
+      - 125.9
+      - 132.1
+      - 134.7
+      - 135.0
+      - 132.2
+      - 126.0
+      - 120.1
+      - 115.5
+      - 111.0
+      - 109.3
+      - 108.5
+      - 107.7
+    demand_min: 90.0
+    demand_max: 150.0
     demand_ramp: 25.0
-    demand_budget: 50.0
+    demand_budget: 60.0
 
     wind_generators:
       W3:
-        reference: 35.0
-        min: 20.0
+        reference:
+          - 37.1
+          - 36.5
+          - 35.2
+          - 35.3
+          - 34.1
+          - 34.5
+          - 33.1
+          - 32.3
+          - 31.4
+          - 31.7
+          - 32.2
+          - 33.0
+          - 32.4
+          - 31.5
+          - 31.7
+          - 33.3
+          - 33.7
+          - 33.8
+          - 34.3
+          - 35.2
+          - 36.0
+          - 36.8
+          - 38.3
+          - 38.6
+        min: 10.0
         max: 50.0
       W1:
-        reference: 35.0
-        min: 20.0
+        reference:
+          - 37.9
+          - 38.4
+          - 39.3
+          - 39.4
+          - 38.2
+          - 36.3
+          - 35.6
+          - 35.2
+          - 33.9
+          - 34.4
+          - 34.6
+          - 34.0
+          - 34.7
+          - 35.1
+          - 34.1
+          - 34.8
+          - 34.9
+          - 34.0
+          - 33.6
+          - 34.5
+          - 35.3
+          - 36.8
+          - 37.9
+          - 38.0
+        min: 10.0
         max: 50.0
       W2:
-        reference: 35.0
-        min: 20.0
+        reference:
+          - 37.9
+          - 38.9
+          - 37.4
+          - 37.4
+          - 37.3
+          - 35.9
+          - 34.7
+          - 33.9
+          - 32.9
+          - 33.4
+          - 34.0
+          - 34.7
+          - 34.4
+          - 34.8
+          - 33.6
+          - 32.8
+          - 33.4
+          - 34.2
+          - 34.0
+          - 33.8
+          - 33.6
+          - 34.5
+          - 35.2
+          - 35.9
+        min: 10.0
         max: 50.0
 
     wind_ramp: 15.0
-    wind_budget: 50.0
+    wind_budget: 20.0

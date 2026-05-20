@@ -1,0 +1,357 @@
+{
+  "metadata": {
+    "description": "Exact alpha bounds from support-set optimization with embedded ReLU policy constraints.",
+    "reference_case": "test_case_bidding_blocks",
+    "num_time_steps": 4,
+    "nn_policy_generators": [
+      "G1",
+      "W3"
+    ],
+    "num_optimization_programs": 56
+  },
+  "alpha_bounds": {
+    "0,0,0": {
+      "lower": 30.0,
+      "upper": 30.0
+    },
+    "0,0,1": {
+      "lower": 30.0,
+      "upper": 30.0
+    },
+    "0,0,2": {
+      "lower": 30.0,
+      "upper": 30.0
+    },
+    "0,0,3": {
+      "lower": 30.0,
+      "upper": 30.0
+    },
+    "0,1,0": {
+      "lower": 40.0,
+      "upper": 40.0
+    },
+    "0,1,1": {
+      "lower": 40.0,
+      "upper": 40.0
+    },
+    "0,1,2": {
+      "lower": 40.0,
+      "upper": 40.0
+    },
+    "0,1,3": {
+      "lower": 40.0,
+      "upper": 40.0
+    },
+    "1,0,0": {
+      "lower": -13.172336616179862,
+      "upper": 30.081328007823288
+    },
+    "1,0,1": {
+      "lower": -13.90852991186464,
+      "upper": 30.077589182167138
+    },
+    "1,0,2": {
+      "lower": -12.328159541802746,
+      "upper": 30.078646996908482
+    },
+    "1,0,3": {
+      "lower": -12.500155421044674,
+      "upper": 30.081832495258496
+    },
+    "1,1,0": {
+      "lower": 8.45112322318402,
+      "upper": 30.122738690429195
+    },
+    "1,1,1": {
+      "lower": 8.08526568788875,
+      "upper": 30.117007331984126
+    },
+    "1,1,2": {
+      "lower": 8.87471904813463,
+      "upper": 30.11928014296925
+    },
+    "1,1,3": {
+      "lower": 8.787937432621558,
+      "upper": 30.122498908394185
+    },
+    "2,0,0": {
+      "lower": 5.466455608397731,
+      "upper": 10.064445778969802
+    },
+    "2,0,1": {
+      "lower": 5.465565601835815,
+      "upper": 10.047032057300664
+    },
+    "2,0,2": {
+      "lower": 5.4613718449078865,
+      "upper": 10.071644047049336
+    },
+    "2,0,3": {
+      "lower": 5.465900491630345,
+      "upper": 10.058719884840494
+    },
+    "3,0,0": {
+      "lower": 5.0,
+      "upper": 5.0
+    },
+    "3,0,1": {
+      "lower": 5.0,
+      "upper": 5.0
+    },
+    "3,0,2": {
+      "lower": 5.0,
+      "upper": 5.0
+    },
+    "3,0,3": {
+      "lower": 5.0,
+      "upper": 5.0
+    },
+    "4,0,0": {
+      "lower": 4.5,
+      "upper": 4.5
+    },
+    "4,0,1": {
+      "lower": 4.5,
+      "upper": 4.5
+    },
+    "4,0,2": {
+      "lower": 4.5,
+      "upper": 4.5
+    },
+    "4,0,3": {
+      "lower": 4.5,
+      "upper": 4.5
+    }
+  },
+  "alpha_optimization_results": {
+    "0,0,0:lower": {
+      "value": 30.0,
+      "termination_condition": "optimal"
+    },
+    "0,0,0:upper": {
+      "value": 30.0,
+      "termination_condition": "optimal"
+    },
+    "0,0,1:lower": {
+      "value": 30.0,
+      "termination_condition": "optimal"
+    },
+    "0,0,1:upper": {
+      "value": 30.0,
+      "termination_condition": "optimal"
+    },
+    "0,0,2:lower": {
+      "value": 30.0,
+      "termination_condition": "optimal"
+    },
+    "0,0,2:upper": {
+      "value": 30.0,
+      "termination_condition": "optimal"
+    },
+    "0,0,3:lower": {
+      "value": 30.0,
+      "termination_condition": "optimal"
+    },
+    "0,0,3:upper": {
+      "value": 30.0,
+      "termination_condition": "optimal"
+    },
+    "0,1,0:lower": {
+      "value": 40.0,
+      "termination_condition": "optimal"
+    },
+    "0,1,0:upper": {
+      "value": 40.0,
+      "termination_condition": "optimal"
+    },
+    "0,1,1:lower": {
+      "value": 40.0,
+      "termination_condition": "optimal"
+    },
+    "0,1,1:upper": {
+      "value": 40.0,
+      "termination_condition": "optimal"
+    },
+    "0,1,2:lower": {
+      "value": 40.0,
+      "termination_condition": "optimal"
+    },
+    "0,1,2:upper": {
+      "value": 40.0,
+      "termination_condition": "optimal"
+    },
+    "0,1,3:lower": {
+      "value": 40.0,
+      "termination_condition": "optimal"
+    },
+    "0,1,3:upper": {
+      "value": 40.0,
+      "termination_condition": "optimal"
+    },
+    "1,0,0:lower": {
+      "value": -13.172336616179862,
+      "termination_condition": "optimal"
+    },
+    "1,0,0:upper": {
+      "value": 30.081328007823288,
+      "termination_condition": "optimal"
+    },
+    "1,0,1:lower": {
+      "value": -13.90852991186464,
+      "termination_condition": "optimal"
+    },
+    "1,0,1:upper": {
+      "value": 30.077589182167138,
+      "termination_condition": "optimal"
+    },
+    "1,0,2:lower": {
+      "value": -12.328159541802746,
+      "termination_condition": "optimal"
+    },
+    "1,0,2:upper": {
+      "value": 30.078646996908482,
+      "termination_condition": "optimal"
+    },
+    "1,0,3:lower": {
+      "value": -12.500155421044674,
+      "termination_condition": "optimal"
+    },
+    "1,0,3:upper": {
+      "value": 30.081832495258496,
+      "termination_condition": "optimal"
+    },
+    "1,1,0:lower": {
+      "value": 8.45112322318402,
+      "termination_condition": "optimal"
+    },
+    "1,1,0:upper": {
+      "value": 30.122738690429195,
+      "termination_condition": "optimal"
+    },
+    "1,1,1:lower": {
+      "value": 8.08526568788875,
+      "termination_condition": "optimal"
+    },
+    "1,1,1:upper": {
+      "value": 30.117007331984126,
+      "termination_condition": "optimal"
+    },
+    "1,1,2:lower": {
+      "value": 8.87471904813463,
+      "termination_condition": "optimal"
+    },
+    "1,1,2:upper": {
+      "value": 30.11928014296925,
+      "termination_condition": "optimal"
+    },
+    "1,1,3:lower": {
+      "value": 8.787937432621558,
+      "termination_condition": "optimal"
+    },
+    "1,1,3:upper": {
+      "value": 30.122498908394185,
+      "termination_condition": "optimal"
+    },
+    "2,0,0:lower": {
+      "value": 5.466455608397731,
+      "termination_condition": "optimal"
+    },
+    "2,0,0:upper": {
+      "value": 10.064445778969802,
+      "termination_condition": "optimal"
+    },
+    "2,0,1:lower": {
+      "value": 5.465565601835815,
+      "termination_condition": "optimal"
+    },
+    "2,0,1:upper": {
+      "value": 10.047032057300664,
+      "termination_condition": "optimal"
+    },
+    "2,0,2:lower": {
+      "value": 5.4613718449078865,
+      "termination_condition": "optimal"
+    },
+    "2,0,2:upper": {
+      "value": 10.071644047049336,
+      "termination_condition": "optimal"
+    },
+    "2,0,3:lower": {
+      "value": 5.465900491630345,
+      "termination_condition": "optimal"
+    },
+    "2,0,3:upper": {
+      "value": 10.058719884840494,
+      "termination_condition": "optimal"
+    },
+    "3,0,0:lower": {
+      "value": 5.0,
+      "termination_condition": "optimal"
+    },
+    "3,0,0:upper": {
+      "value": 5.0,
+      "termination_condition": "optimal"
+    },
+    "3,0,1:lower": {
+      "value": 5.0,
+      "termination_condition": "optimal"
+    },
+    "3,0,1:upper": {
+      "value": 5.0,
+      "termination_condition": "optimal"
+    },
+    "3,0,2:lower": {
+      "value": 5.0,
+      "termination_condition": "optimal"
+    },
+    "3,0,2:upper": {
+      "value": 5.0,
+      "termination_condition": "optimal"
+    },
+    "3,0,3:lower": {
+      "value": 5.0,
+      "termination_condition": "optimal"
+    },
+    "3,0,3:upper": {
+      "value": 5.0,
+      "termination_condition": "optimal"
+    },
+    "4,0,0:lower": {
+      "value": 4.5,
+      "termination_condition": "optimal"
+    },
+    "4,0,0:upper": {
+      "value": 4.5,
+      "termination_condition": "optimal"
+    },
+    "4,0,1:lower": {
+      "value": 4.5,
+      "termination_condition": "optimal"
+    },
+    "4,0,1:upper": {
+      "value": 4.5,
+      "termination_condition": "optimal"
+    },
+    "4,0,2:lower": {
+      "value": 4.5,
+      "termination_condition": "optimal"
+    },
+    "4,0,2:upper": {
+      "value": 4.5,
+      "termination_condition": "optimal"
+    },
+    "4,0,3:lower": {
+      "value": 4.5,
+      "termination_condition": "optimal"
+    },
+    "4,0,3:upper": {
+      "value": 4.5,
+      "termination_condition": "optimal"
+    }
+  },
+  "fixed_binaries": {},
+  "slack_bounds": {},
+  "lambda_bounds": {},
+  "tight_big_m": {},
+  "aggregate_dual_bounds": {}
+}

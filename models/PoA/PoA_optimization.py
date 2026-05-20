@@ -4,9 +4,14 @@ import pandas as pd
 import json
 import yaml
 from pathlib import Path
+import sys
 from typing import Any, Optional
 
 import time
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 from config.scenarios.scenario_generator import ScenarioManager
 from models.helper import (
@@ -14,6 +19,7 @@ from models.helper import (
     ensure_profile,
     infer_num_time_steps,
     scenario_demand,
+    target_columns_to_local_blocks,
     wind_generator_config_value,
 )
 from models.synthetic_data_generation.economic_dispatch import EconomicDispatchModel
@@ -28,9 +34,9 @@ class PoAOptimization:
     """
 
     normalization_epsilon = 1e-12
-    default_lambda_bound = 40.0 * 100
-    default_capacity_dual_bound = 40.02 * 100
-    default_ramp_dual_bound = 20.0 * 100
+    default_lambda_bound = 40.0
+    default_capacity_dual_bound = 40.02
+    default_ramp_dual_bound = 20.0
 
     def __init__(
         self,
@@ -61,7 +67,9 @@ class PoAOptimization:
         self.capacity_dual_bound = float(self.default_capacity_dual_bound)
         self.ramp_dual_bound = float(self.default_ramp_dual_bound)
 
-        self.nn_relu_bounds: dict[str, dict[tuple[int, int], dict[str, Any]]] = {}
+        self.nn_relu_bounds_report: dict[str, Any] = {}
+        self.nn_relu_bounds: dict[str, dict[tuple[int, int, int], dict[str, Any]]] = {}
+        self.nn_feature_bounds: dict[str, Any] = {}
         self.nn_bound_warnings: list[str] = []
         self.tight_big_m: dict[str, dict[str, Any]] = {}
         self.aggregate_dual_bounds: dict[str, Any] = {}
@@ -905,8 +913,8 @@ class PoAOptimization:
 
         self.model.demand_lower_bound_constraints = Constraint(self.model.time_steps, rule=demand_lower_rule)
         self.model.demand_upper_bound_constraints = Constraint(self.model.time_steps, rule=demand_upper_rule)
-        self.model.demand_ramp_up_constraints = Constraint(self.model.time_steps_minus_1, rule=demand_ramp_up_rule)
-        self.model.demand_ramp_down_constraints = Constraint(self.model.time_steps_minus_1, rule=demand_ramp_down_rule)
+        # self.model.demand_ramp_up_constraints = Constraint(self.model.time_steps_minus_1, rule=demand_ramp_up_rule)
+        # self.model.demand_ramp_down_constraints = Constraint(self.model.time_steps_minus_1, rule=demand_ramp_down_rule)
         self.model.demand_abs_deviation_pos_constraints = Constraint(self.model.time_steps, rule=demand_abs_deviation_pos_rule)
         self.model.demand_abs_deviation_neg_constraints = Constraint(self.model.time_steps, rule=demand_abs_deviation_neg_rule)
         self.model.demand_budget_constraint = Constraint(rule=demand_budget_rule)
@@ -970,8 +978,8 @@ class PoAOptimization:
         self.model.wind_total_lower_bound = Constraint(self.model.wind_physical_generators, self.model.time_steps, rule=wind_total_lower_rule)
         self.model.wind_total_upper_bound = Constraint(self.model.wind_physical_generators, self.model.time_steps, rule=wind_total_upper_rule)
         self.model.wind_even_block_split = Constraint(self.model.wind_blocks, self.model.time_steps, rule=wind_even_block_split_rule)
-        self.model.wind_ramp_up = Constraint(self.model.wind_physical_generators, self.model.time_steps_minus_1, rule=wind_ramp_up_rule)
-        self.model.wind_ramp_down = Constraint(self.model.wind_physical_generators, self.model.time_steps_minus_1, rule=wind_ramp_down_rule)
+        # self.model.wind_ramp_up = Constraint(self.model.wind_physical_generators, self.model.time_steps_minus_1, rule=wind_ramp_up_rule)
+        # self.model.wind_ramp_down = Constraint(self.model.wind_physical_generators, self.model.time_steps_minus_1, rule=wind_ramp_down_rule)
         self.model.wind_abs_deviation_pos = Constraint(self.model.wind_physical_generators, self.model.time_steps, rule=wind_abs_deviation_pos_rule)
         self.model.wind_abs_deviation_neg = Constraint(self.model.wind_physical_generators, self.model.time_steps, rule=wind_abs_deviation_neg_rule)
         self.model.wind_budget = Constraint(rule=wind_budget_rule)
@@ -1501,7 +1509,14 @@ class PoAOptimization:
                 "target_columns": target_columns,
                 "layers": layers,
                 "metadata": metadata,
-                "target_map": self._target_columns_to_local_blocks(generator_name, target_columns),
+                "target_map": target_columns_to_local_blocks(
+                    generator_name=generator_name,
+                    target_columns=target_columns,
+                    block_names=self.block_names,
+                    physical_generator_names=self.physical_generator_names,
+                    global_to_local_block=self.global_to_local_block,
+                    local_blocks_by_generator=self.local_blocks_by_generator,
+                ),
             }
 
     def _validate_nn_policy(
@@ -1538,36 +1553,6 @@ class PoAOptimization:
             )
         if linear_count < 1:
             raise ValueError(f"{generator_name}: NN must contain at least one linear layer")
-
-    def _target_columns_to_local_blocks(
-        self, generator_name: str, target_columns: list[str]
-    ) -> dict[int, int]:
-        generator_idx = self.physical_generator_names.index(generator_name)
-        output_to_local_block: dict[int, int] = {}
-        seen_local_blocks: set[int] = set()
-        for output_idx, column in enumerate(target_columns):
-            prefix = "target_bid_"
-            if not column.startswith(prefix):
-                raise ValueError(f"{generator_name}: target column must start with '{prefix}': {column}")
-            block_name = column.removeprefix(prefix)
-            if block_name not in self.block_names:
-                raise ValueError(f"{generator_name}: unknown target block '{block_name}'")
-            global_block = self.block_names.index(block_name)
-            block_generator_idx, local_block = self.global_to_local_block[global_block]
-            if block_generator_idx != generator_idx:
-                raise ValueError(
-                    f"{generator_name}: target block '{block_name}' belongs to "
-                    f"{self.physical_generator_names[block_generator_idx]}"
-                )
-            output_to_local_block[output_idx] = local_block
-            seen_local_blocks.add(local_block)
-        expected = set(self.local_blocks_by_generator[generator_idx])
-        if seen_local_blocks != expected:
-            raise ValueError(
-                f"{generator_name}: target columns must cover local blocks {sorted(expected)}, "
-                f"got {sorted(seen_local_blocks)}"
-            )
-        return output_to_local_block
 
     def _load_nn_normalization_stats(self) -> None:
         if self.nn_normalization_stats_path is None:
@@ -1640,89 +1625,6 @@ class PoAOptimization:
             )
         raise ValueError(f"Unsupported NN feature name: {feature_name}")
 
-    def _raw_nn_feature_bounds(
-        self,
-        feature_name: str,
-        physical_generator_idx: int,
-    ) -> tuple[float, float]:
-        """
-        Return support-set-induced lower and upper bounds for a raw NN feature.
-
-        This mirrors `_raw_nn_feature_expression()`, but returns scalar lower/upper
-        bounds instead of a Pyomo expression.
-        """
-        physical_generator_idx = int(physical_generator_idx)
-
-        def total_wind_bounds() -> tuple[float, float]:
-            lower = sum(self.support_wind_min[i] for i in self.wind_physical_generator_ids)
-            upper = sum(self.support_wind_max[i] for i in self.wind_physical_generator_ids)
-            return float(lower), float(upper)
-
-        def total_generation_bounds() -> tuple[float, float]:
-            conventional_total = sum(
-                self.static_physical_capacity[i]
-                for i in self.conventional_physical_generator_ids
-            )
-            wind_lower, wind_upper = total_wind_bounds()
-            return float(conventional_total + wind_lower), float(conventional_total + wind_upper)
-
-        def own_generation_bounds() -> tuple[float, float]:
-            if physical_generator_idx in self.wind_physical_generator_ids:
-                return (
-                    float(self.support_wind_min[physical_generator_idx]),
-                    float(self.support_wind_max[physical_generator_idx]),
-                )
-            cap = float(self.static_physical_capacity[physical_generator_idx])
-            return cap, cap
-
-        if feature_name == "demand":
-            return float(self.support_demand_min), float(self.support_demand_max)
-        if feature_name == "total_wind_generation_capacity":
-            return total_wind_bounds()
-        if feature_name == "total_generation_capacity":
-            return total_generation_bounds()
-        if feature_name == "residual_demand":
-            total_wind_lower, total_wind_upper = total_wind_bounds()
-            return (
-                float(self.support_demand_min - total_wind_upper),
-                float(self.support_demand_max - total_wind_lower),
-            )
-        if feature_name in {"previous_generation_capacity", "next_generation_capacity"}:
-            return total_generation_bounds()
-        if feature_name in {"previous_demand", "next_demand"}:
-            return float(self.support_demand_min), float(self.support_demand_max)
-        if feature_name == "own_generation_capacity":
-            return own_generation_bounds()
-        if feature_name in {
-            "previous_own_generation_capacity",
-            "next_own_generation_capacity",
-        }:
-            return own_generation_bounds()
-        if feature_name == "average_true_cost":
-            costs = [
-                self.block_cost_vector[self.local_to_global_block[(physical_generator_idx, b)]]
-                for b in self.local_blocks_by_generator[physical_generator_idx]
-            ]
-            value = float(np.mean(costs))
-            return value, value
-        if feature_name == "minimum_true_cost":
-            value = float(
-                min(
-                    self.block_cost_vector[self.local_to_global_block[(physical_generator_idx, b)]]
-                    for b in self.local_blocks_by_generator[physical_generator_idx]
-                )
-            )
-            return value, value
-        if feature_name == "maximum_true_cost":
-            value = float(
-                max(
-                    self.block_cost_vector[self.local_to_global_block[(physical_generator_idx, b)]]
-                    for b in self.local_blocks_by_generator[physical_generator_idx]
-                )
-            )
-            return value, value
-        raise ValueError(f"Unsupported NN feature name: {feature_name}")
-
     def _normalized_nn_feature_expression(
         self, generator_name: str, feature_name: str, t: int, physical_generator_idx: int
     ):
@@ -1748,175 +1650,13 @@ class PoAOptimization:
                 return float(mins[feature_name]), float(maxs[feature_name])
         return 0.0, 1.0
 
-    def _normalized_nn_feature_bounds(
-        self,
-        generator_name: str,
-        feature_name: str,
-        physical_generator_idx: int,
-    ) -> tuple[float, float]:
-        """
-        Return lower and upper bounds for the normalized NN feature.
-
-        Uses the same min-max normalization as `_normalized_nn_feature_expression()`.
-        """
-        raw_lower, raw_upper = self._raw_nn_feature_bounds(feature_name, physical_generator_idx)
-        feature_min, feature_max = self._nn_feature_bounds(generator_name, feature_name)
-        denominator = feature_max - feature_min
-        if abs(denominator) <= self.normalization_epsilon:
-            return 0.0, 0.0
-        normalized_lower = (raw_lower - feature_min) / denominator
-        normalized_upper = (raw_upper - feature_min) / denominator
-        return (
-            float(min(normalized_lower, normalized_upper)),
-            float(max(normalized_lower, normalized_upper)),
-        )
-
-    @staticmethod
-    def _affine_interval_bounds(
-        weights: np.ndarray,
-        bias: np.ndarray,
-        lower_prev: np.ndarray,
-        upper_prev: np.ndarray,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """
-        Compute interval bounds for z = W x + b.
-
-        Uses positive/negative weight splitting:
-            lower = b + W_pos @ lower_prev + W_neg @ upper_prev
-            upper = b + W_pos @ upper_prev + W_neg @ lower_prev
-        """
-        weights = np.asarray(weights, dtype=float)
-        bias = np.asarray(bias, dtype=float)
-        lower_prev = np.asarray(lower_prev, dtype=float)
-        upper_prev = np.asarray(upper_prev, dtype=float)
-
-        if weights.ndim != 2:
-            raise ValueError("weights must be a 2D array")
-        if bias.ndim != 1:
-            raise ValueError("bias must be a 1D array")
-        if weights.shape[0] != bias.shape[0]:
-            raise ValueError("weights output dimension must match bias length")
-        if lower_prev.shape != upper_prev.shape:
-            raise ValueError("lower_prev and upper_prev must have matching shapes")
-        if weights.shape[1] != lower_prev.shape[0]:
-            raise ValueError("weights input dimension must match previous bounds")
-
-        W_pos = np.maximum(weights, 0.0)
-        W_neg = np.minimum(weights, 0.0)
-        lower = bias + W_pos @ lower_prev + W_neg @ upper_prev
-        upper = bias + W_pos @ upper_prev + W_neg @ lower_prev
-        return lower, upper
-
-    def _compute_nn_relu_bounds(
-        self,
-        generator_name: str,
-        physical_generator_idx: int,
-        policy: dict[str, Any],
-    ) -> dict[tuple[int, int], dict[str, Any]]:
-        """
-        Compute neuron-specific ReLU bounds for all hidden linear layers of one generator policy.
-
-        Returns a dictionary indexed by `(linear_idx, node)`.
-        """
-        input_bounds = [
-            self._normalized_nn_feature_bounds(generator_name, feature_name, physical_generator_idx)
-            for feature_name in policy["feature_columns"]
-        ]
-        lower_prev = np.asarray([lower for lower, _ in input_bounds], dtype=float)
-        upper_prev = np.asarray([upper for _, upper in input_bounds], dtype=float)
-        relu_bounds: dict[tuple[int, int], dict[str, Any]] = {}
-        linear_idx = 0
-        tol = 1e-9
-
-        for layer_pos, layer in enumerate(policy["layers"]):
-            layer_type = str(layer.get("type", "")).lower()
-            if layer_type == "relu":
-                continue
-            if layer_type != "linear":
-                raise ValueError(f"{generator_name}: unsupported layer type '{layer_type}'")
-
-            weights = np.asarray(layer["weight"], dtype=float)
-            bias = np.asarray(layer["bias"], dtype=float)
-            z_lower, z_upper = self._affine_interval_bounds(weights, bias, lower_prev, upper_prev)
-            is_final_linear = layer_pos == len(policy["layers"]) - 1
-            if is_final_linear:
-                break
-
-            h_lower = np.maximum(0.0, z_lower)
-            h_upper = np.maximum(0.0, z_upper)
-            for node in range(weights.shape[0]):
-                L = float(z_lower[node])
-                U = float(z_upper[node])
-                if L > U + tol:
-                    raise ValueError(
-                        f"{generator_name}: invalid NN ReLU bounds at "
-                        f"linear layer {linear_idx}, node {node}: L={L}, U={U}"
-                    )
-                if not np.isfinite(L) or not np.isfinite(U):
-                    warning = (
-                        f"{generator_name}: non-finite NN ReLU bounds at linear layer "
-                        f"{linear_idx}, node {node}; falling back to +/-{100}"
-                    )
-                    self.nn_bound_warnings.append(warning)
-                    L = -float(100)
-                    U = float(100)
-                    z_lower[node] = L
-                    z_upper[node] = U
-                    h_lower[node] = max(0.0, L)
-                    h_upper[node] = max(0.0, U)
-
-                if U <= tol:
-                    status = "inactive"
-                elif L >= -tol:
-                    status = "active"
-                else:
-                    status = "ambiguous"
-                relu_bounds[(linear_idx, node)] = {
-                    "L": L,
-                    "U": U,
-                    "h_lower": float(max(0.0, L)),
-                    "h_upper": float(max(0.0, U)),
-                    "status": status,
-                }
-
-            lower_prev = h_lower
-            upper_prev = h_upper
-            linear_idx += 1
-
-        return relu_bounds
-
-    def summarize_nn_relu_bounds(self) -> dict[str, Any]:
-        """
-        Summarize computed ReLU bounds for diagnostics.
-        """
-        if not self.nn_relu_bounds:
-            return {}
-
-        summary: dict[str, Any] = {}
-        for generator_name, bounds in self.nn_relu_bounds.items():
-            if not bounds:
-                continue
-            values = list(bounds.values())
-            L_values = [float(item["L"]) for item in values]
-            U_values = [float(item["U"]) for item in values]
-            summary[generator_name] = {
-                "num_hidden_neurons": len(values),
-                "num_active": sum(1 for item in values if item["status"] == "active"),
-                "num_inactive": sum(1 for item in values if item["status"] == "inactive"),
-                "num_ambiguous": sum(1 for item in values if item["status"] == "ambiguous"),
-                "min_L": float(min(L_values)),
-                "max_L": float(max(L_values)),
-                "min_U": float(min(U_values)),
-                "max_U": float(max(U_values)),
-                "max_M_minus": float(max(max(0.0, -L) for L in L_values)),
-                "max_M_plus": float(max(max(0.0, U) for U in U_values)),
-            }
-        return summary
-
     def _build_nn_policy_constraints(self) -> None:
         m = self.model
-        self.nn_relu_bounds = {}
-        self.nn_bound_warnings = []
+        if not self.nn_relu_bounds:
+            raise ValueError(
+                "NN ReLU bounds are required before building NN policy constraints. "
+                "Run compute_nn_relu_bounds.py or call load_nn_relu_bounds_report(...)."
+            )
         nn_input_indices: list[tuple[int, int, int]] = []
         nn_z_indices: list[tuple[int, int, int, int]] = []
         nn_h_indices: list[tuple[int, int, int, int]] = []
@@ -1928,9 +1668,11 @@ class PoAOptimization:
         for i in self.nn_policy_generator_ids:
             generator_name = self.physical_generator_names[i]
             policy = self.nn_policies[generator_name]
-            self.nn_relu_bounds[generator_name] = self._compute_nn_relu_bounds(
-                generator_name, i, policy
-            )
+            if generator_name not in self.nn_relu_bounds:
+                raise ValueError(
+                    f"NN ReLU bounds report is missing bounds for generator "
+                    f"{generator_name}."
+                )
             for f_idx, _ in enumerate(policy["feature_columns"]):
                 for t in range(self.num_time_steps):
                     nn_input_indices.append((i, t, f_idx))
@@ -1974,12 +1716,14 @@ class PoAOptimization:
         for i in self.nn_policy_generator_ids:
             generator_name = self.physical_generator_names[i]
             relu_bounds = self.nn_relu_bounds[generator_name]
-            for (linear_idx, node), bounds in relu_bounds.items():
-                for t in range(self.num_time_steps):
-                    m.nn_z[i, t, linear_idx, node].setlb(float(bounds["L"]))
-                    m.nn_z[i, t, linear_idx, node].setub(float(bounds["U"]))
-                    m.nn_h[i, t, linear_idx, node].setlb(float(bounds["h_lower"]))
-                    m.nn_h[i, t, linear_idx, node].setub(float(bounds["h_upper"]))
+            for (t, linear_idx, node), bounds in relu_bounds.items():
+                index = (i, int(t), int(linear_idx), int(node))
+                if index not in m.nn_z:
+                    continue
+                m.nn_z[index].setlb(float(bounds["L"]))
+                m.nn_z[index].setub(float(bounds["U"]))
+                m.nn_h[index].setlb(float(bounds["h_lower"]))
+                m.nn_h[index].setub(float(bounds["h_upper"]))
 
         for i in self.nn_policy_generator_ids:
             generator_name = self.physical_generator_names[i]
@@ -2015,7 +1759,14 @@ class PoAOptimization:
                             h = m.nn_h[i, t, linear_idx, node]
                             z = m.nn_z[i, t, linear_idx, node]
                             delta = m.nn_delta[i, t, linear_idx, node]
-                            bounds = relu_bounds[(linear_idx, node)]
+                            bound_key = (int(t), int(linear_idx), int(node))
+                            if bound_key not in relu_bounds:
+                                raise ValueError(
+                                    f"NN ReLU bounds report is missing bounds for "
+                                    f"{generator_name} at time {t}, linear layer "
+                                    f"{linear_idx}, node {node}."
+                                )
+                            bounds = relu_bounds[bound_key]
                             status = bounds["status"]
                             if status == "inactive":
                                 m.nn_constraints.add(h == 0)
@@ -2045,7 +1796,6 @@ class PoAOptimization:
                     )
 
     # ------------------------------------------------------------------
-    # ------------------------------------------------------------------
     # Apply precomputed tightening reports
     # ------------------------------------------------------------------
 
@@ -2060,6 +1810,163 @@ class PoAOptimization:
     @staticmethod
     def _parse_json_index(key: str) -> tuple[int, ...]:
         return tuple(int(part) for part in str(key).split(",") if part != "")
+
+    @staticmethod
+    def _parse_nn_relu_bound_key(key: str) -> tuple[int, int, int]:
+        parts = tuple(int(part) for part in str(key).split(",") if part != "")
+        if len(parts) != 3:
+            raise ValueError(
+                f"NN ReLU bound key '{key}' must have the form 'time_idx,linear_idx,node'"
+            )
+        return int(parts[0]), int(parts[1]), int(parts[2])
+
+    def _set_nn_relu_bounds_from_report(self, report: dict[str, Any]) -> None:
+        self.nn_relu_bounds_report = report
+        self.nn_feature_bounds = report.get("nn_feature_bounds", {}) or {}
+        self.nn_bound_warnings = list(
+            report.get("warnings", report.get("nn_bound_warnings", [])) or []
+        )
+
+        parsed_bounds: dict[str, dict[tuple[int, int, int], dict[str, Any]]] = {}
+        for generator_name, entries in (report.get("nn_relu_bounds", {}) or {}).items():
+            generator_bounds: dict[tuple[int, int, int], dict[str, Any]] = {}
+            for key, details in (entries or {}).items():
+                if not isinstance(details, dict):
+                    raise ValueError(
+                        f"Invalid NN ReLU bound entry for {generator_name}, key {key}"
+                    )
+                time_idx, linear_idx, node = self._parse_nn_relu_bound_key(key)
+                parsed_details = dict(details)
+                for numeric_key in ("L", "U", "h_lower", "h_upper"):
+                    if numeric_key not in parsed_details:
+                        raise ValueError(
+                            f"NN ReLU bound entry {generator_name}[{key}] is missing "
+                            f"'{numeric_key}'"
+                        )
+                    parsed_details[numeric_key] = float(parsed_details[numeric_key])
+                parsed_details["status"] = str(parsed_details.get("status", "")).lower()
+                if parsed_details["status"] not in {"active", "inactive", "ambiguous"}:
+                    raise ValueError(
+                        f"NN ReLU bound entry {generator_name}[{key}] has invalid "
+                        f"status '{parsed_details['status']}'"
+                    )
+                parsed_details.setdefault("time_idx", time_idx)
+                parsed_details.setdefault("linear_idx", linear_idx)
+                parsed_details.setdefault("node", node)
+                generator_bounds[(time_idx, linear_idx, node)] = parsed_details
+            parsed_bounds[str(generator_name)] = generator_bounds
+
+        self.nn_relu_bounds = parsed_bounds
+
+    def load_nn_relu_bounds_report(
+        self,
+        report_path: str | Path = "results/poa_nn_relu_bounds_report.json",
+    ) -> dict[str, Any]:
+        path = Path(report_path)
+        if not path.exists():
+            raise FileNotFoundError(f"NN ReLU bounds report not found: {path}")
+        with path.open("r", encoding="utf-8") as file_handle:
+            report = json.load(file_handle)
+
+        self.nn_relu_bounds_report_path = path
+        self._set_nn_relu_bounds_from_report(report)
+        return report
+
+    def apply_nn_relu_bounds_to_model(
+        self,
+        report: Optional[dict[str, Any]] = None,
+    ) -> dict[str, int]:
+        if not hasattr(self, "model"):
+            raise ValueError("Model is not built. Call build_model() first.")
+        if report is not None:
+            self._set_nn_relu_bounds_from_report(report)
+        if not self.nn_relu_bounds:
+            raise ValueError(
+                "No NN ReLU bounds loaded. Call load_nn_relu_bounds_report() first."
+            )
+
+        m = self.model
+        stats = {
+            "z_bounds_applied": 0,
+            "h_bounds_applied": 0,
+            "delta_fixed_active": 0,
+            "delta_fixed_inactive": 0,
+            "delta_left_ambiguous": 0,
+        }
+
+        for physical_generator_idx in self.nn_policy_generator_ids:
+            generator_name = self.physical_generator_names[int(physical_generator_idx)]
+            for (time_idx, linear_idx, node), bounds in (
+                self.nn_relu_bounds.get(generator_name, {}) or {}
+            ).items():
+                index = (
+                    int(physical_generator_idx),
+                    int(time_idx),
+                    int(linear_idx),
+                    int(node),
+                )
+                if hasattr(m, "nn_z") and index in m.nn_z:
+                    m.nn_z[index].setlb(float(bounds["L"]))
+                    m.nn_z[index].setub(float(bounds["U"]))
+                    stats["z_bounds_applied"] += 1
+                if hasattr(m, "nn_h") and index in m.nn_h:
+                    m.nn_h[index].setlb(float(bounds["h_lower"]))
+                    m.nn_h[index].setub(float(bounds["h_upper"]))
+                    stats["h_bounds_applied"] += 1
+                if not hasattr(m, "nn_delta") or index not in m.nn_delta:
+                    continue
+
+                status = str(bounds.get("status", "")).lower()
+                if status == "inactive":
+                    m.nn_delta[index].fix(0)
+                    stats["delta_fixed_inactive"] += 1
+                elif status == "active":
+                    m.nn_delta[index].fix(1)
+                    stats["delta_fixed_active"] += 1
+                elif status == "ambiguous":
+                    if m.nn_delta[index].fixed:
+                        m.nn_delta[index].unfix()
+                    stats["delta_left_ambiguous"] += 1
+                else:
+                    raise ValueError(
+                        f"{generator_name}: unknown ReLU bound status '{status}'"
+                    )
+
+        self.applied_nn_relu_stats = stats
+        return stats
+
+    def summarize_nn_feature_bounds(self) -> dict[str, Any]:
+        return dict(self.nn_feature_bounds or {})
+
+    def summarize_nn_relu_bounds(self) -> dict[str, Any]:
+        report_summary = (self.nn_relu_bounds_report or {}).get("summary")
+        if isinstance(report_summary, dict):
+            return report_summary
+        if not self.nn_relu_bounds:
+            return {}
+
+        summary: dict[str, Any] = {}
+        for generator_name, bounds in self.nn_relu_bounds.items():
+            values = list(bounds.values())
+            if not values:
+                continue
+            L_values = [float(item["L"]) for item in values]
+            U_values = [float(item["U"]) for item in values]
+            summary[generator_name] = {
+                "num_hidden_neurons_time_indexed": len(values),
+                "num_active": sum(1 for item in values if item["status"] == "active"),
+                "num_inactive": sum(1 for item in values if item["status"] == "inactive"),
+                "num_ambiguous": sum(
+                    1 for item in values if item["status"] == "ambiguous"
+                ),
+                "min_L": float(min(L_values)),
+                "max_L": float(max(L_values)),
+                "min_U": float(min(U_values)),
+                "max_U": float(max(U_values)),
+                "max_M_minus": float(max(max(0.0, -L) for L in L_values)),
+                "max_M_plus": float(max(max(0.0, U) for U in U_values)),
+            }
+        return summary
 
     def load_tightening_report(
         self,
@@ -2232,6 +2139,7 @@ class PoAOptimization:
                         applied += 1
         return applied
 
+    # ------------------------------------------------------------------
     # Solve and results
     # ------------------------------------------------------------------
 
@@ -2448,6 +2356,7 @@ class PoAOptimization:
                 "ramp_dual_bound": float(self.ramp_dual_bound),
             },
             "dual_bound_activity": dual_bound_activity,
+            "nn_feature_bounds": self.summarize_nn_feature_bounds(),
             "nn_relu_bounds": self.summarize_nn_relu_bounds(),
             "nn_bound_warnings": list(self.nn_bound_warnings),
         }
@@ -2470,6 +2379,7 @@ if __name__ == "__main__":
     regime_set = "PoA_analysis"
     seed = 1
     horizon = 4
+    nn_relu_report_path = "results/poa_nn_relu_bounds_report.json"
     tightening_report_path = "results/poa_bidding_blocks_tightening_report.json"
 
     scenario_manager = ScenarioManager(case)
@@ -2505,8 +2415,12 @@ if __name__ == "__main__":
     )
 
     start = time.perf_counter()
+    optimizer.load_nn_relu_bounds_report(nn_relu_report_path)
     optimizer.load_tightening_report(tightening_report_path)
     optimizer.build_model()
+    print("\nNN ReLU bound summary after model build")
+    print(json.dumps(optimizer.summarize_nn_relu_bounds(), indent=2))
+    applied_nn_relu_stats = optimizer.apply_nn_relu_bounds_to_model()
     applied_stats = optimizer.apply_tightened_bounds_to_model()
     optimizer.solve(time_limit=400)
     result_path = optimizer.save_results(
@@ -2515,7 +2429,11 @@ if __name__ == "__main__":
     elapsed = time.perf_counter() - start
 
     print("\nPoA solve with precomputed tightening complete")
+    print(f"  NN ReLU bounds report: {nn_relu_report_path}")
     print(f"  Tightening report: {tightening_report_path}")
+    print(f"  Active NN ReLU binaries fixed: {applied_nn_relu_stats['delta_fixed_active']}")
+    print(f"  Inactive NN ReLU binaries fixed: {applied_nn_relu_stats['delta_fixed_inactive']}")
+    print(f"  Ambiguous NN ReLU binaries left binary: {applied_nn_relu_stats['delta_left_ambiguous']}")
     print(f"  Applied fixed binaries: {applied_stats['fixed_binaries']}")
     print(f"  Applied dual upper bounds: {applied_stats['dual_upper_bounds']}")
     print(f"  Applied alpha bounds: {applied_stats['alpha_bounds']}")

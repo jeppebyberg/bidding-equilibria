@@ -1,0 +1,5237 @@
+{
+  "metadata": {
+    "reference_case": "test_case_bidding_blocks",
+    "num_time_steps": 6,
+    "nn_policy_generators": [
+      "G1",
+      "W3"
+    ],
+    "physical_generator_names": [
+      "G2",
+      "G1",
+      "W3",
+      "W2",
+      "W1"
+    ],
+    "nn_model_dir": "models\\neural_network\\training\\trained_models",
+    "nn_normalization_stats_path": "models\\neural_network\\features\\generated\\normalized\\min_max_stats.json",
+    "bound_methods": {
+      "first_layer": "support_set_optimization",
+      "later_layers": "activation_bound_optimization"
+    },
+    "tolerance": 1e-09
+  },
+  "nn_feature_bounds": {
+    "G1": {
+      "physical_generator_index": 1,
+      "feature_bound_source": "mixed_reference_budget_intersection",
+      "features": {
+        "demand": {
+          "source": "reference_budget_intersection",
+          "raw_lower": 90.0,
+          "raw_upper": 150.0,
+          "normalized_lower": 0.021379842808933444,
+          "normalized_upper": 0.9053221532671546,
+          "normalization_min": 88.54878474153927,
+          "normalization_max": 156.42651758690673
+        },
+        "total_wind_generation_capacity": {
+          "source": "reference_budget_intersection",
+          "raw_lower": 46.3,
+          "raw_upper": 150.0,
+          "normalized_lower": -0.23513813684315146,
+          "normalized_upper": 1.1023351096548433,
+          "normalization_min": 64.53126171269652,
+          "normalization_max": 142.06552288130337
+        },
+        "total_generation_capacity": {
+          "source": "reference_budget_intersection",
+          "raw_lower": 146.3,
+          "raw_upper": 250.0,
+          "normalized_lower": -0.23513813684315152,
+          "normalized_upper": 1.1023351096548433,
+          "normalization_min": 164.53126171269653,
+          "normalization_max": 242.06552288130337
+        },
+        "residual_demand": {
+          "source": "reference_budget_intersection",
+          "raw_lower": -60.0,
+          "raw_upper": 103.7,
+          "normalized_lower": -0.2049169145744877,
+          "normalized_upper": 1.5883604111099436,
+          "normalization_min": -41.29408182694736,
+          "normalization_max": 49.99129699058797
+        },
+        "next_generation_capacity": {
+          "source": "reference_budget_intersection",
+          "raw_lower": 146.3,
+          "raw_upper": 250.0,
+          "normalized_lower": -0.23513813684315152,
+          "normalized_upper": 1.1023351096548433,
+          "normalization_min": 164.53126171269653,
+          "normalization_max": 242.06552288130337
+        },
+        "next_demand": {
+          "source": "reference_budget_intersection",
+          "raw_lower": 90.0,
+          "raw_upper": 150.0,
+          "normalized_lower": 0.021379842808933444,
+          "normalized_upper": 0.9053221532671546,
+          "normalization_min": 88.54878474153927,
+          "normalization_max": 156.42651758690673
+        },
+        "own_generation_capacity": {
+          "source": "fixed_static_capacity",
+          "raw_lower": 50.0,
+          "raw_upper": 50.0,
+          "normalized_lower": 0.0,
+          "normalized_upper": 0.0,
+          "normalization_min": 50.0,
+          "normalization_max": 50.0
+        },
+        "next_own_generation_capacity": {
+          "source": "fixed_static_capacity",
+          "raw_lower": 50.0,
+          "raw_upper": 50.0,
+          "normalized_lower": 0.0,
+          "normalized_upper": 0.0,
+          "normalization_min": 50.0,
+          "normalization_max": 50.0
+        }
+      }
+    },
+    "W3": {
+      "physical_generator_index": 2,
+      "feature_bound_source": "reference_budget_intersection",
+      "features": {
+        "demand": {
+          "source": "reference_budget_intersection",
+          "raw_lower": 90.0,
+          "raw_upper": 150.0,
+          "normalized_lower": 0.021379842808933444,
+          "normalized_upper": 0.9053221532671546,
+          "normalization_min": 88.54878474153927,
+          "normalization_max": 156.42651758690673
+        },
+        "total_wind_generation_capacity": {
+          "source": "reference_budget_intersection",
+          "raw_lower": 46.3,
+          "raw_upper": 150.0,
+          "normalized_lower": -0.23513813684315146,
+          "normalized_upper": 1.1023351096548433,
+          "normalization_min": 64.53126171269652,
+          "normalization_max": 142.06552288130337
+        },
+        "total_generation_capacity": {
+          "source": "reference_budget_intersection",
+          "raw_lower": 146.3,
+          "raw_upper": 250.0,
+          "normalized_lower": -0.23513813684315152,
+          "normalized_upper": 1.1023351096548433,
+          "normalization_min": 164.53126171269653,
+          "normalization_max": 242.06552288130337
+        },
+        "residual_demand": {
+          "source": "reference_budget_intersection",
+          "raw_lower": -60.0,
+          "raw_upper": 103.7,
+          "normalized_lower": -0.2049169145744877,
+          "normalized_upper": 1.5883604111099436,
+          "normalization_min": -41.29408182694736,
+          "normalization_max": 49.99129699058797
+        },
+        "next_generation_capacity": {
+          "source": "reference_budget_intersection",
+          "raw_lower": 146.3,
+          "raw_upper": 250.0,
+          "normalized_lower": -0.23513813684315152,
+          "normalized_upper": 1.1023351096548433,
+          "normalization_min": 164.53126171269653,
+          "normalization_max": 242.06552288130337
+        },
+        "next_demand": {
+          "source": "reference_budget_intersection",
+          "raw_lower": 90.0,
+          "raw_upper": 150.0,
+          "normalized_lower": 0.021379842808933444,
+          "normalized_upper": 0.9053221532671546,
+          "normalization_min": 88.54878474153927,
+          "normalization_max": 156.42651758690673
+        },
+        "own_generation_capacity": {
+          "source": "reference_budget_intersection",
+          "raw_lower": 14.100000000000001,
+          "raw_upper": 50.0,
+          "normalized_lower": -0.03677943566240604,
+          "normalized_upper": 1.0,
+          "normalization_min": 15.373541598977392,
+          "normalization_max": 50.0
+        },
+        "next_own_generation_capacity": {
+          "source": "reference_budget_intersection",
+          "raw_lower": 14.100000000000001,
+          "raw_upper": 50.0,
+          "normalized_lower": -0.03677943566240604,
+          "normalized_upper": 1.0,
+          "normalization_min": 15.373541598977392,
+          "normalization_max": 50.0
+        }
+      }
+    }
+  },
+  "nn_relu_bounds": {
+    "G1": {
+      "0,0,0": {
+        "physical_generator_index": 1,
+        "time_idx": 0,
+        "linear_idx": 0,
+        "node": 0,
+        "L": 2.0483742638832867,
+        "U": 2.229990590144175,
+        "h_lower": 2.0483742638832867,
+        "h_upper": 2.229990590144175,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,0,1": {
+        "physical_generator_index": 1,
+        "time_idx": 0,
+        "linear_idx": 0,
+        "node": 1,
+        "L": -1.8988400398158194,
+        "U": 2.3472331861937006,
+        "h_lower": 0.0,
+        "h_upper": 2.3472331861937006,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,0,2": {
+        "physical_generator_index": 1,
+        "time_idx": 0,
+        "linear_idx": 0,
+        "node": 2,
+        "L": 1.6233323846335062,
+        "U": 2.211604386924443,
+        "h_lower": 1.6233323846335062,
+        "h_upper": 2.211604386924443,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,0,3": {
+        "physical_generator_index": 1,
+        "time_idx": 0,
+        "linear_idx": 0,
+        "node": 3,
+        "L": 1.847339630342258,
+        "U": 2.3541674749419848,
+        "h_lower": 1.847339630342258,
+        "h_upper": 2.3541674749419848,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,0,4": {
+        "physical_generator_index": 1,
+        "time_idx": 0,
+        "linear_idx": 0,
+        "node": 4,
+        "L": -0.5148833029482717,
+        "U": -0.17711021876233052,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,0,5": {
+        "physical_generator_index": 1,
+        "time_idx": 0,
+        "linear_idx": 0,
+        "node": 5,
+        "L": 0.7780822057443281,
+        "U": 2.052012690932359,
+        "h_lower": 0.7780822057443281,
+        "h_upper": 2.052012690932359,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,0,6": {
+        "physical_generator_index": 1,
+        "time_idx": 0,
+        "linear_idx": 0,
+        "node": 6,
+        "L": -0.8178221300054512,
+        "U": -0.30126487489078047,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,0,7": {
+        "physical_generator_index": 1,
+        "time_idx": 0,
+        "linear_idx": 0,
+        "node": 7,
+        "L": 0.5864804838903386,
+        "U": 2.4678871048636357,
+        "h_lower": 0.5864804838903386,
+        "h_upper": 2.4678871048636357,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,0,8": {
+        "physical_generator_index": 1,
+        "time_idx": 0,
+        "linear_idx": 0,
+        "node": 8,
+        "L": -0.4586413477257452,
+        "U": -0.11912171956854467,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,0,9": {
+        "physical_generator_index": 1,
+        "time_idx": 0,
+        "linear_idx": 0,
+        "node": 9,
+        "L": -0.5023598075841232,
+        "U": -0.2809540932171262,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,0,10": {
+        "physical_generator_index": 1,
+        "time_idx": 0,
+        "linear_idx": 0,
+        "node": 10,
+        "L": -0.9000455185376997,
+        "U": -0.36415837761673214,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,1,0": {
+        "physical_generator_index": 1,
+        "time_idx": 0,
+        "linear_idx": 1,
+        "node": 0,
+        "L": -1.0125919878074718,
+        "U": -0.13674615385342964,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,1,1": {
+        "physical_generator_index": 1,
+        "time_idx": 0,
+        "linear_idx": 1,
+        "node": 1,
+        "L": -1.9896408042909026,
+        "U": -0.8226405518206776,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,1,2": {
+        "physical_generator_index": 1,
+        "time_idx": 0,
+        "linear_idx": 1,
+        "node": 2,
+        "L": 2.289275399832303,
+        "U": 9.939813382517864,
+        "h_lower": 2.289275399832303,
+        "h_upper": 9.939813382517864,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,1,3": {
+        "physical_generator_index": 1,
+        "time_idx": 0,
+        "linear_idx": 1,
+        "node": 3,
+        "L": -1.1125661953121362,
+        "U": 7.081324382491709,
+        "h_lower": 0.0,
+        "h_upper": 7.081324382491709,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,1,4": {
+        "physical_generator_index": 1,
+        "time_idx": 0,
+        "linear_idx": 1,
+        "node": 4,
+        "L": -1.2887938939163504,
+        "U": -0.3476259503215129,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,1,5": {
+        "physical_generator_index": 1,
+        "time_idx": 0,
+        "linear_idx": 1,
+        "node": 5,
+        "L": -0.840961215998866,
+        "U": 0.01075979528497057,
+        "h_lower": 0.0,
+        "h_upper": 0.01075979528497057,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,1,6": {
+        "physical_generator_index": 1,
+        "time_idx": 0,
+        "linear_idx": 1,
+        "node": 6,
+        "L": 3.4178483341001242,
+        "U": 10.198921231320652,
+        "h_lower": 3.4178483341001242,
+        "h_upper": 10.198921231320652,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,1,7": {
+        "physical_generator_index": 1,
+        "time_idx": 0,
+        "linear_idx": 1,
+        "node": 7,
+        "L": 3.2768497956468927,
+        "U": 10.336311359146801,
+        "h_lower": 3.2768497956468927,
+        "h_upper": 10.336311359146801,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,1,8": {
+        "physical_generator_index": 1,
+        "time_idx": 0,
+        "linear_idx": 1,
+        "node": 8,
+        "L": -1.4208085163967528,
+        "U": -0.4891301459522737,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,1,9": {
+        "physical_generator_index": 1,
+        "time_idx": 0,
+        "linear_idx": 1,
+        "node": 9,
+        "L": -0.6457579935936353,
+        "U": 6.3527400810376085,
+        "h_lower": 0.0,
+        "h_upper": 6.3527400810376085,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,1,10": {
+        "physical_generator_index": 1,
+        "time_idx": 0,
+        "linear_idx": 1,
+        "node": 10,
+        "L": 3.951810114836366,
+        "U": 10.26641981078912,
+        "h_lower": 3.951810114836366,
+        "h_upper": 10.26641981078912,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,0,0": {
+        "physical_generator_index": 1,
+        "time_idx": 1,
+        "linear_idx": 0,
+        "node": 0,
+        "L": 2.0437277691796014,
+        "U": 2.225198725078049,
+        "h_lower": 2.0437277691796014,
+        "h_upper": 2.225198725078049,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,0,1": {
+        "physical_generator_index": 1,
+        "time_idx": 1,
+        "linear_idx": 0,
+        "node": 1,
+        "L": -1.864093302059875,
+        "U": 2.3848865775200982,
+        "h_lower": 0.0,
+        "h_upper": 2.3848865775200982,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,0,2": {
+        "physical_generator_index": 1,
+        "time_idx": 1,
+        "linear_idx": 0,
+        "node": 2,
+        "L": 1.6135897425638492,
+        "U": 2.2036704690920486,
+        "h_lower": 1.6135897425638492,
+        "h_upper": 2.2036704690920486,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,0,3": {
+        "physical_generator_index": 1,
+        "time_idx": 1,
+        "linear_idx": 0,
+        "node": 3,
+        "L": 1.841220947488464,
+        "U": 2.3494626885307506,
+        "h_lower": 1.841220947488464,
+        "h_upper": 2.3494626885307506,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,0,4": {
+        "physical_generator_index": 1,
+        "time_idx": 1,
+        "linear_idx": 0,
+        "node": 4,
+        "L": -0.5179754662507219,
+        "U": -0.17901802104638767,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,0,5": {
+        "physical_generator_index": 1,
+        "time_idx": 1,
+        "linear_idx": 0,
+        "node": 5,
+        "L": 0.7977941029349184,
+        "U": 2.0715608705688586,
+        "h_lower": 0.7977941029349184,
+        "h_upper": 2.0715608705688586,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,0,6": {
+        "physical_generator_index": 1,
+        "time_idx": 1,
+        "linear_idx": 0,
+        "node": 6,
+        "L": -0.810992670204097,
+        "U": -0.29289570527133596,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,0,7": {
+        "physical_generator_index": 1,
+        "time_idx": 1,
+        "linear_idx": 0,
+        "node": 7,
+        "L": 0.5686695279861964,
+        "U": 2.4479035634879676,
+        "h_lower": 0.5686695279861964,
+        "h_upper": 2.4479035634879676,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,0,8": {
+        "physical_generator_index": 1,
+        "time_idx": 1,
+        "linear_idx": 0,
+        "node": 8,
+        "L": -0.45147192917841206,
+        "U": -0.11236921273193923,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,0,9": {
+        "physical_generator_index": 1,
+        "time_idx": 1,
+        "linear_idx": 0,
+        "node": 9,
+        "L": -0.50192850003357,
+        "U": -0.28188131924118537,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,0,10": {
+        "physical_generator_index": 1,
+        "time_idx": 1,
+        "linear_idx": 0,
+        "node": 10,
+        "L": -0.9001799673248708,
+        "U": -0.36279755109762357,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,1,0": {
+        "physical_generator_index": 1,
+        "time_idx": 1,
+        "linear_idx": 1,
+        "node": 0,
+        "L": -1.013552448956289,
+        "U": -0.1361930859919434,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,1,1": {
+        "physical_generator_index": 1,
+        "time_idx": 1,
+        "linear_idx": 1,
+        "node": 1,
+        "L": -1.980418024948066,
+        "U": -0.8108819270146624,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,1,2": {
+        "physical_generator_index": 1,
+        "time_idx": 1,
+        "linear_idx": 1,
+        "node": 2,
+        "L": 2.2322739333188957,
+        "U": 9.941912201268748,
+        "h_lower": 2.2322739333188957,
+        "h_upper": 9.941912201268748,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,1,3": {
+        "physical_generator_index": 1,
+        "time_idx": 1,
+        "linear_idx": 1,
+        "node": 3,
+        "L": -1.0878111712223895,
+        "U": 7.203606363467249,
+        "h_lower": 0.0,
+        "h_upper": 7.203606363467249,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,1,4": {
+        "physical_generator_index": 1,
+        "time_idx": 1,
+        "linear_idx": 1,
+        "node": 4,
+        "L": -1.285755133039601,
+        "U": -0.336361734718668,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,1,5": {
+        "physical_generator_index": 1,
+        "time_idx": 1,
+        "linear_idx": 1,
+        "node": 5,
+        "L": -0.8410680040740195,
+        "U": 0.01944962137322301,
+        "h_lower": 0.0,
+        "h_upper": 0.01944962137322301,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,1,6": {
+        "physical_generator_index": 1,
+        "time_idx": 1,
+        "linear_idx": 1,
+        "node": 6,
+        "L": 3.353122096915526,
+        "U": 10.189494710774396,
+        "h_lower": 3.353122096915526,
+        "h_upper": 10.189494710774396,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,1,7": {
+        "physical_generator_index": 1,
+        "time_idx": 1,
+        "linear_idx": 1,
+        "node": 7,
+        "L": 3.223910385410798,
+        "U": 10.339496029662149,
+        "h_lower": 3.223910385410798,
+        "h_upper": 10.339496029662149,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,1,8": {
+        "physical_generator_index": 1,
+        "time_idx": 1,
+        "linear_idx": 1,
+        "node": 8,
+        "L": -1.4337301560653775,
+        "U": -0.49430400424622,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,1,9": {
+        "physical_generator_index": 1,
+        "time_idx": 1,
+        "linear_idx": 1,
+        "node": 9,
+        "L": -0.6308459432344378,
+        "U": 6.460122691427009,
+        "h_lower": 0.0,
+        "h_upper": 6.460122691427009,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,1,10": {
+        "physical_generator_index": 1,
+        "time_idx": 1,
+        "linear_idx": 1,
+        "node": 10,
+        "L": 3.908599178588186,
+        "U": 10.267727492346378,
+        "h_lower": 3.908599178588186,
+        "h_upper": 10.267727492346378,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,0,0": {
+        "physical_generator_index": 1,
+        "time_idx": 2,
+        "linear_idx": 0,
+        "node": 0,
+        "L": 2.0419789995564823,
+        "U": 2.2231592147300474,
+        "h_lower": 2.0419789995564823,
+        "h_upper": 2.2231592147300474,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,0,1": {
+        "physical_generator_index": 1,
+        "time_idx": 2,
+        "linear_idx": 0,
+        "node": 1,
+        "L": -1.95842089244533,
+        "U": 2.299278947846,
+        "h_lower": 0.0,
+        "h_upper": 2.299278947846,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,0,2": {
+        "physical_generator_index": 1,
+        "time_idx": 2,
+        "linear_idx": 0,
+        "node": 2,
+        "L": 1.6236493065560549,
+        "U": 2.2191562057960406,
+        "h_lower": 1.6236493065560549,
+        "h_upper": 2.2191562057960406,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,0,3": {
+        "physical_generator_index": 1,
+        "time_idx": 2,
+        "linear_idx": 0,
+        "node": 3,
+        "L": 1.8433326806706705,
+        "U": 2.355816111040636,
+        "h_lower": 1.8433326806706705,
+        "h_upper": 2.355816111040636,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,0,4": {
+        "physical_generator_index": 1,
+        "time_idx": 2,
+        "linear_idx": 0,
+        "node": 4,
+        "L": -0.5237870662787474,
+        "U": -0.18127653801923413,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,0,5": {
+        "physical_generator_index": 1,
+        "time_idx": 2,
+        "linear_idx": 0,
+        "node": 5,
+        "L": 0.7797644601624537,
+        "U": 2.0532037926882127,
+        "h_lower": 0.7797644601624537,
+        "h_upper": 2.0532037926882127,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,0,6": {
+        "physical_generator_index": 1,
+        "time_idx": 2,
+        "linear_idx": 0,
+        "node": 6,
+        "L": -0.8181655599041053,
+        "U": -0.29544946551707363,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,0,7": {
+        "physical_generator_index": 1,
+        "time_idx": 2,
+        "linear_idx": 0,
+        "node": 7,
+        "L": 0.5982612192508285,
+        "U": 2.473150083809549,
+        "h_lower": 0.5982612192508285,
+        "h_upper": 2.473150083809549,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,0,8": {
+        "physical_generator_index": 1,
+        "time_idx": 2,
+        "linear_idx": 0,
+        "node": 8,
+        "L": -0.45497468226001836,
+        "U": -0.11670578923500124,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,0,9": {
+        "physical_generator_index": 1,
+        "time_idx": 2,
+        "linear_idx": 0,
+        "node": 9,
+        "L": -0.49864797828071217,
+        "U": -0.2813178646375523,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,0,10": {
+        "physical_generator_index": 1,
+        "time_idx": 2,
+        "linear_idx": 0,
+        "node": 10,
+        "L": -0.908763811264963,
+        "U": -0.36689556911887683,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,1,0": {
+        "physical_generator_index": 1,
+        "time_idx": 2,
+        "linear_idx": 1,
+        "node": 0,
+        "L": -1.0136019656916013,
+        "U": -0.1407186290419003,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,1,1": {
+        "physical_generator_index": 1,
+        "time_idx": 2,
+        "linear_idx": 1,
+        "node": 1,
+        "L": -1.9908487656914877,
+        "U": -0.8251772864353575,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,1,2": {
+        "physical_generator_index": 1,
+        "time_idx": 2,
+        "linear_idx": 1,
+        "node": 2,
+        "L": 2.3674879474664996,
+        "U": 9.943685273799012,
+        "h_lower": 2.3674879474664996,
+        "h_upper": 9.943685273799012,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,1,3": {
+        "physical_generator_index": 1,
+        "time_idx": 2,
+        "linear_idx": 1,
+        "node": 3,
+        "L": -1.1161498407288821,
+        "U": 6.948108046886092,
+        "h_lower": 0.0,
+        "h_upper": 6.948108046886092,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,1,4": {
+        "physical_generator_index": 1,
+        "time_idx": 2,
+        "linear_idx": 1,
+        "node": 4,
+        "L": -1.2887567863381806,
+        "U": -0.35664381375891707,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,1,5": {
+        "physical_generator_index": 1,
+        "time_idx": 2,
+        "linear_idx": 1,
+        "node": 5,
+        "L": -0.8400991436300499,
+        "U": 0.0037799409973754416,
+        "h_lower": 0.0,
+        "h_upper": 0.0037799409973754416,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,1,6": {
+        "physical_generator_index": 1,
+        "time_idx": 2,
+        "linear_idx": 1,
+        "node": 6,
+        "L": 3.486955887551863,
+        "U": 10.201767248138456,
+        "h_lower": 3.486955887551863,
+        "h_upper": 10.201767248138456,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,1,7": {
+        "physical_generator_index": 1,
+        "time_idx": 2,
+        "linear_idx": 1,
+        "node": 7,
+        "L": 3.3467448790349192,
+        "U": 10.341602003618496,
+        "h_lower": 3.3467448790349192,
+        "h_upper": 10.341602003618496,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,1,8": {
+        "physical_generator_index": 1,
+        "time_idx": 2,
+        "linear_idx": 1,
+        "node": 8,
+        "L": -1.41081663321978,
+        "U": -0.48885077179695596,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,1,9": {
+        "physical_generator_index": 1,
+        "time_idx": 2,
+        "linear_idx": 1,
+        "node": 9,
+        "L": -0.6482507555752435,
+        "U": 6.230441308611089,
+        "h_lower": 0.0,
+        "h_upper": 6.230441308611089,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,1,10": {
+        "physical_generator_index": 1,
+        "time_idx": 2,
+        "linear_idx": 1,
+        "node": 10,
+        "L": 4.00683122073305,
+        "U": 10.271289736826485,
+        "h_lower": 4.00683122073305,
+        "h_upper": 10.271289736826485,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,0,0": {
+        "physical_generator_index": 1,
+        "time_idx": 3,
+        "linear_idx": 0,
+        "node": 0,
+        "L": 2.034645125139692,
+        "U": 2.2153892292259347,
+        "h_lower": 2.034645125139692,
+        "h_upper": 2.2153892292259347,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,0,1": {
+        "physical_generator_index": 1,
+        "time_idx": 3,
+        "linear_idx": 0,
+        "node": 1,
+        "L": -1.971797276917251,
+        "U": 2.3043113693202764,
+        "h_lower": 0.0,
+        "h_upper": 2.3043113693202764,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,0,2": {
+        "physical_generator_index": 1,
+        "time_idx": 3,
+        "linear_idx": 0,
+        "node": 2,
+        "L": 1.6157552950450755,
+        "U": 2.222717447787721,
+        "h_lower": 1.6157552950450755,
+        "h_upper": 2.222717447787721,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,0,3": {
+        "physical_generator_index": 1,
+        "time_idx": 3,
+        "linear_idx": 0,
+        "node": 3,
+        "L": 1.83608193571713,
+        "U": 2.357520043556641,
+        "h_lower": 1.83608193571713,
+        "h_upper": 2.357520043556641,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,0,4": {
+        "physical_generator_index": 1,
+        "time_idx": 3,
+        "linear_idx": 0,
+        "node": 4,
+        "L": -0.5351390909687446,
+        "U": -0.18512760959274188,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,0,5": {
+        "physical_generator_index": 1,
+        "time_idx": 3,
+        "linear_idx": 0,
+        "node": 5,
+        "L": 0.7970906537725704,
+        "U": 2.070038833636058,
+        "h_lower": 0.7970906537725704,
+        "h_upper": 2.070038833636058,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,0,6": {
+        "physical_generator_index": 1,
+        "time_idx": 3,
+        "linear_idx": 0,
+        "node": 6,
+        "L": -0.8178169804192448,
+        "U": -0.285349390517641,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,0,7": {
+        "physical_generator_index": 1,
+        "time_idx": 3,
+        "linear_idx": 0,
+        "node": 7,
+        "L": 0.5899366887424765,
+        "U": 2.4583077968866203,
+        "h_lower": 0.5899366887424765,
+        "h_upper": 2.4583077968866203,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,0,8": {
+        "physical_generator_index": 1,
+        "time_idx": 3,
+        "linear_idx": 0,
+        "node": 8,
+        "L": -0.4470394597832442,
+        "U": -0.11002130189041032,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,0,9": {
+        "physical_generator_index": 1,
+        "time_idx": 3,
+        "linear_idx": 0,
+        "node": 9,
+        "L": -0.49553843425207167,
+        "U": -0.28228392133274893,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,0,10": {
+        "physical_generator_index": 1,
+        "time_idx": 3,
+        "linear_idx": 0,
+        "node": 10,
+        "L": -0.9185994277950384,
+        "U": -0.3672611087091807,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,1,0": {
+        "physical_generator_index": 1,
+        "time_idx": 3,
+        "linear_idx": 1,
+        "node": 0,
+        "L": -1.0154292859210567,
+        "U": -0.14235950053781082,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,1,1": {
+        "physical_generator_index": 1,
+        "time_idx": 3,
+        "linear_idx": 1,
+        "node": 1,
+        "L": -1.9864590511347788,
+        "U": -0.8168300757751157,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,1,2": {
+        "physical_generator_index": 1,
+        "time_idx": 3,
+        "linear_idx": 1,
+        "node": 2,
+        "L": 2.3630564522583257,
+        "U": 9.95246671865605,
+        "h_lower": 2.3630564522583257,
+        "h_upper": 9.95246671865605,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,1,3": {
+        "physical_generator_index": 1,
+        "time_idx": 3,
+        "linear_idx": 1,
+        "node": 3,
+        "L": -1.097309823450591,
+        "U": 6.976716735914533,
+        "h_lower": 0.0,
+        "h_upper": 6.976716735914533,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,1,4": {
+        "physical_generator_index": 1,
+        "time_idx": 3,
+        "linear_idx": 1,
+        "node": 4,
+        "L": -1.2872839563061764,
+        "U": -0.35190538314222125,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,1,5": {
+        "physical_generator_index": 1,
+        "time_idx": 3,
+        "linear_idx": 1,
+        "node": 5,
+        "L": -0.8411459735807684,
+        "U": 0.008042647871858516,
+        "h_lower": 0.0,
+        "h_upper": 0.008042647871858516,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,1,6": {
+        "physical_generator_index": 1,
+        "time_idx": 3,
+        "linear_idx": 1,
+        "node": 6,
+        "L": 3.4711191524482463,
+        "U": 10.20201236923129,
+        "h_lower": 3.4711191524482463,
+        "h_upper": 10.20201236923129,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,1,7": {
+        "physical_generator_index": 1,
+        "time_idx": 3,
+        "linear_idx": 1,
+        "node": 7,
+        "L": 3.34113484401833,
+        "U": 10.354638649701014,
+        "h_lower": 3.34113484401833,
+        "h_upper": 10.354638649701014,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,1,8": {
+        "physical_generator_index": 1,
+        "time_idx": 3,
+        "linear_idx": 1,
+        "node": 8,
+        "L": -1.4163929631862255,
+        "U": -0.4930220357888519,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,1,9": {
+        "physical_generator_index": 1,
+        "time_idx": 3,
+        "linear_idx": 1,
+        "node": 9,
+        "L": -0.6378156690127663,
+        "U": 6.252676786892439,
+        "h_lower": 0.0,
+        "h_upper": 6.252676786892439,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,1,10": {
+        "physical_generator_index": 1,
+        "time_idx": 3,
+        "linear_idx": 1,
+        "node": 10,
+        "L": 4.001165206837188,
+        "U": 10.282377569085972,
+        "h_lower": 4.001165206837188,
+        "h_upper": 10.282377569085972,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,0,0": {
+        "physical_generator_index": 1,
+        "time_idx": 4,
+        "linear_idx": 0,
+        "node": 0,
+        "L": 2.022751137502576,
+        "U": 2.203404385112293,
+        "h_lower": 2.022751137502576,
+        "h_upper": 2.203404385112293,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,0,1": {
+        "physical_generator_index": 1,
+        "time_idx": 4,
+        "linear_idx": 0,
+        "node": 1,
+        "L": -2.1149492340055636,
+        "U": 2.186592630973421,
+        "h_lower": 0.0,
+        "h_upper": 2.186592630973421,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,0,2": {
+        "physical_generator_index": 1,
+        "time_idx": 4,
+        "linear_idx": 0,
+        "node": 2,
+        "L": 1.6202699049995926,
+        "U": 2.2430583948182807,
+        "h_lower": 1.6202699049995926,
+        "h_upper": 2.2430583948182807,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,0,3": {
+        "physical_generator_index": 1,
+        "time_idx": 4,
+        "linear_idx": 0,
+        "node": 3,
+        "L": 1.8298921608686571,
+        "U": 2.363701862580565,
+        "h_lower": 1.8298921608686571,
+        "h_upper": 2.363701862580565,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,0,4": {
+        "physical_generator_index": 1,
+        "time_idx": 4,
+        "linear_idx": 0,
+        "node": 4,
+        "L": -0.5536913392812386,
+        "U": -0.1933166989942968,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,0,5": {
+        "physical_generator_index": 1,
+        "time_idx": 4,
+        "linear_idx": 0,
+        "node": 5,
+        "L": 0.7920549208047546,
+        "U": 2.0649007771969354,
+        "h_lower": 0.7920549208047546,
+        "h_upper": 2.0649007771969354,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,0,6": {
+        "physical_generator_index": 1,
+        "time_idx": 4,
+        "linear_idx": 0,
+        "node": 6,
+        "L": -0.8221048833088075,
+        "U": -0.27616483249891416,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,0,7": {
+        "physical_generator_index": 1,
+        "time_idx": 4,
+        "linear_idx": 0,
+        "node": 7,
+        "L": 0.6222256108193855,
+        "U": 2.489238853043825,
+        "h_lower": 0.6222256108193855,
+        "h_upper": 2.489238853043825,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,0,8": {
+        "physical_generator_index": 1,
+        "time_idx": 4,
+        "linear_idx": 0,
+        "node": 8,
+        "L": -0.4419934123229381,
+        "U": -0.10523582424930922,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,0,9": {
+        "physical_generator_index": 1,
+        "time_idx": 4,
+        "linear_idx": 0,
+        "node": 9,
+        "L": -0.4951049783253315,
+        "U": -0.2826995488901415,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,0,10": {
+        "physical_generator_index": 1,
+        "time_idx": 4,
+        "linear_idx": 0,
+        "node": 10,
+        "L": -0.9380920795111609,
+        "U": -0.37367010149535607,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,1,0": {
+        "physical_generator_index": 1,
+        "time_idx": 4,
+        "linear_idx": 1,
+        "node": 0,
+        "L": -1.0200143141494298,
+        "U": -0.15073864485383898,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,1,1": {
+        "physical_generator_index": 1,
+        "time_idx": 4,
+        "linear_idx": 1,
+        "node": 1,
+        "L": -1.996591450368505,
+        "U": -0.8268428505830859,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,1,2": {
+        "physical_generator_index": 1,
+        "time_idx": 4,
+        "linear_idx": 1,
+        "node": 2,
+        "L": 2.5520612390886783,
+        "U": 9.970286532884378,
+        "h_lower": 2.5520612390886783,
+        "h_upper": 9.970286532884378,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,1,3": {
+        "physical_generator_index": 1,
+        "time_idx": 4,
+        "linear_idx": 1,
+        "node": 3,
+        "L": -1.122523387069243,
+        "U": 6.642849604830189,
+        "h_lower": 0.0,
+        "h_upper": 6.642849604830189,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,1,4": {
+        "physical_generator_index": 1,
+        "time_idx": 4,
+        "linear_idx": 1,
+        "node": 4,
+        "L": -1.289787869117829,
+        "U": -0.3755755015556513,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,1,5": {
+        "physical_generator_index": 1,
+        "time_idx": 4,
+        "linear_idx": 1,
+        "node": 5,
+        "L": -0.8396131011073208,
+        "U": -0.009859967688627243,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,1,6": {
+        "physical_generator_index": 1,
+        "time_idx": 4,
+        "linear_idx": 1,
+        "node": 6,
+        "L": 3.64408436252965,
+        "U": 10.221796232073482,
+        "h_lower": 3.64408436252965,
+        "h_upper": 10.221796232073482,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,1,7": {
+        "physical_generator_index": 1,
+        "time_idx": 4,
+        "linear_idx": 1,
+        "node": 7,
+        "L": 3.510767020742479,
+        "U": 10.372627756883508,
+        "h_lower": 3.510767020742479,
+        "h_upper": 10.372627756883508,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,1,8": {
+        "physical_generator_index": 1,
+        "time_idx": 4,
+        "linear_idx": 1,
+        "node": 8,
+        "L": -1.3899929532947717,
+        "U": -0.4899853723034075,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,1,9": {
+        "physical_generator_index": 1,
+        "time_idx": 4,
+        "linear_idx": 1,
+        "node": 9,
+        "L": -0.6538186247356084,
+        "U": 5.947987783589621,
+        "h_lower": 0.0,
+        "h_upper": 5.947987783589621,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,1,10": {
+        "physical_generator_index": 1,
+        "time_idx": 4,
+        "linear_idx": 1,
+        "node": 10,
+        "L": 4.135071466674203,
+        "U": 10.300303663416669,
+        "h_lower": 4.135071466674203,
+        "h_upper": 10.300303663416669,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,0,0": {
+        "physical_generator_index": 1,
+        "time_idx": 5,
+        "linear_idx": 0,
+        "node": 0,
+        "L": 2.040557549511061,
+        "U": 2.219611723133926,
+        "h_lower": 2.040557549511061,
+        "h_upper": 2.219611723133926,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,0,1": {
+        "physical_generator_index": 1,
+        "time_idx": 5,
+        "linear_idx": 0,
+        "node": 1,
+        "L": -2.2148365292348204,
+        "U": 2.0653898762275142,
+        "h_lower": 0.0,
+        "h_upper": 2.0653898762275142,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,0,2": {
+        "physical_generator_index": 1,
+        "time_idx": 5,
+        "linear_idx": 0,
+        "node": 2,
+        "L": 1.651877316574141,
+        "U": 2.2614018286529083,
+        "h_lower": 1.651877316574141,
+        "h_upper": 2.2614018286529083,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,0,3": {
+        "physical_generator_index": 1,
+        "time_idx": 5,
+        "linear_idx": 0,
+        "node": 3,
+        "L": 1.8498284368569187,
+        "U": 2.373269564656722,
+        "h_lower": 1.8498284368569187,
+        "h_upper": 2.373269564656722,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,0,4": {
+        "physical_generator_index": 1,
+        "time_idx": 5,
+        "linear_idx": 0,
+        "node": 4,
+        "L": -0.538730374484683,
+        "U": -0.18704104833262364,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,0,5": {
+        "physical_generator_index": 1,
+        "time_idx": 5,
+        "linear_idx": 0,
+        "node": 5,
+        "L": 0.7274732062130493,
+        "U": 1.9985181695102334,
+        "h_lower": 0.7274732062130493,
+        "h_upper": 1.9985181695102334,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,0,6": {
+        "physical_generator_index": 1,
+        "time_idx": 5,
+        "linear_idx": 0,
+        "node": 6,
+        "L": -0.8380894612182959,
+        "U": -0.3034406157410646,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,0,7": {
+        "physical_generator_index": 1,
+        "time_idx": 5,
+        "linear_idx": 0,
+        "node": 7,
+        "L": 0.7186148874167436,
+        "U": 2.5617296894544026,
+        "h_lower": 0.7186148874167436,
+        "h_upper": 2.5617296894544026,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,0,8": {
+        "physical_generator_index": 1,
+        "time_idx": 5,
+        "linear_idx": 0,
+        "node": 8,
+        "L": -0.45787997701391725,
+        "U": -0.1257084177582942,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,0,9": {
+        "physical_generator_index": 1,
+        "time_idx": 5,
+        "linear_idx": 0,
+        "node": 9,
+        "L": -0.5014287189110808,
+        "U": -0.30396715879662706,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,0,10": {
+        "physical_generator_index": 1,
+        "time_idx": 5,
+        "linear_idx": 0,
+        "node": 10,
+        "L": -0.9314866094087042,
+        "U": -0.3780299836389504,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,1,0": {
+        "physical_generator_index": 1,
+        "time_idx": 5,
+        "linear_idx": 1,
+        "node": 0,
+        "L": -1.0165971414518067,
+        "U": -0.16115466781858848,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,1,1": {
+        "physical_generator_index": 1,
+        "time_idx": 5,
+        "linear_idx": 1,
+        "node": 1,
+        "L": -2.025024460488514,
+        "U": -0.8761801306466973,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,1,2": {
+        "physical_generator_index": 1,
+        "time_idx": 5,
+        "linear_idx": 1,
+        "node": 2,
+        "L": 2.7654447168931107,
+        "U": 9.95834965344675,
+        "h_lower": 2.7654447168931107,
+        "h_upper": 9.95834965344675,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,1,3": {
+        "physical_generator_index": 1,
+        "time_idx": 5,
+        "linear_idx": 1,
+        "node": 3,
+        "L": -1.2069156617173145,
+        "U": 6.223442969881052,
+        "h_lower": 0.0,
+        "h_upper": 6.223442969881052,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,1,4": {
+        "physical_generator_index": 1,
+        "time_idx": 5,
+        "linear_idx": 1,
+        "node": 4,
+        "L": -1.2988192732235857,
+        "U": -0.41622760026586336,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,1,5": {
+        "physical_generator_index": 1,
+        "time_idx": 5,
+        "linear_idx": 1,
+        "node": 5,
+        "L": -0.8364975734453096,
+        "U": -0.03916621547276421,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,1,6": {
+        "physical_generator_index": 1,
+        "time_idx": 5,
+        "linear_idx": 1,
+        "node": 6,
+        "L": 3.8809611024185546,
+        "U": 10.246563492716495,
+        "h_lower": 3.8809611024185546,
+        "h_upper": 10.246563492716495,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,1,7": {
+        "physical_generator_index": 1,
+        "time_idx": 5,
+        "linear_idx": 1,
+        "node": 7,
+        "L": 3.701833367919625,
+        "U": 10.352739118679736,
+        "h_lower": 3.701833367919625,
+        "h_upper": 10.352739118679736,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,1,8": {
+        "physical_generator_index": 1,
+        "time_idx": 5,
+        "linear_idx": 1,
+        "node": 8,
+        "L": -1.3465915640390393,
+        "U": -0.4731698139125087,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,1,9": {
+        "physical_generator_index": 1,
+        "time_idx": 5,
+        "linear_idx": 1,
+        "node": 9,
+        "L": -0.7039760745029942,
+        "U": 5.586815947627629,
+        "h_lower": 0.0,
+        "h_upper": 5.586815947627629,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,1,10": {
+        "physical_generator_index": 1,
+        "time_idx": 5,
+        "linear_idx": 1,
+        "node": 10,
+        "L": 4.2953042586999315,
+        "U": 10.286845341334917,
+        "h_lower": 4.2953042586999315,
+        "h_upper": 10.286845341334917,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      }
+    },
+    "W3": {
+      "0,0,0": {
+        "physical_generator_index": 2,
+        "time_idx": 0,
+        "linear_idx": 0,
+        "node": 0,
+        "L": -0.7248758921198051,
+        "U": 0.3680514518105488,
+        "h_lower": 0.0,
+        "h_upper": 0.3680514518105488,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,0,1": {
+        "physical_generator_index": 2,
+        "time_idx": 0,
+        "linear_idx": 0,
+        "node": 1,
+        "L": 0.23435040791044054,
+        "U": 1.3399302123928518,
+        "h_lower": 0.23435040791044054,
+        "h_upper": 1.3399302123928518,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,0,2": {
+        "physical_generator_index": 2,
+        "time_idx": 0,
+        "linear_idx": 0,
+        "node": 2,
+        "L": -0.3944444867512015,
+        "U": 0.09903993396600544,
+        "h_lower": 0.0,
+        "h_upper": 0.09903993396600544,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,0,3": {
+        "physical_generator_index": 2,
+        "time_idx": 0,
+        "linear_idx": 0,
+        "node": 3,
+        "L": -2.0437694504920776,
+        "U": 1.5500368471117345,
+        "h_lower": 0.0,
+        "h_upper": 1.5500368471117345,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,0,4": {
+        "physical_generator_index": 2,
+        "time_idx": 0,
+        "linear_idx": 0,
+        "node": 4,
+        "L": -0.7134635257089254,
+        "U": -0.1933565775967949,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,0,5": {
+        "physical_generator_index": 2,
+        "time_idx": 0,
+        "linear_idx": 0,
+        "node": 5,
+        "L": -0.8260490287705244,
+        "U": 0.976960268193672,
+        "h_lower": 0.0,
+        "h_upper": 0.976960268193672,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,0,6": {
+        "physical_generator_index": 2,
+        "time_idx": 0,
+        "linear_idx": 0,
+        "node": 6,
+        "L": -2.4972776801250043,
+        "U": 1.8956370926262065,
+        "h_lower": 0.0,
+        "h_upper": 1.8956370926262065,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,0,7": {
+        "physical_generator_index": 2,
+        "time_idx": 0,
+        "linear_idx": 0,
+        "node": 7,
+        "L": 0.5320988964494306,
+        "U": 1.8419260877796748,
+        "h_lower": 0.5320988964494306,
+        "h_upper": 1.8419260877796748,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,0,8": {
+        "physical_generator_index": 2,
+        "time_idx": 0,
+        "linear_idx": 0,
+        "node": 8,
+        "L": 0.430240838580454,
+        "U": 1.283810223502337,
+        "h_lower": 0.430240838580454,
+        "h_upper": 1.283810223502337,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,0,9": {
+        "physical_generator_index": 2,
+        "time_idx": 0,
+        "linear_idx": 0,
+        "node": 9,
+        "L": -0.7788019310702193,
+        "U": 0.08098997255768126,
+        "h_lower": 0.0,
+        "h_upper": 0.08098997255768126,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,0,10": {
+        "physical_generator_index": 2,
+        "time_idx": 0,
+        "linear_idx": 0,
+        "node": 10,
+        "L": 0.1920485178148739,
+        "U": 1.3255594721125048,
+        "h_lower": 0.1920485178148739,
+        "h_upper": 1.3255594721125048,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,1,0": {
+        "physical_generator_index": 2,
+        "time_idx": 0,
+        "linear_idx": 1,
+        "node": 0,
+        "L": -0.7649189541311411,
+        "U": 9.132720626661007,
+        "h_lower": 0.0,
+        "h_upper": 9.132720626661007,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,1,1": {
+        "physical_generator_index": 2,
+        "time_idx": 0,
+        "linear_idx": 1,
+        "node": 1,
+        "L": -1.12607151458493,
+        "U": 0.22324090380437223,
+        "h_lower": 0.0,
+        "h_upper": 0.22324090380437223,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,1,2": {
+        "physical_generator_index": 2,
+        "time_idx": 0,
+        "linear_idx": 1,
+        "node": 2,
+        "L": 1.0902469199333815,
+        "U": 12.892105529966216,
+        "h_lower": 1.0902469199333815,
+        "h_upper": 12.892105529966216,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,1,3": {
+        "physical_generator_index": 2,
+        "time_idx": 0,
+        "linear_idx": 1,
+        "node": 3,
+        "L": 1.1702843208211884,
+        "U": 12.79094109011685,
+        "h_lower": 1.1702843208211884,
+        "h_upper": 12.79094109011685,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,1,4": {
+        "physical_generator_index": 2,
+        "time_idx": 0,
+        "linear_idx": 1,
+        "node": 4,
+        "L": 0.9426010622648171,
+        "U": 12.77261772723551,
+        "h_lower": 0.9426010622648171,
+        "h_upper": 12.77261772723551,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,1,5": {
+        "physical_generator_index": 2,
+        "time_idx": 0,
+        "linear_idx": 1,
+        "node": 5,
+        "L": -1.134622769741822,
+        "U": 0.40012986453925736,
+        "h_lower": 0.0,
+        "h_upper": 0.40012986453925736,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,1,6": {
+        "physical_generator_index": 2,
+        "time_idx": 0,
+        "linear_idx": 1,
+        "node": 6,
+        "L": -0.8350695041259082,
+        "U": 0.5932856663612622,
+        "h_lower": 0.0,
+        "h_upper": 0.5932856663612622,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,1,7": {
+        "physical_generator_index": 2,
+        "time_idx": 0,
+        "linear_idx": 1,
+        "node": 7,
+        "L": -0.5882702467927408,
+        "U": 6.2458963741768505,
+        "h_lower": 0.0,
+        "h_upper": 6.2458963741768505,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,1,8": {
+        "physical_generator_index": 2,
+        "time_idx": 0,
+        "linear_idx": 1,
+        "node": 8,
+        "L": 0.9462228306848517,
+        "U": 12.917811550907002,
+        "h_lower": 0.9462228306848517,
+        "h_upper": 12.917811550907002,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,1,9": {
+        "physical_generator_index": 2,
+        "time_idx": 0,
+        "linear_idx": 1,
+        "node": 9,
+        "L": 0.6848889397691622,
+        "U": 11.832045535774306,
+        "h_lower": 0.6848889397691622,
+        "h_upper": 11.832045535774306,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "0,1,10": {
+        "physical_generator_index": 2,
+        "time_idx": 0,
+        "linear_idx": 1,
+        "node": 10,
+        "L": -39.04835097795826,
+        "U": 1.1272094437322493,
+        "h_lower": 0.0,
+        "h_upper": 1.1272094437322493,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,0,0": {
+        "physical_generator_index": 2,
+        "time_idx": 1,
+        "linear_idx": 0,
+        "node": 0,
+        "L": -0.7154015118837957,
+        "U": 0.3854437244037746,
+        "h_lower": 0.0,
+        "h_upper": 0.3854437244037746,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,0,1": {
+        "physical_generator_index": 2,
+        "time_idx": 1,
+        "linear_idx": 0,
+        "node": 1,
+        "L": 0.2270825682773437,
+        "U": 1.3375754883401896,
+        "h_lower": 0.2270825682773437,
+        "h_upper": 1.3375754883401896,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,0,2": {
+        "physical_generator_index": 2,
+        "time_idx": 1,
+        "linear_idx": 0,
+        "node": 2,
+        "L": -0.39650205823707424,
+        "U": 0.1005921426774245,
+        "h_lower": 0.0,
+        "h_upper": 0.1005921426774245,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,0,3": {
+        "physical_generator_index": 2,
+        "time_idx": 1,
+        "linear_idx": 0,
+        "node": 3,
+        "L": -2.01096638210415,
+        "U": 1.5827422338303418,
+        "h_lower": 0.0,
+        "h_upper": 1.5827422338303418,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,0,4": {
+        "physical_generator_index": 2,
+        "time_idx": 1,
+        "linear_idx": 0,
+        "node": 4,
+        "L": -0.7013994866344242,
+        "U": -0.17946770626364106,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,0,5": {
+        "physical_generator_index": 2,
+        "time_idx": 1,
+        "linear_idx": 0,
+        "node": 5,
+        "L": -0.8449611080292762,
+        "U": 0.9554462328418349,
+        "h_lower": 0.0,
+        "h_upper": 0.9554462328418349,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,0,6": {
+        "physical_generator_index": 2,
+        "time_idx": 1,
+        "linear_idx": 0,
+        "node": 6,
+        "L": -2.458935241594555,
+        "U": 1.9348252940170805,
+        "h_lower": 0.0,
+        "h_upper": 1.9348252940170805,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,0,7": {
+        "physical_generator_index": 2,
+        "time_idx": 1,
+        "linear_idx": 0,
+        "node": 7,
+        "L": 0.5272718219898923,
+        "U": 1.843806063483707,
+        "h_lower": 0.5272718219898923,
+        "h_upper": 1.843806063483707,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,0,8": {
+        "physical_generator_index": 2,
+        "time_idx": 1,
+        "linear_idx": 0,
+        "node": 8,
+        "L": 0.4409319476400101,
+        "U": 1.2998378351534616,
+        "h_lower": 0.4409319476400101,
+        "h_upper": 1.2998378351534616,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,0,9": {
+        "physical_generator_index": 2,
+        "time_idx": 1,
+        "linear_idx": 0,
+        "node": 9,
+        "L": -0.790519875188552,
+        "U": 0.06966381695757179,
+        "h_lower": 0.0,
+        "h_upper": 0.06966381695757179,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,0,10": {
+        "physical_generator_index": 2,
+        "time_idx": 1,
+        "linear_idx": 0,
+        "node": 10,
+        "L": 0.1713780732637612,
+        "U": 1.301347122734708,
+        "h_lower": 0.1713780732637612,
+        "h_upper": 1.301347122734708,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,1,0": {
+        "physical_generator_index": 2,
+        "time_idx": 1,
+        "linear_idx": 1,
+        "node": 0,
+        "L": -0.7640844161738307,
+        "U": 9.322363214296889,
+        "h_lower": 0.0,
+        "h_upper": 9.322363214296889,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,1,1": {
+        "physical_generator_index": 2,
+        "time_idx": 1,
+        "linear_idx": 1,
+        "node": 1,
+        "L": -1.1333343222287728,
+        "U": 0.22756591531161102,
+        "h_lower": 0.0,
+        "h_upper": 0.22756591531161102,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,1,2": {
+        "physical_generator_index": 2,
+        "time_idx": 1,
+        "linear_idx": 1,
+        "node": 2,
+        "L": 1.0899024674708375,
+        "U": 13.085854382407767,
+        "h_lower": 1.0899024674708375,
+        "h_upper": 13.085854382407767,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,1,3": {
+        "physical_generator_index": 2,
+        "time_idx": 1,
+        "linear_idx": 1,
+        "node": 3,
+        "L": 1.1580016147972623,
+        "U": 12.975723421956097,
+        "h_lower": 1.1580016147972623,
+        "h_upper": 12.975723421956097,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,1,4": {
+        "physical_generator_index": 2,
+        "time_idx": 1,
+        "linear_idx": 1,
+        "node": 4,
+        "L": 0.9438519866725483,
+        "U": 13.001725437749021,
+        "h_lower": 0.9438519866725483,
+        "h_upper": 13.001725437749021,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,1,5": {
+        "physical_generator_index": 2,
+        "time_idx": 1,
+        "linear_idx": 1,
+        "node": 5,
+        "L": -1.1205030510160972,
+        "U": 0.41717269926826106,
+        "h_lower": 0.0,
+        "h_upper": 0.41717269926826106,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,1,6": {
+        "physical_generator_index": 2,
+        "time_idx": 1,
+        "linear_idx": 1,
+        "node": 6,
+        "L": -0.8324929921701174,
+        "U": 0.6050067483482781,
+        "h_lower": 0.0,
+        "h_upper": 0.6050067483482781,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,1,7": {
+        "physical_generator_index": 2,
+        "time_idx": 1,
+        "linear_idx": 1,
+        "node": 7,
+        "L": -0.5809253164309067,
+        "U": 6.361041723926112,
+        "h_lower": 0.0,
+        "h_upper": 6.361041723926112,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,1,8": {
+        "physical_generator_index": 2,
+        "time_idx": 1,
+        "linear_idx": 1,
+        "node": 8,
+        "L": 0.9391246269333675,
+        "U": 13.119693581597042,
+        "h_lower": 0.9391246269333675,
+        "h_upper": 13.119693581597042,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,1,9": {
+        "physical_generator_index": 2,
+        "time_idx": 1,
+        "linear_idx": 1,
+        "node": 9,
+        "L": 0.6800953819420236,
+        "U": 12.010627149676756,
+        "h_lower": 0.6800953819420236,
+        "h_upper": 12.010627149676756,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "1,1,10": {
+        "physical_generator_index": 2,
+        "time_idx": 1,
+        "linear_idx": 1,
+        "node": 10,
+        "L": -39.861628745161646,
+        "U": 1.126795592504584,
+        "h_lower": 0.0,
+        "h_upper": 1.126795592504584,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,0,0": {
+        "physical_generator_index": 2,
+        "time_idx": 2,
+        "linear_idx": 0,
+        "node": 0,
+        "L": -0.7112569761777607,
+        "U": 0.38687104373789827,
+        "h_lower": 0.0,
+        "h_upper": 0.38687104373789827,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,0,1": {
+        "physical_generator_index": 2,
+        "time_idx": 2,
+        "linear_idx": 0,
+        "node": 1,
+        "L": 0.19801719504032805,
+        "U": 1.3230636115773038,
+        "h_lower": 0.19801719504032805,
+        "h_upper": 1.3230636115773038,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,0,2": {
+        "physical_generator_index": 2,
+        "time_idx": 2,
+        "linear_idx": 0,
+        "node": 2,
+        "L": -0.39457536356697254,
+        "U": 0.11046684424084427,
+        "h_lower": 0.0,
+        "h_upper": 0.11046684424084427,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,0,3": {
+        "physical_generator_index": 2,
+        "time_idx": 2,
+        "linear_idx": 0,
+        "node": 3,
+        "L": -2.078245355340748,
+        "U": 1.5152678972551046,
+        "h_lower": 0.0,
+        "h_upper": 1.5152678972551046,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,0,4": {
+        "physical_generator_index": 2,
+        "time_idx": 2,
+        "linear_idx": 0,
+        "node": 4,
+        "L": -0.6918962824353287,
+        "U": -0.16575283371052904,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,0,5": {
+        "physical_generator_index": 2,
+        "time_idx": 2,
+        "linear_idx": 0,
+        "node": 5,
+        "L": -0.815380585874764,
+        "U": 0.9798228428101765,
+        "h_lower": 0.0,
+        "h_upper": 0.9798228428101765,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,0,6": {
+        "physical_generator_index": 2,
+        "time_idx": 2,
+        "linear_idx": 0,
+        "node": 6,
+        "L": -2.5422893666325046,
+        "U": 1.853310000374457,
+        "h_lower": 0.0,
+        "h_upper": 1.853310000374457,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,0,7": {
+        "physical_generator_index": 2,
+        "time_idx": 2,
+        "linear_idx": 0,
+        "node": 7,
+        "L": 0.4889293645733249,
+        "U": 1.8226561835245125,
+        "h_lower": 0.4889293645733249,
+        "h_upper": 1.8226561835245125,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,0,8": {
+        "physical_generator_index": 2,
+        "time_idx": 2,
+        "linear_idx": 0,
+        "node": 8,
+        "L": 0.4496147115191854,
+        "U": 1.3048571587875233,
+        "h_lower": 0.4496147115191854,
+        "h_upper": 1.3048571587875233,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,0,9": {
+        "physical_generator_index": 2,
+        "time_idx": 2,
+        "linear_idx": 0,
+        "node": 9,
+        "L": -0.7699051145780245,
+        "U": 0.09132766494245304,
+        "h_lower": 0.0,
+        "h_upper": 0.09132766494245304,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,0,10": {
+        "physical_generator_index": 2,
+        "time_idx": 2,
+        "linear_idx": 0,
+        "node": 10,
+        "L": 0.17765196482335463,
+        "U": 1.2984361580671968,
+        "h_lower": 0.17765196482335463,
+        "h_upper": 1.2984361580671968,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,1,0": {
+        "physical_generator_index": 2,
+        "time_idx": 2,
+        "linear_idx": 1,
+        "node": 0,
+        "L": -0.7890378045277797,
+        "U": 8.934875981078905,
+        "h_lower": 0.0,
+        "h_upper": 8.934875981078905,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,1,1": {
+        "physical_generator_index": 2,
+        "time_idx": 2,
+        "linear_idx": 1,
+        "node": 1,
+        "L": -1.111759525503363,
+        "U": 0.2374598939071561,
+        "h_lower": 0.0,
+        "h_upper": 0.2374598939071561,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,1,2": {
+        "physical_generator_index": 2,
+        "time_idx": 2,
+        "linear_idx": 1,
+        "node": 2,
+        "L": 1.04974302830828,
+        "U": 12.680733949192714,
+        "h_lower": 1.04974302830828,
+        "h_upper": 12.680733949192714,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,1,3": {
+        "physical_generator_index": 2,
+        "time_idx": 2,
+        "linear_idx": 1,
+        "node": 3,
+        "L": 1.1357530149442683,
+        "U": 12.583142097321122,
+        "h_lower": 1.1357530149442683,
+        "h_upper": 12.583142097321122,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,1,4": {
+        "physical_generator_index": 2,
+        "time_idx": 2,
+        "linear_idx": 1,
+        "node": 4,
+        "L": 0.9247139106417486,
+        "U": 12.539768422064551,
+        "h_lower": 0.9247139106417486,
+        "h_upper": 12.539768422064551,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,1,5": {
+        "physical_generator_index": 2,
+        "time_idx": 2,
+        "linear_idx": 1,
+        "node": 5,
+        "L": -1.1160696983483303,
+        "U": 0.41791531750254196,
+        "h_lower": 0.0,
+        "h_upper": 0.41791531750254196,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,1,6": {
+        "physical_generator_index": 2,
+        "time_idx": 2,
+        "linear_idx": 1,
+        "node": 6,
+        "L": -0.8325718274403517,
+        "U": 0.5984631113689187,
+        "h_lower": 0.0,
+        "h_upper": 0.5984631113689187,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,1,7": {
+        "physical_generator_index": 2,
+        "time_idx": 2,
+        "linear_idx": 1,
+        "node": 7,
+        "L": -0.5930697551242836,
+        "U": 6.123835886812037,
+        "h_lower": 0.0,
+        "h_upper": 6.123835886812037,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,1,8": {
+        "physical_generator_index": 2,
+        "time_idx": 2,
+        "linear_idx": 1,
+        "node": 8,
+        "L": 0.9185192362917245,
+        "U": 12.69911201267593,
+        "h_lower": 0.9185192362917245,
+        "h_upper": 12.69911201267593,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,1,9": {
+        "physical_generator_index": 2,
+        "time_idx": 2,
+        "linear_idx": 1,
+        "node": 9,
+        "L": 0.6527495510481269,
+        "U": 11.629508273183474,
+        "h_lower": 0.6527495510481269,
+        "h_upper": 11.629508273183474,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "2,1,10": {
+        "physical_generator_index": 2,
+        "time_idx": 2,
+        "linear_idx": 1,
+        "node": 10,
+        "L": -38.193070777350805,
+        "U": 1.1234389142741037,
+        "h_lower": 0.0,
+        "h_upper": 1.1234389142741037,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,0,0": {
+        "physical_generator_index": 2,
+        "time_idx": 3,
+        "linear_idx": 0,
+        "node": 0,
+        "L": -0.7055491801773719,
+        "U": 0.3977795157235924,
+        "h_lower": 0.0,
+        "h_upper": 0.3977795157235924,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,0,1": {
+        "physical_generator_index": 2,
+        "time_idx": 3,
+        "linear_idx": 0,
+        "node": 1,
+        "L": 0.1582076716773979,
+        "U": 1.312920854806504,
+        "h_lower": 0.1582076716773979,
+        "h_upper": 1.312920854806504,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,0,2": {
+        "physical_generator_index": 2,
+        "time_idx": 3,
+        "linear_idx": 0,
+        "node": 2,
+        "L": -0.39753582738741355,
+        "U": 0.10449523753632642,
+        "h_lower": 0.0,
+        "h_upper": 0.10449523753632642,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,0,3": {
+        "physical_generator_index": 2,
+        "time_idx": 3,
+        "linear_idx": 0,
+        "node": 3,
+        "L": -2.0705175461571472,
+        "U": 1.5227026614307444,
+        "h_lower": 0.0,
+        "h_upper": 1.5227026614307444,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,0,4": {
+        "physical_generator_index": 2,
+        "time_idx": 3,
+        "linear_idx": 0,
+        "node": 4,
+        "L": -0.6849206353816827,
+        "U": -0.15706997737655845,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,0,5": {
+        "physical_generator_index": 2,
+        "time_idx": 3,
+        "linear_idx": 0,
+        "node": 5,
+        "L": -0.8227832801674777,
+        "U": 0.9646142802382063,
+        "h_lower": 0.0,
+        "h_upper": 0.9646142802382063,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,0,6": {
+        "physical_generator_index": 2,
+        "time_idx": 3,
+        "linear_idx": 0,
+        "node": 6,
+        "L": -2.5334811431400257,
+        "U": 1.8618567046330678,
+        "h_lower": 0.0,
+        "h_upper": 1.8618567046330678,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,0,7": {
+        "physical_generator_index": 2,
+        "time_idx": 3,
+        "linear_idx": 0,
+        "node": 7,
+        "L": 0.4630334695759159,
+        "U": 1.816395403236339,
+        "h_lower": 0.4630334695759159,
+        "h_upper": 1.816395403236339,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,0,8": {
+        "physical_generator_index": 2,
+        "time_idx": 3,
+        "linear_idx": 0,
+        "node": 8,
+        "L": 0.4617482074019969,
+        "U": 1.3186637170167894,
+        "h_lower": 0.4617482074019969,
+        "h_upper": 1.3186637170167894,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,0,9": {
+        "physical_generator_index": 2,
+        "time_idx": 3,
+        "linear_idx": 0,
+        "node": 9,
+        "L": -0.7746279577764881,
+        "U": 0.08273549087841758,
+        "h_lower": 0.0,
+        "h_upper": 0.08273549087841758,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,0,10": {
+        "physical_generator_index": 2,
+        "time_idx": 3,
+        "linear_idx": 0,
+        "node": 10,
+        "L": 0.16477871275742112,
+        "U": 1.2728361449474752,
+        "h_lower": 0.16477871275742112,
+        "h_upper": 1.2728361449474752,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,1,0": {
+        "physical_generator_index": 2,
+        "time_idx": 3,
+        "linear_idx": 1,
+        "node": 0,
+        "L": -0.8030024262825116,
+        "U": 8.975101598371536,
+        "h_lower": 0.0,
+        "h_upper": 8.975101598371536,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,1,1": {
+        "physical_generator_index": 2,
+        "time_idx": 3,
+        "linear_idx": 1,
+        "node": 1,
+        "L": -1.1080284253238504,
+        "U": 0.24752147161393345,
+        "h_lower": 0.0,
+        "h_upper": 0.24752147161393345,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,1,2": {
+        "physical_generator_index": 2,
+        "time_idx": 3,
+        "linear_idx": 1,
+        "node": 2,
+        "L": 1.0242228132262554,
+        "U": 12.71568074169561,
+        "h_lower": 1.0242228132262554,
+        "h_upper": 12.71568074169561,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,1,3": {
+        "physical_generator_index": 2,
+        "time_idx": 3,
+        "linear_idx": 1,
+        "node": 3,
+        "L": 1.1046071833118385,
+        "U": 12.611327003381527,
+        "h_lower": 1.1046071833118385,
+        "h_upper": 12.611327003381527,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,1,4": {
+        "physical_generator_index": 2,
+        "time_idx": 3,
+        "linear_idx": 1,
+        "node": 4,
+        "L": 0.9115733328888469,
+        "U": 12.588004964398742,
+        "h_lower": 0.9115733328888469,
+        "h_upper": 12.588004964398742,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,1,5": {
+        "physical_generator_index": 2,
+        "time_idx": 3,
+        "linear_idx": 1,
+        "node": 5,
+        "L": -1.0988797768693723,
+        "U": 0.4331468145175395,
+        "h_lower": 0.0,
+        "h_upper": 0.4331468145175395,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,1,6": {
+        "physical_generator_index": 2,
+        "time_idx": 3,
+        "linear_idx": 1,
+        "node": 6,
+        "L": -0.8281616321484244,
+        "U": 0.6124463107443293,
+        "h_lower": 0.0,
+        "h_upper": 0.6124463107443293,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,1,7": {
+        "physical_generator_index": 2,
+        "time_idx": 3,
+        "linear_idx": 1,
+        "node": 7,
+        "L": -0.5911354459849281,
+        "U": 6.145629372218217,
+        "h_lower": 0.0,
+        "h_upper": 6.145629372218217,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,1,8": {
+        "physical_generator_index": 2,
+        "time_idx": 3,
+        "linear_idx": 1,
+        "node": 8,
+        "L": 0.8957457859666383,
+        "U": 12.733860306308422,
+        "h_lower": 0.8957457859666383,
+        "h_upper": 12.733860306308422,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,1,9": {
+        "physical_generator_index": 2,
+        "time_idx": 3,
+        "linear_idx": 1,
+        "node": 9,
+        "L": 0.6303063718770563,
+        "U": 11.6581082045703,
+        "h_lower": 0.6303063718770563,
+        "h_upper": 11.6581082045703,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "3,1,10": {
+        "physical_generator_index": 2,
+        "time_idx": 3,
+        "linear_idx": 1,
+        "node": 10,
+        "L": -38.383548662773634,
+        "U": 1.1173266142804184,
+        "h_lower": 0.0,
+        "h_upper": 1.1173266142804184,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,0,0": {
+        "physical_generator_index": 2,
+        "time_idx": 4,
+        "linear_idx": 0,
+        "node": 0,
+        "L": -0.7073169664776402,
+        "U": 0.39262874036243905,
+        "h_lower": 0.0,
+        "h_upper": 0.39262874036243905,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,0,1": {
+        "physical_generator_index": 2,
+        "time_idx": 4,
+        "linear_idx": 0,
+        "node": 1,
+        "L": 0.0861117409793748,
+        "U": 1.2823092982731756,
+        "h_lower": 0.0861117409793748,
+        "h_upper": 1.2823092982731756,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,0,2": {
+        "physical_generator_index": 2,
+        "time_idx": 4,
+        "linear_idx": 0,
+        "node": 2,
+        "L": -0.3989295933345284,
+        "U": 0.11136726782707743,
+        "h_lower": 0.0,
+        "h_upper": 0.11136726782707743,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,0,3": {
+        "physical_generator_index": 2,
+        "time_idx": 4,
+        "linear_idx": 0,
+        "node": 3,
+        "L": -2.1573744075582932,
+        "U": 1.435784748986273,
+        "h_lower": 0.0,
+        "h_upper": 1.435784748986273,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,0,4": {
+        "physical_generator_index": 2,
+        "time_idx": 4,
+        "linear_idx": 0,
+        "node": 4,
+        "L": -0.680380910086376,
+        "U": -0.14679188003576604,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,0,5": {
+        "physical_generator_index": 2,
+        "time_idx": 4,
+        "linear_idx": 0,
+        "node": 5,
+        "L": -0.786427117232842,
+        "U": 0.9993442206146634,
+        "h_lower": 0.0,
+        "h_upper": 0.9993442206146634,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,0,6": {
+        "physical_generator_index": 2,
+        "time_idx": 4,
+        "linear_idx": 0,
+        "node": 6,
+        "L": -2.645300298707605,
+        "U": 1.7517814226677222,
+        "h_lower": 0.0,
+        "h_upper": 1.7517814226677222,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,0,7": {
+        "physical_generator_index": 2,
+        "time_idx": 4,
+        "linear_idx": 0,
+        "node": 7,
+        "L": 0.3984597044117504,
+        "U": 1.7867868854333702,
+        "h_lower": 0.3984597044117504,
+        "h_upper": 1.7867868854333702,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,0,8": {
+        "physical_generator_index": 2,
+        "time_idx": 4,
+        "linear_idx": 0,
+        "node": 8,
+        "L": 0.47321645544419255,
+        "U": 1.3270291532225098,
+        "h_lower": 0.47321645544419255,
+        "h_upper": 1.3270291532225098,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,0,9": {
+        "physical_generator_index": 2,
+        "time_idx": 4,
+        "linear_idx": 0,
+        "node": 9,
+        "L": -0.7598273627395398,
+        "U": 0.09997141402699206,
+        "h_lower": 0.0,
+        "h_upper": 0.09997141402699206,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,0,10": {
+        "physical_generator_index": 2,
+        "time_idx": 4,
+        "linear_idx": 0,
+        "node": 10,
+        "L": 0.16976125027536498,
+        "U": 1.274661466404054,
+        "h_lower": 0.16976125027536498,
+        "h_upper": 1.274661466404054,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,1,0": {
+        "physical_generator_index": 2,
+        "time_idx": 4,
+        "linear_idx": 1,
+        "node": 0,
+        "L": -0.8479936798530782,
+        "U": 8.458612868985957,
+        "h_lower": 0.0,
+        "h_upper": 8.458612868985957,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,1,1": {
+        "physical_generator_index": 2,
+        "time_idx": 4,
+        "linear_idx": 1,
+        "node": 1,
+        "L": -1.0763268016473737,
+        "U": 0.2658806648305121,
+        "h_lower": 0.0,
+        "h_upper": 0.2658806648305121,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,1,2": {
+        "physical_generator_index": 2,
+        "time_idx": 4,
+        "linear_idx": 1,
+        "node": 2,
+        "L": 0.9475224921087353,
+        "U": 12.177140135788388,
+        "h_lower": 0.9475224921087353,
+        "h_upper": 12.177140135788388,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,1,3": {
+        "physical_generator_index": 2,
+        "time_idx": 4,
+        "linear_idx": 1,
+        "node": 3,
+        "L": 1.0511664223912667,
+        "U": 12.08679539663066,
+        "h_lower": 1.0511664223912667,
+        "h_upper": 12.08679539663066,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,1,4": {
+        "physical_generator_index": 2,
+        "time_idx": 4,
+        "linear_idx": 1,
+        "node": 4,
+        "L": 0.8741014673075838,
+        "U": 11.974135102647557,
+        "h_lower": 0.8741014673075838,
+        "h_upper": 11.974135102647557,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,1,5": {
+        "physical_generator_index": 2,
+        "time_idx": 4,
+        "linear_idx": 1,
+        "node": 5,
+        "L": -1.0938151670251517,
+        "U": 0.4381103183037176,
+        "h_lower": 0.0,
+        "h_upper": 0.4381103183037176,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,1,6": {
+        "physical_generator_index": 2,
+        "time_idx": 4,
+        "linear_idx": 1,
+        "node": 6,
+        "L": -0.8252789953671715,
+        "U": 0.6156029546936733,
+        "h_lower": 0.0,
+        "h_upper": 0.6156029546936733,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,1,7": {
+        "physical_generator_index": 2,
+        "time_idx": 4,
+        "linear_idx": 1,
+        "node": 7,
+        "L": -0.6126007683470632,
+        "U": 5.830354178125949,
+        "h_lower": 0.0,
+        "h_upper": 5.830354178125949,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,1,8": {
+        "physical_generator_index": 2,
+        "time_idx": 4,
+        "linear_idx": 1,
+        "node": 8,
+        "L": 0.8491094096739251,
+        "U": 12.173070712420962,
+        "h_lower": 0.8491094096739251,
+        "h_upper": 12.173070712420962,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,1,9": {
+        "physical_generator_index": 2,
+        "time_idx": 4,
+        "linear_idx": 1,
+        "node": 9,
+        "L": 0.5728339578586896,
+        "U": 11.152526946603206,
+        "h_lower": 0.5728339578586896,
+        "h_upper": 11.152526946603206,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "4,1,10": {
+        "physical_generator_index": 2,
+        "time_idx": 4,
+        "linear_idx": 1,
+        "node": 10,
+        "L": -36.19374661371707,
+        "U": 1.1102432832439755,
+        "h_lower": 0.0,
+        "h_upper": 1.1102432832439755,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,0,0": {
+        "physical_generator_index": 2,
+        "time_idx": 5,
+        "linear_idx": 0,
+        "node": 0,
+        "L": -0.7283412576718427,
+        "U": 0.34257322126087164,
+        "h_lower": 0.0,
+        "h_upper": 0.34257322126087164,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,0,1": {
+        "physical_generator_index": 2,
+        "time_idx": 5,
+        "linear_idx": 0,
+        "node": 1,
+        "L": 0.12553585900705921,
+        "U": 1.2871907041817299,
+        "h_lower": 0.12553585900705921,
+        "h_upper": 1.2871907041817299,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,0,2": {
+        "physical_generator_index": 2,
+        "time_idx": 5,
+        "linear_idx": 0,
+        "node": 2,
+        "L": -0.37749415799219255,
+        "U": 0.12151903042822007,
+        "h_lower": 0.0,
+        "h_upper": 0.12151903042822007,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,0,3": {
+        "physical_generator_index": 2,
+        "time_idx": 5,
+        "linear_idx": 0,
+        "node": 3,
+        "L": -2.2639696969941197,
+        "U": 1.3281149611879253,
+        "h_lower": 0.0,
+        "h_upper": 1.3281149611879253,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,0,4": {
+        "physical_generator_index": 2,
+        "time_idx": 5,
+        "linear_idx": 0,
+        "node": 4,
+        "L": -0.6964198924885469,
+        "U": -0.16611033829252556,
+        "h_lower": 0.0,
+        "h_upper": 0.0,
+        "status": "inactive",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,0,5": {
+        "physical_generator_index": 2,
+        "time_idx": 5,
+        "linear_idx": 0,
+        "node": 5,
+        "L": -0.6825938491072907,
+        "U": 1.074555971716275,
+        "h_lower": 0.0,
+        "h_upper": 1.074555971716275,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,0,6": {
+        "physical_generator_index": 2,
+        "time_idx": 5,
+        "linear_idx": 0,
+        "node": 6,
+        "L": -2.768718295200137,
+        "U": 1.6273554204261789,
+        "h_lower": 0.0,
+        "h_upper": 1.6273554204261789,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,0,7": {
+        "physical_generator_index": 2,
+        "time_idx": 5,
+        "linear_idx": 0,
+        "node": 7,
+        "L": 0.410185477555053,
+        "U": 1.772756208310534,
+        "h_lower": 0.410185477555053,
+        "h_upper": 1.772756208310534,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,0,8": {
+        "physical_generator_index": 2,
+        "time_idx": 5,
+        "linear_idx": 0,
+        "node": 8,
+        "L": 0.4434291331062816,
+        "U": 1.2662078306002078,
+        "h_lower": 0.4434291331062816,
+        "h_upper": 1.2662078306002078,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,0,9": {
+        "physical_generator_index": 2,
+        "time_idx": 5,
+        "linear_idx": 0,
+        "node": 9,
+        "L": -0.724676874869697,
+        "U": 0.12084585194376923,
+        "h_lower": 0.0,
+        "h_upper": 0.12084585194376923,
+        "status": "ambiguous",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,0,10": {
+        "physical_generator_index": 2,
+        "time_idx": 5,
+        "linear_idx": 0,
+        "node": 10,
+        "L": 0.30103181591486733,
+        "U": 1.353820083729238,
+        "h_lower": 0.30103181591486733,
+        "h_upper": 1.353820083729238,
+        "status": "active",
+        "bound_method": "support_set_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,1,0": {
+        "physical_generator_index": 2,
+        "time_idx": 5,
+        "linear_idx": 1,
+        "node": 0,
+        "L": -0.8471911097974892,
+        "U": 7.834081542171091,
+        "h_lower": 0.0,
+        "h_upper": 7.834081542171091,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,1,1": {
+        "physical_generator_index": 2,
+        "time_idx": 5,
+        "linear_idx": 1,
+        "node": 1,
+        "L": -1.0534604412406832,
+        "U": 0.24238250310152287,
+        "h_lower": 0.0,
+        "h_upper": 0.24238250310152287,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,1,2": {
+        "physical_generator_index": 2,
+        "time_idx": 5,
+        "linear_idx": 1,
+        "node": 2,
+        "L": 0.9864414883289684,
+        "U": 11.540503954286729,
+        "h_lower": 0.9864414883289684,
+        "h_upper": 11.540503954286729,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,1,3": {
+        "physical_generator_index": 2,
+        "time_idx": 5,
+        "linear_idx": 1,
+        "node": 3,
+        "L": 1.139739356570899,
+        "U": 11.478996412926058,
+        "h_lower": 1.139739356570899,
+        "h_upper": 11.478996412926058,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,1,4": {
+        "physical_generator_index": 2,
+        "time_idx": 5,
+        "linear_idx": 1,
+        "node": 4,
+        "L": 0.8724995332009082,
+        "U": 11.225653585665206,
+        "h_lower": 0.8724995332009082,
+        "h_upper": 11.225653585665206,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,1,5": {
+        "physical_generator_index": 2,
+        "time_idx": 5,
+        "linear_idx": 1,
+        "node": 5,
+        "L": -1.1382682930355823,
+        "U": 0.3626707622908523,
+        "h_lower": 0.0,
+        "h_upper": 0.3626707622908523,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,1,6": {
+        "physical_generator_index": 2,
+        "time_idx": 5,
+        "linear_idx": 1,
+        "node": 6,
+        "L": -0.8339160927696416,
+        "U": 0.5593884188905955,
+        "h_lower": 0.0,
+        "h_upper": 0.5593884188905955,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,1,7": {
+        "physical_generator_index": 2,
+        "time_idx": 5,
+        "linear_idx": 1,
+        "node": 7,
+        "L": -0.6312172405881471,
+        "U": 5.4384993010482585,
+        "h_lower": 0.0,
+        "h_upper": 5.4384993010482585,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,1,8": {
+        "physical_generator_index": 2,
+        "time_idx": 5,
+        "linear_idx": 1,
+        "node": 8,
+        "L": 0.912912529090108,
+        "U": 11.509333093502487,
+        "h_lower": 0.912912529090108,
+        "h_upper": 11.509333093502487,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,1,9": {
+        "physical_generator_index": 2,
+        "time_idx": 5,
+        "linear_idx": 1,
+        "node": 9,
+        "L": 0.6311725196499318,
+        "U": 10.56398570848334,
+        "h_lower": 0.6311725196499318,
+        "h_upper": 10.56398570848334,
+        "status": "active",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      },
+      "5,1,10": {
+        "physical_generator_index": 2,
+        "time_idx": 5,
+        "linear_idx": 1,
+        "node": 10,
+        "L": -33.53754724898849,
+        "U": 1.1085750251395448,
+        "h_lower": 0.0,
+        "h_upper": 1.1085750251395448,
+        "status": "ambiguous",
+        "bound_method": "activation_bound_optimization",
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal"
+      }
+    }
+  },
+  "summary": {
+    "G1": {
+      "num_hidden_neurons_time_indexed": 132,
+      "num_active": 54,
+      "num_inactive": 56,
+      "num_ambiguous": 22,
+      "min_L": -2.2148365292348204,
+      "max_L": 4.2953042586999315,
+      "min_U": -0.8761801306466973,
+      "max_U": 10.372627756883508,
+      "max_M_minus": 2.2148365292348204,
+      "max_M_plus": 10.372627756883508
+    },
+    "W3": {
+      "num_hidden_neurons_time_indexed": 132,
+      "num_active": 54,
+      "num_inactive": 6,
+      "num_ambiguous": 72,
+      "min_L": -39.861628745161646,
+      "max_L": 1.1702843208211884,
+      "min_U": -0.1933565775967949,
+      "max_U": 13.119693581597042,
+      "max_M_minus": 39.861628745161646,
+      "max_M_plus": 13.119693581597042
+    }
+  },
+  "warnings": [],
+  "optimization_results": {
+    "G1": {
+      "0,0,0": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "0,0,1": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "0,0,2": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "0,0,3": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "0,0,4": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "0,0,5": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "0,0,6": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "0,0,7": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "0,0,8": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "0,0,9": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "0,0,10": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "1,0,0": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "1,0,1": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "1,0,2": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "1,0,3": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "1,0,4": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "1,0,5": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "1,0,6": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "1,0,7": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "1,0,8": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "1,0,9": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "1,0,10": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "2,0,0": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "2,0,1": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "2,0,2": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "2,0,3": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "2,0,4": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "2,0,5": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "2,0,6": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "2,0,7": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "2,0,8": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "2,0,9": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "2,0,10": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "3,0,0": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "3,0,1": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "3,0,2": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "3,0,3": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "3,0,4": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "3,0,5": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "3,0,6": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "3,0,7": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "3,0,8": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "3,0,9": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "3,0,10": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "4,0,0": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "4,0,1": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "4,0,2": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "4,0,3": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "4,0,4": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "4,0,5": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "4,0,6": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "4,0,7": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "4,0,8": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "4,0,9": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "4,0,10": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "5,0,0": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "5,0,1": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "5,0,2": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "5,0,3": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "5,0,4": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "5,0,5": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "5,0,6": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "5,0,7": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "5,0,8": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "5,0,9": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "5,0,10": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "0,1,0": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "0,1,1": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "0,1,2": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "0,1,3": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "0,1,4": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "0,1,5": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "0,1,6": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "0,1,7": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "0,1,8": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "0,1,9": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "0,1,10": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "1,1,0": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "1,1,1": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "1,1,2": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "1,1,3": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "1,1,4": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "1,1,5": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "1,1,6": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "1,1,7": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "1,1,8": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "1,1,9": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "1,1,10": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "2,1,0": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "2,1,1": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "2,1,2": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "2,1,3": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "2,1,4": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "2,1,5": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "2,1,6": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "2,1,7": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "2,1,8": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "2,1,9": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "2,1,10": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "3,1,0": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "3,1,1": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "3,1,2": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "3,1,3": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "3,1,4": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "3,1,5": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "3,1,6": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "3,1,7": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "3,1,8": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "3,1,9": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "3,1,10": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "4,1,0": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "4,1,1": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "4,1,2": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "4,1,3": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "4,1,4": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "4,1,5": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "4,1,6": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "4,1,7": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "4,1,8": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "4,1,9": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "4,1,10": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "5,1,0": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "5,1,1": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "5,1,2": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "5,1,3": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "5,1,4": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "5,1,5": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "5,1,6": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "5,1,7": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "5,1,8": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "5,1,9": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "5,1,10": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      }
+    },
+    "W3": {
+      "0,0,0": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "0,0,1": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "0,0,2": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "0,0,3": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "0,0,4": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "0,0,5": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "0,0,6": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "0,0,7": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "0,0,8": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "0,0,9": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "0,0,10": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "1,0,0": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "1,0,1": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "1,0,2": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "1,0,3": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "1,0,4": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "1,0,5": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "1,0,6": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "1,0,7": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "1,0,8": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "1,0,9": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "1,0,10": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "2,0,0": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "2,0,1": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "2,0,2": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "2,0,3": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "2,0,4": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "2,0,5": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "2,0,6": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "2,0,7": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "2,0,8": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "2,0,9": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "2,0,10": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "3,0,0": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "3,0,1": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "3,0,2": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "3,0,3": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "3,0,4": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "3,0,5": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "3,0,6": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "3,0,7": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "3,0,8": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "3,0,9": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "3,0,10": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "4,0,0": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "4,0,1": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "4,0,2": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "4,0,3": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "4,0,4": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "4,0,5": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "4,0,6": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "4,0,7": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "4,0,8": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "4,0,9": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "4,0,10": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "5,0,0": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "5,0,1": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "5,0,2": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "5,0,3": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "5,0,4": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "5,0,5": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "5,0,6": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "5,0,7": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "5,0,8": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "5,0,9": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "5,0,10": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "support_set_optimization"
+      },
+      "0,1,0": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "0,1,1": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "0,1,2": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "0,1,3": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "0,1,4": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "0,1,5": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "0,1,6": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "0,1,7": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "0,1,8": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "0,1,9": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "0,1,10": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "1,1,0": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "1,1,1": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "1,1,2": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "1,1,3": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "1,1,4": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "1,1,5": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "1,1,6": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "1,1,7": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "1,1,8": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "1,1,9": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "1,1,10": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "2,1,0": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "2,1,1": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "2,1,2": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "2,1,3": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "2,1,4": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "2,1,5": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "2,1,6": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "2,1,7": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "2,1,8": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "2,1,9": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "2,1,10": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "3,1,0": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "3,1,1": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "3,1,2": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "3,1,3": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "3,1,4": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "3,1,5": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "3,1,6": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "3,1,7": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "3,1,8": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "3,1,9": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "3,1,10": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "4,1,0": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "4,1,1": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "4,1,2": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "4,1,3": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "4,1,4": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "4,1,5": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "4,1,6": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "4,1,7": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "4,1,8": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "4,1,9": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "4,1,10": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "5,1,0": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "5,1,1": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "5,1,2": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "5,1,3": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "5,1,4": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "5,1,5": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "5,1,6": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "5,1,7": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "5,1,8": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "5,1,9": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      },
+      "5,1,10": {
+        "lower_termination_condition": "optimal",
+        "upper_termination_condition": "optimal",
+        "bound_method": "activation_bound_optimization"
+      }
+    }
+  }
+}
