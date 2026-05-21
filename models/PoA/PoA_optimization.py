@@ -71,10 +71,12 @@ class PoAOptimization:
         self.nn_relu_bounds: dict[str, dict[tuple[int, int, int], dict[str, Any]]] = {}
         self.nn_feature_bounds: dict[str, Any] = {}
         self.nn_bound_warnings: list[str] = []
+        self.primal_big_m: dict[str, dict[str, Any]] = {}
         self.tight_big_m: dict[str, dict[str, Any]] = {}
         self.aggregate_dual_bounds: dict[str, Any] = {}
         self.lambda_bounds: dict[str, Any] = {}
         self.reference_case = reference_case
+        self._initialize_loaded_bound_dictionaries()
 
         self._initialize_block_structure_from_ed()
         self.num_time_steps = int(num_time_steps or infer_num_time_steps(self.scenarios_df))
@@ -425,7 +427,7 @@ class PoAOptimization:
         if payload is None:
             return None
         if isinstance(payload, dict):
-            for value_key in ("tight_big_m", "upper_bound", "ub", "bound", "value"):
+            for value_key in ("tight_big_m", "big_m", "upper_bound", "ub", "bound", "value"):
                 if value_key in payload:
                     return PoAOptimization._optional_numeric_bound(payload[value_key])
             return None
@@ -436,6 +438,737 @@ class PoAOptimization:
         if not np.isfinite(numeric_value):
             return None
         return max(0.0, numeric_value)
+
+    def _initialize_loaded_bound_dictionaries(self) -> None:
+        # Primal Big-M constants M^p_c for slack-side complementarity:
+        #     -M^p_c (1 - z_c) <= g_c(x)
+        self.M_cap: dict[tuple[int, int, int], float] = {}
+        self.M_lower: dict[tuple[int, int, int], float] = {}
+        self.M_physical_capacity: dict[int, float] = {}
+        self.M_ramp_up: dict[tuple[int, int], float] = {}
+        self.M_ramp_down: dict[tuple[int, int], float] = {}
+        self.M_ramp_up_initial: dict[int, float] = {}
+        self.M_ramp_down_initial: dict[int, float] = {}
+
+        # Dual Big-M constants M^d_c for dual-side complementarity:
+        #     mu_c <= M^d_c z_c
+        self.M_mu_upper_eq: dict[tuple[int, int, int], float] = {}
+        self.M_mu_lower_eq: dict[tuple[int, int, int], float] = {}
+        self.M_mu_ramp_up_eq: dict[tuple[int, int], float] = {}
+        self.M_mu_ramp_down_eq: dict[tuple[int, int], float] = {}
+        self.M_mu_upper_opt: dict[tuple[int, int, int], float] = {}
+        self.M_mu_lower_opt: dict[tuple[int, int, int], float] = {}
+        self.M_mu_ramp_up_opt: dict[tuple[int, int], float] = {}
+        self.M_mu_ramp_down_opt: dict[tuple[int, int], float] = {}
+
+        self.lambda_eq_bounds: dict[int, tuple[float, float]] = {}
+        self.lambda_opt_bounds: dict[int, tuple[float, float]] = {}
+        self._loaded_bounds_prepared = False
+        self._loaded_bounds_source_signature: tuple[int, int, int, int] | None = None
+
+    def _loaded_bound_source_signature(self) -> tuple[int, int, int, int]:
+        return (
+            id(getattr(self, "primal_big_m", None)),
+            id(getattr(self, "tight_big_m", None)),
+            id(getattr(self, "lambda_bounds", None)),
+            id(getattr(self, "aggregate_dual_bounds", None)),
+        )
+
+    def _ensure_loaded_bounds_prepared(self) -> None:
+        current_signature = self._loaded_bound_source_signature()
+        if (
+            not getattr(self, "_loaded_bounds_prepared", False)
+            or getattr(self, "_loaded_bounds_source_signature", None) != current_signature
+        ):
+            self._prepare_loaded_bounds()
+
+    @staticmethod
+    def _json_key(indices: tuple[int, ...]) -> str:
+        return ",".join(str(int(index)) for index in indices)
+
+    @staticmethod
+    def _parse_json_index(key: str) -> tuple[int, ...]:
+        return tuple(int(part) for part in str(key).split(",") if part != "")
+
+    # ------------------------------------------------------------------
+    # Data loading
+    # ------------------------------------------------------------------
+
+    # These methods load external NN policy files, normalization statistics,
+    # ReLU-bound reports, and Big-M tightening reports. They should not create
+    # Pyomo variables or constraints.
+
+    def _load_nn_policies(self) -> None:
+        if self.nn_model_dir is None or not self.nn_model_dir.exists():
+            raise FileNotFoundError(f"NN model directory not found: {self.nn_model_dir}")
+        self.nn_policies = {}
+        for generator_name in self.nn_policy_generator_names:
+            weights_path = self.nn_model_dir / f"{generator_name}_policy_weights.json"
+            metadata_path = self.nn_model_dir / f"{generator_name}_policy_metadata.json"
+            if not weights_path.exists():
+                raise FileNotFoundError(f"Missing NN weights file: {weights_path}")
+            with weights_path.open("r", encoding="utf-8") as file_handle:
+                weights = json.load(file_handle)
+            metadata = {}
+            if metadata_path.exists():
+                with metadata_path.open("r", encoding="utf-8") as file_handle:
+                    metadata = json.load(file_handle)
+
+            feature_columns = list(weights.get("feature_columns") or metadata.get("feature_columns") or [])
+            target_columns = list(weights.get("target_columns") or metadata.get("target_columns") or [])
+            layers = list(weights.get("layers", []))
+            if not feature_columns or not target_columns or not layers:
+                raise ValueError(f"Invalid NN policy payload for {generator_name}")
+            self._validate_nn_policy(generator_name, feature_columns, target_columns, layers)
+            self.nn_policies[generator_name] = {
+                "feature_columns": feature_columns,
+                "target_columns": target_columns,
+                "layers": layers,
+                "metadata": metadata,
+                "target_map": target_columns_to_local_blocks(
+                    generator_name=generator_name,
+                    target_columns=target_columns,
+                    block_names=self.block_names,
+                    physical_generator_names=self.physical_generator_names,
+                    global_to_local_block=self.global_to_local_block,
+                    local_blocks_by_generator=self.local_blocks_by_generator,
+                ),
+            }
+
+    def _validate_nn_policy(
+        self, generator_name: str, feature_columns: list[str], target_columns: list[str], layers: list[dict[str, Any]]
+    ) -> None:
+        expected_input = len(feature_columns)
+        current_dim = expected_input
+        previous_was_hidden_linear = False
+        linear_count = 0
+        for idx, layer in enumerate(layers):
+            layer_type = str(layer.get("type", "")).lower()
+            if layer_type == "linear":
+                weight = np.asarray(layer.get("weight"), dtype=float)
+                bias = np.asarray(layer.get("bias"), dtype=float)
+                if weight.ndim != 2 or bias.ndim != 1:
+                    raise ValueError(f"{generator_name}: linear layer {idx} has invalid dimensions")
+                if weight.shape[1] != current_dim or weight.shape[0] != bias.shape[0]:
+                    raise ValueError(f"{generator_name}: inconsistent dimensions in linear layer {idx}")
+                current_dim = int(weight.shape[0])
+                previous_was_hidden_linear = idx < len(layers) - 1
+                linear_count += 1
+            elif layer_type == "relu":
+                if not previous_was_hidden_linear:
+                    raise ValueError(f"{generator_name}: ReLU layer {idx} must follow a hidden linear layer")
+                previous_was_hidden_linear = False
+            else:
+                raise ValueError(f"{generator_name}: unsupported layer type '{layer_type}'")
+        if str(layers[-1].get("type", "")).lower() != "linear":
+            raise ValueError(f"{generator_name}: final NN layer must be linear")
+        if current_dim != len(target_columns):
+            raise ValueError(
+                f"{generator_name}: output dimension {current_dim} does not match "
+                f"{len(target_columns)} target columns"
+            )
+        if linear_count < 1:
+            raise ValueError(f"{generator_name}: NN must contain at least one linear layer")
+
+    def _load_nn_normalization_stats(self) -> None:
+        if self.nn_normalization_stats_path is None:
+            self.nn_stats = {}
+            return
+        if not self.nn_normalization_stats_path.exists():
+            raise FileNotFoundError(
+                f"NN normalization stats not found: {self.nn_normalization_stats_path}"
+            )
+        with self.nn_normalization_stats_path.open("r", encoding="utf-8") as file_handle:
+            self.nn_stats = json.load(file_handle)
+
+    def _nn_feature_bounds(self, generator_name: str, feature_name: str) -> tuple[float, float]:
+        stats = self.nn_stats or {}
+        if bool(stats.get("per_generator")):
+            generator_stats = stats.get("stats", {}).get(generator_name, {})
+            mins = generator_stats.get("feature_min", {})
+            maxs = generator_stats.get("feature_max", {})
+            if feature_name in mins and feature_name in maxs:
+                return float(mins[feature_name]), float(maxs[feature_name])
+        if "feature_min" in stats and "feature_max" in stats:
+            mins = stats["feature_min"]
+            maxs = stats["feature_max"]
+            if isinstance(mins, dict) and feature_name in mins:
+                return float(mins[feature_name]), float(maxs[feature_name])
+        return 0.0, 1.0
+
+    @staticmethod
+    def _parse_nn_relu_bound_key(key: str) -> tuple[int, int, int]:
+        parts = tuple(int(part) for part in str(key).split(",") if part != "")
+        if len(parts) != 3:
+            raise ValueError(
+                f"NN ReLU bound key '{key}' must have the form 'time_idx,linear_idx,node'"
+            )
+        return int(parts[0]), int(parts[1]), int(parts[2])
+
+    def _set_nn_relu_bounds_from_report(self, report: dict[str, Any]) -> None:
+        self.nn_relu_bounds_report = report
+        self.nn_feature_bounds = report.get("nn_feature_bounds", {}) or {}
+        self.nn_bound_warnings = list(
+            report.get("warnings", report.get("nn_bound_warnings", [])) or []
+        )
+
+        parsed_bounds: dict[str, dict[tuple[int, int, int], dict[str, Any]]] = {}
+        for generator_name, entries in (report.get("nn_relu_bounds", {}) or {}).items():
+            generator_bounds: dict[tuple[int, int, int], dict[str, Any]] = {}
+            for key, details in (entries or {}).items():
+                if not isinstance(details, dict):
+                    raise ValueError(
+                        f"Invalid NN ReLU bound entry for {generator_name}, key {key}"
+                    )
+                time_idx, linear_idx, node = self._parse_nn_relu_bound_key(key)
+                parsed_details = dict(details)
+                for numeric_key in ("L", "U", "h_lower", "h_upper"):
+                    if numeric_key not in parsed_details:
+                        raise ValueError(
+                            f"NN ReLU bound entry {generator_name}[{key}] is missing "
+                            f"'{numeric_key}'"
+                        )
+                    parsed_details[numeric_key] = float(parsed_details[numeric_key])
+                parsed_details["status"] = str(parsed_details.get("status", "")).lower()
+                if parsed_details["status"] not in {"active", "inactive", "ambiguous"}:
+                    raise ValueError(
+                        f"NN ReLU bound entry {generator_name}[{key}] has invalid "
+                        f"status '{parsed_details['status']}'"
+                    )
+                parsed_details.setdefault("time_idx", time_idx)
+                parsed_details.setdefault("linear_idx", linear_idx)
+                parsed_details.setdefault("node", node)
+                generator_bounds[(time_idx, linear_idx, node)] = parsed_details
+            parsed_bounds[str(generator_name)] = generator_bounds
+
+        self.nn_relu_bounds = parsed_bounds
+
+    def load_nn_relu_bounds_report(
+        self,
+        report_path: str | Path = "results/poa_nn_relu_bounds_report.json",
+    ) -> dict[str, Any]:
+        path = Path(report_path)
+        if not path.exists():
+            raise FileNotFoundError(f"NN ReLU bounds report not found: {path}")
+        with path.open("r", encoding="utf-8") as file_handle:
+            report = json.load(file_handle)
+
+        self.nn_relu_bounds_report_path = path
+        self._set_nn_relu_bounds_from_report(report)
+        return report
+
+    def _set_tightening_report_data(
+        self,
+        report: dict[str, Any],
+        report_path: Optional[Path] = None,
+    ) -> None:
+        self.tightening_report = report
+        if report_path is not None:
+            self.tightening_report_path = Path(report_path)
+        nn_relu_report = report.get("nn_relu_bounds_report", {}) or {}
+        if not nn_relu_report and "nn_relu_bounds" in report:
+            nn_relu_report = report
+        if nn_relu_report:
+            self._set_nn_relu_bounds_from_report(nn_relu_report)
+        self.fixed_binaries = report.get("fixed_binaries", {}) or {}
+        self.primal_big_m = report.get("primal_big_m", {}) or {}
+        self._load_legacy_primal_big_m_if_needed(report_path)
+        self.tight_big_m = report.get("tight_big_m", {}) or {}
+        self.aggregate_dual_bounds = report.get("aggregate_dual_bounds", {}) or {}
+        self.lambda_bounds = report.get("lambda_bounds", {}) or {}
+        self.alpha_bound_optimization_results = (
+            report.get("alpha_optimization_results", {}) or {}
+        )
+        self.alpha_bounds = {
+            self._parse_json_index(key): {
+                "lower": float(value["lower"]),
+                "upper": float(value["upper"]),
+            }
+            for key, value in (report.get("alpha_bounds", {}) or {}).items()
+        }
+        self._loaded_bounds_prepared = False
+
+    def load_tightening_report(
+        self,
+        report_path: str | Path = "results/poa_tightening/final_tightening_report.json",
+    ) -> dict[str, Any]:
+        """
+        Load a previously saved tightening report and prepare model constants.
+
+        The raw JSON-friendly report remains available on the object, while all
+        Big-M and lambda data used by Pyomo is parsed once into tuple-indexed
+        dictionaries before model construction.
+        """
+        path = Path(report_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Tightening report not found: {path}")
+        with path.open("r", encoding="utf-8") as file_handle:
+            report = json.load(file_handle)
+
+        self._set_tightening_report_data(report, path)
+        self._prepare_loaded_bounds()
+        return report
+
+    def _load_legacy_primal_big_m_if_needed(
+        self,
+        report_path: Optional[Path] = None,
+    ) -> None:
+        """
+        Older tightening reports in this repository saved primal Big-M values in
+        a separate JSON file. Prefer an in-report `primal_big_m` block, but use
+        the generated companion file when present so existing report paths still
+        build the final model.
+        """
+        if self.primal_big_m:
+            return
+
+        candidates: list[Path] = []
+        if report_path is not None:
+            report_path = Path(report_path)
+            candidates.append(report_path.with_name("poa_bidding_blocks_primal_big_m.json"))
+            if "_tightening_report" in report_path.name:
+                candidates.append(
+                    report_path.with_name(
+                        report_path.name.replace(
+                            "_tightening_report",
+                            "_primal_big_m",
+                        )
+                    )
+                )
+        candidates.append(Path("results/poa_bidding_blocks_primal_big_m.json"))
+
+        seen: set[Path] = set()
+        for candidate in candidates:
+            candidate = candidate.resolve()
+            if candidate in seen or not candidate.exists():
+                continue
+            seen.add(candidate)
+            with candidate.open("r", encoding="utf-8") as file_handle:
+                payload = json.load(file_handle)
+            primal_big_m = payload.get("primal_big_m", {}) or {}
+            if not primal_big_m:
+                continue
+            metadata = payload.get("metadata", {}) or {}
+            metadata_case = metadata.get("reference_case")
+            if metadata_case is not None and str(metadata_case) != str(self.reference_case):
+                continue
+            self.primal_big_m = primal_big_m
+            self.primal_big_m_report_path = candidate
+            return
+
+    def _indexed_numeric_entries(
+        self,
+        entries: Any,
+        bound_type: str,
+        allowed_dimensions: tuple[int, ...],
+        expected_key_format: str,
+    ) -> dict[tuple[int, ...], float]:
+        if not isinstance(entries, dict):
+            return {}
+
+        parsed: dict[tuple[int, ...], float] = {}
+        for raw_key, details in entries.items():
+            index = self._parse_json_index(str(raw_key))
+            if len(index) not in allowed_dimensions:
+                raise ValueError(
+                    f"Invalid {bound_type} key '{raw_key}'. Expected key format "
+                    f"{expected_key_format}."
+                )
+            numeric_value = self._optional_numeric_bound(details)
+            if numeric_value is None:
+                raise ValueError(
+                    f"Invalid {bound_type} entry at key '{raw_key}'. Expected a "
+                    "finite numeric bound in one of: tight_big_m, big_m, "
+                    "upper_bound, ub, bound, or value."
+                )
+            parsed[index] = float(numeric_value)
+        return parsed
+
+    def _missing_loaded_bound_error(
+        self,
+        bound_type: str,
+        index: tuple[int, ...] | int,
+        expected_key_format: str,
+    ) -> ValueError:
+        return ValueError(
+            f"Missing {bound_type} for index {index}. Expected key format "
+            f"{expected_key_format}. Generate/load a tightening report with the "
+            "required Big-M data before build_model()."
+        )
+
+    def _primal_component_entries(self, *component_names: str) -> tuple[str, Any]:
+        primal_big_m = getattr(self, "primal_big_m", {}) or {}
+        for component_name in component_names:
+            entries = primal_big_m.get(component_name)
+            if entries:
+                return component_name, entries
+        return component_names[0], {}
+
+    def _prepare_block_time_primal_big_m(
+        self,
+        component_name: str,
+        entries: Any,
+        expected_key_format: str,
+    ) -> dict[tuple[int, int, int], float]:
+        parsed = self._indexed_numeric_entries(
+            entries,
+            f"primal Big-M '{component_name}'",
+            (2, 3),
+            expected_key_format,
+        )
+        prepared: dict[tuple[int, int, int], float] = {}
+        for i, b in self.generator_block_pairs:
+            for t in range(self.num_time_steps):
+                time_index = (int(i), int(b), int(t))
+                block_index = (int(i), int(b))
+                if time_index in parsed:
+                    prepared[time_index] = parsed[time_index]
+                elif block_index in parsed:
+                    prepared[time_index] = parsed[block_index]
+                else:
+                    raise self._missing_loaded_bound_error(
+                        f"primal Big-M '{component_name}'",
+                        time_index,
+                        expected_key_format,
+                    )
+        return prepared
+
+    def _prepare_generator_time_primal_big_m(
+        self,
+        component_name: str,
+        entries: Any,
+        expected_key_format: str,
+    ) -> dict[tuple[int, int], float]:
+        parsed = self._indexed_numeric_entries(
+            entries,
+            f"primal Big-M '{component_name}'",
+            (1, 2),
+            expected_key_format,
+        )
+        prepared: dict[tuple[int, int], float] = {}
+        for i in range(self.num_physical_generators):
+            for t in range(self.num_time_steps):
+                time_index = (int(i), int(t))
+                generator_index = (int(i),)
+                if time_index in parsed:
+                    prepared[time_index] = parsed[time_index]
+                elif generator_index in parsed:
+                    prepared[time_index] = parsed[generator_index]
+                else:
+                    raise self._missing_loaded_bound_error(
+                        f"primal Big-M '{component_name}'",
+                        time_index,
+                        expected_key_format,
+                    )
+        return prepared
+
+    def _prepare_generator_primal_big_m(
+        self,
+        component_name: str,
+        entries: Any,
+        expected_key_format: str,
+    ) -> dict[int, float]:
+        parsed = self._indexed_numeric_entries(
+            entries,
+            f"primal Big-M '{component_name}'",
+            (1, 2),
+            expected_key_format,
+        )
+        prepared: dict[int, float] = {}
+        for i in range(self.num_physical_generators):
+            generator_index = (int(i),)
+            initial_time_index = (int(i), 0)
+            if generator_index in parsed:
+                prepared[int(i)] = parsed[generator_index]
+            elif initial_time_index in parsed:
+                prepared[int(i)] = parsed[initial_time_index]
+            else:
+                raise self._missing_loaded_bound_error(
+                    f"primal Big-M '{component_name}'",
+                    int(i),
+                    expected_key_format,
+                )
+        return prepared
+
+    def _prepare_dual_big_m(
+        self,
+        dual_name: str,
+        expected_indices: list[tuple[int, ...]],
+        default_bound: float,
+        expected_key_format: str,
+    ) -> dict[tuple[int, ...], float]:
+        entries = (getattr(self, "tight_big_m", {}) or {}).get(dual_name, {}) or {}
+        if not entries:
+            return {index: float(default_bound) for index in expected_indices}
+
+        parsed = self._indexed_numeric_entries(
+            entries,
+            f"dual Big-M '{dual_name}'",
+            (len(expected_indices[0]),),
+            expected_key_format,
+        )
+        prepared: dict[tuple[int, ...], float] = {}
+        for index in expected_indices:
+            if index not in parsed:
+                raise self._missing_loaded_bound_error(
+                    f"dual Big-M '{dual_name}'",
+                    index,
+                    expected_key_format,
+                )
+            prepared[index] = max(0.0, min(float(default_bound), float(parsed[index])))
+        return prepared
+
+    def _prepare_lambda_bounds(
+        self,
+        lambda_name: str,
+    ) -> dict[int, tuple[float, float]]:
+        entries = (getattr(self, "lambda_bounds", {}) or {}).get(lambda_name, {}) or {}
+        if not entries:
+            return {
+                int(t): (-float(self.lambda_bound), float(self.lambda_bound))
+                for t in range(self.num_time_steps)
+            }
+        if not isinstance(entries, dict):
+            raise ValueError(
+                f"Invalid lambda bound block '{lambda_name}'. Expected keys 't'."
+            )
+
+        prepared: dict[int, tuple[float, float]] = {}
+        for t in range(self.num_time_steps):
+            details = entries.get(str(int(t)), entries.get(int(t)))
+            if not isinstance(details, dict):
+                raise self._missing_loaded_bound_error(
+                    f"lambda bounds '{lambda_name}'",
+                    int(t),
+                    "t",
+                )
+            lower = self._optional_float_bound(details.get("lower"))
+            upper = self._optional_float_bound(details.get("upper"))
+            if lower is None or upper is None:
+                raise ValueError(
+                    f"Invalid lambda bounds '{lambda_name}' for time {t}. "
+                    "Expected finite 'lower' and 'upper' entries."
+                )
+            lower = max(-float(self.lambda_bound), float(lower))
+            upper = min(float(self.lambda_bound), float(upper))
+            if lower > upper:
+                raise ValueError(
+                    f"Invalid lambda bounds '{lambda_name}' for time {t}: "
+                    f"lower {lower} exceeds upper {upper}."
+                )
+            prepared[int(t)] = (lower, upper)
+        return prepared
+
+    def _prepare_loaded_bounds(self) -> None:
+        """
+        Parse JSON-compatible tightening data into tuple-indexed dictionaries.
+
+        Pyomo variable declarations and complementarity rules read only from
+        these prepared dictionaries, mirroring the thesis notation with
+        precomputed primal and dual Big-M constants.
+        """
+        self._initialize_loaded_bound_dictionaries()
+
+        if not getattr(self, "primal_big_m", None):
+            raise ValueError(
+                "Missing primal Big-M section 'primal_big_m'. Run "
+                "compute_primal_big_m.py or load a tightening "
+                "report with populated primal Big-M data before build_model()."
+            )
+
+        block_component, block_entries = self._primal_component_entries("block_capacity")
+        self.M_cap = self._prepare_block_time_primal_big_m(
+            block_component,
+            block_entries,
+            "i,b or i,b,t",
+        )
+
+        lower_component, lower_entries = self._primal_component_entries(
+            "lower_generation",
+            "generation_lower",
+            "block_lower",
+            "lower_bound",
+        )
+        self.M_lower = (
+            self._prepare_block_time_primal_big_m(
+                lower_component,
+                lower_entries,
+                "i,b or i,b,t",
+            )
+            if lower_entries
+            else dict(self.M_cap)
+        )
+
+        physical_component, physical_entries = self._primal_component_entries(
+            "physical_capacity"
+        )
+        self.M_physical_capacity = self._prepare_generator_primal_big_m(
+            physical_component,
+            physical_entries,
+            "i",
+        )
+
+        ramp_up_component, ramp_up_entries = self._primal_component_entries("ramp_up")
+        self.M_ramp_up = self._prepare_generator_time_primal_big_m(
+            ramp_up_component,
+            ramp_up_entries,
+            "i or i,t",
+        )
+        ramp_down_component, ramp_down_entries = self._primal_component_entries(
+            "ramp_down"
+        )
+        self.M_ramp_down = self._prepare_generator_time_primal_big_m(
+            ramp_down_component,
+            ramp_down_entries,
+            "i or i,t",
+        )
+
+        ramp_up_initial_component, ramp_up_initial_entries = (
+            self._primal_component_entries("ramp_up_initial")
+        )
+        self.M_ramp_up_initial = self._prepare_generator_primal_big_m(
+            ramp_up_initial_component,
+            ramp_up_initial_entries,
+            "i",
+        )
+        ramp_down_initial_component, ramp_down_initial_entries = (
+            self._primal_component_entries("ramp_down_initial")
+        )
+        self.M_ramp_down_initial = self._prepare_generator_primal_big_m(
+            ramp_down_initial_component,
+            ramp_down_initial_entries,
+            "i",
+        )
+
+        capacity_indices = [
+            (int(i), int(b), int(t))
+            for i, b in self.generator_block_pairs
+            for t in range(self.num_time_steps)
+        ]
+        ramp_indices = [
+            (int(i), int(t))
+            for i in range(self.num_physical_generators)
+            for t in range(self.num_time_steps)
+        ]
+
+        self.M_mu_upper_eq = self._prepare_dual_big_m(
+            "mu_upper_eq",
+            capacity_indices,
+            self.capacity_dual_bound,
+            "i,b,t",
+        )
+        self.M_mu_lower_eq = self._prepare_dual_big_m(
+            "mu_lower_eq",
+            capacity_indices,
+            self.capacity_dual_bound,
+            "i,b,t",
+        )
+        self.M_mu_ramp_up_eq = self._prepare_dual_big_m(
+            "mu_ramp_up_eq",
+            ramp_indices,
+            self.ramp_dual_bound,
+            "i,t",
+        )
+        self.M_mu_ramp_down_eq = self._prepare_dual_big_m(
+            "mu_ramp_down_eq",
+            ramp_indices,
+            self.ramp_dual_bound,
+            "i,t",
+        )
+        self.M_mu_upper_opt = self._prepare_dual_big_m(
+            "mu_upper_opt",
+            capacity_indices,
+            self.capacity_dual_bound,
+            "i,b,t",
+        )
+        self.M_mu_lower_opt = self._prepare_dual_big_m(
+            "mu_lower_opt",
+            capacity_indices,
+            self.capacity_dual_bound,
+            "i,b,t",
+        )
+        self.M_mu_ramp_up_opt = self._prepare_dual_big_m(
+            "mu_ramp_up_opt",
+            ramp_indices,
+            self.ramp_dual_bound,
+            "i,t",
+        )
+        self.M_mu_ramp_down_opt = self._prepare_dual_big_m(
+            "mu_ramp_down_opt",
+            ramp_indices,
+            self.ramp_dual_bound,
+            "i,t",
+        )
+
+        self.lambda_eq_bounds = self._prepare_lambda_bounds("lambda_eq")
+        self.lambda_opt_bounds = self._prepare_lambda_bounds("lambda_opt")
+
+        self._validate_loaded_big_m_dimensions()
+        self._loaded_bounds_prepared = True
+        self._loaded_bounds_source_signature = self._loaded_bound_source_signature()
+
+    def _validate_loaded_big_m_dimensions(self) -> None:
+        capacity_indices = [
+            (int(i), int(b), int(t))
+            for i, b in self.generator_block_pairs
+            for t in range(self.num_time_steps)
+        ]
+        ramp_indices = [
+            (int(i), int(t))
+            for i in range(self.num_physical_generators)
+            for t in range(self.num_time_steps)
+        ]
+        generator_indices = list(range(self.num_physical_generators))
+        time_indices = list(range(self.num_time_steps))
+
+        def require_keys(
+            bound_type: str,
+            mapping: dict[Any, Any],
+            expected_indices: list[Any],
+            expected_key_format: str,
+        ) -> None:
+            missing = [index for index in expected_indices if index not in mapping]
+            if missing:
+                raise self._missing_loaded_bound_error(
+                    bound_type,
+                    missing[0],
+                    expected_key_format,
+                )
+
+        require_keys("primal Big-M 'block_capacity'", self.M_cap, capacity_indices, "i,b,t")
+        require_keys("primal Big-M 'lower_generation'", self.M_lower, capacity_indices, "i,b,t")
+        require_keys(
+            "primal Big-M 'physical_capacity'",
+            self.M_physical_capacity,
+            generator_indices,
+            "i",
+        )
+        require_keys("primal Big-M 'ramp_up'", self.M_ramp_up, ramp_indices, "i,t")
+        require_keys("primal Big-M 'ramp_down'", self.M_ramp_down, ramp_indices, "i,t")
+        require_keys(
+            "primal Big-M 'ramp_up_initial'",
+            self.M_ramp_up_initial,
+            generator_indices,
+            "i",
+        )
+        require_keys(
+            "primal Big-M 'ramp_down_initial'",
+            self.M_ramp_down_initial,
+            generator_indices,
+            "i",
+        )
+
+        require_keys("dual Big-M 'mu_upper_eq'", self.M_mu_upper_eq, capacity_indices, "i,b,t")
+        require_keys("dual Big-M 'mu_lower_eq'", self.M_mu_lower_eq, capacity_indices, "i,b,t")
+        require_keys("dual Big-M 'mu_ramp_up_eq'", self.M_mu_ramp_up_eq, ramp_indices, "i,t")
+        require_keys("dual Big-M 'mu_ramp_down_eq'", self.M_mu_ramp_down_eq, ramp_indices, "i,t")
+        require_keys("dual Big-M 'mu_upper_opt'", self.M_mu_upper_opt, capacity_indices, "i,b,t")
+        require_keys("dual Big-M 'mu_lower_opt'", self.M_mu_lower_opt, capacity_indices, "i,b,t")
+        require_keys("dual Big-M 'mu_ramp_up_opt'", self.M_mu_ramp_up_opt, ramp_indices, "i,t")
+        require_keys("dual Big-M 'mu_ramp_down_opt'", self.M_mu_ramp_down_opt, ramp_indices, "i,t")
+
+        require_keys("lambda bounds 'lambda_eq'", self.lambda_eq_bounds, time_indices, "t")
+        require_keys("lambda bounds 'lambda_opt'", self.lambda_opt_bounds, time_indices, "t")
 
     def _lookup_optional_time_bound(
         self,
@@ -577,6 +1310,8 @@ class PoAOptimization:
                     return bound
         return None
 
+    # Deprecated compatibility helpers. Model construction reads directly from
+    # the parsed M_* dictionaries prepared by _prepare_loaded_bounds().
     def _capacity_dual_upper_bound(
         self,
         bound_key: str,
@@ -585,11 +1320,17 @@ class PoAOptimization:
         time_idx: int,
         dual_name: Optional[str] = None,
     ) -> float:
-        return self._tight_dual_upper_bound(
-            dual_name=dual_name,
-            index=(int(physical_generator_idx), int(local_block_idx), int(time_idx)),
-            default_bound=self.capacity_dual_bound,
-        )
+        if dual_name is None:
+            return float(self.capacity_dual_bound)
+        self._ensure_loaded_bounds_prepared()
+        index = (int(physical_generator_idx), int(local_block_idx), int(time_idx))
+        bound_maps = {
+            "mu_upper_eq": self.M_mu_upper_eq,
+            "mu_lower_eq": self.M_mu_lower_eq,
+            "mu_upper_opt": self.M_mu_upper_opt,
+            "mu_lower_opt": self.M_mu_lower_opt,
+        }
+        return float(bound_maps.get(dual_name, {}).get(index, self.capacity_dual_bound))
 
     def _ramp_dual_upper_bound(
         self,
@@ -598,72 +1339,64 @@ class PoAOptimization:
         time_idx: int,
         dual_name: Optional[str] = None,
     ) -> float:
-        return self._tight_dual_upper_bound(
-            dual_name=dual_name,
-            index=(int(physical_generator_idx), int(time_idx)),
-            default_bound=self.ramp_dual_bound,
-        )
+        if dual_name is None:
+            return float(self.ramp_dual_bound)
+        self._ensure_loaded_bounds_prepared()
+        index = (int(physical_generator_idx), int(time_idx))
+        bound_maps = {
+            "mu_ramp_up_eq": self.M_mu_ramp_up_eq,
+            "mu_ramp_down_eq": self.M_mu_ramp_down_eq,
+            "mu_ramp_up_opt": self.M_mu_ramp_up_opt,
+            "mu_ramp_down_opt": self.M_mu_ramp_down_opt,
+        }
+        return float(bound_maps.get(dual_name, {}).get(index, self.ramp_dual_bound))
+
+    def _required_primal_big_m_bound(
+        self,
+        bound_name: str,
+        index: tuple[int, ...],
+    ) -> float:
+        entries = (getattr(self, "primal_big_m", {}) or {}).get(bound_name, {}) or {}
+        key = self._json_key(index) if len(index) > 1 else str(int(index[0]))
+        value = self._optional_numeric_bound(entries.get(key))
+        if value is None:
+            raise ValueError(
+                f"Missing primal Big-M bound '{bound_name}[{key}]'. "
+                "Run compute_primal_big_m.py and load a report "
+                "with a populated 'primal_big_m' section before build_model()."
+            )
+        return float(value)
 
     def _block_capacity_big_m(self, physical_generator_idx: int, local_block_idx: int) -> float:
-        global_block = self.local_to_global_block[(physical_generator_idx, local_block_idx)]
-
-        if physical_generator_idx in self.conventional_physical_generator_ids:
-            return float(self.static_block_capacity[global_block])
-
-        # For wind, if there is only one local block, use the support-set max directly.
-        local_blocks = self.local_blocks_by_generator[physical_generator_idx]
-        if len(local_blocks) == 1:
-            return float(self.support_wind_max[physical_generator_idx])
-
-        # If wind has multiple blocks, distribute support max according to static block shares.
-        static_total = sum(
-            self.static_block_capacity[self.local_to_global_block[(physical_generator_idx, b)]]
-            for b in local_blocks
-        )
-        if static_total <= 0:
-            return 0.0
-
-        block_share = self.static_block_capacity[global_block] / static_total
-        return float(block_share * self.support_wind_max[physical_generator_idx])
+        self._ensure_loaded_bounds_prepared()
+        return self.M_cap[int(physical_generator_idx), int(local_block_idx), 0]
 
     def _physical_capacity_big_m(self, physical_generator_idx: int) -> float:
-        if physical_generator_idx in self.wind_physical_generator_ids:
-            return float(self.support_wind_max[physical_generator_idx])
-        return float(self.static_physical_capacity[physical_generator_idx])
+        self._ensure_loaded_bounds_prepared()
+        return self.M_physical_capacity[int(physical_generator_idx)]
 
     def _ramp_up_big_m(self, physical_generator_idx: int) -> float:
-        return float(
-            self.ramp_vector_up[physical_generator_idx]
-            + self._physical_capacity_big_m(physical_generator_idx)
-        )
+        self._ensure_loaded_bounds_prepared()
+        return self.M_ramp_up[int(physical_generator_idx), 0]
 
     def _ramp_down_big_m(self, physical_generator_idx: int) -> float:
-        return float(
-            self.ramp_vector_down[physical_generator_idx]
-            + self._physical_capacity_big_m(physical_generator_idx)
-        )
+        self._ensure_loaded_bounds_prepared()
+        return self.M_ramp_down[int(physical_generator_idx), 0]
 
     def _ramp_up_initial_big_m(self, physical_generator_idx: int) -> float:
-        return float(
-            self.p_init[physical_generator_idx]
-            + self.ramp_vector_up[physical_generator_idx]
-        )
+        self._ensure_loaded_bounds_prepared()
+        return self.M_ramp_up_initial[int(physical_generator_idx)]
 
     def _ramp_down_initial_big_m(self, physical_generator_idx: int) -> float:
-        return float(
-            max(
-                0.0,
-                self._physical_capacity_big_m(physical_generator_idx)
-                - self.p_init[physical_generator_idx]
-                + self.ramp_vector_down[physical_generator_idx],
-            )
-        )
+        self._ensure_loaded_bounds_prepared()
+        return self.M_ramp_down_initial[int(physical_generator_idx)]
 
     # ------------------------------------------------------------------
     # Model construction
     # ------------------------------------------------------------------
 
     def build_model(self) -> None:
+        self._ensure_loaded_bounds_prepared()
         self.model = ConcreteModel()
         
         self.model.time_steps = Set(initialize=range(self.num_time_steps))
@@ -701,15 +1434,13 @@ class PoAOptimization:
         self.model.P_max_phys_abs_deviation = Var(self.model.wind_physical_generators, self.model.time_steps, domain=NonNegativeReals)
 
     def _build_equilibrium_variables(self) -> None:
+        self._ensure_loaded_bounds_prepared()
         self.model.P_eq = Var(self.model.generator_blocks, self.model.time_steps, domain=NonNegativeReals)
         self.model.alpha = Var(self.model.generator_blocks, self.model.time_steps, domain=Reals)
         self.model.lambda_eq = Var(
             self.model.time_steps,
             domain=Reals,
-            bounds=lambda m, t: (
-                self._lambda_lower_bound(int(t), "lambda_eq"),
-                self._lambda_upper_bound(int(t), "lambda_eq"),
-            ),
+            bounds=lambda m, t: self.lambda_eq_bounds[int(t)],
         )
         self.model.mu_upper_eq = Var(
             self.model.generator_blocks,
@@ -717,13 +1448,7 @@ class PoAOptimization:
             domain=Reals,
             bounds=lambda m, i, b, t: (
                 0.0,
-                self._capacity_dual_upper_bound(
-                    "mu_max_ub",
-                    int(i),
-                    int(b),
-                    int(t),
-                    dual_name="mu_upper_eq",
-                ),
+                self.M_mu_upper_eq[int(i), int(b), int(t)],
             ),
         )
         self.model.mu_lower_eq = Var(
@@ -732,13 +1457,7 @@ class PoAOptimization:
             domain=Reals,
             bounds=lambda m, i, b, t: (
                 0.0,
-                self._capacity_dual_upper_bound(
-                    "mu_min_ub",
-                    int(i),
-                    int(b),
-                    int(t),
-                    dual_name="mu_lower_eq",
-                ),
+                self.M_mu_lower_eq[int(i), int(b), int(t)],
             ),
         )
         self.model.mu_ramp_up_eq = Var(
@@ -747,14 +1466,9 @@ class PoAOptimization:
             domain=Reals,
             bounds=lambda m, i, t: (
                 0.0,
-                self._ramp_dual_upper_bound(
-                    "rho_up_ub",
-                    int(i),
-                    int(t),
-                    dual_name="mu_ramp_up_eq",
-                )
+                self.M_mu_ramp_up_eq[int(i), int(t)]
                 if int(t) < self.num_time_steps
-                else self.ramp_dual_bound,
+                else 0.0,
             ),
         )
         self.model.mu_ramp_down_eq = Var(
@@ -763,14 +1477,9 @@ class PoAOptimization:
             domain=Reals,
             bounds=lambda m, i, t: (
                 0.0,
-                self._ramp_dual_upper_bound(
-                    "rho_down_ub",
-                    int(i),
-                    int(t),
-                    dual_name="mu_ramp_down_eq",
-                )
+                self.M_mu_ramp_down_eq[int(i), int(t)]
                 if int(t) < self.num_time_steps
-                else self.ramp_dual_bound,
+                else 0.0,
             ),
         )
 
@@ -781,14 +1490,12 @@ class PoAOptimization:
         self.model.z_ramp_down_eq = Var(self.model.physical_generators, self.model.time_steps, domain=Binary)
 
     def _build_optimal_variables(self) -> None:
+        self._ensure_loaded_bounds_prepared()
         self.model.P_opt = Var(self.model.generator_blocks, self.model.time_steps, domain=NonNegativeReals)
         self.model.lambda_opt = Var(
             self.model.time_steps,
             domain=Reals,
-            bounds=lambda m, t: (
-                self._lambda_lower_bound(int(t), "lambda_opt"),
-                self._lambda_upper_bound(int(t), "lambda_opt"),
-            ),
+            bounds=lambda m, t: self.lambda_opt_bounds[int(t)],
         )
         self.model.mu_upper_opt = Var(
             self.model.generator_blocks,
@@ -796,13 +1503,7 @@ class PoAOptimization:
             domain=Reals,
             bounds=lambda m, i, b, t: (
                 0.0,
-                self._capacity_dual_upper_bound(
-                    "mu_max_ub",
-                    int(i),
-                    int(b),
-                    int(t),
-                    dual_name="mu_upper_opt",
-                ),
+                self.M_mu_upper_opt[int(i), int(b), int(t)],
             ),
         )
         self.model.mu_lower_opt = Var(
@@ -811,13 +1512,7 @@ class PoAOptimization:
             domain=Reals,
             bounds=lambda m, i, b, t: (
                 0.0,
-                self._capacity_dual_upper_bound(
-                    "mu_min_ub",
-                    int(i),
-                    int(b),
-                    int(t),
-                    dual_name="mu_lower_opt",
-                ),
+                self.M_mu_lower_opt[int(i), int(b), int(t)],
             ),
         )
         self.model.mu_ramp_up_opt = Var(
@@ -826,14 +1521,9 @@ class PoAOptimization:
             domain=Reals,
             bounds=lambda m, i, t: (
                 0.0,
-                self._ramp_dual_upper_bound(
-                    "rho_up_ub",
-                    int(i),
-                    int(t),
-                    dual_name="mu_ramp_up_opt",
-                )
+                self.M_mu_ramp_up_opt[int(i), int(t)]
                 if int(t) < self.num_time_steps
-                else self.ramp_dual_bound,
+                else 0.0,
             ),
         )
         self.model.mu_ramp_down_opt = Var(
@@ -842,14 +1532,9 @@ class PoAOptimization:
             domain=Reals,
             bounds=lambda m, i, t: (
                 0.0,
-                self._ramp_dual_upper_bound(
-                    "rho_down_ub",
-                    int(i),
-                    int(t),
-                    dual_name="mu_ramp_down_opt",
-                )
+                self.M_mu_ramp_down_opt[int(i), int(t)]
                 if int(t) < self.num_time_steps
-                else self.ramp_dual_bound,
+                else 0.0,
             ),
         )
 
@@ -1107,89 +1792,69 @@ class PoAOptimization:
 
     def _build_KKT_complementarity_equilibrium_constraints(self) -> None:
         def upper_bound_complementarity_eq_rule(m, i, b, t):
-            M_cap = self._block_capacity_big_m(int(i), int(b))
-            return -M_cap * (1 - m.z_upper_eq[i, b, t]) <= m.P_eq[i, b, t] - m.P_max_block[i, b, t]
+            return (
+                -self.M_cap[int(i), int(b), int(t)] * (1 - m.z_upper_eq[i, b, t])
+                <= m.P_eq[i, b, t] - m.P_max_block[i, b, t]
+            )
 
         def upper_bound_complementarity_dual_eq_rule(m, i, b, t):
-            return m.mu_upper_eq[i, b, t] <= (
-                self._capacity_dual_upper_bound(
-                    "mu_max_ub",
-                    int(i),
-                    int(b),
-                    int(t),
-                    dual_name="mu_upper_eq",
-                )
+            return (
+                m.mu_upper_eq[i, b, t]
+                <= self.M_mu_upper_eq[int(i), int(b), int(t)]
                 * m.z_upper_eq[i, b, t]
             )
 
         def lower_bound_complementarity_eq_rule(m, i, b, t):
-            M_cap = self._block_capacity_big_m(int(i), int(b))
-            return -M_cap * (1 - m.z_lower_eq[i, b, t]) <= -m.P_eq[i, b, t]
+            return (
+                -self.M_lower[int(i), int(b), int(t)] * (1 - m.z_lower_eq[i, b, t])
+                <= -m.P_eq[i, b, t]
+            )
 
         def lower_bound_complementarity_dual_eq_rule(m, i, b, t):
-            return m.mu_lower_eq[i, b, t] <= (
-                self._capacity_dual_upper_bound(
-                    "mu_min_ub",
-                    int(i),
-                    int(b),
-                    int(t),
-                    dual_name="mu_lower_eq",
-                )
+            return (
+                m.mu_lower_eq[i, b, t]
+                <= self.M_mu_lower_eq[int(i), int(b), int(t)]
                 * m.z_lower_eq[i, b, t]
             )
 
         def ramp_up_complementarity_eq_rule(m, i, t):
-            M_ramp_up = self._ramp_up_big_m(int(i))
-            return -M_ramp_up * (1 - m.z_ramp_up_eq[i, t]) <= (
+            return -self.M_ramp_up[int(i), int(t)] * (1 - m.z_ramp_up_eq[i, t]) <= (
                 sum(m.P_eq[i, b, t] for b in self.local_blocks_by_generator[int(i)])
                 - sum(m.P_eq[i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
                 - self.ramp_vector_up[int(i)]
             )
 
         def ramp_up_initial_complementarity_eq_rule(m, i):
-            M_ramp_up_initial = self._ramp_up_initial_big_m(int(i))
-            return -M_ramp_up_initial * (1 - m.z_ramp_up_eq[i, 0]) <= (
+            return -self.M_ramp_up_initial[int(i)] * (1 - m.z_ramp_up_eq[i, 0]) <= (
                 sum(m.P_eq[i, b, 0] for b in self.local_blocks_by_generator[int(i)])
                 - self.p_init[int(i)]
                 - self.ramp_vector_up[int(i)]
             )
 
         def ramp_up_complementarity_dual_eq_rule(m, i, t):
-            return m.mu_ramp_up_eq[i, t] <= (
-                self._ramp_dual_upper_bound(
-                    "rho_up_ub",
-                    int(i),
-                    int(t),
-                    dual_name="mu_ramp_up_eq",
-                )
-                * m.z_ramp_up_eq[i, t]
+            return (
+                m.mu_ramp_up_eq[i, t]
+                <= self.M_mu_ramp_up_eq[int(i), int(t)] * m.z_ramp_up_eq[i, t]
             )
         
         def ramp_down_complementarity_eq_rule(m, i, t):
-            M_ramp_down = self._ramp_down_big_m(int(i))
-            return -M_ramp_down * (1 - m.z_ramp_down_eq[i, t]) <= (
+            return -self.M_ramp_down[int(i), int(t)] * (1 - m.z_ramp_down_eq[i, t]) <= (
                 -sum(m.P_eq[i, b, t] for b in self.local_blocks_by_generator[int(i)])
                 + sum(m.P_eq[i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
                 - self.ramp_vector_down[int(i)]
             )
 
         def ramp_down_initial_complementarity_eq_rule(m, i):
-            M_ramp_down_initial = self._ramp_down_initial_big_m(int(i))
-            return -M_ramp_down_initial * (1 - m.z_ramp_down_eq[i, 0]) <= (
+            return -self.M_ramp_down_initial[int(i)] * (1 - m.z_ramp_down_eq[i, 0]) <= (
                 -sum(m.P_eq[i, b, 0] for b in self.local_blocks_by_generator[int(i)])
                 + self.p_init[int(i)]
                 - self.ramp_vector_down[int(i)]
             )
 
         def ramp_down_complementarity_dual_eq_rule(m, i, t):
-            return m.mu_ramp_down_eq[i, t] <= (
-                self._ramp_dual_upper_bound(
-                    "rho_down_ub",
-                    int(i),
-                    int(t),
-                    dual_name="mu_ramp_down_eq",
-                )
-                * m.z_ramp_down_eq[i, t]
+            return (
+                m.mu_ramp_down_eq[i, t]
+                <= self.M_mu_ramp_down_eq[int(i), int(t)] * m.z_ramp_down_eq[i, t]
             )
 
         self.model.upper_bound_complementarity_eq       = Constraint(self.model.generator_blocks, self.model.time_steps, rule=upper_bound_complementarity_eq_rule)
@@ -1207,89 +1872,69 @@ class PoAOptimization:
 
     def _build_KKT_complementarity_optimal_constraints(self) -> None:
         def upper_bound_complementarity_opt_rule(m, i, b, t):
-            M_cap = self._block_capacity_big_m(int(i), int(b))
-            return -M_cap * (1 - m.z_upper_opt[i, b, t]) <= m.P_opt[i, b, t] - m.P_max_block[i, b, t]
+            return (
+                -self.M_cap[int(i), int(b), int(t)] * (1 - m.z_upper_opt[i, b, t])
+                <= m.P_opt[i, b, t] - m.P_max_block[i, b, t]
+            )
     
         def upper_bound_complementarity_dual_opt_rule(m, i, b, t):
-            return m.mu_upper_opt[i, b, t] <= (
-                self._capacity_dual_upper_bound(
-                    "mu_max_ub",
-                    int(i),
-                    int(b),
-                    int(t),
-                    dual_name="mu_upper_opt",
-                )
+            return (
+                m.mu_upper_opt[i, b, t]
+                <= self.M_mu_upper_opt[int(i), int(b), int(t)]
                 * m.z_upper_opt[i, b, t]
             )
 
         def lower_bound_complementarity_opt_rule(m, i, b, t):
-            M_cap = self._block_capacity_big_m(int(i), int(b))
-            return -M_cap * (1 - m.z_lower_opt[i, b, t]) <= -m.P_opt[i, b, t]
+            return (
+                -self.M_lower[int(i), int(b), int(t)] * (1 - m.z_lower_opt[i, b, t])
+                <= -m.P_opt[i, b, t]
+            )
 
         def lower_bound_complementarity_dual_opt_rule(m, i, b, t):
-            return m.mu_lower_opt[i, b, t] <= (
-                self._capacity_dual_upper_bound(
-                    "mu_min_ub",
-                    int(i),
-                    int(b),
-                    int(t),
-                    dual_name="mu_lower_opt",
-                )
+            return (
+                m.mu_lower_opt[i, b, t]
+                <= self.M_mu_lower_opt[int(i), int(b), int(t)]
                 * m.z_lower_opt[i, b, t]
             )
         
         def ramp_up_complementarity_opt_rule(m, i, t):
-            M_ramp_up = self._ramp_up_big_m(int(i))
-            return -M_ramp_up * (1 - m.z_ramp_up_opt[i, t]) <= (
+            return -self.M_ramp_up[int(i), int(t)] * (1 - m.z_ramp_up_opt[i, t]) <= (
                 sum(m.P_opt[i, b, t] for b in self.local_blocks_by_generator[int(i)])
                 - sum(m.P_opt[i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
                 - self.ramp_vector_up[int(i)]
             )
 
         def ramp_up_initial_complementarity_opt_rule(m, i):
-            M_ramp_up_initial = self._ramp_up_initial_big_m(int(i))
-            return -M_ramp_up_initial * (1 - m.z_ramp_up_opt[i, 0]) <= (
+            return -self.M_ramp_up_initial[int(i)] * (1 - m.z_ramp_up_opt[i, 0]) <= (
                 sum(m.P_opt[i, b, 0] for b in self.local_blocks_by_generator[int(i)])
                 - self.p_init[int(i)]
                 - self.ramp_vector_up[int(i)]
             )
 
         def ramp_up_complementarity_dual_opt_rule(m, i, t):
-            return m.mu_ramp_up_opt[i, t] <= (
-                self._ramp_dual_upper_bound(
-                    "rho_up_ub",
-                    int(i),
-                    int(t),
-                    dual_name="mu_ramp_up_opt",
-                )
-                * m.z_ramp_up_opt[i, t]
+            return (
+                m.mu_ramp_up_opt[i, t]
+                <= self.M_mu_ramp_up_opt[int(i), int(t)] * m.z_ramp_up_opt[i, t]
             )
 
         def ramp_down_complementarity_opt_rule(m, i, t):
-            M_ramp_down = self._ramp_down_big_m(int(i))
-            return -M_ramp_down * (1 - m.z_ramp_down_opt[i, t]) <= (
+            return -self.M_ramp_down[int(i), int(t)] * (1 - m.z_ramp_down_opt[i, t]) <= (
                 -sum(m.P_opt[i, b, t] for b in self.local_blocks_by_generator[int(i)])
                 + sum(m.P_opt[i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
                 - self.ramp_vector_down[int(i)]
             )
 
         def ramp_down_initial_complementarity_opt_rule(m, i):
-            M_ramp_down_initial = self._ramp_down_initial_big_m(int(i))
-            return -M_ramp_down_initial * (1 - m.z_ramp_down_opt[i, 0]) <= (
+            return -self.M_ramp_down_initial[int(i)] * (1 - m.z_ramp_down_opt[i, 0]) <= (
                 -sum(m.P_opt[i, b, 0] for b in self.local_blocks_by_generator[int(i)])
                 + self.p_init[int(i)]
                 - self.ramp_vector_down[int(i)]
             )
 
         def ramp_down_complementarity_dual_opt_rule(m, i, t):
-            return m.mu_ramp_down_opt[i, t] <= (
-                self._ramp_dual_upper_bound(
-                    "rho_down_ub",
-                    int(i),
-                    int(t),
-                    dual_name="mu_ramp_down_opt",
-                )
-                * m.z_ramp_down_opt[i, t]
+            return (
+                m.mu_ramp_down_opt[i, t]
+                <= self.M_mu_ramp_down_opt[int(i), int(t)] * m.z_ramp_down_opt[i, t]
             )
 
         self.model.upper_bound_complementarity_opt       = Constraint(self.model.generator_blocks, self.model.time_steps, rule=upper_bound_complementarity_opt_rule)
@@ -1429,12 +2074,6 @@ class PoAOptimization:
         return self._build_aggregate_dual_bound_constraints()
 
     # ------------------------------------------------------------------
-    # Testing
-    # ------------------------------------------------------------------
-
-
-
-    # ------------------------------------------------------------------
     # PoA constraints
     # ------------------------------------------------------------------
 
@@ -1463,8 +2102,10 @@ class PoAOptimization:
         self.model.poa_definition = Constraint(rule=PoA_rule)
 
     # ------------------------------------------------------------------
-    # Neural-network policy embedding
+    # Policy constraints
     # ------------------------------------------------------------------
+
+    # These methods embed the already-loaded policy data into the Pyomo model.
 
     def _build_policy_constraints(self) -> None:
         def true_cost_alpha_rule(m, i, b, t):
@@ -1481,89 +2122,6 @@ class PoAOptimization:
 
         if self.nn_policy_generator_ids:
             self._build_nn_policy_constraints()
-
-    def _load_nn_policies(self) -> None:
-        if self.nn_model_dir is None or not self.nn_model_dir.exists():
-            raise FileNotFoundError(f"NN model directory not found: {self.nn_model_dir}")
-        self.nn_policies = {}
-        for generator_name in self.nn_policy_generator_names:
-            weights_path = self.nn_model_dir / f"{generator_name}_policy_weights.json"
-            metadata_path = self.nn_model_dir / f"{generator_name}_policy_metadata.json"
-            if not weights_path.exists():
-                raise FileNotFoundError(f"Missing NN weights file: {weights_path}")
-            with weights_path.open("r", encoding="utf-8") as file_handle:
-                weights = json.load(file_handle)
-            metadata = {}
-            if metadata_path.exists():
-                with metadata_path.open("r", encoding="utf-8") as file_handle:
-                    metadata = json.load(file_handle)
-
-            feature_columns = list(weights.get("feature_columns") or metadata.get("feature_columns") or [])
-            target_columns = list(weights.get("target_columns") or metadata.get("target_columns") or [])
-            layers = list(weights.get("layers", []))
-            if not feature_columns or not target_columns or not layers:
-                raise ValueError(f"Invalid NN policy payload for {generator_name}")
-            self._validate_nn_policy(generator_name, feature_columns, target_columns, layers)
-            self.nn_policies[generator_name] = {
-                "feature_columns": feature_columns,
-                "target_columns": target_columns,
-                "layers": layers,
-                "metadata": metadata,
-                "target_map": target_columns_to_local_blocks(
-                    generator_name=generator_name,
-                    target_columns=target_columns,
-                    block_names=self.block_names,
-                    physical_generator_names=self.physical_generator_names,
-                    global_to_local_block=self.global_to_local_block,
-                    local_blocks_by_generator=self.local_blocks_by_generator,
-                ),
-            }
-
-    def _validate_nn_policy(
-        self, generator_name: str, feature_columns: list[str], target_columns: list[str], layers: list[dict[str, Any]]
-    ) -> None:
-        expected_input = len(feature_columns)
-        current_dim = expected_input
-        previous_was_hidden_linear = False
-        linear_count = 0
-        for idx, layer in enumerate(layers):
-            layer_type = str(layer.get("type", "")).lower()
-            if layer_type == "linear":
-                weight = np.asarray(layer.get("weight"), dtype=float)
-                bias = np.asarray(layer.get("bias"), dtype=float)
-                if weight.ndim != 2 or bias.ndim != 1:
-                    raise ValueError(f"{generator_name}: linear layer {idx} has invalid dimensions")
-                if weight.shape[1] != current_dim or weight.shape[0] != bias.shape[0]:
-                    raise ValueError(f"{generator_name}: inconsistent dimensions in linear layer {idx}")
-                current_dim = int(weight.shape[0])
-                previous_was_hidden_linear = idx < len(layers) - 1
-                linear_count += 1
-            elif layer_type == "relu":
-                if not previous_was_hidden_linear:
-                    raise ValueError(f"{generator_name}: ReLU layer {idx} must follow a hidden linear layer")
-                previous_was_hidden_linear = False
-            else:
-                raise ValueError(f"{generator_name}: unsupported layer type '{layer_type}'")
-        if str(layers[-1].get("type", "")).lower() != "linear":
-            raise ValueError(f"{generator_name}: final NN layer must be linear")
-        if current_dim != len(target_columns):
-            raise ValueError(
-                f"{generator_name}: output dimension {current_dim} does not match "
-                f"{len(target_columns)} target columns"
-            )
-        if linear_count < 1:
-            raise ValueError(f"{generator_name}: NN must contain at least one linear layer")
-
-    def _load_nn_normalization_stats(self) -> None:
-        if self.nn_normalization_stats_path is None:
-            self.nn_stats = {}
-            return
-        if not self.nn_normalization_stats_path.exists():
-            raise FileNotFoundError(
-                f"NN normalization stats not found: {self.nn_normalization_stats_path}"
-            )
-        with self.nn_normalization_stats_path.open("r", encoding="utf-8") as file_handle:
-            self.nn_stats = json.load(file_handle)
 
     def _raw_nn_feature_expression(self, feature_name: str, t: int, physical_generator_idx: int):
         m = self.model
@@ -1635,27 +2193,12 @@ class PoAOptimization:
             return 0.0
         return (raw - feature_min) / denominator
 
-    def _nn_feature_bounds(self, generator_name: str, feature_name: str) -> tuple[float, float]:
-        stats = self.nn_stats or {}
-        if bool(stats.get("per_generator")):
-            generator_stats = stats.get("stats", {}).get(generator_name, {})
-            mins = generator_stats.get("feature_min", {})
-            maxs = generator_stats.get("feature_max", {})
-            if feature_name in mins and feature_name in maxs:
-                return float(mins[feature_name]), float(maxs[feature_name])
-        if "feature_min" in stats and "feature_max" in stats:
-            mins = stats["feature_min"]
-            maxs = stats["feature_max"]
-            if isinstance(mins, dict) and feature_name in mins:
-                return float(mins[feature_name]), float(maxs[feature_name])
-        return 0.0, 1.0
-
     def _build_nn_policy_constraints(self) -> None:
         m = self.model
         if not self.nn_relu_bounds:
             raise ValueError(
                 "NN ReLU bounds are required before building NN policy constraints. "
-                "Run compute_nn_relu_bounds.py or call load_nn_relu_bounds_report(...)."
+                "Run compute_relu_bounds.py or call load_nn_relu_bounds_report(...)."
             )
         nn_input_indices: list[tuple[int, int, int]] = []
         nn_z_indices: list[tuple[int, int, int, int]] = []
@@ -1800,77 +2343,8 @@ class PoAOptimization:
     # ------------------------------------------------------------------
 
     # The alpha-bound computation, slack-based binary fixing, and dual Big-M
-    # maximization live in models/PoA/PoA_tightening/bidding_blocks_tightening.py.
-    # This class only knows how to import their JSON output into the final PoA
-    # model before solve().
-    @staticmethod
-    def _json_key(indices: tuple[int, ...]) -> str:
-        return ",".join(str(int(index)) for index in indices)
-
-    @staticmethod
-    def _parse_json_index(key: str) -> tuple[int, ...]:
-        return tuple(int(part) for part in str(key).split(",") if part != "")
-
-    @staticmethod
-    def _parse_nn_relu_bound_key(key: str) -> tuple[int, int, int]:
-        parts = tuple(int(part) for part in str(key).split(",") if part != "")
-        if len(parts) != 3:
-            raise ValueError(
-                f"NN ReLU bound key '{key}' must have the form 'time_idx,linear_idx,node'"
-            )
-        return int(parts[0]), int(parts[1]), int(parts[2])
-
-    def _set_nn_relu_bounds_from_report(self, report: dict[str, Any]) -> None:
-        self.nn_relu_bounds_report = report
-        self.nn_feature_bounds = report.get("nn_feature_bounds", {}) or {}
-        self.nn_bound_warnings = list(
-            report.get("warnings", report.get("nn_bound_warnings", [])) or []
-        )
-
-        parsed_bounds: dict[str, dict[tuple[int, int, int], dict[str, Any]]] = {}
-        for generator_name, entries in (report.get("nn_relu_bounds", {}) or {}).items():
-            generator_bounds: dict[tuple[int, int, int], dict[str, Any]] = {}
-            for key, details in (entries or {}).items():
-                if not isinstance(details, dict):
-                    raise ValueError(
-                        f"Invalid NN ReLU bound entry for {generator_name}, key {key}"
-                    )
-                time_idx, linear_idx, node = self._parse_nn_relu_bound_key(key)
-                parsed_details = dict(details)
-                for numeric_key in ("L", "U", "h_lower", "h_upper"):
-                    if numeric_key not in parsed_details:
-                        raise ValueError(
-                            f"NN ReLU bound entry {generator_name}[{key}] is missing "
-                            f"'{numeric_key}'"
-                        )
-                    parsed_details[numeric_key] = float(parsed_details[numeric_key])
-                parsed_details["status"] = str(parsed_details.get("status", "")).lower()
-                if parsed_details["status"] not in {"active", "inactive", "ambiguous"}:
-                    raise ValueError(
-                        f"NN ReLU bound entry {generator_name}[{key}] has invalid "
-                        f"status '{parsed_details['status']}'"
-                    )
-                parsed_details.setdefault("time_idx", time_idx)
-                parsed_details.setdefault("linear_idx", linear_idx)
-                parsed_details.setdefault("node", node)
-                generator_bounds[(time_idx, linear_idx, node)] = parsed_details
-            parsed_bounds[str(generator_name)] = generator_bounds
-
-        self.nn_relu_bounds = parsed_bounds
-
-    def load_nn_relu_bounds_report(
-        self,
-        report_path: str | Path = "results/poa_nn_relu_bounds_report.json",
-    ) -> dict[str, Any]:
-        path = Path(report_path)
-        if not path.exists():
-            raise FileNotFoundError(f"NN ReLU bounds report not found: {path}")
-        with path.open("r", encoding="utf-8") as file_handle:
-            report = json.load(file_handle)
-
-        self.nn_relu_bounds_report_path = path
-        self._set_nn_relu_bounds_from_report(report)
-        return report
+    # maximization live in the staged modules under models/PoA/PoA_tightening.
+    # This section only applies already-loaded data to an already-built model.
 
     def apply_nn_relu_bounds_to_model(
         self,
@@ -1968,42 +2442,6 @@ class PoAOptimization:
             }
         return summary
 
-    def load_tightening_report(
-        self,
-        report_path: str | Path = "results/poa_bidding_blocks_tightening_report.json",
-    ) -> dict[str, Any]:
-        """
-        Load a previously saved tightening report.
-
-        The loaded data is kept in both JSON-friendly form and tuple-indexed
-        form. The tuple-indexed alpha bounds can be reused by the OBBT helpers,
-        while the JSON-friendly fixed-binary and Big-M dictionaries are applied
-        directly to a built Pyomo model.
-        """
-        path = Path(report_path)
-        if not path.exists():
-            raise FileNotFoundError(f"Tightening report not found: {path}")
-        with path.open("r", encoding="utf-8") as file_handle:
-            report = json.load(file_handle)
-
-        self.tightening_report_path = path
-        self.tightening_report = report
-        self.fixed_binaries = report.get("fixed_binaries", {}) or {}
-        self.tight_big_m = report.get("tight_big_m", {}) or {}
-        self.aggregate_dual_bounds = report.get("aggregate_dual_bounds", {}) or {}
-        self.lambda_bounds = report.get("lambda_bounds", {}) or {}
-        self.alpha_bound_optimization_results = (
-            report.get("alpha_optimization_results", {}) or {}
-        )
-        self.alpha_bounds = {
-            self._parse_json_index(key): {
-                "lower": float(value["lower"]),
-                "upper": float(value["upper"]),
-            }
-            for key, value in (report.get("alpha_bounds", {}) or {}).items()
-        }
-        return report
-
     def apply_tightened_bounds_to_model(
         self,
         report: Optional[dict[str, Any]] = None,
@@ -2015,21 +2453,27 @@ class PoAOptimization:
         Apply a tightening report to the already-built PoA model.
 
         Fixed binaries remove complementarity cases that slack OBBT proved can
-        never bind. Tight dual upper bounds strengthen the `mu <= M z` side of
-        complementarity because the dual variable itself now has a smaller upper
-        bound. Alpha bounds are redundant when the exact NN is embedded, but they
-        still help the solver by tightening variable domains.
+        never bind. Dual and lambda bounds are normally applied during variable
+        construction from the prepared dictionaries; this method reapplies those
+        variable bounds when a report is refreshed after model construction.
+        Alpha bounds are redundant when the exact NN is embedded, but they still
+        help the solver by tightening variable domains.
         """
         if not hasattr(self, "model"):
             raise ValueError("Model is not built. Call build_model() first.")
 
-        report = report or getattr(self, "tightening_report", None)
+        current_report = getattr(self, "tightening_report", None)
+        report = report or current_report
         if report is None:
             raise ValueError("No tightening report loaded. Call load_tightening_report() first.")
-        self.tightening_report = report
-        self.tight_big_m = report.get("tight_big_m", {}) or {}
-        self.aggregate_dual_bounds = report.get("aggregate_dual_bounds", {}) or {}
-        self.lambda_bounds = report.get("lambda_bounds", {}) or {}
+        if report is current_report:
+            self._ensure_loaded_bounds_prepared()
+        else:
+            self._set_tightening_report_data(
+                report,
+                getattr(self, "tightening_report_path", None),
+            )
+            self._prepare_loaded_bounds()
 
         m = self.model
         stats = {
@@ -2054,24 +2498,7 @@ class PoAOptimization:
 
         if apply_dual_bounds:
             stats["lambda_bounds"] = self._apply_lambda_bounds_to_model()
-
-            for var_name, entries in (report.get("tight_big_m", {}) or {}).items():
-                dual_var = getattr(m, var_name, None)
-                if dual_var is None:
-                    continue
-                for key, details in entries.items():
-                    tight_value = details.get("tight_big_m")
-                    if tight_value is None:
-                        continue
-                    index = self._parse_json_index(key)
-                    if index not in dual_var:
-                        continue
-                    current_ub = dual_var[index].ub
-                    new_ub = max(0.0, float(tight_value))
-                    if current_ub is not None:
-                        new_ub = min(float(current_ub), new_ub)
-                    dual_var[index].setub(new_ub)
-                    stats["dual_upper_bounds"] += 1
+            stats["dual_upper_bounds"] = self._apply_dual_bounds_to_model()
 
             self.aggregate_dual_bounds = report.get("aggregate_dual_bounds", {}) or {}
             stats["aggregate_dual_bounds"] = (
@@ -2103,23 +2530,17 @@ class PoAOptimization:
     def _apply_lambda_bounds_to_model(self) -> int:
         m = self.model
         applied = 0
-        for lambda_name in ("lambda_eq", "lambda_opt"):
+        lambda_bound_maps = {
+            "lambda_eq": self.lambda_eq_bounds,
+            "lambda_opt": self.lambda_opt_bounds,
+        }
+        for lambda_name, bound_map in lambda_bound_maps.items():
             lambda_var = getattr(m, lambda_name, None)
             if lambda_var is None:
                 continue
-            lambda_entries = (self.lambda_bounds or {}).get(lambda_name, {}) or {}
+            has_report_bound = bool((self.lambda_bounds or {}).get(lambda_name, {}) or {})
             for t in m.time_steps:
-                details = (
-                    lambda_entries.get(str(int(t)), lambda_entries.get(int(t)))
-                    if isinstance(lambda_entries, dict)
-                    else None
-                )
-                has_report_bound = isinstance(details, dict) and (
-                    self._optional_float_bound(details.get("lower")) is not None
-                    or self._optional_float_bound(details.get("upper")) is not None
-                )
-                lower = self._lambda_lower_bound(int(t), lambda_name)
-                upper = self._lambda_upper_bound(int(t), lambda_name)
+                lower, upper = bound_map[int(t)]
                 current_lb = lambda_var[t].lb
                 current_ub = lambda_var[t].ub
                 if current_lb is not None:
@@ -2137,6 +2558,48 @@ class PoAOptimization:
                     lambda_var[t].setub(upper)
                     if has_report_bound or changed:
                         applied += 1
+        return applied
+
+    def _apply_dual_bounds_to_model(self) -> int:
+        m = self.model
+        applied = 0
+        dual_bound_maps: tuple[tuple[str, dict[Any, float]], ...] = (
+            ("mu_upper_eq", self.M_mu_upper_eq),
+            ("mu_lower_eq", self.M_mu_lower_eq),
+            ("mu_ramp_up_eq", self.M_mu_ramp_up_eq),
+            ("mu_ramp_down_eq", self.M_mu_ramp_down_eq),
+            ("mu_upper_opt", self.M_mu_upper_opt),
+            ("mu_lower_opt", self.M_mu_lower_opt),
+            ("mu_ramp_up_opt", self.M_mu_ramp_up_opt),
+            ("mu_ramp_down_opt", self.M_mu_ramp_down_opt),
+        )
+        for var_name, bound_map in dual_bound_maps:
+            dual_var = getattr(m, var_name, None)
+            if dual_var is None:
+                continue
+            for index, upper in bound_map.items():
+                if index not in dual_var:
+                    continue
+                current_ub = dual_var[index].ub
+                new_ub = max(0.0, float(upper))
+                if current_ub is not None:
+                    new_ub = min(float(current_ub), new_ub)
+                dual_var[index].setub(new_ub)
+                applied += 1
+
+        for var_name in (
+            "mu_ramp_up_eq",
+            "mu_ramp_down_eq",
+            "mu_ramp_up_opt",
+            "mu_ramp_down_opt",
+        ):
+            dual_var = getattr(m, var_name, None)
+            if dual_var is None:
+                continue
+            for i in m.physical_generators:
+                index = (int(i), self.num_time_steps)
+                if index in dual_var:
+                    dual_var[index].setub(0.0)
         return applied
 
     # ------------------------------------------------------------------
@@ -2168,6 +2631,7 @@ class PoAOptimization:
     def check_dual_bound_activity(self, tol: float = 1e-5) -> list[dict]:
         if not hasattr(self, "model"):
             raise ValueError("Model is not built. Call build_model() first.")
+        self._ensure_loaded_bounds_prepared()
         m = self.model
         active_bounds: list[dict] = []
 
@@ -2186,46 +2650,37 @@ class PoAOptimization:
             )
 
         capacity_components = (
-            ("mu_upper_eq", m.mu_upper_eq, "mu_max_ub"),
-            ("mu_lower_eq", m.mu_lower_eq, "mu_min_ub"),
-            ("mu_upper_opt", m.mu_upper_opt, "mu_max_ub"),
-            ("mu_lower_opt", m.mu_lower_opt, "mu_min_ub"),
+            ("mu_upper_eq", m.mu_upper_eq, self.M_mu_upper_eq),
+            ("mu_lower_eq", m.mu_lower_eq, self.M_mu_lower_eq),
+            ("mu_upper_opt", m.mu_upper_opt, self.M_mu_upper_opt),
+            ("mu_lower_opt", m.mu_lower_opt, self.M_mu_lower_opt),
         )
-        for component_name, var, bound_key in capacity_components:
+        for component_name, var, bound_map in capacity_components:
             for i, b in m.generator_blocks:
                 for t in m.time_steps:
+                    index = (int(i), int(b), int(t))
                     add_if_active(
                         component_name,
                         var,
                         (i, b, t),
-                        self._capacity_dual_upper_bound(
-                            bound_key,
-                            int(i),
-                            int(b),
-                            int(t),
-                            dual_name=component_name,
-                        ),
+                        bound_map[index],
                     )
 
         ramp_components = (
-            ("mu_ramp_up_eq", m.mu_ramp_up_eq, "rho_up_ub"),
-            ("mu_ramp_down_eq", m.mu_ramp_down_eq, "rho_down_ub"),
-            ("mu_ramp_up_opt", m.mu_ramp_up_opt, "rho_up_ub"),
-            ("mu_ramp_down_opt", m.mu_ramp_down_opt, "rho_down_ub"),
+            ("mu_ramp_up_eq", m.mu_ramp_up_eq, self.M_mu_ramp_up_eq),
+            ("mu_ramp_down_eq", m.mu_ramp_down_eq, self.M_mu_ramp_down_eq),
+            ("mu_ramp_up_opt", m.mu_ramp_up_opt, self.M_mu_ramp_up_opt),
+            ("mu_ramp_down_opt", m.mu_ramp_down_opt, self.M_mu_ramp_down_opt),
         )
-        for component_name, var, bound_key in ramp_components:
+        for component_name, var, bound_map in ramp_components:
             for i in m.physical_generators:
                 for t in m.time_steps:
+                    index = (int(i), int(t))
                     add_if_active(
                         component_name,
                         var,
                         (i, t),
-                        self._ramp_dual_upper_bound(
-                            bound_key,
-                            int(i),
-                            int(t),
-                            dual_name=component_name,
-                        ),
+                        bound_map[index],
                     )
 
         return active_bounds
@@ -2373,14 +2828,13 @@ class PoAOptimization:
             json.dump(results, file_handle, indent=2)
         return path
 
-
 if __name__ == "__main__":
     case = "test_case_bidding_blocks"
     regime_set = "PoA_analysis"
     seed = 1
     horizon = 4
     nn_relu_report_path = "results/poa_nn_relu_bounds_report.json"
-    tightening_report_path = "results/poa_bidding_blocks_tightening_report.json"
+    tightening_report_path = "results/poa_tightening/final_tightening_report.json"
 
     scenario_manager = ScenarioManager(case)
     scenarios = scenario_manager.create_scenario_set_from_regimes(

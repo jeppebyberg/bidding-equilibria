@@ -39,7 +39,8 @@
         "min_big_m": 45.0,
         "max_big_m": 75.0
       }
-    }
+    },
+    "runtime_seconds": 38.46646640000108
   },
   "alpha_bounds": {
     "0,0,0": {
@@ -549,8 +550,7 @@
       "termination_condition": "optimal"
     }
   },
-  "fixed_binaries": {},
-  "slack_bounds": {},
+  "num_optimization_programs": 84,
   "primal_big_m": {
     "block_capacity": {
       "0,0": {
@@ -800,8 +800,5 @@
         "is_wind": true
       }
     }
-  },
-  "lambda_bounds": {},
-  "tight_big_m": {},
-  "aggregate_dual_bounds": {}
+  }
 }

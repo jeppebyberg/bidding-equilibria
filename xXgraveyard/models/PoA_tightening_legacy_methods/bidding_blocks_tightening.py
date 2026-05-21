@@ -27,6 +27,7 @@ def _initialize_parallel_optimizer(state: dict[str, Any]) -> None:
     for attr_name in (
         "alpha_bounds",
         "fixed_binaries",
+        "primal_big_m",
         "lambda_bounds",
         "tight_big_m",
         "aggregate_dual_bounds",
@@ -255,6 +256,16 @@ class BiddingBlocksTighteningOptimizer(PoAOptimization):
     # Robust slack-based OBBT and Big-M tightening
     # ------------------------------------------------------------------
 
+    def _ensure_primal_big_m_for_tightening(self) -> None:
+        if getattr(self, "primal_big_m", {}) or {}:
+            return
+        from models.PoA.PoA_tightening.compute_primal_big_m import (
+            compute_primal_big_m_bounds,
+        )
+
+        self.primal_big_m = compute_primal_big_m_bounds(self)
+        self._loaded_bounds_prepared = False
+
     def _parallel_optimizer_state(self, **extra_state: Any) -> dict[str, Any]:
         state = {
             "scenarios_df": self.scenarios_df,
@@ -272,6 +283,7 @@ class BiddingBlocksTighteningOptimizer(PoAOptimization):
             "nn_policy_generators": list(self.nn_policy_generator_ids),
             "reference_case": self.reference_case,
             "nn_relu_bounds_report": getattr(self, "nn_relu_bounds_report", {}) or {},
+            "primal_big_m": getattr(self, "primal_big_m", {}) or {},
         }
         state.update(extra_state)
         return state
@@ -347,6 +359,7 @@ class BiddingBlocksTighteningOptimizer(PoAOptimization):
         through the precomputed bounds, not through ReLU constraints. `side="opt"`
         builds the true-cost/social-optimum KKT system; alpha is not needed there.
         """
+        self._ensure_primal_big_m_for_tightening()
         self.model = ConcreteModel()
         self._build_tightening_sets()
         self._build_PoA_variables()
@@ -419,7 +432,7 @@ class BiddingBlocksTighteningOptimizer(PoAOptimization):
         if self.nn_policy_generator_ids and not self.nn_relu_bounds:
             raise ValueError(
                 "NN ReLU bounds are required before computing certified alpha bounds. "
-                "Run compute_nn_relu_bounds.py first or pass nn_relu_bounds_report_path."
+                "Run compute_relu_bounds.py first or pass nn_relu_bounds_report_path."
             )
 
         alpha_bounds: dict[tuple[int, int, int], dict[str, float]] = {}
@@ -1360,6 +1373,7 @@ class BiddingBlocksTighteningOptimizer(PoAOptimization):
                 f"{side}:{constraint_type}:{self._json_key(index)}": value
                 for (side, constraint_type, index), value in getattr(self, "slack_bounds", {}).items()
             },
+            "primal_big_m": getattr(self, "primal_big_m", {}),
             "lambda_bounds": getattr(self, "lambda_bounds", {}),
             "tight_big_m": getattr(self, "tight_big_m", {}),
             "aggregate_dual_bounds": getattr(self, "aggregate_dual_bounds", {}),

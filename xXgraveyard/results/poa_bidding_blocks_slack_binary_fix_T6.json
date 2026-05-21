@@ -31,7 +31,7 @@
       },
       "3,0,3": {
         "fixed_value": 0,
-        "minimum_slack": 10.2,
+        "minimum_slack": 10.199999998879903,
         "side": "eq",
         "constraint_type": "lower",
         "result_classification": "positive_slack_optimal"
@@ -210,7 +210,7 @@
       },
       "4,2": {
         "fixed_value": 0,
-        "minimum_slack": 29.099999996989993,
+        "minimum_slack": 29.1,
         "side": "eq",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
@@ -1483,8 +1483,8 @@
       "result_classification": "zero_slack_feasible"
     },
     "eq:lower:3,0,3": {
-      "minimum_slack": 10.2,
-      "incumbent_slack_objective": 10.2,
+      "minimum_slack": 10.199999998879903,
+      "incumbent_slack_objective": 10.199999998879903,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -2104,8 +2104,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_up:4,2": {
-      "minimum_slack": 29.099999996989993,
-      "incumbent_slack_objective": 29.099999996989993,
+      "minimum_slack": 29.1,
+      "incumbent_slack_objective": 29.1,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -3470,256 +3470,6 @@
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
       "result_classification": "positive_slack_optimal"
-    }
-  },
-  "primal_big_m": {
-    "block_capacity": {
-      "0,0": {
-        "big_m": 25.0,
-        "physical_generator_index": 0,
-        "physical_generator_name": "G2",
-        "local_block_index": 0,
-        "global_block_index": 0,
-        "block_name": "G2_B1"
-      },
-      "0,1": {
-        "big_m": 25.0,
-        "physical_generator_index": 0,
-        "physical_generator_name": "G2",
-        "local_block_index": 1,
-        "global_block_index": 1,
-        "block_name": "G2_B2"
-      },
-      "1,0": {
-        "big_m": 25.0,
-        "physical_generator_index": 1,
-        "physical_generator_name": "G1",
-        "local_block_index": 0,
-        "global_block_index": 2,
-        "block_name": "G1_B1"
-      },
-      "1,1": {
-        "big_m": 25.0,
-        "physical_generator_index": 1,
-        "physical_generator_name": "G1",
-        "local_block_index": 1,
-        "global_block_index": 3,
-        "block_name": "G1_B2"
-      },
-      "2,0": {
-        "big_m": 50.0,
-        "physical_generator_index": 2,
-        "physical_generator_name": "W3",
-        "local_block_index": 0,
-        "global_block_index": 4,
-        "block_name": "W3_B1"
-      },
-      "3,0": {
-        "big_m": 50.0,
-        "physical_generator_index": 3,
-        "physical_generator_name": "W2",
-        "local_block_index": 0,
-        "global_block_index": 5,
-        "block_name": "W2_B1"
-      },
-      "4,0": {
-        "big_m": 50.0,
-        "physical_generator_index": 4,
-        "physical_generator_name": "W1",
-        "local_block_index": 0,
-        "global_block_index": 6,
-        "block_name": "W1_B1"
-      }
-    },
-    "physical_capacity": {
-      "0": {
-        "big_m": 50.0,
-        "physical_generator_index": 0,
-        "physical_generator_name": "G2",
-        "is_wind": false
-      },
-      "1": {
-        "big_m": 50.0,
-        "physical_generator_index": 1,
-        "physical_generator_name": "G1",
-        "is_wind": false
-      },
-      "2": {
-        "big_m": 50.0,
-        "physical_generator_index": 2,
-        "physical_generator_name": "W3",
-        "is_wind": true
-      },
-      "3": {
-        "big_m": 50.0,
-        "physical_generator_index": 3,
-        "physical_generator_name": "W2",
-        "is_wind": true
-      },
-      "4": {
-        "big_m": 50.0,
-        "physical_generator_index": 4,
-        "physical_generator_name": "W1",
-        "is_wind": true
-      }
-    },
-    "ramp_up": {
-      "0": {
-        "big_m": 70.0,
-        "ramp_limit": 20.0,
-        "physical_generator_index": 0,
-        "physical_generator_name": "G2",
-        "is_wind": false
-      },
-      "1": {
-        "big_m": 70.0,
-        "ramp_limit": 20.0,
-        "physical_generator_index": 1,
-        "physical_generator_name": "G1",
-        "is_wind": false
-      },
-      "2": {
-        "big_m": 100.0,
-        "ramp_limit": 50.0,
-        "physical_generator_index": 2,
-        "physical_generator_name": "W3",
-        "is_wind": true
-      },
-      "3": {
-        "big_m": 100.0,
-        "ramp_limit": 50.0,
-        "physical_generator_index": 3,
-        "physical_generator_name": "W2",
-        "is_wind": true
-      },
-      "4": {
-        "big_m": 100.0,
-        "ramp_limit": 50.0,
-        "physical_generator_index": 4,
-        "physical_generator_name": "W1",
-        "is_wind": true
-      }
-    },
-    "ramp_down": {
-      "0": {
-        "big_m": 70.0,
-        "ramp_limit": 20.0,
-        "physical_generator_index": 0,
-        "physical_generator_name": "G2",
-        "is_wind": false
-      },
-      "1": {
-        "big_m": 70.0,
-        "ramp_limit": 20.0,
-        "physical_generator_index": 1,
-        "physical_generator_name": "G1",
-        "is_wind": false
-      },
-      "2": {
-        "big_m": 100.0,
-        "ramp_limit": 50.0,
-        "physical_generator_index": 2,
-        "physical_generator_name": "W3",
-        "is_wind": true
-      },
-      "3": {
-        "big_m": 100.0,
-        "ramp_limit": 50.0,
-        "physical_generator_index": 3,
-        "physical_generator_name": "W2",
-        "is_wind": true
-      },
-      "4": {
-        "big_m": 100.0,
-        "ramp_limit": 50.0,
-        "physical_generator_index": 4,
-        "physical_generator_name": "W1",
-        "is_wind": true
-      }
-    },
-    "ramp_up_initial": {
-      "0": {
-        "big_m": 45.0,
-        "p_init": 25.0,
-        "ramp_limit": 20.0,
-        "physical_generator_index": 0,
-        "physical_generator_name": "G2",
-        "is_wind": false
-      },
-      "1": {
-        "big_m": 45.0,
-        "p_init": 25.0,
-        "ramp_limit": 20.0,
-        "physical_generator_index": 1,
-        "physical_generator_name": "G1",
-        "is_wind": false
-      },
-      "2": {
-        "big_m": 75.0,
-        "p_init": 25.0,
-        "ramp_limit": 50.0,
-        "physical_generator_index": 2,
-        "physical_generator_name": "W3",
-        "is_wind": true
-      },
-      "3": {
-        "big_m": 75.0,
-        "p_init": 25.0,
-        "ramp_limit": 50.0,
-        "physical_generator_index": 3,
-        "physical_generator_name": "W2",
-        "is_wind": true
-      },
-      "4": {
-        "big_m": 75.0,
-        "p_init": 25.0,
-        "ramp_limit": 50.0,
-        "physical_generator_index": 4,
-        "physical_generator_name": "W1",
-        "is_wind": true
-      }
-    },
-    "ramp_down_initial": {
-      "0": {
-        "big_m": 45.0,
-        "p_init": 25.0,
-        "ramp_limit": 20.0,
-        "physical_generator_index": 0,
-        "physical_generator_name": "G2",
-        "is_wind": false
-      },
-      "1": {
-        "big_m": 45.0,
-        "p_init": 25.0,
-        "ramp_limit": 20.0,
-        "physical_generator_index": 1,
-        "physical_generator_name": "G1",
-        "is_wind": false
-      },
-      "2": {
-        "big_m": 75.0,
-        "p_init": 25.0,
-        "ramp_limit": 50.0,
-        "physical_generator_index": 2,
-        "physical_generator_name": "W3",
-        "is_wind": true
-      },
-      "3": {
-        "big_m": 75.0,
-        "p_init": 25.0,
-        "ramp_limit": 50.0,
-        "physical_generator_index": 3,
-        "physical_generator_name": "W2",
-        "is_wind": true
-      },
-      "4": {
-        "big_m": 75.0,
-        "p_init": 25.0,
-        "ramp_limit": 50.0,
-        "physical_generator_index": 4,
-        "physical_generator_name": "W1",
-        "is_wind": true
-      }
     }
   },
   "lambda_bounds": {},

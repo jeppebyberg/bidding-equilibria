@@ -21,11 +21,49 @@ from models.neural_network.training.trainer import (
     train_generator_policy,
 )
 from models.PoA.PoA_optimization import PoAOptimization
-from models.PoA.PoA_tightening.bidding_blocks_tightening import (
-    BiddingBlocksTighteningOptimizer,
+from models.PoA.PoA_tightening.compute_primal_big_m import (
+    PrimalBigMComputer,
+    compute_primal_big_m_bounds,
+    summarize_primal_big_m,
+    support_set_summary,
 )
-from models.PoA.PoA_tightening.nn_relu_bounds import NNReLUBoundsOptimizer
+from models.PoA.PoA_tightening.tightening_main import (
+    DEFAULT_TIGHTENING_OUTPUT_PATHS,
+    PoATighteningMain,
+)
+from models.PoA.PoA_tightening.compute_alpha_bounds import AlphaBoundsComputer
+from models.PoA.PoA_tightening.compute_dual_big_m import DualBigMComputer
+from models.PoA.PoA_tightening.compute_relu_bounds import ReLUBoundsComputer
+from models.PoA.PoA_tightening.compute_slack_binary_fix import SlackBinaryFixComputer
 from models.synthetic_data_generation.merit_order_best_response import MeritOrderHeuristic
+
+
+RUN_TIGHTENING = True
+
+TIGHTENING_FLAGS = {
+    "primal_big_m": True,
+    "relu_bounds": True,
+    "alpha_bounds": True,
+    "slack_binary_fix": True,
+    "dual_big_m": True,
+}
+
+TIGHTENING_PREVIOUS_PATHS = {
+    "primal_big_m": "results/poa_tightening/primal_big_m_report.json",
+    "relu_bounds": "results/poa_tightening/relu_bounds_report.json",
+    "alpha_bounds": "results/poa_tightening/alpha_bounds_report.json",
+    "slack_binary_fix": "results/poa_tightening/slack_binary_fix_report.json",
+    "dual_big_m": "results/poa_tightening/dual_big_m_report.json",
+}
+
+TIGHTENING_OUTPUT_PATHS = {
+    "primal_big_m": "results/poa_tightening/primal_big_m_report.json",
+    "relu_bounds": "results/poa_tightening/relu_bounds_report.json",
+    "alpha_bounds": "results/poa_tightening/alpha_bounds_report.json",
+    "slack_binary_fix": "results/poa_tightening/slack_binary_fix_report.json",
+    "dual_big_m": "results/poa_tightening/dual_big_m_report.json",
+    "final": "results/poa_tightening/final_tightening_report.json",
+}
 
 
 @dataclass
@@ -110,6 +148,18 @@ class FullPipelineConfig:
     run_heuristic_labels: bool = True
     run_feature_building: bool = True
     run_nn_training: bool = True
+    run_tightening: bool = RUN_TIGHTENING
+    tightening_flags: dict[str, bool] = field(
+        default_factory=lambda: dict(TIGHTENING_FLAGS)
+    )
+    tightening_previous_paths: dict[str, str | Path] = field(
+        default_factory=lambda: dict(TIGHTENING_PREVIOUS_PATHS)
+    )
+    tightening_output_paths: dict[str, str | Path] = field(
+        default_factory=lambda: dict(TIGHTENING_OUTPUT_PATHS)
+    )
+    # Legacy per-stage toggles retained for direct calls to the compatibility
+    # helper functions below. The main pipeline uses tightening_flags.
     run_poa_nn_relu_bounds: bool = True
     run_poa_alpha_bounds: bool = True
     run_poa_slack_binary_fix: bool = True
@@ -133,19 +183,27 @@ class FullPipelineConfig:
 
     @property
     def alpha_bounds_path(self) -> Path:
-        return self.poa_result_dir / f"poa_bidding_blocks_alpha_bounds_T{self.horizon}.json"
+        return Path(self.tightening_output_paths["alpha_bounds"])
 
     @property
     def nn_relu_bounds_path(self) -> Path:
-        return self.poa_result_dir / f"poa_nn_relu_bounds_report_T{self.horizon}.json"
+        return Path(self.tightening_output_paths["relu_bounds"])
+
+    @property
+    def primal_big_m_path(self) -> Path:
+        return Path(self.tightening_output_paths["primal_big_m"])
 
     @property
     def slack_report_path(self) -> Path:
-        return self.poa_result_dir / f"poa_bidding_blocks_slack_binary_fix_T{self.horizon}.json"
+        return Path(self.tightening_output_paths["slack_binary_fix"])
 
     @property
     def tightening_report_path(self) -> Path:
-        return self.poa_result_dir / f"poa_bidding_blocks_tightening_report_T{self.horizon}.json"
+        return Path(self.tightening_output_paths["final"])
+
+    @property
+    def dual_big_m_path(self) -> Path:
+        return Path(self.tightening_output_paths["dual_big_m"])
 
     @property
     def poa_results_path(self) -> Path:
@@ -181,10 +239,7 @@ def main(config: FullPipelineConfig) -> None:
 
     if any(
         [
-            config.run_poa_nn_relu_bounds,
-            config.run_poa_alpha_bounds,
-            config.run_poa_slack_binary_fix,
-            config.run_poa_dual_big_m,
+            config.run_tightening,
             config.run_poa_optimization,
         ]
     ):
@@ -198,14 +253,8 @@ def main(config: FullPipelineConfig) -> None:
             time_steps=config.poa_time_steps,
         )
 
-    if config.run_poa_nn_relu_bounds:
-        run_nn_relu_bounds(config)
-    if config.run_poa_alpha_bounds:
-        run_alpha_bounds(config)
-    if config.run_poa_slack_binary_fix:
-        run_slack_binary_fix(config)
-    if config.run_poa_dual_big_m:
-        run_dual_big_m(config)
+    if config.run_tightening:
+        run_tightening_pipeline(config)
     if config.run_poa_optimization:
         run_final_poa(config)
 
@@ -425,6 +474,8 @@ def find_generator_feature_files(feature_dir: Path) -> list[Path]:
 
 
 def load_poa_scenario_data(config: FullPipelineConfig) -> dict[str, Any]:
+    if not config.runtime_config_path.exists():
+        write_runtime_regime_config(config)
     scenario_manager = ScenarioManager(config.case)
     apply_time_steps_override(scenario_manager, config.poa_time_steps)
     return scenario_manager.create_scenario_set_from_regimes(
@@ -461,18 +512,101 @@ def build_poa_optimizer(
     )
 
 
-def run_nn_relu_bounds(config: FullPipelineConfig) -> Path:
-    optimizer = build_poa_optimizer(config, NNReLUBoundsOptimizer)
+def build_poa_tightening(
+    config: FullPipelineConfig,
+    tightening_cls: type[PoATighteningMain] = PoATighteningMain,
+) -> PoATighteningMain:
+    scenarios = load_poa_scenario_data(config)
+    support_set_config = load_support_set_config(config)
+    return tightening_cls(
+        scenarios_df=scenarios["scenarios_df"],
+        costs_df=scenarios["costs_df"],
+        ramps_df=scenarios["ramps_df"],
+        p_init=None,
+        num_time_steps=config.horizon,
+        support_set_config=support_set_config,
+        nn_model_dir=str(config.model_dir),
+        nn_normalization_stats_path=str(config.nn_normalization_stats_path),
+        nn_policy_generators=list(config.nn_policy_generators),
+        reference_case=config.case,
+    )
+
+
+def run_tightening_pipeline(config: FullPipelineConfig) -> Path:
+    flags = {**TIGHTENING_FLAGS, **dict(config.tightening_flags)}
+    previous_paths = {
+        **DEFAULT_TIGHTENING_OUTPUT_PATHS,
+        **dict(config.tightening_previous_paths),
+    }
+    output_paths = {
+        **DEFAULT_TIGHTENING_OUTPUT_PATHS,
+        **dict(config.tightening_output_paths),
+    }
+
+    print("\nStarting staged PoA tightening")
+    print(f"  outputs={output_paths}")
+    print(f"  flags={flags}")
+    print(
+        f"  solver={config.solver_name}, time_limit={config.preprocessing_time_limit}, "
+        f"parallel_workers={config.poa_parallel_workers}"
+    )
+
     start = time.perf_counter()
-    output_path = optimizer.save_nn_relu_bounds_report(
+    tightening = build_poa_tightening(config)
+    final_report_path = tightening.run_all(
+        run_primal_big_m=bool(flags["primal_big_m"]),
+        run_relu_bounds=bool(flags["relu_bounds"]),
+        run_alpha_bounds=bool(flags["alpha_bounds"]),
+        run_slack_binary_fix=bool(flags["slack_binary_fix"]),
+        run_dual_big_m=bool(flags["dual_big_m"]),
+        previous_paths=previous_paths,
+        output_paths=output_paths,
+        solver_name=config.solver_name,
+        time_limit=config.preprocessing_time_limit,
+        tee=False,
+        epsilon=config.epsilon,
+        parallel_workers=config.poa_parallel_workers,
+        solver_threads=config.poa_solver_threads_per_worker,
+    )
+    elapsed = time.perf_counter() - start
+    print(f"\nStaged PoA tightening complete: {final_report_path}")
+    print(f"Tightening runtime: {elapsed:.2f} seconds")
+    return final_report_path
+
+
+def run_nn_relu_bounds(config: FullPipelineConfig) -> Path:
+    print("\nStarting PoA NN ReLU bound tightening")
+    print(f"  output={config.nn_relu_bounds_path}")
+    print(f"  horizon={config.horizon}")
+    print(f"  policy_generators={list(config.nn_policy_generators)}")
+    print(f"  model_dir={config.model_dir}")
+    print(f"  normalization_stats={config.nn_normalization_stats_path}")
+    print(
+        f"  solver={config.solver_name}, time_limit={config.preprocessing_time_limit}, "
+        f"parallel_workers={config.poa_parallel_workers}"
+    )
+    stage = build_poa_tightening(config, ReLUBoundsComputer)
+    optimizer = stage.poa
+    print(
+        "  resolved_policy_generators="
+        f"{list(optimizer.nn_policy_generator_names)}"
+    )
+    print(
+        f"  physical_generators={optimizer.num_physical_generators}, "
+        f"generator_blocks={len(optimizer.generator_block_pairs)}, "
+        f"time_steps={optimizer.num_time_steps}"
+    )
+    start = time.perf_counter()
+    report = stage.run_relu_bounds(
         output_path=config.nn_relu_bounds_path,
         solver_name=config.solver_name,
         time_limit=config.preprocessing_time_limit,
         tee=False,
     )
+    output_path = config.nn_relu_bounds_path
     elapsed = time.perf_counter() - start
 
-    summary = optimizer.summarize_nn_relu_bounds()
+    summary = report.get("summary", {})
     total_fixed = sum(
         int(details.get("num_active", 0)) + int(details.get("num_inactive", 0))
         for details in summary.values()
@@ -480,63 +614,104 @@ def run_nn_relu_bounds(config: FullPipelineConfig) -> Path:
 
     print(f"\nNN ReLU preactivation-bound report complete: {output_path}")
     print(f"NN ReLU bound runtime: {elapsed:.2f} seconds")
+    if optimizer.nn_bound_warnings:
+        print("NN ReLU bound warnings:")
+        for warning in optimizer.nn_bound_warnings:
+            print(f"  - {warning}")
     for generator_name in optimizer.nn_policy_generator_names:
         details = summary.get(generator_name, {})
         print(
             f"  {generator_name}: "
             f"active={int(details.get('num_active', 0))}, "
             f"inactive={int(details.get('num_inactive', 0))}, "
-            f"ambiguous={int(details.get('num_ambiguous', 0))}"
+            f"ambiguous={int(details.get('num_ambiguous', 0))}, "
+            f"min_L={details.get('min_L')}, "
+            f"max_U={details.get('max_U')}"
         )
     print(f"Total fixed NN ReLU binaries: {total_fixed}")
     return output_path
 
 
 def run_alpha_bounds(config: FullPipelineConfig) -> Path:
-    optimizer = build_poa_optimizer(config, BiddingBlocksTighteningOptimizer)
+    stage = build_poa_tightening(config, AlphaBoundsComputer)
+    if config.primal_big_m_path.exists():
+        stage._load_previous_stage("primal_big_m", config.primal_big_m_path)
+    else:
+        stage._as_stage(PrimalBigMComputer).run_primal_big_m(
+            output_path=config.primal_big_m_path
+        )
+    stage._load_previous_stage("relu_bounds", config.nn_relu_bounds_path)
+
     start = time.perf_counter()
-    alpha_report = optimizer.compute_nn_certified_bid_bounds(
+    report = stage.run_alpha_bounds(
+        output_path=config.alpha_bounds_path,
         solver_name=config.solver_name,
         time_limit=config.preprocessing_time_limit,
         tee=False,
         parallel_workers=config.poa_parallel_workers,
         solver_threads=config.poa_solver_threads_per_worker,
-        nn_relu_bounds_report_path=config.nn_relu_bounds_path,
     )
     elapsed = time.perf_counter() - start
 
+    output_path = config.alpha_bounds_path
+    print(f"\nAlpha-bound computation complete: {output_path}")
+    print(f"Alpha entries: {len(report.get('alpha_bounds', {}))}")
+    print(f"Alpha-bound runtime: {elapsed:.2f} seconds")
+    return output_path
+
+
+def run_primal_big_m(
+    config: FullPipelineConfig,
+    optimizer: PoAOptimization | None = None,
+) -> dict[str, dict[str, Any]]:
+    if optimizer is None:
+        optimizer = build_poa_optimizer(config, PoAOptimization)
+
+    start = time.perf_counter()
+    primal_big_m = compute_primal_big_m_bounds(optimizer)
+    summary = summarize_primal_big_m(primal_big_m)
     payload = {
         "metadata": {
             "description": (
-                "Exact alpha bounds from support-set optimization with embedded "
-                "ReLU policy constraints."
+                "Analytic primal slack Big-M values used by PoAOptimization "
+                "KKT complementarity constraints."
             ),
             "reference_case": optimizer.reference_case,
             "num_time_steps": optimizer.num_time_steps,
-            "nn_policy_generators": list(optimizer.nn_policy_generator_names),
-            "num_optimization_programs": alpha_report["num_optimization_programs"],
+            "physical_generator_names": list(optimizer.physical_generator_names),
+            "block_names": list(optimizer.block_names),
+            "support_set": support_set_summary(optimizer),
+            "summary": summary,
         },
-        "alpha_bounds": alpha_report["alpha_bounds"],
-        "alpha_optimization_results": alpha_report["optimization_results"],
+        "primal_big_m": primal_big_m,
         "fixed_binaries": {},
         "slack_bounds": {},
         "lambda_bounds": {},
         "tight_big_m": {},
         "aggregate_dual_bounds": {},
     }
-    output_path = write_json(config.alpha_bounds_path, payload)
-    print(f"\nAlpha-bound computation complete: {output_path}")
-    print(f"Alpha-bound runtime: {elapsed:.2f} seconds")
-    return output_path
+    output_path = write_json(config.primal_big_m_path, payload)
+    elapsed = time.perf_counter() - start
+
+    optimizer.primal_big_m = primal_big_m
+    print(f"\nPrimal Big-M report complete: {output_path}")
+    for component_name, details in summary.items():
+        print(
+            f"  {component_name}: entries={details['entries']}, "
+            f"min={details['min_big_m']}, max={details['max_big_m']}"
+        )
+    print(f"Primal Big-M runtime: {elapsed:.2f} seconds")
+    return primal_big_m
 
 
 def run_slack_binary_fix(config: FullPipelineConfig) -> Path:
-    optimizer = build_poa_optimizer(config, BiddingBlocksTighteningOptimizer)
-    optimizer.load_tightening_report(config.alpha_bounds_path)
+    stage = build_poa_tightening(config, SlackBinaryFixComputer)
+    stage._load_previous_stage("primal_big_m", config.primal_big_m_path)
+    stage._load_previous_stage("alpha_bounds", config.alpha_bounds_path)
 
     start = time.perf_counter()
-    slack_report = optimizer.run_slack_based_obbt(
-        alpha_bounds=optimizer.alpha_bounds,
+    slack_report = stage.run_slack_binary_fix(
+        output_path=config.slack_report_path,
         epsilon=config.epsilon,
         solver_name=config.solver_name,
         time_limit=config.preprocessing_time_limit,
@@ -544,7 +719,7 @@ def run_slack_binary_fix(config: FullPipelineConfig) -> Path:
         parallel_workers=config.poa_parallel_workers,
         solver_threads=config.poa_solver_threads_per_worker,
     )
-    output_path = optimizer.save_tightening_report(config.slack_report_path)
+    output_path = config.slack_report_path
     elapsed = time.perf_counter() - start
 
     print(f"\nSlack minimization and binary fixing complete: {output_path}")
@@ -554,20 +729,21 @@ def run_slack_binary_fix(config: FullPipelineConfig) -> Path:
 
 
 def run_dual_big_m(config: FullPipelineConfig) -> Path:
-    optimizer = build_poa_optimizer(config, BiddingBlocksTighteningOptimizer)
-    optimizer.load_tightening_report(config.slack_report_path)
+    stage = build_poa_tightening(config, DualBigMComputer)
+    stage._load_previous_stage("primal_big_m", config.primal_big_m_path)
+    stage._load_previous_stage("alpha_bounds", config.alpha_bounds_path)
+    stage._load_previous_stage("slack_binary_fix", config.slack_report_path)
 
     start = time.perf_counter()
-    optimizer.run_dual_big_m_tightening(
-        alpha_bounds=optimizer.alpha_bounds,
-        fixed_binaries=optimizer.fixed_binaries,
+    stage.run_dual_big_m(
+        output_path=config.dual_big_m_path,
         solver_name=config.solver_name,
         time_limit=config.preprocessing_time_limit,
         tee=False,
         parallel_workers=config.poa_parallel_workers,
         solver_threads=config.poa_solver_threads_per_worker,
     )
-    output_path = optimizer.save_tightening_report(config.tightening_report_path)
+    output_path = config.dual_big_m_path
     elapsed = time.perf_counter() - start
 
     print(f"\nDual Big-M tightening complete: {output_path}")
@@ -578,10 +754,16 @@ def run_dual_big_m(config: FullPipelineConfig) -> Path:
 def run_final_poa(config: FullPipelineConfig) -> Path:
     optimizer = build_poa_optimizer(config, PoAOptimization)
     start = time.perf_counter()
-    optimizer.load_nn_relu_bounds_report(config.nn_relu_bounds_path)
     optimizer.load_tightening_report(config.tightening_report_path)
     optimizer.build_model()
-    applied_nn_relu_stats = optimizer.apply_nn_relu_bounds_to_model()
+    if optimizer.nn_policy_generator_ids:
+        applied_nn_relu_stats = optimizer.apply_nn_relu_bounds_to_model()
+    else:
+        applied_nn_relu_stats = {
+            "delta_fixed_active": 0,
+            "delta_fixed_inactive": 0,
+            "delta_left_ambiguous": 0,
+        }
     applied_stats = optimizer.apply_tightened_bounds_to_model()
     optimizer.solve(time_limit=config.poa_time_limit)
     output_path = optimizer.save_results(config.poa_results_path)
@@ -605,6 +787,29 @@ def write_json(path: Path, payload: Any) -> Path:
     with path.open("w", encoding="utf-8") as file_handle:
         json.dump(payload, file_handle, indent=2)
     return path
+
+
+def ensure_primal_big_m_in_report(path: Path, optimizer: PoAOptimization) -> bool:
+    if not path.exists():
+        raise FileNotFoundError(f"Expected PoA tightening-stage report not found: {path}")
+    with path.open("r", encoding="utf-8") as file_handle:
+        payload = json.load(file_handle)
+    if payload.get("primal_big_m"):
+        return False
+
+    primal_big_m = compute_primal_big_m_bounds(optimizer)
+    payload["primal_big_m"] = primal_big_m
+    metadata = payload.setdefault("metadata", {})
+    if isinstance(metadata, dict):
+        metadata["primal_big_m_summary"] = summarize_primal_big_m(primal_big_m)
+    write_json(path, payload)
+    print(f"\nAdded missing primal Big-M constants to existing report: {path}")
+    for component_name, details in summarize_primal_big_m(primal_big_m).items():
+        print(
+            f"  {component_name}: entries={details['entries']}, "
+            f"min={details['min_big_m']}, max={details['max_big_m']}"
+        )
+    return True
 
 
 if __name__ == "__main__":
@@ -663,10 +868,17 @@ if __name__ == "__main__":
         run_heuristic_labels=False,
         run_feature_building=False,
         run_nn_training=False,
-        run_poa_nn_relu_bounds=False,
-        run_poa_alpha_bounds=False,
-        run_poa_slack_binary_fix=False,
-        run_poa_dual_big_m=False,
+        run_tightening=True,
+        tightening_flags={
+            "primal_big_m": False,
+            "relu_bounds": False,
+            "alpha_bounds": False,
+            "slack_binary_fix": False,
+            "dual_big_m": False
+        },
+
+        tightening_previous_paths=dict(TIGHTENING_PREVIOUS_PATHS),
+        tightening_output_paths=dict(TIGHTENING_OUTPUT_PATHS),
         run_poa_optimization=True,
     )
     main(run_config)

@@ -1,883 +1,14 @@
 {
-  "fixed_binaries": {
-    "z_lower_eq": {
-      "0,0,0": {
-        "fixed_value": 0,
-        "minimum_slack": 5.0,
-        "side": "eq",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,0,0": {
-        "fixed_value": 0,
-        "minimum_slack": 17.9,
-        "side": "eq",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,0,1": {
-        "fixed_value": 0,
-        "minimum_slack": 13.5,
-        "side": "eq",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,0,2": {
-        "fixed_value": 0,
-        "minimum_slack": 12.8,
-        "side": "eq",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,0,3": {
-        "fixed_value": 0,
-        "minimum_slack": 10.2,
-        "side": "eq",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,0,4": {
-        "fixed_value": 0,
-        "minimum_slack": 10.0,
-        "side": "eq",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,0,5": {
-        "fixed_value": 0,
-        "minimum_slack": 15.0,
-        "side": "eq",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,0,0": {
-        "fixed_value": 0,
-        "minimum_slack": 17.9,
-        "side": "eq",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,0,1": {
-        "fixed_value": 0,
-        "minimum_slack": 18.4,
-        "side": "eq",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,0,2": {
-        "fixed_value": 0,
-        "minimum_slack": 19.3,
-        "side": "eq",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,0,3": {
-        "fixed_value": 0,
-        "minimum_slack": 19.4,
-        "side": "eq",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,0,4": {
-        "fixed_value": 0,
-        "minimum_slack": 18.2,
-        "side": "eq",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,0,5": {
-        "fixed_value": 0,
-        "minimum_slack": 16.3,
-        "side": "eq",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      }
-    },
-    "z_upper_eq": {
-      "0,1,0": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "eq",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,1,1": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "eq",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,1,2": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "eq",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,1,3": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "eq",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,1,4": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "eq",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,1,5": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "eq",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      }
-    },
-    "z_ramp_up_eq": {
-      "0,0": {
-        "fixed_value": 0,
-        "minimum_slack": 20.0,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "2,0": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,0": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,1": {
-        "fixed_value": 0,
-        "minimum_slack": 29.0,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,2": {
-        "fixed_value": 0,
-        "minimum_slack": 19.2,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,3": {
-        "fixed_value": 0,
-        "minimum_slack": 18.3,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,4": {
-        "fixed_value": 0,
-        "minimum_slack": 18.3,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,5": {
-        "fixed_value": 0,
-        "minimum_slack": 20.9,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,0": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,1": {
-        "fixed_value": 0,
-        "minimum_slack": 29.5,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,2": {
-        "fixed_value": 0,
-        "minimum_slack": 29.099999996989993,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,3": {
-        "fixed_value": 0,
-        "minimum_slack": 29.9,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,4": {
-        "fixed_value": 0,
-        "minimum_slack": 31.2,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,5": {
-        "fixed_value": 0,
-        "minimum_slack": 31.9,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      }
-    },
-    "z_ramp_down_eq": {
-      "2,0": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "eq",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,0": {
-        "fixed_value": 0,
-        "minimum_slack": 42.9,
-        "side": "eq",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,1": {
-        "fixed_value": 0,
-        "minimum_slack": 18.7,
-        "side": "eq",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,2": {
-        "fixed_value": 0,
-        "minimum_slack": 16.8,
-        "side": "eq",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,3": {
-        "fixed_value": 0,
-        "minimum_slack": 18.2,
-        "side": "eq",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,4": {
-        "fixed_value": 0,
-        "minimum_slack": 19.4,
-        "side": "eq",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,5": {
-        "fixed_value": 0,
-        "minimum_slack": 21.4,
-        "side": "eq",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,0": {
-        "fixed_value": 0,
-        "minimum_slack": 42.9,
-        "side": "eq",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,1": {
-        "fixed_value": 0,
-        "minimum_slack": 30.5,
-        "side": "eq",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,2": {
-        "fixed_value": 0,
-        "minimum_slack": 30.89999999999999,
-        "side": "eq",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,3": {
-        "fixed_value": 0,
-        "minimum_slack": 30.1,
-        "side": "eq",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,4": {
-        "fixed_value": 0,
-        "minimum_slack": 28.8,
-        "side": "eq",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,5": {
-        "fixed_value": 0,
-        "minimum_slack": 28.1,
-        "side": "eq",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      }
-    },
-    "z_upper_opt": {
-      "0,0,0": {
-        "fixed_value": 0,
-        "minimum_slack": 12.9,
-        "side": "opt",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,0,1": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "opt",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,0,2": {
-        "fixed_value": 0,
-        "minimum_slack": 9.7,
-        "side": "opt",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,0,3": {
-        "fixed_value": 0,
-        "minimum_slack": 7.1,
-        "side": "opt",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,0,4": {
-        "fixed_value": 0,
-        "minimum_slack": 5.0,
-        "side": "opt",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,0,5": {
-        "fixed_value": 0,
-        "minimum_slack": 6.7,
-        "side": "opt",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,1,0": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "opt",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,1,1": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "opt",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,1,2": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "opt",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,1,3": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "opt",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,1,4": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "opt",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,1,5": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "opt",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "1,1,0": {
-        "fixed_value": 0,
-        "minimum_slack": 5.0,
-        "side": "opt",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "1,1,1": {
-        "fixed_value": 0,
-        "minimum_slack": 7.65,
-        "side": "opt",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "1,1,2": {
-        "fixed_value": 0,
-        "minimum_slack": 5.0,
-        "side": "opt",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "1,1,3": {
-        "fixed_value": 0,
-        "minimum_slack": 5.0,
-        "side": "opt",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "1,1,4": {
-        "fixed_value": 0,
-        "minimum_slack": 5.0,
-        "side": "opt",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      }
-    },
-    "z_lower_opt": {
-      "0,0,0": {
-        "fixed_value": 0,
-        "minimum_slack": 5.0,
-        "side": "opt",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "1,0,0": {
-        "fixed_value": 0,
-        "minimum_slack": 5.0,
-        "side": "opt",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "2,0,0": {
-        "fixed_value": 0,
-        "minimum_slack": 17.1,
-        "side": "opt",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,0,0": {
-        "fixed_value": 0,
-        "minimum_slack": 17.9,
-        "side": "opt",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,0,1": {
-        "fixed_value": 0,
-        "minimum_slack": 18.9,
-        "side": "opt",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,0,2": {
-        "fixed_value": 0,
-        "minimum_slack": 17.4,
-        "side": "opt",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,0,3": {
-        "fixed_value": 0,
-        "minimum_slack": 17.4,
-        "side": "opt",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,0,4": {
-        "fixed_value": 0,
-        "minimum_slack": 17.3,
-        "side": "opt",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,0,5": {
-        "fixed_value": 0,
-        "minimum_slack": 15.9,
-        "side": "opt",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,0,0": {
-        "fixed_value": 0,
-        "minimum_slack": 17.9,
-        "side": "opt",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,0,1": {
-        "fixed_value": 0,
-        "minimum_slack": 18.4,
-        "side": "opt",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,0,2": {
-        "fixed_value": 0,
-        "minimum_slack": 19.3,
-        "side": "opt",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,0,3": {
-        "fixed_value": 0,
-        "minimum_slack": 19.4,
-        "side": "opt",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,0,4": {
-        "fixed_value": 0,
-        "minimum_slack": 18.2,
-        "side": "opt",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,0,5": {
-        "fixed_value": 0,
-        "minimum_slack": 16.3,
-        "side": "opt",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      }
-    },
-    "z_ramp_up_opt": {
-      "0,0": {
-        "fixed_value": 0,
-        "minimum_slack": 32.9,
-        "side": "opt",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,1": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "opt",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,2": {
-        "fixed_value": 0,
-        "minimum_slack": 4.7,
-        "side": "opt",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,3": {
-        "fixed_value": 0,
-        "minimum_slack": 2.1,
-        "side": "opt",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,5": {
-        "fixed_value": 0,
-        "minimum_slack": 1.7,
-        "side": "opt",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "2,0": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "opt",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "2,1": {
-        "fixed_value": 0,
-        "minimum_slack": 30.6,
-        "side": "opt",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "2,2": {
-        "fixed_value": 0,
-        "minimum_slack": 6.5,
-        "side": "opt",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "2,3": {
-        "fixed_value": 0,
-        "minimum_slack": 7.999999999099998,
-        "side": "opt",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "2,4": {
-        "fixed_value": 0,
-        "minimum_slack": 7.199999999179987,
-        "side": "opt",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "2,5": {
-        "fixed_value": 0,
-        "minimum_slack": 5.749999999324928,
-        "side": "opt",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,0": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "opt",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,1": {
-        "fixed_value": 0,
-        "minimum_slack": 29.0,
-        "side": "opt",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,2": {
-        "fixed_value": 0,
-        "minimum_slack": 31.5,
-        "side": "opt",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,3": {
-        "fixed_value": 0,
-        "minimum_slack": 30.0,
-        "side": "opt",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,4": {
-        "fixed_value": 0,
-        "minimum_slack": 30.1,
-        "side": "opt",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,5": {
-        "fixed_value": 0,
-        "minimum_slack": 31.4,
-        "side": "opt",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,0": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "opt",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,1": {
-        "fixed_value": 0,
-        "minimum_slack": 29.5,
-        "side": "opt",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,2": {
-        "fixed_value": 0,
-        "minimum_slack": 29.099999996989993,
-        "side": "opt",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,3": {
-        "fixed_value": 0,
-        "minimum_slack": 29.9,
-        "side": "opt",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,4": {
-        "fixed_value": 0,
-        "minimum_slack": 31.2,
-        "side": "opt",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,5": {
-        "fixed_value": 0,
-        "minimum_slack": 31.9,
-        "side": "opt",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      }
-    },
-    "z_ramp_down_opt": {
-      "0,1": {
-        "fixed_value": 0,
-        "minimum_slack": 7.9,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,2": {
-        "fixed_value": 0,
-        "minimum_slack": 20.0,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,3": {
-        "fixed_value": 0,
-        "minimum_slack": 4.7,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,4": {
-        "fixed_value": 0,
-        "minimum_slack": 2.099999999689981,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "2,0": {
-        "fixed_value": 0,
-        "minimum_slack": 42.1,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "2,1": {
-        "fixed_value": 0,
-        "minimum_slack": 3.3,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "2,2": {
-        "fixed_value": 0,
-        "minimum_slack": 6.8,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "2,3": {
-        "fixed_value": 0,
-        "minimum_slack": 7.4,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "2,4": {
-        "fixed_value": 0,
-        "minimum_slack": 5.05,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "2,5": {
-        "fixed_value": 0,
-        "minimum_slack": 13.7,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,0": {
-        "fixed_value": 0,
-        "minimum_slack": 42.9,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,1": {
-        "fixed_value": 0,
-        "minimum_slack": 30.999999999999993,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,2": {
-        "fixed_value": 0,
-        "minimum_slack": 28.499999999999993,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,3": {
-        "fixed_value": 0,
-        "minimum_slack": 30.0,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,4": {
-        "fixed_value": 0,
-        "minimum_slack": 29.9,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,5": {
-        "fixed_value": 0,
-        "minimum_slack": 28.6,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,0": {
-        "fixed_value": 0,
-        "minimum_slack": 42.9,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,1": {
-        "fixed_value": 0,
-        "minimum_slack": 30.499999999999993,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,2": {
-        "fixed_value": 0,
-        "minimum_slack": 30.89999999999999,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,3": {
-        "fixed_value": 0,
-        "minimum_slack": 30.099999999999994,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,4": {
-        "fixed_value": 0,
-        "minimum_slack": 28.8,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,5": {
-        "fixed_value": 0,
-        "minimum_slack": 28.1,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      }
-    }
+  "metadata": {
+    "description": "Slack minimization certificates for KKT complementarity binary fixing.",
+    "reference_case": "test_case_bidding_blocks",
+    "num_time_steps": 6,
+    "runtime_seconds": 68.33004499999515
   },
+  "epsilon": 1e-06,
+  "stop_at_zero_slack": true,
+  "slack_stop_tolerance": 1e-06,
+  "early_stop_enabled": true,
   "slack_bounds": {
     "eq:upper:0,0,0": {
       "minimum_slack": 0.0,
@@ -3472,6 +2603,886 @@
       "result_classification": "positive_slack_optimal"
     }
   },
+  "fixed_binaries": {
+    "z_lower_eq": {
+      "0,0,0": {
+        "fixed_value": 0,
+        "minimum_slack": 5.0,
+        "side": "eq",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,0,0": {
+        "fixed_value": 0,
+        "minimum_slack": 17.9,
+        "side": "eq",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,0,1": {
+        "fixed_value": 0,
+        "minimum_slack": 13.5,
+        "side": "eq",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,0,2": {
+        "fixed_value": 0,
+        "minimum_slack": 12.8,
+        "side": "eq",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,0,3": {
+        "fixed_value": 0,
+        "minimum_slack": 10.2,
+        "side": "eq",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,0,4": {
+        "fixed_value": 0,
+        "minimum_slack": 10.0,
+        "side": "eq",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,0,5": {
+        "fixed_value": 0,
+        "minimum_slack": 15.0,
+        "side": "eq",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,0,0": {
+        "fixed_value": 0,
+        "minimum_slack": 17.9,
+        "side": "eq",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,0,1": {
+        "fixed_value": 0,
+        "minimum_slack": 18.4,
+        "side": "eq",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,0,2": {
+        "fixed_value": 0,
+        "minimum_slack": 19.3,
+        "side": "eq",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,0,3": {
+        "fixed_value": 0,
+        "minimum_slack": 19.4,
+        "side": "eq",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,0,4": {
+        "fixed_value": 0,
+        "minimum_slack": 18.2,
+        "side": "eq",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,0,5": {
+        "fixed_value": 0,
+        "minimum_slack": 16.3,
+        "side": "eq",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      }
+    },
+    "z_upper_eq": {
+      "0,1,0": {
+        "fixed_value": 0,
+        "minimum_slack": 25.0,
+        "side": "eq",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,1,1": {
+        "fixed_value": 0,
+        "minimum_slack": 25.0,
+        "side": "eq",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,1,2": {
+        "fixed_value": 0,
+        "minimum_slack": 25.0,
+        "side": "eq",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,1,3": {
+        "fixed_value": 0,
+        "minimum_slack": 25.0,
+        "side": "eq",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,1,4": {
+        "fixed_value": 0,
+        "minimum_slack": 25.0,
+        "side": "eq",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,1,5": {
+        "fixed_value": 0,
+        "minimum_slack": 25.0,
+        "side": "eq",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      }
+    },
+    "z_ramp_up_eq": {
+      "0,0": {
+        "fixed_value": 0,
+        "minimum_slack": 20.0,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,0": {
+        "fixed_value": 0,
+        "minimum_slack": 25.0,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,0": {
+        "fixed_value": 0,
+        "minimum_slack": 25.0,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,1": {
+        "fixed_value": 0,
+        "minimum_slack": 29.0,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,2": {
+        "fixed_value": 0,
+        "minimum_slack": 19.2,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,3": {
+        "fixed_value": 0,
+        "minimum_slack": 18.3,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,4": {
+        "fixed_value": 0,
+        "minimum_slack": 18.3,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,5": {
+        "fixed_value": 0,
+        "minimum_slack": 20.9,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,0": {
+        "fixed_value": 0,
+        "minimum_slack": 25.0,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,1": {
+        "fixed_value": 0,
+        "minimum_slack": 29.5,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,2": {
+        "fixed_value": 0,
+        "minimum_slack": 29.099999996989993,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,3": {
+        "fixed_value": 0,
+        "minimum_slack": 29.9,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,4": {
+        "fixed_value": 0,
+        "minimum_slack": 31.2,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,5": {
+        "fixed_value": 0,
+        "minimum_slack": 31.9,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      }
+    },
+    "z_ramp_down_eq": {
+      "2,0": {
+        "fixed_value": 0,
+        "minimum_slack": 25.0,
+        "side": "eq",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,0": {
+        "fixed_value": 0,
+        "minimum_slack": 42.9,
+        "side": "eq",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,1": {
+        "fixed_value": 0,
+        "minimum_slack": 18.7,
+        "side": "eq",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,2": {
+        "fixed_value": 0,
+        "minimum_slack": 16.8,
+        "side": "eq",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,3": {
+        "fixed_value": 0,
+        "minimum_slack": 18.2,
+        "side": "eq",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,4": {
+        "fixed_value": 0,
+        "minimum_slack": 19.4,
+        "side": "eq",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,5": {
+        "fixed_value": 0,
+        "minimum_slack": 21.4,
+        "side": "eq",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,0": {
+        "fixed_value": 0,
+        "minimum_slack": 42.9,
+        "side": "eq",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,1": {
+        "fixed_value": 0,
+        "minimum_slack": 30.5,
+        "side": "eq",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,2": {
+        "fixed_value": 0,
+        "minimum_slack": 30.89999999999999,
+        "side": "eq",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,3": {
+        "fixed_value": 0,
+        "minimum_slack": 30.1,
+        "side": "eq",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,4": {
+        "fixed_value": 0,
+        "minimum_slack": 28.8,
+        "side": "eq",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,5": {
+        "fixed_value": 0,
+        "minimum_slack": 28.1,
+        "side": "eq",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      }
+    },
+    "z_upper_opt": {
+      "0,0,0": {
+        "fixed_value": 0,
+        "minimum_slack": 12.9,
+        "side": "opt",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,0,1": {
+        "fixed_value": 0,
+        "minimum_slack": 25.0,
+        "side": "opt",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,0,2": {
+        "fixed_value": 0,
+        "minimum_slack": 9.7,
+        "side": "opt",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,0,3": {
+        "fixed_value": 0,
+        "minimum_slack": 7.1,
+        "side": "opt",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,0,4": {
+        "fixed_value": 0,
+        "minimum_slack": 5.0,
+        "side": "opt",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,0,5": {
+        "fixed_value": 0,
+        "minimum_slack": 6.7,
+        "side": "opt",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,1,0": {
+        "fixed_value": 0,
+        "minimum_slack": 25.0,
+        "side": "opt",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,1,1": {
+        "fixed_value": 0,
+        "minimum_slack": 25.0,
+        "side": "opt",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,1,2": {
+        "fixed_value": 0,
+        "minimum_slack": 25.0,
+        "side": "opt",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,1,3": {
+        "fixed_value": 0,
+        "minimum_slack": 25.0,
+        "side": "opt",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,1,4": {
+        "fixed_value": 0,
+        "minimum_slack": 25.0,
+        "side": "opt",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,1,5": {
+        "fixed_value": 0,
+        "minimum_slack": 25.0,
+        "side": "opt",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
+      "1,1,0": {
+        "fixed_value": 0,
+        "minimum_slack": 5.0,
+        "side": "opt",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
+      "1,1,1": {
+        "fixed_value": 0,
+        "minimum_slack": 7.65,
+        "side": "opt",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
+      "1,1,2": {
+        "fixed_value": 0,
+        "minimum_slack": 5.0,
+        "side": "opt",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
+      "1,1,3": {
+        "fixed_value": 0,
+        "minimum_slack": 5.0,
+        "side": "opt",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
+      "1,1,4": {
+        "fixed_value": 0,
+        "minimum_slack": 5.0,
+        "side": "opt",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      }
+    },
+    "z_lower_opt": {
+      "0,0,0": {
+        "fixed_value": 0,
+        "minimum_slack": 5.0,
+        "side": "opt",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
+      "1,0,0": {
+        "fixed_value": 0,
+        "minimum_slack": 5.0,
+        "side": "opt",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,0,0": {
+        "fixed_value": 0,
+        "minimum_slack": 17.1,
+        "side": "opt",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,0,0": {
+        "fixed_value": 0,
+        "minimum_slack": 17.9,
+        "side": "opt",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,0,1": {
+        "fixed_value": 0,
+        "minimum_slack": 18.9,
+        "side": "opt",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,0,2": {
+        "fixed_value": 0,
+        "minimum_slack": 17.4,
+        "side": "opt",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,0,3": {
+        "fixed_value": 0,
+        "minimum_slack": 17.4,
+        "side": "opt",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,0,4": {
+        "fixed_value": 0,
+        "minimum_slack": 17.3,
+        "side": "opt",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,0,5": {
+        "fixed_value": 0,
+        "minimum_slack": 15.9,
+        "side": "opt",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,0,0": {
+        "fixed_value": 0,
+        "minimum_slack": 17.9,
+        "side": "opt",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,0,1": {
+        "fixed_value": 0,
+        "minimum_slack": 18.4,
+        "side": "opt",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,0,2": {
+        "fixed_value": 0,
+        "minimum_slack": 19.3,
+        "side": "opt",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,0,3": {
+        "fixed_value": 0,
+        "minimum_slack": 19.4,
+        "side": "opt",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,0,4": {
+        "fixed_value": 0,
+        "minimum_slack": 18.2,
+        "side": "opt",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,0,5": {
+        "fixed_value": 0,
+        "minimum_slack": 16.3,
+        "side": "opt",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      }
+    },
+    "z_ramp_up_opt": {
+      "0,0": {
+        "fixed_value": 0,
+        "minimum_slack": 32.9,
+        "side": "opt",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,1": {
+        "fixed_value": 0,
+        "minimum_slack": 25.0,
+        "side": "opt",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,2": {
+        "fixed_value": 0,
+        "minimum_slack": 4.7,
+        "side": "opt",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,3": {
+        "fixed_value": 0,
+        "minimum_slack": 2.1,
+        "side": "opt",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,5": {
+        "fixed_value": 0,
+        "minimum_slack": 1.7,
+        "side": "opt",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,0": {
+        "fixed_value": 0,
+        "minimum_slack": 25.0,
+        "side": "opt",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,1": {
+        "fixed_value": 0,
+        "minimum_slack": 30.6,
+        "side": "opt",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,2": {
+        "fixed_value": 0,
+        "minimum_slack": 6.5,
+        "side": "opt",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,3": {
+        "fixed_value": 0,
+        "minimum_slack": 7.999999999099998,
+        "side": "opt",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,4": {
+        "fixed_value": 0,
+        "minimum_slack": 7.199999999179987,
+        "side": "opt",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,5": {
+        "fixed_value": 0,
+        "minimum_slack": 5.749999999324928,
+        "side": "opt",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,0": {
+        "fixed_value": 0,
+        "minimum_slack": 25.0,
+        "side": "opt",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,1": {
+        "fixed_value": 0,
+        "minimum_slack": 29.0,
+        "side": "opt",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,2": {
+        "fixed_value": 0,
+        "minimum_slack": 31.5,
+        "side": "opt",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,3": {
+        "fixed_value": 0,
+        "minimum_slack": 30.0,
+        "side": "opt",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,4": {
+        "fixed_value": 0,
+        "minimum_slack": 30.1,
+        "side": "opt",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,5": {
+        "fixed_value": 0,
+        "minimum_slack": 31.4,
+        "side": "opt",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,0": {
+        "fixed_value": 0,
+        "minimum_slack": 25.0,
+        "side": "opt",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,1": {
+        "fixed_value": 0,
+        "minimum_slack": 29.5,
+        "side": "opt",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,2": {
+        "fixed_value": 0,
+        "minimum_slack": 29.099999996989993,
+        "side": "opt",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,3": {
+        "fixed_value": 0,
+        "minimum_slack": 29.9,
+        "side": "opt",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,4": {
+        "fixed_value": 0,
+        "minimum_slack": 31.2,
+        "side": "opt",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,5": {
+        "fixed_value": 0,
+        "minimum_slack": 31.9,
+        "side": "opt",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      }
+    },
+    "z_ramp_down_opt": {
+      "0,1": {
+        "fixed_value": 0,
+        "minimum_slack": 7.9,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,2": {
+        "fixed_value": 0,
+        "minimum_slack": 20.0,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,3": {
+        "fixed_value": 0,
+        "minimum_slack": 4.7,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,4": {
+        "fixed_value": 0,
+        "minimum_slack": 2.099999999689981,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,0": {
+        "fixed_value": 0,
+        "minimum_slack": 42.1,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,1": {
+        "fixed_value": 0,
+        "minimum_slack": 3.3,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,2": {
+        "fixed_value": 0,
+        "minimum_slack": 6.8,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,3": {
+        "fixed_value": 0,
+        "minimum_slack": 7.4,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,4": {
+        "fixed_value": 0,
+        "minimum_slack": 5.05,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,5": {
+        "fixed_value": 0,
+        "minimum_slack": 13.7,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,0": {
+        "fixed_value": 0,
+        "minimum_slack": 42.9,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,1": {
+        "fixed_value": 0,
+        "minimum_slack": 30.999999999999993,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,2": {
+        "fixed_value": 0,
+        "minimum_slack": 28.499999999999993,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,3": {
+        "fixed_value": 0,
+        "minimum_slack": 30.0,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,4": {
+        "fixed_value": 0,
+        "minimum_slack": 29.9,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,5": {
+        "fixed_value": 0,
+        "minimum_slack": 28.6,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,0": {
+        "fixed_value": 0,
+        "minimum_slack": 42.9,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,1": {
+        "fixed_value": 0,
+        "minimum_slack": 30.499999999999993,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,2": {
+        "fixed_value": 0,
+        "minimum_slack": 30.89999999999999,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,3": {
+        "fixed_value": 0,
+        "minimum_slack": 30.099999999999994,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,4": {
+        "fixed_value": 0,
+        "minimum_slack": 28.8,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,5": {
+        "fixed_value": 0,
+        "minimum_slack": 28.1,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      }
+    }
+  },
+  "num_fixed_binaries": 123,
   "primal_big_m": {
     "block_capacity": {
       "0,0": {
@@ -3722,9 +3733,6 @@
       }
     }
   },
-  "lambda_bounds": {},
-  "tight_big_m": {},
-  "aggregate_dual_bounds": {},
   "alpha_bounds": {
     "0,0,0": {
       "lower": 30.0,
@@ -4232,5 +4240,8 @@
       "value": 4.5,
       "termination_condition": "optimal"
     }
-  }
+  },
+  "lambda_bounds": {},
+  "tight_big_m": {},
+  "aggregate_dual_bounds": {}
 }

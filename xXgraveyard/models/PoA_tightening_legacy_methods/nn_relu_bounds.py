@@ -665,6 +665,36 @@ class NNReLUBoundsOptimizer(PoAOptimization):
             return "active"
         return "ambiguous"
 
+    def _count_relu_bound_programs(self) -> int:
+        total_programs = 0
+        for physical_generator_idx in self.nn_policy_generator_ids:
+            generator_name = self.physical_generator_names[int(physical_generator_idx)]
+            policy = self.nn_policies[generator_name]
+            for layer in self._hidden_linear_layers(policy):
+                total_programs += 2 * self.num_time_steps * len(layer["bias"])
+        return int(total_programs)
+
+    def _log_relu_bound_result(
+        self,
+        bound_name: str,
+        generator_name: str,
+        time_idx: int,
+        linear_idx: int,
+        neuron_idx: int,
+        bound_value: Optional[float],
+        termination_condition: str,
+    ) -> None:
+        current = int(getattr(self, "_relu_bound_log_count", 0)) + 1
+        self._relu_bound_log_count = current
+        total = getattr(self, "_relu_bound_log_total", "?")
+        action = "minimize" if bound_name == "lower" else "maximize"
+        print(
+            f"[ReLU done {current}/{total}] {action} "
+            f"relu_z({generator_name}, {int(time_idx)}, {int(linear_idx)}, "
+            f"{int(neuron_idx)}) -> {bound_value} ({termination_condition})",
+            flush=True,
+        )
+
     def compute_first_layer_preactivation_bounds(
         self,
         solver_name: str = "gurobi",
@@ -702,6 +732,15 @@ class NNReLUBoundsOptimizer(PoAOptimization):
                         time_limit=time_limit,
                         tee=tee,
                     )
+                    self._log_relu_bound_result(
+                        "lower",
+                        generator_name,
+                        int(time_idx),
+                        0,
+                        int(neuron_idx),
+                        lower_value,
+                        lower_termination,
+                    )
 
                     upper_model, upper_expr = self._build_first_layer_preactivation_bound_model(
                         generator_name,
@@ -716,6 +755,15 @@ class NNReLUBoundsOptimizer(PoAOptimization):
                         solver_name=solver_name,
                         time_limit=time_limit,
                         tee=tee,
+                    )
+                    self._log_relu_bound_result(
+                        "upper",
+                        generator_name,
+                        int(time_idx),
+                        0,
+                        int(neuron_idx),
+                        upper_value,
+                        upper_termination,
                     )
 
                     if lower_value is None or upper_value is None:
@@ -807,6 +855,15 @@ class NNReLUBoundsOptimizer(PoAOptimization):
                             time_limit=time_limit,
                             tee=tee,
                         )
+                        self._log_relu_bound_result(
+                            "lower",
+                            generator_name,
+                            int(time_idx),
+                            int(linear_idx),
+                            int(neuron_idx),
+                            lower_value,
+                            lower_termination,
+                        )
 
                         upper_model, upper_expr = (
                             self._build_later_layer_preactivation_bound_model(
@@ -825,6 +882,15 @@ class NNReLUBoundsOptimizer(PoAOptimization):
                             solver_name=solver_name,
                             time_limit=time_limit,
                             tee=tee,
+                        )
+                        self._log_relu_bound_result(
+                            "upper",
+                            generator_name,
+                            int(time_idx),
+                            int(linear_idx),
+                            int(neuron_idx),
+                            upper_value,
+                            upper_termination,
                         )
 
                         if lower_value is None or upper_value is None:
@@ -932,6 +998,13 @@ class NNReLUBoundsOptimizer(PoAOptimization):
         self.relu_bound_tolerance = float(tolerance)
         self._ensure_nn_inputs_loaded()
         self.nn_bound_warnings = []
+        self._relu_bound_log_total = self._count_relu_bound_programs()
+        self._relu_bound_log_count = 0
+        print(
+            f"\nReLU preactivation-bound optimization programs: "
+            f"{self._relu_bound_log_total}",
+            flush=True,
+        )
 
         first_layer_bounds = self.compute_first_layer_preactivation_bounds(
             solver_name=solver_name,
