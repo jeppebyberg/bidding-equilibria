@@ -2,7 +2,7 @@
   "metadata": {
     "description": "Analytic primal slack Big-M values used by PoAOptimization KKT complementarity constraints.",
     "reference_case": "test_case_bidding_blocks",
-    "num_time_steps": 6,
+    "num_time_steps": 8,
     "physical_generator_names": [
       "G2",
       "G1",
@@ -27,7 +27,9 @@
           109.3,
           111.9,
           116.9,
-          122.4
+          122.4,
+          127.2,
+          129.4
         ],
         "min": 90.0,
         "max": 150.0,
@@ -42,7 +44,9 @@
             35.2,
             35.3,
             34.1,
-            34.5
+            34.5,
+            33.1,
+            32.3
           ],
           "min": 10.0,
           "max": 50.0
@@ -54,7 +58,9 @@
             37.4,
             37.4,
             37.3,
-            35.9
+            35.9,
+            34.7,
+            33.9
           ],
           "min": 10.0,
           "max": 50.0
@@ -66,7 +72,9 @@
             39.3,
             39.4,
             38.2,
-            36.3
+            36.3,
+            35.6,
+            35.2
           ],
           "min": 10.0,
           "max": 50.0
@@ -107,7 +115,7 @@
         "max_big_m": 75.0
       }
     },
-    "runtime_seconds": 6.320000102277845e-05
+    "runtime_seconds": 0.00010920000022451859
   },
   "primal_big_m": {
     "block_capacity": {

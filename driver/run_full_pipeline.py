@@ -65,6 +65,22 @@ TIGHTENING_OUTPUT_PATHS = {
     "final": "results/poa_tightening/final_tightening_report.json",
 }
 
+TIGHTENING_STAGE_ORDER = (
+    "primal_big_m",
+    "relu_bounds",
+    "alpha_bounds",
+    "slack_binary_fix",
+    "dual_big_m",
+)
+
+TIGHTENING_STAGE_LABELS = {
+    "primal_big_m": "Primal Big-M",
+    "relu_bounds": "NN ReLU bounds",
+    "alpha_bounds": "Alpha bounds",
+    "slack_binary_fix": "Slack binary fix",
+    "dual_big_m": "Dual Big-M",
+}
+
 
 @dataclass
 class FullPipelineConfig:
@@ -136,7 +152,7 @@ class FullPipelineConfig:
     nn_policy_generators: list[int] = field(default_factory=lambda: [1, 2])
     solver_name: str = "gurobi"
     preprocessing_time_limit: int = 200
-    poa_time_limit: int = 400
+    poa_time_limit: int | None = 400
     epsilon: float = 1e-6
     # Parallelizes the independent tightening submodels inside the three PoA
     # preprocessing stages. Keep Gurobi threads low when workers > 1.
@@ -208,7 +224,7 @@ class FullPipelineConfig:
     @property
     def poa_results_path(self) -> Path:
         return self.poa_result_dir / (
-            f"poa_optimization_bidding_blocks_results_tightened_T{self.horizon}.json"
+            f"poa_optimization_T{self.horizon}.json"
         )
 
 
@@ -325,7 +341,6 @@ def _copy_regime_set_with_counts(
             regime["n_scenarios"] = int(scenario_counts[regime_name])
     return regime_set
 
-
 def load_or_generate_scenarios(
     config: FullPipelineConfig,
     manager: ScenarioManager,
@@ -348,13 +363,11 @@ def load_or_generate_scenarios(
     print(scenarios["description_text"])
     return scenarios
 
-
 def save_scenario_tables(scenarios: dict[str, Any], output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     scenarios["scenarios_df"].to_csv(output_dir / "scenarios.csv", index=False)
     scenarios["costs_df"].to_csv(output_dir / "costs.csv", index=False)
     scenarios["ramps_df"].to_csv(output_dir / "ramps.csv", index=False)
-
 
 def apply_time_steps_override(manager: ScenarioManager, time_steps: int | None) -> None:
     if time_steps is None:
@@ -362,7 +375,6 @@ def apply_time_steps_override(manager: ScenarioManager, time_steps: int | None) 
     if time_steps <= 0:
         raise ValueError(f"time_steps must be positive, got {time_steps}")
     manager.base_case["time_steps"] = int(time_steps)
-
 
 def run_heuristic(
     config: FullPipelineConfig,
@@ -383,7 +395,6 @@ def run_heuristic(
     print(f"\nSaved heuristic synthetic labels to {output_path}")
     print(f"Heuristic runtime: {elapsed:.2f} seconds")
     return output_path
-
 
 def build_features(config: FullPipelineConfig, scenarios: dict[str, Any]) -> dict[str, Path]:
     start = time.perf_counter()
@@ -412,7 +423,6 @@ def build_features(config: FullPipelineConfig, scenarios: dict[str, Any]) -> dic
         )
     print(f"Feature-building runtime: {elapsed:.2f} seconds")
     return normalized_paths
-
 
 def train_policies(config: FullPipelineConfig) -> Path:
     config.model_dir.mkdir(parents=True, exist_ok=True)
@@ -462,7 +472,6 @@ def train_policies(config: FullPipelineConfig) -> Path:
     print(f"NN training runtime: {elapsed:.2f} seconds")
     return summary_path
 
-
 def find_generator_feature_files(feature_dir: Path) -> list[Path]:
     if not feature_dir.exists():
         raise ValueError(f"Feature directory does not exist: {feature_dir}")
@@ -471,7 +480,6 @@ def find_generator_feature_files(feature_dir: Path) -> list[Path]:
         for path in feature_dir.glob("*_features_normalized.csv")
         if path.is_file()
     )
-
 
 def load_poa_scenario_data(config: FullPipelineConfig) -> dict[str, Any]:
     if not config.runtime_config_path.exists():
@@ -543,13 +551,7 @@ def run_tightening_pipeline(config: FullPipelineConfig) -> Path:
         **dict(config.tightening_output_paths),
     }
 
-    print("\nStarting staged PoA tightening")
-    print(f"  outputs={output_paths}")
-    print(f"  flags={flags}")
-    print(
-        f"  solver={config.solver_name}, time_limit={config.preprocessing_time_limit}, "
-        f"parallel_workers={config.poa_parallel_workers}"
-    )
+    print_tightening_plan(config, flags, previous_paths, output_paths)
 
     start = time.perf_counter()
     tightening = build_poa_tightening(config)
@@ -572,6 +574,40 @@ def run_tightening_pipeline(config: FullPipelineConfig) -> Path:
     print(f"\nStaged PoA tightening complete: {final_report_path}")
     print(f"Tightening runtime: {elapsed:.2f} seconds")
     return final_report_path
+
+
+def print_tightening_plan(
+    config: FullPipelineConfig,
+    flags: dict[str, bool],
+    previous_paths: dict[str, str | Path],
+    output_paths: dict[str, str | Path],
+) -> None:
+    time_limit = (
+        "none"
+        if config.preprocessing_time_limit is None
+        else f"{config.preprocessing_time_limit} seconds"
+    )
+    threads = (
+        "solver default"
+        if config.poa_solver_threads_per_worker is None
+        else str(config.poa_solver_threads_per_worker)
+    )
+
+    print("\nStarting staged PoA tightening")
+    print("  Runtime")
+    print(f"    solver: {config.solver_name}")
+    print(f"    time limit: {time_limit}")
+    print(f"    parallel workers: {config.poa_parallel_workers}")
+    print(f"    solver threads per worker: {threads}")
+    print("  Stages")
+    for stage_name in TIGHTENING_STAGE_ORDER:
+        label = TIGHTENING_STAGE_LABELS[stage_name]
+        should_run = bool(flags[stage_name])
+        action = "run" if should_run else "reuse"
+        path_label = "output" if should_run else "input"
+        path = output_paths[stage_name] if should_run else previous_paths[stage_name]
+        print(f"    {label:<17} {action:<5} {path_label}: {path}")
+    print(f"  Final report: {output_paths['final']}")
 
 
 def run_nn_relu_bounds(config: FullPipelineConfig) -> Path:
@@ -814,71 +850,98 @@ def ensure_primal_big_m_in_report(path: Path, optimizer: PoAOptimization) -> boo
 
 if __name__ == "__main__":
     run_config = FullPipelineConfig(
-        # Synthetic data / NN training scenarios.
+        # Case and random seeds.
+        case="test_case_bidding_blocks",
         synthetic_time_steps=24,
+        poa_time_steps=None,
+        synthetic_regime_set="policy_training_runtime",
+        poa_regime_set="PoA_analysis_runtime",
+        source_synthetic_regime_set="policy_training",
+        source_poa_regime_set="PoA_analysis",
+        synthetic_seed=1,
+        poa_seed=1,
+
+        # Scenario counts. Set a regime name to the desired number of scenarios.
+        # Use {} to keep the counts from config/regime_definitions.yaml.
         synthetic_scenarios_per_regime={
             "normal": 400,
             "high_demand": 400,
             "normal_peak_shift_wind": 400,
             "high_demand_peak_shift_wind": 400,
         },
-
-        # PoA support set and optimization horizon.
-        # The actual support set is selected by support_set_config_name below.
-        # The context scenarios only provide model dimensions/static case data
-        # and fallback references if a support-set field is missing.
-        poa_time_steps=None,
-        horizon=6,
-        poa_time_limit = None,
-        poa_parallel_workers=6,
-        poa_solver_threads_per_worker=1,
-        support_set_config_name="test_case_bidding_blocks_base",
         poa_context_scenarios_per_regime={
             "normal": 1,
-            # "high_demand": 2,
-            # "normal_peak_shift_wind": 5,
-            # "high_demand_peak_shift_wind": 5,
         },
 
-        # Neural-network inputs. The trained CSVs, saved metadata, and embedded
-        # PoA policy all use exactly this order.
+        # Heuristic synthetic-label generation.
+        bid_tolerance=1e-2,
+
+        # Neural-network feature and training parameters.
         nn_feature_columns=[
             "demand",
             "total_wind_generation_capacity",
             "total_generation_capacity",
             "residual_demand",
-            # "previous_generation_capacity",
-            # "previous_demand",
             "next_generation_capacity",
             "next_demand",
             "own_generation_capacity",
-            # "previous_own_generation_capacity",
             "next_own_generation_capacity",
         ],
 
-        # Neural-network architecture and training.
+        per_generator_normalization=True,
         hidden_layers=[11, 11],
         learning_rate=1e-3,
         batch_size=32,
         num_epochs=500,
+        weight_decay=0.0,
+        test_size=0.2,
+        random_state=42,
         patience=50,
+        min_delta=1e-6,
+        device=None,
 
-        # Toggle expensive stages when reusing previous outputs.
+        # PoA parameters.
+        horizon=8,
+        support_set_config_path="models/PoA/support_set_config.yaml",
+        support_set_config_name="test_case_bidding_blocks_base",
+        nn_policy_generators=[1, 2],
+        solver_name="gurobi",
+        preprocessing_time_limit=200,
+        poa_time_limit=None,
+        epsilon=1e-6,
+        poa_parallel_workers=6,
+        poa_solver_threads_per_worker=1,
+
+        # Step toggles. Turn expensive stages off when reusing previous outputs.
         run_scenario_generation=False,
         run_heuristic_labels=False,
         run_feature_building=False,
         run_nn_training=False,
         run_tightening=True,
         tightening_flags={
-            "primal_big_m": False,
-            "relu_bounds": False,
-            "alpha_bounds": False,
-            "slack_binary_fix": False,
-            "dual_big_m": False
+            "primal_big_m": True,
+            "relu_bounds": True,
+            "alpha_bounds": True,
+            "slack_binary_fix": True,
+            "dual_big_m": True,
         },
-
         tightening_previous_paths=dict(TIGHTENING_PREVIOUS_PATHS),
         tightening_output_paths=dict(TIGHTENING_OUTPUT_PATHS),
+        run_poa_nn_relu_bounds=True,
+        run_poa_alpha_bounds=True,
+        run_poa_slack_binary_fix=True,
+        run_poa_dual_big_m=True,
         run_poa_optimization=True,
+
+        # Outputs.
+        runtime_config_path=Path("results/full_pipeline/runtime_regime_definitions.yaml"),
+        synthetic_scenario_dir=Path("results/full_pipeline/synthetic_scenarios"),
+        poa_scenario_dir=Path("results/full_pipeline/poa_scenarios"),
+        heuristic_results_path=Path("results/merit_order_best_response_results.json"),
+        raw_feature_dir=Path("models/neural_network/features/generated/raw"),
+        normalized_feature_dir=Path("models/neural_network/features/generated/normalized"),
+        model_dir=Path("models/neural_network/training/trained_models"),
+        training_result_dir=Path("models/neural_network/training/training_results"),
+        poa_result_dir=Path("results"),
     )
     main(run_config)

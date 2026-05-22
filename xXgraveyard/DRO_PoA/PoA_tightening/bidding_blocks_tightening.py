@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 from pyomo.environ import *
 
-from models.DRO_PoA.DRO_PoA_optimization import DRO_PoAOptimization
+from xXgraveyard.DRO_PoA.DRO_PoA_optimization import DRO_PoAOptimization
 
 
 class DROBiddingBlocksTighteningOptimizer(DRO_PoAOptimization):

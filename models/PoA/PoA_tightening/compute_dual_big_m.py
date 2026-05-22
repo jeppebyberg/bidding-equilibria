@@ -17,7 +17,6 @@ from models.PoA.PoA_tightening.tightening_main import (
 
 _PARALLEL_DUAL_COMPUTER: Optional["DualBigMComputer"] = None
 
-
 def _initialize_parallel_dual_computer(state: dict[str, Any]) -> None:
     global _PARALLEL_DUAL_COMPUTER
     poa = PoAOptimization(
@@ -57,14 +56,12 @@ def _get_parallel_dual_computer() -> "DualBigMComputer":
         raise RuntimeError("Parallel dual Big-M worker was not initialized")
     return _PARALLEL_DUAL_COMPUTER
 
-
 def _bound_sense(bound_name: str) -> Any:
     if bound_name == "lower":
         return minimize
     if bound_name == "upper":
         return maximize
     raise ValueError(f"Unknown bound name: {bound_name}")
-
 
 def _solve_parallel_lambda_bound(task: tuple[Any, ...]) -> dict[str, Any]:
     side, time_idx, bound_name, solver_name, time_limit, tee, solver_options = task
@@ -94,7 +91,6 @@ def _solve_parallel_lambda_bound(task: tuple[Any, ...]) -> dict[str, Any]:
         "termination_condition": str(results.solver.termination_condition),
     }
 
-
 def _solve_parallel_dual_big_m(task: tuple[Any, ...]) -> dict[str, Any]:
     side, constraint_type, index, solver_name, time_limit, tee, solver_options = task
     computer = _get_parallel_dual_computer()
@@ -122,7 +118,6 @@ def _solve_parallel_dual_big_m(task: tuple[Any, ...]) -> dict[str, Any]:
         "tight_big_m": computer._safe_value(dual_expr) if solved else None,
         "termination_condition": str(results.solver.termination_condition),
     }
-
 
 def _solve_parallel_aggregate_dual_bound(task: tuple[Any, ...]) -> dict[str, Any]:
     side, constraint_type, time_idx, solver_name, time_limit, tee, solver_options = task
@@ -156,8 +151,6 @@ def _solve_parallel_aggregate_dual_bound(task: tuple[Any, ...]) -> dict[str, Any
         "tight_big_m": computer._safe_value(aggregate_expr) if solved else None,
         "termination_condition": str(results.solver.termination_condition),
     }
-
-
 class DualBigMComputer(PoATighteningMain):
     def _ensure_primal_big_m_for_tightening(self) -> None:
         if getattr(self.poa, "primal_big_m", {}) or {}:

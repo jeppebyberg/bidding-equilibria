@@ -3,7 +3,7 @@ import json
 import time
 
 from config.scenarios.scenario_generator import ScenarioManager
-from models.DRO_PoA.PoA_tightening.bidding_blocks_tightening import (
+from xXgraveyard.DRO_PoA.PoA_tightening.bidding_blocks_tightening import (
     BiddingBlocksTighteningOptimizer,
 )
 

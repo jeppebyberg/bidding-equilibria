@@ -343,85 +343,6 @@ class PoAOptimization:
             return None
         return numeric_value
 
-    def _tight_lambda_bound(
-        self,
-        lambda_name: Optional[str],
-        time_idx: int,
-        bound_name: str,
-        default_bound: float,
-    ) -> float:
-        if lambda_name is None:
-            return float(default_bound)
-
-        report = getattr(self, "tightening_report", {}) or {}
-        source_payloads: list[Any] = [getattr(self, "lambda_bounds", {}) or {}]
-        if isinstance(report, dict):
-            source_payloads.append(report.get("lambda_bounds", {}) or {})
-
-        for payload in source_payloads:
-            if not isinstance(payload, dict):
-                continue
-            entries = payload.get(lambda_name, {}) or {}
-            if not isinstance(entries, dict):
-                continue
-            details = entries.get(str(int(time_idx)), entries.get(int(time_idx)))
-            if not isinstance(details, dict):
-                continue
-            tight_value = self._optional_float_bound(details.get(bound_name))
-            if tight_value is not None:
-                if bound_name == "lower":
-                    return max(float(default_bound), tight_value)
-                return min(float(default_bound), tight_value)
-
-        return float(default_bound)
-
-    def _lambda_lower_bound(self, time_idx: int, lambda_name: Optional[str] = None) -> float:
-        return self._tight_lambda_bound(
-            lambda_name,
-            int(time_idx),
-            "lower",
-            -self.lambda_bound,
-        )
-
-    def _lambda_upper_bound(self, time_idx: int, lambda_name: Optional[str] = None) -> float:
-        return self._tight_lambda_bound(
-            lambda_name,
-            int(time_idx),
-            "upper",
-            self.lambda_bound,
-        )
-
-    def _tight_dual_upper_bound(
-        self,
-        dual_name: Optional[str],
-        index: tuple[int, ...],
-        default_bound: float,
-    ) -> float:
-        """
-        Return a certified dual bound from the tightening report when present.
-
-        The constants below remain necessary construction fallbacks: lambda is
-        not tightened by the current preprocessing pipeline, and any missing
-        dual Big-M entry must fall back to a valid global bound. When a
-        `tight_big_m` entry exists, use it both as the variable upper bound and
-        as the coefficient in `mu <= M z`; using it only as a variable bound
-        would leave a weaker default Big-M coefficient in the complementarity
-        relaxation.
-        """
-        if dual_name is None:
-            return float(default_bound)
-
-        tight_big_m = getattr(self, "tight_big_m", {}) or {}
-        entries = tight_big_m.get(dual_name, {}) or {}
-        details = entries.get(self._json_key(index))
-        if not details:
-            return float(default_bound)
-
-        tight_value = details.get("tight_big_m")
-        if tight_value is None:
-            return float(default_bound)
-        return max(0.0, min(float(default_bound), float(tight_value)))
-
     @staticmethod
     def _optional_numeric_bound(payload: Any) -> Optional[float]:
         if payload is None:
@@ -672,7 +593,6 @@ class PoAOptimization:
             self._set_nn_relu_bounds_from_report(nn_relu_report)
         self.fixed_binaries = report.get("fixed_binaries", {}) or {}
         self.primal_big_m = report.get("primal_big_m", {}) or {}
-        self._load_legacy_primal_big_m_if_needed(report_path)
         self.tight_big_m = report.get("tight_big_m", {}) or {}
         self.aggregate_dual_bounds = report.get("aggregate_dual_bounds", {}) or {}
         self.lambda_bounds = report.get("lambda_bounds", {}) or {}
@@ -708,53 +628,6 @@ class PoAOptimization:
         self._set_tightening_report_data(report, path)
         self._prepare_loaded_bounds()
         return report
-
-    def _load_legacy_primal_big_m_if_needed(
-        self,
-        report_path: Optional[Path] = None,
-    ) -> None:
-        """
-        Older tightening reports in this repository saved primal Big-M values in
-        a separate JSON file. Prefer an in-report `primal_big_m` block, but use
-        the generated companion file when present so existing report paths still
-        build the final model.
-        """
-        if self.primal_big_m:
-            return
-
-        candidates: list[Path] = []
-        if report_path is not None:
-            report_path = Path(report_path)
-            candidates.append(report_path.with_name("poa_bidding_blocks_primal_big_m.json"))
-            if "_tightening_report" in report_path.name:
-                candidates.append(
-                    report_path.with_name(
-                        report_path.name.replace(
-                            "_tightening_report",
-                            "_primal_big_m",
-                        )
-                    )
-                )
-        candidates.append(Path("results/poa_bidding_blocks_primal_big_m.json"))
-
-        seen: set[Path] = set()
-        for candidate in candidates:
-            candidate = candidate.resolve()
-            if candidate in seen or not candidate.exists():
-                continue
-            seen.add(candidate)
-            with candidate.open("r", encoding="utf-8") as file_handle:
-                payload = json.load(file_handle)
-            primal_big_m = payload.get("primal_big_m", {}) or {}
-            if not primal_big_m:
-                continue
-            metadata = payload.get("metadata", {}) or {}
-            metadata_case = metadata.get("reference_case")
-            if metadata_case is not None and str(metadata_case) != str(self.reference_case):
-                continue
-            self.primal_big_m = primal_big_m
-            self.primal_big_m_report_path = candidate
-            return
 
     def _indexed_numeric_entries(
         self,
@@ -1309,87 +1182,6 @@ class PoAOptimization:
                 if bound is not None:
                     return bound
         return None
-
-    # Deprecated compatibility helpers. Model construction reads directly from
-    # the parsed M_* dictionaries prepared by _prepare_loaded_bounds().
-    def _capacity_dual_upper_bound(
-        self,
-        bound_key: str,
-        physical_generator_idx: int,
-        local_block_idx: int,
-        time_idx: int,
-        dual_name: Optional[str] = None,
-    ) -> float:
-        if dual_name is None:
-            return float(self.capacity_dual_bound)
-        self._ensure_loaded_bounds_prepared()
-        index = (int(physical_generator_idx), int(local_block_idx), int(time_idx))
-        bound_maps = {
-            "mu_upper_eq": self.M_mu_upper_eq,
-            "mu_lower_eq": self.M_mu_lower_eq,
-            "mu_upper_opt": self.M_mu_upper_opt,
-            "mu_lower_opt": self.M_mu_lower_opt,
-        }
-        return float(bound_maps.get(dual_name, {}).get(index, self.capacity_dual_bound))
-
-    def _ramp_dual_upper_bound(
-        self,
-        bound_key: str,
-        physical_generator_idx: int,
-        time_idx: int,
-        dual_name: Optional[str] = None,
-    ) -> float:
-        if dual_name is None:
-            return float(self.ramp_dual_bound)
-        self._ensure_loaded_bounds_prepared()
-        index = (int(physical_generator_idx), int(time_idx))
-        bound_maps = {
-            "mu_ramp_up_eq": self.M_mu_ramp_up_eq,
-            "mu_ramp_down_eq": self.M_mu_ramp_down_eq,
-            "mu_ramp_up_opt": self.M_mu_ramp_up_opt,
-            "mu_ramp_down_opt": self.M_mu_ramp_down_opt,
-        }
-        return float(bound_maps.get(dual_name, {}).get(index, self.ramp_dual_bound))
-
-    def _required_primal_big_m_bound(
-        self,
-        bound_name: str,
-        index: tuple[int, ...],
-    ) -> float:
-        entries = (getattr(self, "primal_big_m", {}) or {}).get(bound_name, {}) or {}
-        key = self._json_key(index) if len(index) > 1 else str(int(index[0]))
-        value = self._optional_numeric_bound(entries.get(key))
-        if value is None:
-            raise ValueError(
-                f"Missing primal Big-M bound '{bound_name}[{key}]'. "
-                "Run compute_primal_big_m.py and load a report "
-                "with a populated 'primal_big_m' section before build_model()."
-            )
-        return float(value)
-
-    def _block_capacity_big_m(self, physical_generator_idx: int, local_block_idx: int) -> float:
-        self._ensure_loaded_bounds_prepared()
-        return self.M_cap[int(physical_generator_idx), int(local_block_idx), 0]
-
-    def _physical_capacity_big_m(self, physical_generator_idx: int) -> float:
-        self._ensure_loaded_bounds_prepared()
-        return self.M_physical_capacity[int(physical_generator_idx)]
-
-    def _ramp_up_big_m(self, physical_generator_idx: int) -> float:
-        self._ensure_loaded_bounds_prepared()
-        return self.M_ramp_up[int(physical_generator_idx), 0]
-
-    def _ramp_down_big_m(self, physical_generator_idx: int) -> float:
-        self._ensure_loaded_bounds_prepared()
-        return self.M_ramp_down[int(physical_generator_idx), 0]
-
-    def _ramp_up_initial_big_m(self, physical_generator_idx: int) -> float:
-        self._ensure_loaded_bounds_prepared()
-        return self.M_ramp_up_initial[int(physical_generator_idx)]
-
-    def _ramp_down_initial_big_m(self, physical_generator_idx: int) -> float:
-        self._ensure_loaded_bounds_prepared()
-        return self.M_ramp_down_initial[int(physical_generator_idx)]
 
     # ------------------------------------------------------------------
     # Model construction

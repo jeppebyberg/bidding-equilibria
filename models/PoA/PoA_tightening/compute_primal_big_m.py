@@ -34,7 +34,6 @@ def _block_capacity_big_m(optimizer: Any, physical_generator_idx: int, local_blo
     block_share = optimizer.static_block_capacity[global_block] / static_total
     return float(block_share * optimizer.support_wind_max[physical_generator_idx])
 
-
 def _computed_physical_capacity_big_m(
     optimizer: Any,
     physical_generator_idx: int,
@@ -43,10 +42,8 @@ def _computed_physical_capacity_big_m(
         return float(optimizer.support_wind_max[physical_generator_idx])
     return float(optimizer.static_physical_capacity[physical_generator_idx])
 
-
 def _physical_capacity_big_m(optimizer: Any, physical_generator_idx: int) -> float:
     return _computed_physical_capacity_big_m(optimizer, physical_generator_idx)
-
 
 def _computed_ramp_up_big_m(optimizer: Any, physical_generator_idx: int) -> float:
     return float(
@@ -54,10 +51,8 @@ def _computed_ramp_up_big_m(optimizer: Any, physical_generator_idx: int) -> floa
         + _computed_physical_capacity_big_m(optimizer, physical_generator_idx)
     )
 
-
 def _ramp_up_big_m(optimizer: Any, physical_generator_idx: int) -> float:
     return _computed_ramp_up_big_m(optimizer, physical_generator_idx)
-
 
 def _computed_ramp_down_big_m(optimizer: Any, physical_generator_idx: int) -> float:
     return float(
@@ -65,10 +60,8 @@ def _computed_ramp_down_big_m(optimizer: Any, physical_generator_idx: int) -> fl
         + _computed_physical_capacity_big_m(optimizer, physical_generator_idx)
     )
 
-
 def _ramp_down_big_m(optimizer: Any, physical_generator_idx: int) -> float:
     return _computed_ramp_down_big_m(optimizer, physical_generator_idx)
-
 
 def _computed_ramp_up_initial_big_m(
     optimizer: Any,
@@ -79,10 +72,8 @@ def _computed_ramp_up_initial_big_m(
         + optimizer.ramp_vector_up[physical_generator_idx]
     )
 
-
 def _ramp_up_initial_big_m(optimizer: Any, physical_generator_idx: int) -> float:
     return _computed_ramp_up_initial_big_m(optimizer, physical_generator_idx)
-
 
 def _computed_ramp_down_initial_big_m(
     optimizer: Any,
@@ -97,10 +88,8 @@ def _computed_ramp_down_initial_big_m(
         )
     )
 
-
 def _ramp_down_initial_big_m(optimizer: Any, physical_generator_idx: int) -> float:
     return _computed_ramp_down_initial_big_m(optimizer, physical_generator_idx)
-
 
 def compute_primal_big_m_bounds(optimizer: Any) -> dict[str, dict[str, Any]]:
     block_capacity: dict[str, Any] = {}
@@ -165,7 +154,6 @@ def compute_primal_big_m_bounds(optimizer: Any) -> dict[str, dict[str, Any]]:
         "ramp_down_initial": ramp_down_initial,
     }
 
-
 def support_set_summary(optimizer: Any) -> dict[str, Any]:
     return {
         "demand": {
@@ -187,7 +175,6 @@ def support_set_summary(optimizer: Any) -> dict[str, Any]:
         "wind_budget": float(optimizer.support_wind_budget),
     }
 
-
 def summarize_primal_big_m(primal_big_m: dict[str, dict[str, Any]]) -> dict[str, Any]:
     summary: dict[str, Any] = {}
     for component_name, entries in primal_big_m.items():
@@ -202,8 +189,6 @@ def summarize_primal_big_m(primal_big_m: dict[str, dict[str, Any]]) -> dict[str,
             "max_big_m": max(values) if values else None,
         }
     return summary
-
-
 class PrimalBigMComputer(PoATighteningMain):
     def run_primal_big_m(self, output_path: str | Path | None = None) -> dict[str, Any]:
         output_path = output_path or DEFAULT_TIGHTENING_OUTPUT_PATHS["primal_big_m"]

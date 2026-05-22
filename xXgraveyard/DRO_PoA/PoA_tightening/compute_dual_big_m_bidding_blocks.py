@@ -1,7 +1,7 @@
 from pathlib import Path
 import time
 
-from models.DRO_PoA.PoA_tightening.compute_binary_fix_and_big_m_bidding_blocks import (
+from xXgraveyard.DRO_PoA.PoA_tightening.compute_binary_fix_and_big_m_bidding_blocks import (
     build_optimizer,
 )
 

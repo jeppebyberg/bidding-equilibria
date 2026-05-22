@@ -569,12 +569,12 @@ def main() -> None:
     parser.add_argument(
         "--results",
         type=Path,
-        default=Path("results/poa_optimization_bidding_blocks_results_tightened_T6.json"),
+        default=Path("results/poa_optimization_T8.json"),
     )
     parser.add_argument(
         "--outdir",
         type=Path,
-        default=Path("results_viz/figures/poa_optimization_bidding_blocks"),
+        default=Path("results_viz/figures/poa_optimization"),
     )
     parser.add_argument("--show", action="store_true")
     args = parser.parse_args()
