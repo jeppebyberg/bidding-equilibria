@@ -1,0 +1,55 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Packaging and build artifacts
+*.egg-info/
+build/
+dist/
+*.egg
+
+# Test, coverage, and type-check caches
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# IDE and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Solver/runtime logs
+*.log
+*.lp
+*.mps
+*.sol
+*.mst
+gurobi.log
+
+# Generated project outputs
+results/
+results_viz/figures/
+models/neural_network/features/generated/
+models/neural_network/training/training_results/
+models/neural_network/training/trained_models/

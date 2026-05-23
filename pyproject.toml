@@ -26,6 +26,7 @@ dependencies = [
     "numpy<2",
     "pandas", 
     "matplotlib",
+    "scipy",
     "pyomo",
     "pyyaml",
     "scikit-learn",
@@ -41,7 +42,7 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["config", "models", "drivers"]
+packages = ["config", "models", "driver"]
 
 [tool.setuptools.package-dir]
 "" = "."

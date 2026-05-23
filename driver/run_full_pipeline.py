@@ -901,7 +901,7 @@ if __name__ == "__main__":
         device=None,
 
         # PoA parameters.
-        horizon=8,
+        horizon=6,
         support_set_config_path="models/PoA/support_set_config.yaml",
         support_set_config_name="test_case_bidding_blocks_base",
         nn_policy_generators=[1, 2],
@@ -927,13 +927,14 @@ if __name__ == "__main__":
         },
         tightening_previous_paths=dict(TIGHTENING_PREVIOUS_PATHS),
         tightening_output_paths=dict(TIGHTENING_OUTPUT_PATHS),
+        
         run_poa_nn_relu_bounds=True,
         run_poa_alpha_bounds=True,
         run_poa_slack_binary_fix=True,
         run_poa_dual_big_m=True,
         run_poa_optimization=True,
 
-        # Outputs.
+        # Outputs
         runtime_config_path=Path("results/full_pipeline/runtime_regime_definitions.yaml"),
         synthetic_scenario_dir=Path("results/full_pipeline/synthetic_scenarios"),
         poa_scenario_dir=Path("results/full_pipeline/poa_scenarios"),

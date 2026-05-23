@@ -1,7 +1,11 @@
-numpy
+numpy<2
 pandas
+matplotlib
+scipy
 pyomo
 pyyaml
+scikit-learn
+torch
 
 [dev]
 pytest
