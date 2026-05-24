@@ -569,7 +569,7 @@ def main() -> None:
     parser.add_argument(
         "--results",
         type=Path,
-        default=Path("results/poa_optimization_T8.json"),
+        default=Path("results/poa_optimization_T24.json"),
     )
     parser.add_argument(
         "--outdir",

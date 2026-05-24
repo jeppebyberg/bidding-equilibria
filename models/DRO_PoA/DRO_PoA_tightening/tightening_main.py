@@ -1,0 +1,565 @@
+from __future__ import annotations
+
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Callable, Optional
+
+from models.DRO_PoA.DRO_PoA_optimization import DRO_PoAOptimization
+
+
+DEFAULT_DRO_TIGHTENING_OUTPUT_PATHS: dict[str, str] = {
+    "primal_big_m": "results/dro_poa_tightening/{regime_name}/primal_big_m_report.json",
+    "relu_bounds": "results/dro_poa_tightening/{regime_name}/relu_bounds_report.json",
+    "alpha_bounds": "results/dro_poa_tightening/{regime_name}/alpha_bounds_report.json",
+    "slack_binary_fix": "results/dro_poa_tightening/{regime_name}/slack_binary_fix_report.json",
+    "dual_big_m": "results/dro_poa_tightening/{regime_name}/dual_big_m_report.json",
+    "final": "results/dro_poa_tightening/{regime_name}/final_tightening_report.json",
+}
+
+
+class DROPoATighteningMain:
+    """Shared orchestrator for regime-wide DRO PoA tightening."""
+
+    _MAIN_STATE_ATTRS = {"poa", "dro_poa", "tightening_data", "stage_reports"}
+
+    def __getattr__(self, name: str) -> Any:
+        poa = self.__dict__.get("poa")
+        if poa is not None:
+            return getattr(poa, name)
+        raise AttributeError(name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name in self._MAIN_STATE_ATTRS or "poa" not in self.__dict__:
+            object.__setattr__(self, name, value)
+            return
+        setattr(self.__dict__["poa"], name, value)
+
+    def __init__(
+        self,
+        scenarios_df,
+        costs_df,
+        ramps_df,
+        p_init: Optional[list[float] | list[list[float]]] = None,
+        num_time_steps: Optional[int] = None,
+        regime_config_path: str | Path = "config/regime_definitions.yaml",
+        regime_set: str = "PoA_analysis",
+        regime_name: Optional[str] = None,
+        eta: float = 0.0,
+        epsilon: float = 0.0,
+        nn_model_dir: Optional[str | Path] = None,
+        nn_normalization_stats_path: Optional[str | Path] = None,
+        nn_policy_generators: Optional[list[int | str]] = None,
+        reference_case: str = "test_case_bidding_blocks",
+    ) -> None:
+        self.poa = DRO_PoAOptimization(
+            scenarios_df=scenarios_df,
+            costs_df=costs_df,
+            ramps_df=ramps_df,
+            p_init=p_init,
+            num_time_steps=num_time_steps,
+            regime_config_path=regime_config_path,
+            regime_set=regime_set,
+            regime_name=regime_name,
+            eta=eta,
+            epsilon=epsilon,
+            nn_model_dir=nn_model_dir,
+            nn_normalization_stats_path=nn_normalization_stats_path,
+            nn_policy_generators=nn_policy_generators,
+            reference_case=reference_case,
+        )
+        self.dro_poa = self.poa
+        self.tightening_data: dict[str, Any] = {}
+        self.stage_reports: dict[str, dict[str, Any]] = {}
+
+    def _resolve_output_paths(
+        self,
+        output_paths: Optional[dict[str, str | Path]] = None,
+    ) -> dict[str, str]:
+        resolved: dict[str, str] = {}
+        regime_name = str(self.poa.regime_name)
+        for stage_name, template in DEFAULT_DRO_TIGHTENING_OUTPUT_PATHS.items():
+            raw_path = (output_paths or {}).get(stage_name, template)
+            resolved[stage_name] = str(raw_path).format(regime_name=regime_name)
+        return resolved
+
+    @staticmethod
+    def _json_key(indices: Any) -> str:
+        if isinstance(indices, str):
+            return indices
+        if isinstance(indices, int):
+            return str(indices)
+        return ",".join(str(int(index)) for index in tuple(indices))
+
+    @staticmethod
+    def _parse_json_index(key: str) -> tuple[int, ...]:
+        return tuple(int(part) for part in str(key).split(",") if part != "")
+
+    def _jsonify_indexed_dict(self, payload: dict[Any, Any]) -> dict[str, Any]:
+        return {self._json_key(key): value for key, value in payload.items()}
+
+    @staticmethod
+    def _load_json(path: str | Path) -> dict[str, Any]:
+        json_path = Path(path)
+        with json_path.open("r", encoding="utf-8") as file_handle:
+            return json.load(file_handle)
+
+    @staticmethod
+    def _save_json(payload: dict[str, Any], path: str | Path) -> Path:
+        json_path = Path(path)
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+        with json_path.open("w", encoding="utf-8") as file_handle:
+            json.dump(payload, file_handle, indent=2)
+        return json_path
+
+    def _merge_report(self, report: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(report, dict):
+            raise ValueError("Tightening report payload must be a dictionary")
+
+        self.tightening_data.setdefault("metadata", {}).update(report.get("metadata", {}) or {})
+        if isinstance(report.get("stage_reports"), dict):
+            self.stage_reports.update(report["stage_reports"])
+
+        relu_report = report.get("nn_relu_bounds_report")
+        if isinstance(relu_report, dict) and relu_report:
+            self.tightening_data["nn_relu_bounds_report"] = relu_report
+            self.tightening_data["nn_relu_bounds"] = relu_report.get("nn_relu_bounds", {}) or {}
+            if hasattr(self.poa, "_set_nn_relu_bounds_from_report"):
+                self.poa._set_nn_relu_bounds_from_report(relu_report)
+        elif "nn_relu_bounds" in report:
+            self.tightening_data["nn_relu_bounds_report"] = report
+            self.tightening_data["nn_relu_bounds"] = report.get("nn_relu_bounds", {}) or {}
+            if hasattr(self.poa, "_set_nn_relu_bounds_from_report"):
+                self.poa._set_nn_relu_bounds_from_report(report)
+
+        for key in (
+            "primal_big_m",
+            "alpha_bounds",
+            "alpha_optimization_results",
+            "slack_bounds",
+            "fixed_binaries",
+            "lambda_bounds",
+            "tight_big_m",
+            "aggregate_dual_bounds",
+        ):
+            if key in report:
+                self.tightening_data[key] = report.get(key, {}) or {}
+                setattr(self.poa, key, self.tightening_data[key])
+
+        if "alpha_bounds" in report:
+            self.poa.alpha_bounds = self._parse_alpha_bounds(report.get("alpha_bounds", {}) or {})
+        if hasattr(self.poa, "_loaded_bounds_prepared"):
+            self.poa._loaded_bounds_prepared = False
+        return report
+
+    def _load_previous_stage(self, stage_name: str, path: str | Path) -> dict[str, Any]:
+        previous_path = Path(path)
+        if not previous_path.exists():
+            raise FileNotFoundError(
+                f"Previous DRO tightening report for stage '{stage_name}' was not found. "
+                f"Expected path: {previous_path}"
+            )
+        report = self._load_json(previous_path)
+        self.stage_reports[stage_name] = report
+        self._merge_report(report)
+        return report
+
+    def _save_stage_report(
+        self,
+        stage_name: str,
+        report: dict[str, Any],
+        output_path: str | Path | None,
+    ) -> dict[str, Any]:
+        self.stage_reports[stage_name] = report
+        self._merge_report(report)
+        if output_path is not None:
+            self._save_json(report, output_path)
+        return report
+
+    def _load_or_run_stage(
+        self,
+        stage_name: str,
+        run_flag: bool,
+        run_callable: Callable[[str | Path | None], dict[str, Any]],
+        previous_path: str | Path,
+        output_path: str | Path | None,
+    ) -> dict[str, Any]:
+        if run_flag:
+            return run_callable(output_path)
+        return self._load_previous_stage(stage_name, previous_path)
+
+    def load_existing_tightening_report(self, path: str | Path) -> dict[str, Any]:
+        report = self._load_json(path)
+        self._merge_report(report)
+        return report
+
+    def _as_stage(self, stage_cls: type["DROPoATighteningMain"]) -> "DROPoATighteningMain":
+        stage = stage_cls.__new__(stage_cls)
+        stage.__dict__ = self.__dict__
+        return stage
+
+    def _parallel_stage_state(self) -> dict[str, Any]:
+        return {
+            "constructor_kwargs": {
+                "scenarios_df": self.poa.scenarios_df,
+                "costs_df": self.poa.costs_df,
+                "ramps_df": self.poa.ramps_df,
+                "p_init": self.poa.requested_p_init,
+                "num_time_steps": self.poa.num_time_steps,
+                "regime_config_path": self.poa.regime_config_path,
+                "regime_set": self.poa.regime_set,
+                "regime_name": self.poa.regime_name,
+                "eta": self.poa.eta,
+                "epsilon": self.poa.epsilon,
+                "nn_model_dir": self.poa.nn_model_dir,
+                "nn_normalization_stats_path": self.poa.nn_normalization_stats_path,
+                "nn_policy_generators": self.poa.requested_nn_policy_generators,
+                "reference_case": self.poa.reference_case,
+            },
+            "tightening_data": dict(self.tightening_data),
+        }
+
+    @classmethod
+    def _from_parallel_stage_state(
+        cls,
+        state: dict[str, Any],
+    ) -> "DROPoATighteningMain":
+        stage = cls(**state["constructor_kwargs"])
+        tightening_data = dict(state.get("tightening_data", {}) or {})
+        stage.tightening_data.update(tightening_data)
+        stage._merge_report(tightening_data)
+        return stage
+
+    @staticmethod
+    def _resolve_parallel_workers(
+        parallel_workers: Optional[int],
+        total_tasks: int,
+    ) -> int:
+        if total_tasks <= 1 or parallel_workers is None:
+            return 1
+        return min(max(1, int(parallel_workers)), int(total_tasks))
+
+    @staticmethod
+    def _solver_options_with_threads(
+        solver_name: str,
+        solver_threads: Optional[int],
+        extra_options: Optional[dict[str, Any]] = None,
+    ) -> Optional[dict[str, Any]]:
+        options = dict(extra_options or {})
+        if solver_threads is not None and solver_name == "gurobi":
+            options["Threads"] = int(solver_threads)
+        return options or None
+
+    def _parse_alpha_bounds(
+        self,
+        alpha_bounds: dict[str, Any],
+    ) -> dict[tuple[int, int, int], dict[str, float]]:
+        parsed: dict[tuple[int, int, int], dict[str, float]] = {}
+        for key, value in (alpha_bounds or {}).items():
+            index = self._parse_json_index(key)
+            if len(index) != 3:
+                raise ValueError(f"Alpha-bound key '{key}' must have three indices: i,b,t")
+            parsed[(int(index[0]), int(index[1]), int(index[2]))] = {
+                "lower": float(value["lower"]),
+                "upper": float(value["upper"]),
+            }
+        return parsed
+
+    def _require_relu_before_alpha(self) -> None:
+        if getattr(self.poa, "nn_policy_generator_ids", []) and not getattr(
+            self.poa,
+            "nn_relu_bounds",
+            {},
+        ):
+            raise ValueError("ReLU bounds must be computed or loaded before alpha-bound tightening.")
+
+    def _require_alpha_bounds(self) -> None:
+        if not getattr(self.poa, "alpha_bounds", None):
+            raise ValueError("Alpha bounds must be computed or loaded before this stage.")
+
+    def _require_dual_big_m_inputs(self) -> None:
+        if not getattr(self.poa, "primal_big_m", None):
+            raise ValueError("Primal Big-M values must be computed or loaded before dual Big-M.")
+        self._require_alpha_bounds()
+        if "fixed_binaries" not in self.tightening_data:
+            raise ValueError(
+                "Slack-based complementarity binary fixing must be computed or loaded "
+                "before dual Big-M."
+            )
+
+    def _metadata(self) -> dict[str, Any]:
+        return {
+            "model_type": "DRO_PoA",
+            "tightening_type": "regime_wide",
+            "reference_case": self.poa.reference_case,
+            "regime_set": self.poa.regime_set,
+            "regime_name": self.poa.regime_name,
+            "eta": float(self.poa.eta),
+            "epsilon": float(self.poa.epsilon),
+            "num_time_steps": int(self.poa.num_time_steps),
+            "num_empirical_scenarios": int(self.poa.num_empirical_scenarios),
+            "physical_generator_names": list(self.poa.physical_generator_names),
+            "block_names": list(self.poa.block_names),
+            "nn_policy_generators": list(getattr(self.poa, "nn_policy_generator_names", [])),
+            "selected_regime_parameters": dict(getattr(self.poa, "selected_regime_parameters", {})),
+            "aggregation_rule": "minimum lower bound over k and maximum upper bound over k",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    @staticmethod
+    def _details_value(details: Any, key: str, default: Any = None) -> Any:
+        if isinstance(details, dict):
+            return details.get(key, default)
+        return default
+
+    def aggregate_lower_upper_bounds_over_k(
+        self,
+        bounds: dict[Any, Any],
+    ) -> dict[str, dict[str, float]]:
+        aggregated: dict[tuple[int, ...], dict[str, float]] = {}
+        for raw_key, details in (bounds or {}).items():
+            index = self._parse_json_index(raw_key) if isinstance(raw_key, str) else tuple(raw_key)
+            if len(index) < 2:
+                raise ValueError(f"Scenario-indexed bound key '{raw_key}' must include k")
+            regime_index = tuple(int(part) for part in index[1:])
+            lower = float(self._details_value(details, "lower"))
+            upper = float(self._details_value(details, "upper"))
+            if regime_index not in aggregated:
+                aggregated[regime_index] = {"lower": lower, "upper": upper}
+            else:
+                aggregated[regime_index]["lower"] = min(aggregated[regime_index]["lower"], lower)
+                aggregated[regime_index]["upper"] = max(aggregated[regime_index]["upper"], upper)
+        return self._jsonify_indexed_dict(aggregated)
+
+    def aggregate_big_m_over_k(self, bounds: dict[Any, Any]) -> dict[str, Any]:
+        aggregated: dict[tuple[int, ...], dict[str, Any]] = {}
+        for raw_key, details in (bounds or {}).items():
+            index = self._parse_json_index(raw_key) if isinstance(raw_key, str) else tuple(raw_key)
+            if len(index) < 2:
+                raise ValueError(f"Scenario-indexed Big-M key '{raw_key}' must include k")
+            regime_index = tuple(int(part) for part in index[1:])
+            value = self._details_value(details, "big_m")
+            if value is None:
+                value = self._details_value(details, "tight_big_m")
+            if value is None:
+                value = self._details_value(details, "value", details)
+            numeric_value = float(value)
+            if regime_index not in aggregated or numeric_value > float(
+                aggregated[regime_index].get("big_m", aggregated[regime_index].get("tight_big_m", 0.0))
+            ):
+                aggregated[regime_index] = dict(details) if isinstance(details, dict) else {}
+                if "tight_big_m" in aggregated[regime_index] and "big_m" not in aggregated[regime_index]:
+                    aggregated[regime_index]["tight_big_m"] = numeric_value
+                else:
+                    aggregated[regime_index]["big_m"] = numeric_value
+        return self._jsonify_indexed_dict(aggregated)
+
+    def aggregate_fixed_binaries_over_k(
+        self,
+        fixed_binaries: dict[str, dict[Any, Any]],
+    ) -> dict[str, dict[str, Any]]:
+        scenario_count = int(self.poa.num_empirical_scenarios)
+        aggregated: dict[str, dict[str, Any]] = {}
+        for var_name, entries in (fixed_binaries or {}).items():
+            candidates: dict[tuple[int, ...], list[dict[str, Any]]] = {}
+            for raw_key, details in (entries or {}).items():
+                index = self._parse_json_index(raw_key) if isinstance(raw_key, str) else tuple(raw_key)
+                if len(index) < 2:
+                    raise ValueError(f"Scenario-indexed fixed binary key '{raw_key}' must include k")
+                regime_index = tuple(int(part) for part in index[1:])
+                candidates.setdefault(regime_index, []).append(dict(details or {}))
+            for regime_index, scenario_details in candidates.items():
+                fixed_values = {
+                    int(details.get("fixed_value"))
+                    for details in scenario_details
+                    if details.get("fixed_value") is not None
+                }
+                if len(scenario_details) != scenario_count or len(fixed_values) != 1:
+                    continue
+                merged = dict(scenario_details[0])
+                merged["fixed_value"] = fixed_values.pop()
+                merged["regime_wide_agreement_scenarios"] = scenario_count
+                aggregated.setdefault(var_name, {})[self._json_key(regime_index)] = merged
+        return aggregated
+
+    def aggregate_relu_bounds_over_k(
+        self,
+        relu_bounds: dict[str, dict[Any, Any]],
+        tolerance: float = 1e-9,
+    ) -> dict[str, dict[str, Any]]:
+        aggregated_by_generator: dict[str, dict[str, Any]] = {}
+        for generator_name, entries in (relu_bounds or {}).items():
+            accum: dict[tuple[int, int, int], dict[str, float]] = {}
+            for raw_key, details in (entries or {}).items():
+                index = self._parse_json_index(raw_key) if isinstance(raw_key, str) else tuple(raw_key)
+                if len(index) != 4:
+                    raise ValueError(
+                        f"Scenario-indexed ReLU key '{raw_key}' must have k,t,linear_idx,node"
+                    )
+                regime_index = (int(index[1]), int(index[2]), int(index[3]))
+                numeric = {
+                    "L": float(details["L"]),
+                    "U": float(details["U"]),
+                    "h_lower": float(details["h_lower"]),
+                    "h_upper": float(details["h_upper"]),
+                }
+                if regime_index not in accum:
+                    accum[regime_index] = numeric
+                else:
+                    accum[regime_index]["L"] = min(accum[regime_index]["L"], numeric["L"])
+                    accum[regime_index]["U"] = max(accum[regime_index]["U"], numeric["U"])
+                    accum[regime_index]["h_lower"] = min(
+                        accum[regime_index]["h_lower"],
+                        numeric["h_lower"],
+                    )
+                    accum[regime_index]["h_upper"] = max(
+                        accum[regime_index]["h_upper"],
+                        numeric["h_upper"],
+                    )
+            generator_payload: dict[str, Any] = {}
+            for regime_index, details in accum.items():
+                status = "ambiguous"
+                if details["U"] <= float(tolerance):
+                    status = "inactive"
+                elif details["L"] >= -float(tolerance):
+                    status = "active"
+                generator_payload[self._json_key(regime_index)] = {
+                    **details,
+                    "status": status,
+                    "time_idx": regime_index[0],
+                    "linear_idx": regime_index[1],
+                    "node": regime_index[2],
+                }
+            aggregated_by_generator[str(generator_name)] = generator_payload
+        return aggregated_by_generator
+
+    def save_final_report(self, output_path: str | Path) -> Path:
+        payload = {
+            "metadata": self._metadata(),
+            "primal_big_m": self.tightening_data.get("primal_big_m", {}),
+            "nn_relu_bounds_report": self.tightening_data.get("nn_relu_bounds_report", {}),
+            "alpha_bounds": self.tightening_data.get("alpha_bounds", {}),
+            "alpha_optimization_results": self.tightening_data.get(
+                "alpha_optimization_results",
+                {},
+            ),
+            "slack_bounds": self.tightening_data.get("slack_bounds", {}),
+            "fixed_binaries": self.tightening_data.get("fixed_binaries", {}),
+            "lambda_bounds": self.tightening_data.get("lambda_bounds", {}),
+            "tight_big_m": self.tightening_data.get("tight_big_m", {}),
+            "aggregate_dual_bounds": self.tightening_data.get("aggregate_dual_bounds", {}),
+            "stage_reports": self.stage_reports,
+        }
+        return self._save_json(payload, output_path)
+
+    def run_all(
+        self,
+        run_primal_big_m: bool = True,
+        run_relu_bounds: bool = True,
+        run_alpha_bounds: bool = True,
+        run_slack_binary_fix: bool = True,
+        run_dual_big_m: bool = True,
+        previous_paths: Optional[dict[str, str | Path]] = None,
+        output_paths: Optional[dict[str, str | Path]] = None,
+        solver_name: str = "gurobi",
+        time_limit: Optional[float] = None,
+        tee: bool = False,
+        relu_tolerance: float = 1e-9,
+        epsilon: float = 1e-6,
+        relax_complementarity: bool = False,
+        stop_at_zero_slack: bool = True,
+        slack_stop_tol: Optional[float] = None,
+        parallel_workers: int = 1,
+        solver_threads: Optional[int] = None,
+    ) -> Path:
+        from models.DRO_PoA.DRO_PoA_tightening.compute_alpha_bounds import DROAlphaBoundsComputer
+        from models.DRO_PoA.DRO_PoA_tightening.compute_dual_big_m import DRODualBigMComputer
+        from models.DRO_PoA.DRO_PoA_tightening.compute_primal_big_m import DROPrimalBigMComputer
+        from models.DRO_PoA.DRO_PoA_tightening.compute_relu_bounds import DROReLUBoundsComputer
+        from models.DRO_PoA.DRO_PoA_tightening.compute_slack_binary_fix import DROSlackBinaryFixComputer
+
+        previous_paths = self._resolve_output_paths(previous_paths)
+        output_paths = self._resolve_output_paths(output_paths)
+
+        primal_stage = self._as_stage(DROPrimalBigMComputer)
+        relu_stage = self._as_stage(DROReLUBoundsComputer)
+        alpha_stage = self._as_stage(DROAlphaBoundsComputer)
+        slack_stage = self._as_stage(DROSlackBinaryFixComputer)
+        dual_stage = self._as_stage(DRODualBigMComputer)
+
+        self._load_or_run_stage(
+            "primal_big_m",
+            run_primal_big_m,
+            lambda output_path: primal_stage.run_primal_big_m(output_path=output_path),
+            previous_paths["primal_big_m"],
+            output_paths["primal_big_m"],
+        )
+        self._load_or_run_stage(
+            "relu_bounds",
+            run_relu_bounds,
+            lambda output_path: relu_stage.run_relu_bounds(
+                output_path=output_path,
+                solver_name=solver_name,
+                time_limit=time_limit,
+                tee=tee,
+                tolerance=relu_tolerance,
+                parallel_workers=parallel_workers,
+                solver_threads=solver_threads,
+            ),
+            previous_paths["relu_bounds"],
+            output_paths["relu_bounds"],
+        )
+
+        self._require_relu_before_alpha()
+        self._load_or_run_stage(
+            "alpha_bounds",
+            run_alpha_bounds,
+            lambda output_path: alpha_stage.run_alpha_bounds(
+                output_path=output_path,
+                solver_name=solver_name,
+                time_limit=time_limit,
+                tee=tee,
+                parallel_workers=parallel_workers,
+                solver_threads=solver_threads,
+            ),
+            previous_paths["alpha_bounds"],
+            output_paths["alpha_bounds"],
+        )
+
+        self._require_alpha_bounds()
+        self._load_or_run_stage(
+            "slack_binary_fix",
+            run_slack_binary_fix,
+            lambda output_path: slack_stage.run_slack_binary_fix(
+                output_path=output_path,
+                epsilon=epsilon,
+                solver_name=solver_name,
+                time_limit=time_limit,
+                tee=tee,
+                relax_complementarity=relax_complementarity,
+                stop_at_zero_slack=stop_at_zero_slack,
+                slack_stop_tol=slack_stop_tol,
+                parallel_workers=parallel_workers,
+                solver_threads=solver_threads,
+            ),
+            previous_paths["slack_binary_fix"],
+            output_paths["slack_binary_fix"],
+        )
+
+        self._require_dual_big_m_inputs()
+        self._load_or_run_stage(
+            "dual_big_m",
+            run_dual_big_m,
+            lambda output_path: dual_stage.run_dual_big_m(
+                output_path=output_path,
+                solver_name=solver_name,
+                time_limit=time_limit,
+                tee=tee,
+                parallel_workers=parallel_workers,
+                solver_threads=solver_threads,
+            ),
+            previous_paths["dual_big_m"],
+            output_paths["dual_big_m"],
+        )
+
+        return self.save_final_report(output_paths["final"])

@@ -26,7 +26,7 @@ def _initialize_parallel_alpha_computer(state: dict[str, Any]) -> None:
         ramps_df=state["ramps_df"],
         p_init=state["p_init"],
         num_time_steps=state["num_time_steps"],
-        ambiguity_set_config=state["ambiguity_set_config"],
+        support_set_config=state["support_set_config"],
         nn_model_dir=state["nn_model_dir"],
         nn_normalization_stats_path=state["nn_normalization_stats_path"],
         nn_policy_generators=state["nn_policy_generators"],
@@ -87,7 +87,7 @@ class AlphaBoundsComputer(PoATighteningMain):
             "ramps_df": self.poa.ramps_df,
             "p_init": self.poa.requested_p_init,
             "num_time_steps": self.poa.num_time_steps,
-            "ambiguity_set_config": self.poa.ambiguity_set_config,
+            "support_set_config": self.poa.support_set_config,
             "nn_model_dir": (
                 str(self.poa.nn_model_dir) if self.poa.nn_model_dir is not None else None
             ),
@@ -140,7 +140,7 @@ class AlphaBoundsComputer(PoATighteningMain):
 
     def _build_alpha_bound_model(self) -> ConcreteModel:
         """
-        Ambiguity-induced support set plus policy/ReLU constraints for certified alpha bounds.
+        Support set plus policy/ReLU constraints for certified alpha bounds.
 
         No lower-level dispatch, KKT stationarity, complementarity, PoA
         objective, or slack minimization is present. For NN-controlled
@@ -189,7 +189,7 @@ class AlphaBoundsComputer(PoATighteningMain):
         nn_relu_bounds_report_path: Optional[str | Path] = None,
     ) -> dict[str, Any]:
         """
-        Compute exact ambiguity-set bid bounds.
+        Compute exact support-set bid bounds.
 
         For each bidding block and time step, solve:
 
@@ -348,12 +348,11 @@ class AlphaBoundsComputer(PoATighteningMain):
         report = {
             "metadata": {
                 "description": (
-                    "Exact alpha bounds from ambiguity-set optimization with embedded "
+                    "Exact alpha bounds from support-set optimization with embedded "
                     "ReLU policy constraints."
                 ),
                 "reference_case": self.poa.reference_case,
                 "num_time_steps": self.poa.num_time_steps,
-                "ambiguity_set": self._ambiguity_metadata(),
                 "nn_policy_generators": list(self.poa.nn_policy_generator_names),
                 "num_optimization_programs": alpha_report["num_optimization_programs"],
                 "primal_big_m_summary": summarize_primal_big_m(

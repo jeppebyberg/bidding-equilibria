@@ -1,0 +1,26 @@
+default_ambiguity_set: test_case_bidding_blocks_base
+
+ambiguity_sets:
+  test_case_bidding_blocks_base:
+    description: Regime ambiguity set for base PoA analysis.
+
+    demand:
+      mu:
+        min: 0.75
+        max: 1.25
+      sigma:
+        min: 0.02
+        max: 0.07
+      rho_fixed: 0.80
+
+    wind:
+      mu:
+        min: 0.25
+        max: 0.80
+      sigma:
+        min: 0.02
+        max: 0.07
+      rho_fixed: 0.75
+      tau_fixed: 14
+
+    kappa: 0.3

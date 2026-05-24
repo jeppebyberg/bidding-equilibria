@@ -17,10 +17,8 @@ from models.PoA.PoA_tightening.tightening_main import (
 class ReLUBoundsComputer(PoATighteningMain):
     """Standalone preprocessing optimizer for NN ReLU preactivation bounds."""
 
-    AMBIGUITY_TIMEWISE_SOURCE = "aggregated_ambiguity_timewise_box"
-
     # ------------------------------------------------------------------
-    # Ambiguity-set feature-bound diagnostics
+    # Support-set feature-bound diagnostics
     # ------------------------------------------------------------------
 
     @staticmethod
@@ -52,42 +50,160 @@ class ReLUBoundsComputer(PoATighteningMain):
             raise ValueError("num_time_steps must be positive to compute NN feature bounds")
         return range(self.num_time_steps)
 
-    def _timewise_demand_bounds(self) -> dict[int, tuple[float, float]]:
-        bounds: dict[int, tuple[float, float]] = {}
-        mu_min = float(self.mu_D_bounds[0])
-        mu_max = float(self.mu_D_bounds[1])
-        sigma_max = float(self.sigma_D_bounds[1])
+    def _optional_nonnegative_finite_budget(
+        self,
+        attr_name: str,
+        label: str,
+    ) -> float | None:
+        if not hasattr(self, attr_name):
+            return None
+        try:
+            budget = float(getattr(self, attr_name))
+        except (TypeError, ValueError):
+            return None
+        if not np.isfinite(budget):
+            return None
+        if budget < 0.0:
+            raise ValueError(f"{label} must be non-negative; got {budget}")
+        return budget
+
+    def _reference_profile_or_none(self, reference: Any, label: str) -> list[float] | None:
+        if reference is None:
+            return None
+
+        values: list[float] = []
         for t in self._nn_time_indices():
-            shape_value = float(self.demand_shape[int(t)])
-            lower = self.demand_D_ref * (mu_min * shape_value - sigma_max)
-            upper = self.demand_D_ref * (mu_max * shape_value + sigma_max)
+            try:
+                if isinstance(reference, dict):
+                    if t in reference:
+                        raw_value = reference[t]
+                    elif str(t) in reference:
+                        raw_value = reference[str(t)]
+                    else:
+                        return None
+                else:
+                    raw_value = reference[t]
+                value = float(raw_value)
+            except (KeyError, IndexError, TypeError, ValueError):
+                return None
+            if not np.isfinite(value):
+                return None
+            values.append(value)
+        return values
+
+    def _global_box_demand_bounds(self) -> tuple[float, float]:
+        return self._validate_nn_interval(
+            self.support_demand_min,
+            self.support_demand_max,
+            "support-set demand",
+        )
+
+    def _global_box_wind_bounds(self, physical_generator_idx: int) -> tuple[float, float]:
+        i = int(physical_generator_idx)
+        if i not in self.support_wind_min or i not in self.support_wind_max:
+            raise ValueError(f"Missing support-set wind min/max bounds for generator {i}")
+        return self._validate_nn_interval(
+            self.support_wind_min[i],
+            self.support_wind_max[i],
+            f"support-set wind generator {i}",
+        )
+
+    def _wind_reference_profile_or_none(
+        self,
+        physical_generator_idx: int,
+    ) -> list[float] | None:
+        i = int(physical_generator_idx)
+        references = getattr(self, "support_wind_reference", None)
+        if references is None:
+            return None
+
+        reference = None
+        if isinstance(references, dict):
+            if i in references:
+                reference = references[i]
+            elif str(i) in references:
+                reference = references[str(i)]
+            else:
+                if 0 <= i < len(self.physical_generator_names):
+                    reference = references.get(self.physical_generator_names[i])
+        else:
+            try:
+                reference = references[i]
+            except (IndexError, TypeError, KeyError):
+                return None
+
+        return self._reference_profile_or_none(reference, f"support_wind_reference[{i}]")
+
+    def _demand_reference_budget_available(self) -> bool:
+        budget = self._optional_nonnegative_finite_budget(
+            "support_demand_budget",
+            "support_demand_budget",
+        )
+        if budget is None:
+            return False
+        reference = self._reference_profile_or_none(
+            getattr(self, "support_demand_reference", None),
+            "support_demand_reference",
+        )
+        return reference is not None
+
+    def _wind_reference_budget_available(self, physical_generator_idx: int) -> bool:
+        budget = self._optional_nonnegative_finite_budget(
+            "support_wind_budget",
+            "support_wind_budget",
+        )
+        if budget is None:
+            return False
+        return self._wind_reference_profile_or_none(physical_generator_idx) is not None
+
+    def _timewise_demand_bounds(self) -> dict[int, tuple[float, float]]:
+        demand_lower, demand_upper = self._global_box_demand_bounds()
+        demand_budget = self._optional_nonnegative_finite_budget(
+            "support_demand_budget",
+            "support_demand_budget",
+        )
+        demand_reference = self._reference_profile_or_none(
+            getattr(self, "support_demand_reference", None),
+            "support_demand_reference",
+        )
+        if demand_budget is None or demand_reference is None:
+            return {int(t): (demand_lower, demand_upper) for t in self._nn_time_indices()}
+
+        bounds: dict[int, tuple[float, float]] = {}
+        for t, reference_value in enumerate(demand_reference):
+            lower = max(demand_lower, reference_value - demand_budget)
+            upper = min(demand_upper, reference_value + demand_budget)
             bounds[int(t)] = self._validate_nn_interval(
-                max(0.0, lower),
+                lower,
                 upper,
-                f"ambiguity timewise demand at t={t}",
+                f"reference-tight demand at t={t}",
             )
         return bounds
 
     def _timewise_wind_bounds(self) -> dict[int, dict[int, tuple[float, float]]]:
+        wind_budget = self._optional_nonnegative_finite_budget(
+            "support_wind_budget",
+            "support_wind_budget",
+        )
         bounds: dict[int, dict[int, tuple[float, float]]] = {}
-        mu_min = float(self.mu_W_bounds[0])
-        mu_max = float(self.mu_W_bounds[1])
-        sigma_max = float(self.sigma_W_bounds[1])
         for raw_i in self.wind_physical_generator_ids:
             i = int(raw_i)
-            installed_capacity = self._finite_float(
-                self.static_physical_capacity[i],
-                f"installed wind capacity for generator {i}",
-            )
+            wind_lower, wind_upper = self._global_box_wind_bounds(i)
+            wind_reference = self._wind_reference_profile_or_none(i)
+            if wind_budget is None or wind_reference is None:
+                bounds[i] = {
+                    int(t): (wind_lower, wind_upper) for t in self._nn_time_indices()
+                }
+                continue
+
             generator_bounds: dict[int, tuple[float, float]] = {}
-            for t in self._nn_time_indices():
-                shape_value = float(self.wind_shape[int(t)])
-                lower = installed_capacity * (mu_min * shape_value - sigma_max)
-                upper = installed_capacity * (mu_max * shape_value + sigma_max)
+            for t, reference_value in enumerate(wind_reference):
+                lower = max(wind_lower, reference_value - wind_budget)
+                upper = min(wind_upper, reference_value + wind_budget)
                 generator_bounds[int(t)] = self._validate_nn_interval(
-                    max(0.0, lower),
-                    min(installed_capacity, upper),
-                    f"ambiguity timewise wind generator {i} at t={t}",
+                    lower,
+                    upper,
+                    f"reference-tight wind generator {i} at t={t}",
                 )
             bounds[i] = generator_bounds
         return bounds
@@ -255,30 +371,26 @@ class ReLUBoundsComputer(PoATighteningMain):
             return "fixed_constant"
         if len(unique_sources) == 1:
             return sources[0]
-        if ReLUBoundsComputer.AMBIGUITY_TIMEWISE_SOURCE in unique_sources:
-            non_fixed_sources = {
-                source
-                for source in unique_sources
-                if source not in {"fixed_constant", "fixed_static_capacity", "fixed_zero"}
-            }
-            if non_fixed_sources == {ReLUBoundsComputer.AMBIGUITY_TIMEWISE_SOURCE}:
-                return ReLUBoundsComputer.AMBIGUITY_TIMEWISE_SOURCE
+        if "reference_budget_intersection" in unique_sources:
+            return "mixed_reference_budget_intersection"
         return "mixed"
 
-    # Under the ambiguity-set formulation, state-dependent diagnostics are
-    # derived from time-indexed ambiguity intervals and then aggregated into
-    # global feature bounds for reporting. Composite features such as residual
-    # demand and total generation keep the same ambiguity-timewise source label.
     def _wind_feature_bound_source(self, physical_generator_idx: int) -> str:
-        return self.AMBIGUITY_TIMEWISE_SOURCE
+        if self._wind_reference_budget_available(physical_generator_idx):
+            return "reference_budget_intersection"
+        return "global_support_box"
 
     def _total_wind_feature_bound_source(self) -> str:
         if not self.wind_physical_generator_ids:
             return "fixed_zero"
-        return self.AMBIGUITY_TIMEWISE_SOURCE
+        return self._combine_feature_bound_sources(
+            [self._wind_feature_bound_source(i) for i in self.wind_physical_generator_ids]
+        )
 
     def _demand_feature_bound_source(self) -> str:
-        return self.AMBIGUITY_TIMEWISE_SOURCE
+        if self._demand_reference_budget_available():
+            return "reference_budget_intersection"
+        return "global_support_box"
 
     def _nn_feature_bound_source(
         self,
@@ -299,7 +411,12 @@ class ReLUBoundsComputer(PoATighteningMain):
                 return "fixed_static_capacity"
             return wind_source
         if feature_name == "residual_demand":
-            return self.AMBIGUITY_TIMEWISE_SOURCE
+            return self._combine_feature_bound_sources(
+                [
+                    self._demand_feature_bound_source(),
+                    self._total_wind_feature_bound_source(),
+                ]
+            )
         if feature_name in {
             "own_generation_capacity",
             "previous_own_generation_capacity",
@@ -677,7 +794,7 @@ class ReLUBoundsComputer(PoATighteningMain):
                         "h_lower": float(max(0.0, L)),
                         "h_upper": float(max(0.0, U)),
                         "status": self._classify_relu_status(L, U, tolerance),
-                        "bound_method": "ambiguity_set_optimization",
+                        "bound_method": "support_set_optimization",
                         "lower_termination_condition": lower_termination,
                         "upper_termination_condition": upper_termination,
                     }
@@ -917,11 +1034,10 @@ class ReLUBoundsComputer(PoATighteningMain):
                 "num_time_steps": self.num_time_steps,
                 "nn_policy_generators": list(self.nn_policy_generator_names),
                 "physical_generator_names": list(self.physical_generator_names),
-                "ambiguity_set": self._ambiguity_metadata(),
                 "nn_model_dir": str(self.nn_model_dir),
                 "nn_normalization_stats_path": str(self.nn_normalization_stats_path),
                 "bound_methods": {
-                    "first_layer": "ambiguity_set_optimization",
+                    "first_layer": "support_set_optimization",
                     "later_layers": "activation_bound_optimization",
                 },
                 "tolerance": float(tolerance),
@@ -1007,13 +1123,12 @@ class ReLUBoundsComputer(PoATighteningMain):
                     "num_time_steps": self.poa.num_time_steps,
                     "nn_policy_generators": [],
                     "physical_generator_names": list(self.poa.physical_generator_names),
-                    "ambiguity_set": self._ambiguity_metadata(),
                     "nn_model_dir": str(self.poa.nn_model_dir),
                     "nn_normalization_stats_path": str(
                         self.poa.nn_normalization_stats_path
                     ),
                     "bound_methods": {
-                        "first_layer": "ambiguity_set_optimization",
+                        "first_layer": "support_set_optimization",
                         "later_layers": "activation_bound_optimization",
                     },
                     "tolerance": float(tolerance),

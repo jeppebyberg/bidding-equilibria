@@ -23,9 +23,9 @@ from models.neural_network.training.trainer import (
 from models.PoA.PoA_optimization import PoAOptimization
 from models.PoA.PoA_tightening.compute_primal_big_m import (
     PrimalBigMComputer,
+    ambiguity_set_summary,
     compute_primal_big_m_bounds,
     summarize_primal_big_m,
-    support_set_summary,
 )
 from models.PoA.PoA_tightening.tightening_main import (
     DEFAULT_TIGHTENING_OUTPUT_PATHS,
@@ -143,12 +143,12 @@ class FullPipelineConfig:
     min_delta: float = 1e-6
     device: str | None = None
 
-    # PoA parameters. The actual uncertainty set is support_set_config_name in
-    # models/PoA/support_set_config.yaml. The generated PoA context scenarios
-    # only provide model dimensions/static case data and fallback references.
+    # PoA parameters. The uncertainty set is induced by ambiguity_set_config_name
+    # in models/PoA/ambiguity_set_config.yaml. The generated PoA context
+    # scenarios only provide model dimensions/static case data.
     horizon: int = 8
-    support_set_config_path: str = "models/PoA/support_set_config.yaml"
-    support_set_config_name: str = "test_case_bidding_blocks_base"
+    ambiguity_set_config_path: str = "models/PoA/ambiguity_set_config.yaml"
+    ambiguity_set_config_name: str = "test_case_bidding_blocks_base"
     nn_policy_generators: list[int] = field(default_factory=lambda: [1, 2])
     solver_name: str = "gurobi"
     preprocessing_time_limit: int = 200
@@ -493,10 +493,10 @@ def load_poa_scenario_data(config: FullPipelineConfig) -> dict[str, Any]:
     )
 
 
-def load_support_set_config(config: FullPipelineConfig) -> dict[str, Any]:
-    return PoAOptimization.load_support_set_config(
-        config_path=config.support_set_config_path,
-        config_name=config.support_set_config_name,
+def load_ambiguity_set_config(config: FullPipelineConfig) -> dict[str, Any]:
+    return PoAOptimization.load_ambiguity_set_config(
+        config_path=config.ambiguity_set_config_path,
+        config_name=config.ambiguity_set_config_name,
     )
 
 
@@ -505,14 +505,14 @@ def build_poa_optimizer(
     optimizer_cls: type[PoAOptimization] = PoAOptimization,
 ) -> PoAOptimization:
     scenarios = load_poa_scenario_data(config)
-    support_set_config = load_support_set_config(config)
+    ambiguity_set_config = load_ambiguity_set_config(config)
     return optimizer_cls(
         scenarios_df=scenarios["scenarios_df"],
         costs_df=scenarios["costs_df"],
         ramps_df=scenarios["ramps_df"],
         p_init=None,
         num_time_steps=config.horizon,
-        support_set_config=support_set_config,
+        ambiguity_set_config=ambiguity_set_config,
         nn_model_dir=str(config.model_dir),
         nn_normalization_stats_path=str(config.nn_normalization_stats_path),
         nn_policy_generators=list(config.nn_policy_generators),
@@ -525,14 +525,14 @@ def build_poa_tightening(
     tightening_cls: type[PoATighteningMain] = PoATighteningMain,
 ) -> PoATighteningMain:
     scenarios = load_poa_scenario_data(config)
-    support_set_config = load_support_set_config(config)
+    ambiguity_set_config = load_ambiguity_set_config(config)
     return tightening_cls(
         scenarios_df=scenarios["scenarios_df"],
         costs_df=scenarios["costs_df"],
         ramps_df=scenarios["ramps_df"],
         p_init=None,
         num_time_steps=config.horizon,
-        support_set_config=support_set_config,
+        ambiguity_set_config=ambiguity_set_config,
         nn_model_dir=str(config.model_dir),
         nn_normalization_stats_path=str(config.nn_normalization_stats_path),
         nn_policy_generators=list(config.nn_policy_generators),
@@ -716,7 +716,7 @@ def run_primal_big_m(
             "num_time_steps": optimizer.num_time_steps,
             "physical_generator_names": list(optimizer.physical_generator_names),
             "block_names": list(optimizer.block_names),
-            "support_set": support_set_summary(optimizer),
+            "ambiguity_set": ambiguity_set_summary(optimizer),
             "summary": summary,
         },
         "primal_big_m": primal_big_m,
@@ -901,9 +901,9 @@ if __name__ == "__main__":
         device=None,
 
         # PoA parameters.
-        horizon=6,
-        support_set_config_path="models/PoA/support_set_config.yaml",
-        support_set_config_name="test_case_bidding_blocks_base",
+        horizon=24,
+        ambiguity_set_config_path="models/PoA/ambiguity_set_config.yaml",
+        ambiguity_set_config_name="test_case_bidding_blocks_base",
         nn_policy_generators=[1, 2],
         solver_name="gurobi",
         preprocessing_time_limit=200,

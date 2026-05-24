@@ -16,8 +16,8 @@ class PoARunConfig:
     regime_set: str = "PoA_analysis"
     seed: int = 1
     horizon: int = 4
-    support_set_config_path: str = "models/PoA/support_set_config.yaml"
-    support_set_config_name: str = "test_case_bidding_blocks_base"
+    ambiguity_set_config_path: str = "models/PoA/ambiguity_set_config.yaml"
+    ambiguity_set_config_name: str = "test_case_bidding_blocks_base"
     nn_model_dir: str = "models/neural_network/training/trained_models"
     nn_normalization_stats_path: str = (
         "models/neural_network/features/generated/normalized/min_max_stats.json"
@@ -72,10 +72,10 @@ def load_scenario_data(config: PoARunConfig) -> dict:
     )
 
 
-def load_support_set_config(config: PoARunConfig) -> dict:
-    return PoAOptimization.load_support_set_config(
-        config_path=config.support_set_config_path,
-        config_name=config.support_set_config_name,
+def load_ambiguity_set_config(config: PoARunConfig) -> dict:
+    return PoAOptimization.load_ambiguity_set_config(
+        config_path=config.ambiguity_set_config_path,
+        config_name=config.ambiguity_set_config_name,
     )
 
 
@@ -84,14 +84,14 @@ def build_optimizer(
     optimizer_cls: type[PoAOptimization] = PoAOptimization,
 ) -> PoAOptimization:
     scenarios = load_scenario_data(config)
-    support_set_config = load_support_set_config(config)
+    ambiguity_set_config = load_ambiguity_set_config(config)
     return optimizer_cls(
         scenarios_df=scenarios["scenarios_df"],
         costs_df=scenarios["costs_df"],
         ramps_df=scenarios["ramps_df"],
         p_init=None,
         num_time_steps=config.horizon,
-        support_set_config=support_set_config,
+        ambiguity_set_config=ambiguity_set_config,
         nn_model_dir=config.nn_model_dir,
         nn_normalization_stats_path=config.nn_normalization_stats_path,
         nn_policy_generators=list(config.nn_policy_generators),
@@ -121,7 +121,7 @@ def run_alpha_bounds(config: PoARunConfig) -> Path:
     payload = {
         "metadata": {
             "description": (
-                "Exact alpha bounds from support-set optimization with embedded "
+                "Exact alpha bounds from ambiguity-set optimization with embedded "
                 "ReLU policy constraints."
             ),
             "reference_case": optimizer.reference_case,

@@ -15,9 +15,12 @@ if str(_REPO_ROOT) not in sys.path:
 
 from config.scenarios.scenario_generator import ScenarioManager
 from models.helper import (
+    available_block_capacity,
     ensure_profile,
     infer_num_time_steps,
+    scenario_demand,
     target_columns_to_local_blocks,
+    wind_generator_config_value,
 )
 from models.synthetic_data_generation.economic_dispatch import EconomicDispatchModel
 
@@ -42,7 +45,7 @@ class PoAOptimization:
         ramps_df: pd.DataFrame,
         p_init: Optional[list[float] | list[list[float]]] = None,
         num_time_steps: Optional[int] = None,
-        ambiguity_set_config: Optional[dict[str, Any]] = None,
+        support_set_config: Optional[dict[str, Any]] = None,
         nn_model_dir: Optional[str | Path] = None,
         nn_normalization_stats_path: Optional[str | Path] = None,
         nn_policy_generators: Optional[list[int | str]] = None,
@@ -52,7 +55,7 @@ class PoAOptimization:
         self.costs_df = costs_df
         self.ramps_df = ramps_df
         self.requested_p_init = p_init
-        self.ambiguity_set_config = ambiguity_set_config or {}
+        self.support_set_config = support_set_config or {}
         self.nn_model_dir = Path(nn_model_dir) if nn_model_dir is not None else None
         self.nn_normalization_stats_path = (
             Path(nn_normalization_stats_path)
@@ -89,7 +92,7 @@ class PoAOptimization:
             for i in range(self.num_physical_generators)
         ]
         self.p_init = self._normalize_p_init(self.requested_p_init)
-        self._configure_ambiguity_set_parameters()
+        self._configure_support_set_parameters()
         self._configure_nn_policy_generators()
 
         self.nn_policies: dict[str, dict[str, Any]] = {}
@@ -181,152 +184,89 @@ class PoAOptimization:
             f"physical-generator values or {self.num_blocks} block values"
         )
 
-    @staticmethod
-    def _required_nested(config: dict[str, Any], path: tuple[str, ...]) -> Any:
-        cursor: Any = config
-        for key in path:
-            if not isinstance(cursor, dict) or key not in cursor:
-                rendered_path = "".join(f"['{part}']" for part in path)
-                raise ValueError(f"Missing ambiguity_set_config{rendered_path}")
-            cursor = cursor[key]
-        return cursor
-
-    @staticmethod
-    def _required_float(config: dict[str, Any], path: tuple[str, ...]) -> float:
-        value = PoAOptimization._required_nested(config, path)
-        try:
-            numeric_value = float(value)
-        except (TypeError, ValueError) as exc:
-            rendered_path = "".join(f"['{part}']" for part in path)
-            raise ValueError(
-                f"ambiguity_set_config{rendered_path} must be numeric"
-            ) from exc
-        if not np.isfinite(numeric_value):
-            rendered_path = "".join(f"['{part}']" for part in path)
-            raise ValueError(
-                f"ambiguity_set_config{rendered_path} must be finite"
-            )
-        return numeric_value
-
-    @staticmethod
-    def _required_bounds(
-        config: dict[str, Any],
-        section: str,
-        parameter: str,
-    ) -> tuple[float, float]:
-        lower = PoAOptimization._required_float(config, (section, parameter, "min"))
-        upper = PoAOptimization._required_float(config, (section, parameter, "max"))
-        if lower > upper:
-            raise ValueError(
-                f"ambiguity_set_config['{section}']['{parameter}']['min'] "
-                "cannot exceed max"
-            )
-        return (lower, upper)
-
-    def _configure_ambiguity_set_parameters(self) -> None:
-        cfg = self.ambiguity_set_config
-        if not isinstance(cfg, dict) or not cfg:
-            raise ValueError(
-                "ambiguity_set_config is required; use load_ambiguity_set_config()"
-            )
-
-        self.ambiguity_kappa = self._required_float(cfg, ("kappa",))
-        self.mu_D_bounds = self._required_bounds(cfg, "demand", "mu")
-        self.sigma_D_bounds = self._required_bounds(cfg, "demand", "sigma")
-        self.demand_rho_fixed = self._required_float(cfg, ("demand", "rho_fixed"))
-        self.mu_W_bounds = self._required_bounds(cfg, "wind", "mu")
-        self.sigma_W_bounds = self._required_bounds(cfg, "wind", "sigma")
-        self.wind_rho_fixed = self._required_float(cfg, ("wind", "rho_fixed"))
-        self.wind_tau_fixed = self._required_float(cfg, ("wind", "tau_fixed"))
-
-        if self.sigma_D_bounds[0] < 0:
-            raise ValueError("ambiguity_set_config['demand']['sigma']['min'] must be non-negative")
-        if self.sigma_W_bounds[0] < 0:
-            raise ValueError("ambiguity_set_config['wind']['sigma']['min'] must be non-negative")
-        if self.ambiguity_kappa < 0:
-            raise ValueError("ambiguity_set_config['kappa'] must be non-negative")
-        if not -0.999 <= self.demand_rho_fixed <= 0.999:
-            raise ValueError("ambiguity_set_config['demand']['rho_fixed'] must be in [-0.999, 0.999]")
-        if not -0.999 <= self.wind_rho_fixed <= 0.999:
-            raise ValueError("ambiguity_set_config['wind']['rho_fixed'] must be in [-0.999, 0.999]")
-        if not 0 <= self.wind_tau_fixed <= 24:
-            raise ValueError("ambiguity_set_config['wind']['tau_fixed'] must be in [0, 24]")
-
-        scenario_manager = ScenarioManager(self.reference_case)
-        self.demand_D_ref = float(scenario_manager.base_case["demand"])
-        if self.demand_D_ref <= 0 or not np.isfinite(self.demand_D_ref):
-            raise ValueError("Reference-case scalar demand must be positive and finite")
-
-        reference_horizon = int(scenario_manager.base_case["time_steps"])
-        raw_demand_shape = scenario_manager._build_demand_shape(reference_horizon)
-        raw_wind_shape = scenario_manager._build_wind_shape(
-            reference_horizon,
-            self.wind_tau_fixed,
-        )
-
-        self.demand_shape = ensure_profile(
-            raw_demand_shape,
+    def _configure_support_set_parameters(self) -> None:
+        cfg = self.support_set_config
+        reference_demand = [
+            scenario_demand(self.scenarios_df, 0, t) for t in range(self.num_time_steps)
+        ]
+        self.support_demand_reference = ensure_profile(
+            cfg.get("demand_reference", reference_demand),
             self.num_time_steps,
-            "demand_shape",
+            "demand_reference",
             allow_truncate=True,
         )
-        self.wind_shape = ensure_profile(
-            raw_wind_shape,
-            self.num_time_steps,
-            "wind_shape",
-            allow_truncate=True,
+        demand_min_default = min(reference_demand)
+        demand_max_default = max(reference_demand)
+        self.support_demand_min = float(cfg.get("demand_min", 0.8 * demand_min_default))
+        self.support_demand_max = float(cfg.get("demand_max", 1.2 * demand_max_default))
+        if self.support_demand_min > self.support_demand_max:
+            raise ValueError("support_set_config demand_min cannot exceed demand_max")
+        demand_range = self.support_demand_max - self.support_demand_min
+        self.support_demand_ramp = float(cfg.get("demand_ramp", demand_range))
+        self.support_demand_budget = float(
+            cfg.get("demand_budget", self.num_time_steps * demand_range)
         )
 
-        for name, shape in (
-            ("demand_shape", self.demand_shape),
-            ("wind_shape", self.wind_shape),
-        ):
-            if any((not np.isfinite(value)) or value <= 0 for value in shape):
-                raise ValueError(f"{name} entries must be finite and positive")
-
-        self.demand_delta_shape = {
-            t: abs(self.demand_shape[t] - self.demand_shape[t - 1])
-            for t in range(1, self.num_time_steps)
-        }
-        self.wind_delta_shape = {
-            t: abs(self.wind_shape[t] - self.wind_shape[t - 1])
-            for t in range(1, self.num_time_steps)
-        }
-
+        self.support_wind_reference: dict[int, list[float]] = {}
+        self.support_wind_min: dict[int, float] = {}
+        self.support_wind_max: dict[int, float] = {}
         for i in self.wind_physical_generator_ids:
-            installed_capacity = self.static_physical_capacity[i]
-            if installed_capacity <= 0 or not np.isfinite(installed_capacity):
-                generator_name = self.physical_generator_names[i]
+            default_reference = [
+                sum(
+                    available_block_capacity(
+                        self.scenarios_df,
+                        self.block_names[int(g)],
+                        0,
+                        t,
+                    )
+                    for g in self.physical_to_block_indices[i]
+                )
+                for t in range(self.num_time_steps)
+            ]
+            self.support_wind_reference[i] = ensure_profile(
+                wind_generator_config_value(
+                    cfg,
+                    "reference",
+                    i,
+                    self.physical_generator_names,
+                    default_reference,
+                ),
+                self.num_time_steps,
+                f"wind_generators[{self.physical_generator_names[i]}].reference",
+                allow_truncate=True,
+            )
+            static_total = self.static_physical_capacity[i]
+            self.support_wind_min[i] = float(
+                wind_generator_config_value(
+                    cfg,
+                    "min",
+                    i,
+                    self.physical_generator_names,
+                    0.0,
+                )
+            )
+            self.support_wind_max[i] = float(
+                wind_generator_config_value(
+                    cfg,
+                    "max",
+                    i,
+                    self.physical_generator_names,
+                    static_total,
+                )
+            )
+            if self.support_wind_min[i] > self.support_wind_max[i]:
                 raise ValueError(
-                    f"Wind generator {generator_name} must have positive installed capacity"
+                    f"support_set_config wind_min cannot exceed wind_max for generator {i}"
                 )
 
-    @staticmethod
-    def load_ambiguity_set_config(
-        config_path: str = "models/PoA/ambiguity_set_config.yaml",
-        config_name: Optional[str] = None,
-    ) -> dict[str, Any]:
-        path = Path(config_path)
-        if not path.exists():
-            raise FileNotFoundError(f"Ambiguity-set config not found: {path}")
-        with path.open("r", encoding="utf-8") as file_handle:
-            raw_config = yaml.safe_load(file_handle) or {}
-        if "ambiguity_sets" not in raw_config:
-            return raw_config
-        ambiguity_sets = raw_config.get("ambiguity_sets")
-        if not isinstance(ambiguity_sets, dict) or not ambiguity_sets:
-            raise ValueError("'ambiguity_sets' must be a non-empty mapping")
-        selected_name = (
-            config_name
-            or raw_config.get("default_ambiguity_set")
-            or next(iter(ambiguity_sets))
+        total_wind_range = sum(
+            self.support_wind_max[i] - self.support_wind_min[i]
+            for i in self.wind_physical_generator_ids
         )
-        if selected_name not in ambiguity_sets:
-            raise ValueError(
-                f"Unknown ambiguity-set config '{selected_name}'. "
-                f"Available: {', '.join(ambiguity_sets.keys())}"
-            )
-        return ambiguity_sets[selected_name] or {}
+        self.support_wind_ramp = float(cfg.get("wind_ramp", max(total_wind_range, 0.0)))
+        self.support_wind_budget = float(
+            cfg.get("wind_budget", self.num_time_steps * max(total_wind_range, 0.0))
+        )
 
     def _configure_nn_policy_generators(self) -> None:
         if self.nn_model_dir is None:
@@ -362,6 +302,29 @@ class PoAOptimization:
         self.nn_policy_generator_names = [
             self.physical_generator_names[i] for i in self.nn_policy_generator_ids
         ]
+
+    @staticmethod
+    def load_support_set_config(
+        config_path: str = "models/PoA/support_set_config.yaml",
+        config_name: Optional[str] = None,
+    ) -> dict[str, Any]:
+        path = Path(config_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Support-set config not found: {path}")
+        with path.open("r", encoding="utf-8") as file_handle:
+            raw_config = yaml.safe_load(file_handle) or {}
+        if "support_sets" not in raw_config:
+            return raw_config
+        support_sets = raw_config.get("support_sets")
+        if not isinstance(support_sets, dict) or not support_sets:
+            raise ValueError("'support_sets' must be a non-empty mapping")
+        selected_name = config_name or raw_config.get("default_support_set") or next(iter(support_sets))
+        if selected_name not in support_sets:
+            raise ValueError(
+                f"Unknown support-set config '{selected_name}'. "
+                f"Available: {', '.join(support_sets.keys())}"
+            )
+        return support_sets[selected_name] or {}
 
     @staticmethod
     def _optional_float_bound(payload: Any) -> Optional[float]:
@@ -452,7 +415,9 @@ class PoAOptimization:
     # Data loading
     # ------------------------------------------------------------------
 
-    # These methods load external NN policy files, normalization statistics, ReLU-bound reports, and Big-M tightening reports. 
+    # These methods load external NN policy files, normalization statistics,
+    # ReLU-bound reports, and Big-M tightening reports. They should not create
+    # Pyomo variables or constraints.
 
     def _load_nn_policies(self) -> None:
         if self.nn_model_dir is None or not self.nn_model_dir.exists():
@@ -648,7 +613,7 @@ class PoAOptimization:
         report_path: str | Path = "results/poa_tightening/final_tightening_report.json",
     ) -> dict[str, Any]:
         """
-        Load a tightening report and prepare model constants.
+        Load a previously saved tightening report and prepare model constants.
 
         The raw JSON-friendly report remains available on the object, while all
         Big-M and lambda data used by Pyomo is parsed once into tuple-indexed
@@ -1191,15 +1156,15 @@ class PoAOptimization:
             )
         source_payloads.append(getattr(self, "tight_big_m", {}) or {})
 
-        support_dual_bounds = self.ambiguity_set_config.get("dual_bounds", {})
+        support_dual_bounds = self.support_set_config.get("dual_bounds", {})
         source_payloads.extend(
             [
-                self.ambiguity_set_config.get("aggregate_dual_bounds", {}),
+                self.support_set_config.get("aggregate_dual_bounds", {}),
                 support_dual_bounds.get("aggregate_dual_bounds", {})
                 if isinstance(support_dual_bounds, dict)
                 else {},
                 support_dual_bounds,
-                self.ambiguity_set_config,
+                self.support_set_config,
             ]
         )
 
@@ -1250,18 +1215,11 @@ class PoAOptimization:
         self._build_complementarity_optimal_variables()  
 
     def _build_PoA_variables(self) -> None:
-        self._build_ambiguity_set_variables()
         self.model.D = Var(self.model.time_steps, domain=NonNegativeReals)
         self.model.P_max_block = Var(self.model.generator_blocks, self.model.time_steps, domain=NonNegativeReals)
         self.model.C_eq = Var(domain=Reals)
         self.model.C_opt = Var(domain=Reals)
         self.model.PoA = Var(domain=Reals)
-
-    def _build_ambiguity_set_variables(self) -> None:
-        self.model.mu_D = Var(bounds=self.mu_D_bounds)
-        self.model.sigma_D = Var(bounds=self.sigma_D_bounds)
-        self.model.mu_W = Var(bounds=self.mu_W_bounds)
-        self.model.sigma_W = Var(bounds=self.sigma_W_bounds)
 
         # Auxiliary variables for support set deviations and budgets
         self.model.D_abs_deviation = Var(self.model.time_steps, domain=NonNegativeReals)
@@ -1406,58 +1364,29 @@ class PoAOptimization:
         self._build_support_set_wind()
 
     def _build_support_set_demand(self) -> None:
-        m = self.model
-        m.demand_reference = Expression(
-            m.time_steps,
-            rule=lambda m, t: self.demand_D_ref * m.mu_D * self.demand_shape[int(t)],
-        )
-        m.demand_lower = Expression(
-            m.time_steps,
-            rule=lambda m, t: m.demand_reference[t] - self.demand_D_ref * m.sigma_D,
-        )
-        m.demand_upper = Expression(
-            m.time_steps,
-            rule=lambda m, t: m.demand_reference[t] + self.demand_D_ref * m.sigma_D,
-        )
-        m.demand_ramp = Expression(
-            m.time_steps_minus_1,
-            rule=lambda m, t: self.demand_D_ref
-            * (
-                m.mu_D * self.demand_delta_shape[int(t)]
-                + (1.0 - self.demand_rho_fixed) * m.sigma_D
-            ),
-        )
-        m.demand_budget_expr = Expression(
-            rule=lambda m: self.ambiguity_kappa
-            * self.num_time_steps
-            * self.demand_D_ref
-            * m.sigma_D,
-        )
-
+        if self.support_demand_ramp < 0 or self.support_demand_budget < 0:
+            raise ValueError("Demand ramp and budget must be non-negative")
         def demand_lower_rule(m, t):
-            return m.D[t] >= m.demand_lower[t]
+            return m.D[t] >= self.support_demand_min
 
         def demand_upper_rule(m, t):
-            return m.D[t] <= m.demand_upper[t]
+            return m.D[t] <= self.support_demand_max
 
         def demand_ramp_up_rule(m, t):
-            return m.D[t] - m.D[t - 1] <= m.demand_ramp[t]
+            return m.D[t] - m.D[t - 1] <= self.support_demand_ramp
 
         def demand_ramp_down_rule(m, t):
-            return m.D[t - 1] - m.D[t] <= m.demand_ramp[t]
+            return m.D[t - 1] - m.D[t] <= self.support_demand_ramp
         
         # Budget constraints 
         def demand_abs_deviation_pos_rule(m, t):
-            return m.D_abs_deviation[t] >= m.D[t] - m.demand_reference[t]
+            return m.D_abs_deviation[t] >= m.D[t] - self.support_demand_reference[int(t)]
 
         def demand_abs_deviation_neg_rule(m, t):
-            return m.D_abs_deviation[t] >= m.demand_reference[t] - m.D[t]
+            return m.D_abs_deviation[t] >= self.support_demand_reference[int(t)] - m.D[t]
 
         def demand_budget_rule(m):
-            return sum(m.D_abs_deviation[t] for t in m.time_steps) <= m.demand_budget_expr
-
-        def demand_feasibility_rule(m, t):
-            return m.demand_reference[t] - self.demand_D_ref * m.sigma_D >= 0
+            return sum(m.D_abs_deviation[t] for t in m.time_steps) <= self.support_demand_budget
 
         self.model.demand_lower_bound_constraints = Constraint(self.model.time_steps, rule=demand_lower_rule)
         self.model.demand_upper_bound_constraints = Constraint(self.model.time_steps, rule=demand_upper_rule)
@@ -1466,61 +1395,20 @@ class PoAOptimization:
         self.model.demand_abs_deviation_pos_constraints = Constraint(self.model.time_steps, rule=demand_abs_deviation_pos_rule)
         self.model.demand_abs_deviation_neg_constraints = Constraint(self.model.time_steps, rule=demand_abs_deviation_neg_rule)
         self.model.demand_budget_constraint = Constraint(rule=demand_budget_rule)
-        self.model.demand_lower_feasibility = Constraint(self.model.time_steps, rule=demand_feasibility_rule)
 
     def _build_support_set_wind(self) -> None:
-        m = self.model
-        m.wind_reference = Expression(
-            m.wind_physical_generators,
-            m.time_steps,
-            rule=lambda m, i, t: self.static_physical_capacity[int(i)]
-            * m.mu_W
-            * self.wind_shape[int(t)],
-        )
-        m.wind_lower = Expression(
-            m.wind_physical_generators,
-            m.time_steps,
-            rule=lambda m, i, t: m.wind_reference[i, t]
-            - self.static_physical_capacity[int(i)] * m.sigma_W,
-        )
-        m.wind_upper = Expression(
-            m.wind_physical_generators,
-            m.time_steps,
-            rule=lambda m, i, t: m.wind_reference[i, t]
-            + self.static_physical_capacity[int(i)] * m.sigma_W,
-        )
-        m.wind_ramp = Expression(
-            m.wind_physical_generators,
-            m.time_steps_minus_1,
-            rule=lambda m, i, t: self.static_physical_capacity[int(i)]
-            * (
-                m.mu_W * self.wind_delta_shape[int(t)]
-                + (1.0 - self.wind_rho_fixed) * m.sigma_W
-            ),
-        )
-        m.wind_budget_expr = Expression(
-            m.wind_physical_generators,
-            rule=lambda m, i: self.ambiguity_kappa
-            * self.num_time_steps
-            * self.static_physical_capacity[int(i)]
-            * m.sigma_W,
-        )
+        if self.support_wind_ramp < 0 or self.support_wind_budget < 0:
+            raise ValueError("Wind ramp and budget must be non-negative")
 
         def conventional_capacity_rule(m, i, b, t):
             global_block = self.local_to_global_block[(int(i), int(b))]
             return m.P_max_block[i, b, t] == self.static_block_capacity[global_block]
 
         def wind_total_lower_rule(m, i, t):
-            return (
-                sum(m.P_max_block[i, b, t] for b in self.local_blocks_by_generator[int(i)])
-                >= m.wind_lower[i, t]
-            )
+            return (sum(m.P_max_block[i, b, t] for b in self.local_blocks_by_generator[int(i)]) >= self.support_wind_min[int(i)])
 
         def wind_total_upper_rule(m, i, t):
-            return (
-                sum(m.P_max_block[i, b, t] for b in self.local_blocks_by_generator[int(i)])
-                <= m.wind_upper[i, t]
-            )
+            return (sum(m.P_max_block[i, b, t] for b in self.local_blocks_by_generator[int(i)]) <= self.support_wind_max[int(i)])
 
         def wind_even_block_split_rule(m, i, b, t):
             local_blocks = self.local_blocks_by_generator[int(i)]
@@ -1533,51 +1421,45 @@ class PoAOptimization:
             return (
                 sum(m.P_max_block[i, b, t] for b in self.local_blocks_by_generator[int(i)]) 
               - sum(m.P_max_block[i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
-                <= m.wind_ramp[i, t])
+                <= self.support_wind_ramp)
 
         def wind_ramp_down_rule(m, i, t):
             return (
                 sum(m.P_max_block[i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
                 - sum(m.P_max_block[i, b, t] for b in self.local_blocks_by_generator[int(i)])
-                <= m.wind_ramp[i, t]
+                <= self.support_wind_ramp
             )
 
         def wind_abs_deviation_pos_rule(m, i, t):
             return (
                 m.P_max_phys_abs_deviation[i, t]
                 >= sum(m.P_max_block[i, b, t] for b in self.local_blocks_by_generator[int(i)])
-                - m.wind_reference[i, t]
+                - self.support_wind_reference[int(i)][int(t)]
             )
 
         def wind_abs_deviation_neg_rule(m, i, t):
             return (
                 m.P_max_phys_abs_deviation[i, t]
-                >= m.wind_reference[i, t]
+                >= self.support_wind_reference[int(i)][int(t)]
                 - sum(m.P_max_block[i, b, t] for b in self.local_blocks_by_generator[int(i)])
             )
 
-        def wind_budget_rule(m, i):
+        def wind_budget_rule(m):
             return sum(
-                m.P_max_phys_abs_deviation[i, t] for t in m.time_steps
-            ) <= m.wind_budget_expr[i]
-
-        def wind_capacity_factor_lower_feasibility_rule(m, t):
-            return m.mu_W * self.wind_shape[int(t)] - m.sigma_W >= 0
-
-        def wind_capacity_factor_upper_feasibility_rule(m, t):
-            return m.mu_W * self.wind_shape[int(t)] + m.sigma_W <= 1
+                m.P_max_phys_abs_deviation[i, t]
+                for i in m.wind_physical_generators
+                for t in m.time_steps
+            ) <= self.support_wind_budget
 
         self.model.conventional_capacity = Constraint(self.model.conventional_blocks, self.model.time_steps, rule=conventional_capacity_rule)
         self.model.wind_total_lower_bound = Constraint(self.model.wind_physical_generators, self.model.time_steps, rule=wind_total_lower_rule)
         self.model.wind_total_upper_bound = Constraint(self.model.wind_physical_generators, self.model.time_steps, rule=wind_total_upper_rule)
         self.model.wind_even_block_split = Constraint(self.model.wind_blocks, self.model.time_steps, rule=wind_even_block_split_rule)
-        self.model.wind_ramp_up = Constraint(self.model.wind_physical_generators, self.model.time_steps_minus_1, rule=wind_ramp_up_rule)
-        self.model.wind_ramp_down = Constraint(self.model.wind_physical_generators, self.model.time_steps_minus_1, rule=wind_ramp_down_rule)
+        # self.model.wind_ramp_up = Constraint(self.model.wind_physical_generators, self.model.time_steps_minus_1, rule=wind_ramp_up_rule)
+        # self.model.wind_ramp_down = Constraint(self.model.wind_physical_generators, self.model.time_steps_minus_1, rule=wind_ramp_down_rule)
         self.model.wind_abs_deviation_pos = Constraint(self.model.wind_physical_generators, self.model.time_steps, rule=wind_abs_deviation_pos_rule)
         self.model.wind_abs_deviation_neg = Constraint(self.model.wind_physical_generators, self.model.time_steps, rule=wind_abs_deviation_neg_rule)
-        self.model.wind_budget_constraint = Constraint(self.model.wind_physical_generators, rule=wind_budget_rule)
-        self.model.wind_capacity_factor_lower_feasibility = Constraint(self.model.time_steps, rule=wind_capacity_factor_lower_feasibility_rule)
-        self.model.wind_capacity_factor_upper_feasibility = Constraint(self.model.time_steps, rule=wind_capacity_factor_upper_feasibility_rule)
+        self.model.wind_budget = Constraint(rule=wind_budget_rule)
 
     # ------------------------------------------------------------------
     # Lower level equilibrium and optimality constraints
@@ -2015,7 +1897,7 @@ class PoAOptimization:
     # Policy constraints
     # ------------------------------------------------------------------
 
-    # These methods embed the pre-trained Neural Network policy into the Pyomo model.
+    # These methods embed the already-loaded policy data into the Pyomo model.
 
     def _build_policy_constraints(self) -> None:
         def true_cost_alpha_rule(m, i, b, t):
@@ -2679,62 +2561,24 @@ class PoAOptimization:
             "generators": generators,
             "equilibrium_price_profile": self._profile_values(m.lambda_eq),
             "optimal_price_profile": self._profile_values(m.lambda_opt),
-            "ambiguity_set": {
-                "regime_bounds": {
-                    "mu_D": list(self.mu_D_bounds),
-                    "sigma_D": list(self.sigma_D_bounds),
-                    "mu_W": list(self.mu_W_bounds),
-                    "sigma_W": list(self.sigma_W_bounds),
-                },
-                "fixed_parameters": {
-                    "rho_D": float(self.demand_rho_fixed),
-                    "rho_W": float(self.wind_rho_fixed),
-                    "tau_W": float(self.wind_tau_fixed),
-                    "kappa": float(self.ambiguity_kappa),
-                    "D_ref": float(self.demand_D_ref),
-                },
-                "selected_regime": {
-                    "mu_D": self._safe_value(m.mu_D),
-                    "sigma_D": self._safe_value(m.sigma_D),
-                    "mu_W": self._safe_value(m.mu_W),
-                    "sigma_W": self._safe_value(m.sigma_W),
-                },
+            "support_set": {
                 "demand": {
-                    "shape": list(self.demand_shape),
-                    "reference": [
-                        self._safe_value(m.demand_reference[t])
-                        for t in range(self.num_time_steps)
-                    ],
-                    "lower": [
-                        self._safe_value(m.demand_lower[t])
-                        for t in range(self.num_time_steps)
-                    ],
-                    "upper": [
-                        self._safe_value(m.demand_upper[t])
-                        for t in range(self.num_time_steps)
-                    ],
-                    "budget": self._safe_value(m.demand_budget_expr),
+                    "reference": list(self.support_demand_reference),
+                    "min": float(self.support_demand_min),
+                    "max": float(self.support_demand_max),
+                    "ramp": float(self.support_demand_ramp),
+                    "budget": float(self.support_demand_budget),
                 },
                 "wind": {
                     self.physical_generator_names[i]: {
-                        "installed_capacity": float(self.static_physical_capacity[i]),
-                        "shape": list(self.wind_shape),
-                        "reference": [
-                            self._safe_value(m.wind_reference[i, t])
-                            for t in range(self.num_time_steps)
-                        ],
-                        "lower": [
-                            self._safe_value(m.wind_lower[i, t])
-                            for t in range(self.num_time_steps)
-                        ],
-                        "upper": [
-                            self._safe_value(m.wind_upper[i, t])
-                            for t in range(self.num_time_steps)
-                        ],
-                        "budget": self._safe_value(m.wind_budget_expr[i]),
+                        "reference": list(self.support_wind_reference[i]),
+                        "min": float(self.support_wind_min[i]),
+                        "max": float(self.support_wind_max[i]),
                     }
                     for i in self.wind_physical_generator_ids
                 },
+                "wind_ramp": float(self.support_wind_ramp),
+                "wind_budget": float(self.support_wind_budget),
             },
             "solver": solver_summary,
             "policy_type": (
@@ -2794,8 +2638,8 @@ if __name__ == "__main__":
     costs_df = scenarios["costs_df"]
     ramps_df = scenarios["ramps_df"]
 
-    ambiguity_set_config = PoAOptimization.load_ambiguity_set_config(
-        config_path="models/PoA/ambiguity_set_config.yaml",
+    support_set_config = PoAOptimization.load_support_set_config(
+        config_path="models/PoA/support_set_config.yaml",
         config_name="test_case_bidding_blocks_base",
     )
 
@@ -2805,7 +2649,7 @@ if __name__ == "__main__":
         ramps_df=ramps_df,
         p_init=None,
         num_time_steps=horizon,
-        ambiguity_set_config=ambiguity_set_config,
+        support_set_config=support_set_config,
         nn_model_dir="models/neural_network/training/trained_models",
         nn_normalization_stats_path=(
             "models/neural_network/features/generated/normalized/min_max_stats.json"

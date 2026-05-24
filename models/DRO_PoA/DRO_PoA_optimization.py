@@ -1,226 +1,208 @@
 from __future__ import annotations
 
-import ast
 import json
+import sys
 import time
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
 import yaml
-from pyomo.environ import *
+from pyomo.environ import (
+    Binary,
+    ConcreteModel,
+    Constraint,
+    ConstraintList,
+    Expression,
+    NonNegativeReals,
+    Objective,
+    Reals,
+    Set,
+    SolverFactory,
+    Var,
+    maximize,
+    value,
+)
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 from config.scenarios.scenario_generator import ScenarioManager
-from config.utils.cases_utils import load_setup_data, normalize_generators
+from models.helper import (
+    ensure_profile,
+    find_demand_profile_column,
+    infer_num_time_steps,
+    target_columns_to_local_blocks,
+)
+from models.synthetic_data_generation.economic_dispatch import EconomicDispatchModel
 
 
 class DRO_PoAOptimization:
     """
-    Distributionally robust, block-aware Price of Anarchy optimization.
+    Scenario-indexed distributionally robust Price of Anarchy optimization.
 
-    The lower-level equilibrium and social optimum use the same indexing as
-    models/PoA/PoA_optimization.py, with an additional empirical-scenario index:
-
-        P_eq[k, i, b, t], P_opt[k, i, b, t], alpha[k, i, b, t]
-
-    where k is the empirical scenario, i is the physical generator, and b is a
-    generator-local bidding block. Physical ramping sums over local blocks.
+    The model keeps the block-aware physical-generator/local-block indexing of
+    PoAOptimization and adds an empirical scenario index k as the first index on
+    state, dispatch, KKT, policy, and PoA variables.
     """
 
+    default_lambda_bound = 40.0
+    default_capacity_dual_bound = 40.02
+    default_ramp_dual_bound = 20.0
+    default_primal_big_m_placeholder = 1.0e5
     normalization_epsilon = 1e-12
+    aggregate_dual_bound_component_names = (
+        "aggregate_mu_max_bound",
+        "aggregate_mu_min_bound",
+        "aggregate_mu_ramp_up_bound",
+        "aggregate_mu_ramp_down_bound",
+    )
 
     def __init__(
         self,
-        P_init: Optional[Sequence[float] | Sequence[Sequence[float]]] = None,
+        scenarios_df: pd.DataFrame,
+        costs_df: pd.DataFrame,
+        ramps_df: pd.DataFrame,
+        p_init: Optional[list[float] | list[list[float]]] = None,
         num_time_steps: Optional[int] = None,
-        reference_case: str = "test_case_bidding_blocks",
-        support_set_config: Optional[dict[str, Any]] = None,
+        regime_config_path: str | Path = "config/regime_definitions.yaml",
+        regime_set: str = "PoA_analysis",
+        regime_name: Optional[str] = None,
         eta: float = 0.0,
-        empirical_scenario: Optional[Any] = None,
-        big_m_complementarity: float = 1e8,
-        feature_normalizer_stats_path: str | Path = "results/feature_normalizer_stats.json",
-        policy_results_path: Optional[str | Path] = None,
-        policy_data: Optional[dict[str, Any]] = None,
+        epsilon: float = 0.0,
+        nn_model_dir: Optional[str | Path] = None,
+        nn_normalization_stats_path: Optional[str | Path] = None,
+        nn_policy_generators: Optional[list[int | str]] = None,
+        reference_case: str = "test_case_bidding_blocks",
     ):
-        self.requested_p_init = P_init
-        self.requested_num_time_steps = num_time_steps
-        self.reference_case = reference_case
-        self.support_set_config = support_set_config or {}
+        if float(eta) < 0.0:
+            raise ValueError("eta must be nonnegative")
+        if float(epsilon) < 0.0:
+            raise ValueError("epsilon must be nonnegative")
+
+        self.costs_df = costs_df
+        self.ramps_df = ramps_df
+        self.requested_p_init = p_init
+        self.nn_model_dir = Path(nn_model_dir) if nn_model_dir is not None else None
+        self.nn_normalization_stats_path = (
+            Path(nn_normalization_stats_path)
+            if nn_normalization_stats_path is not None
+            else None
+        )
+        self.requested_nn_policy_generators = nn_policy_generators
+        self.regime_config_path = Path(regime_config_path)
+        self.regime_set = str(regime_set)
         self.eta = float(eta)
-        self.big_m_complementarity = float(big_m_complementarity)
-        self.feature_normalizer_stats_path = Path(feature_normalizer_stats_path)
-        self.policy_results_path = Path(policy_results_path) if policy_results_path is not None else None
-        self.policy_data = policy_data
+        self.epsilon = float(epsilon)
+        self.reference_case = reference_case
+        self.lambda_bound = float(self.default_lambda_bound)
+        self.capacity_dual_bound = float(self.default_capacity_dual_bound)
+        self.ramp_dual_bound = float(self.default_ramp_dual_bound)
+        self.primal_big_m_placeholder = float(self.default_primal_big_m_placeholder)
+        self.nn_policy_generator_ids: list[int] = []
+        self.nn_policy_generator_names: list[str] = []
+        self.nn_relu_bounds_report: dict[str, Any] = {}
+        self.nn_relu_bounds: dict[str, dict[tuple[int, int, int], dict[str, Any]]] = {}
+        self.nn_feature_bounds: dict[str, Any] = {}
+        self.nn_bound_warnings: list[str] = []
+        self.nn_policies: dict[str, Any] = {}
+        self.nn_stats: dict[str, Any] = {}
 
-        if self.eta < 0:
-            raise ValueError("eta must be non-negative")
-        if self.big_m_complementarity <= 0:
-            raise ValueError("big_m_complementarity must be positive")
+        self.selected_regime = self.load_regime_config(
+            self.regime_config_path,
+            self.regime_set,
+            regime_name,
+        )
+        self.regime_name = str(self.selected_regime["name"])
+        self.selected_regime_parameters = dict(self.selected_regime)
 
-        self.feature_names: list[str] = []
-        self.feature_min = np.asarray([], dtype=float)
-        self.feature_max = np.asarray([], dtype=float)
-        self.private_feature_names: list[str] = []
-        self.player_private_min_max: dict[int, dict[str, np.ndarray]] = {}
-        self.policy_type: Optional[str] = None
-        self.policy_by_generator: dict[int, Any] = {}
-        self.alpha_bounds: dict[tuple[int, ...], dict[str, float]] = {}
-        self.fixed_binaries: dict[str, dict[str, Any]] = {}
-        self.tight_big_m: dict[str, dict[str, Any]] = {}
-
-        self._initialize_block_structure_from_reference_case()
-        self.num_time_steps = int(self.requested_num_time_steps or self.reference_time_steps)
+        self.scenarios_df = self._filter_scenarios_to_regime(
+            scenarios_df,
+            self.regime_name,
+            regime_name_was_explicit=regime_name is not None,
+        )
+        self._initialize_block_structure_from_ed()
+        self.num_time_steps = int(num_time_steps or infer_num_time_steps(self.scenarios_df))
         if self.num_time_steps <= 0:
             raise ValueError("num_time_steps must be positive")
-        if self.num_time_steps > self.reference_time_steps:
-            raise ValueError(
-                f"num_time_steps={self.num_time_steps} exceeds reference-case horizon "
-                f"{self.reference_time_steps}"
-            )
 
+        self.static_block_capacity = [
+            float(self.scenarios_df[f"{block}_cap"].iloc[0])
+            for block in self.block_names
+        ]
+        self.static_physical_capacity = [
+            sum(self.static_block_capacity[g] for g in self.physical_to_block_indices[i])
+            for i in range(self.num_physical_generators)
+        ]
+        self._configure_nn_policy_generators()
+
+        self.num_empirical_scenarios = len(self.scenarios_df)
+        self.empirical_scenario_ids = [
+            self._scenario_id_from_row(row, fallback=index)
+            for index, (_, row) in enumerate(self.scenarios_df.iterrows())
+        ]
+        self.empirical_D = self._parse_empirical_demand_profiles()
+        self.empirical_Pmax_block = self._parse_empirical_block_capacity_profiles()
+        self.empirical_Pmax_phys = self._build_empirical_physical_capacity_profiles()
         self.p_init = self._normalize_p_init(self.requested_p_init)
-        self._load_feature_normalization_stats_if_available()
-        self._configure_support_set_parameters()
-        self._configure_empirical_scenarios(empirical_scenario)
-        self._load_policy_if_requested()
+
+        self._configure_fixed_regime_parameters()
+        self._configure_regime_shape_profiles()
+        if self.nn_model_dir is not None and self.nn_policy_generator_ids:
+            self._load_nn_policies()
+            self._load_nn_normalization_stats()
+        self._initialize_big_m_placeholders()
+        self.tightening_report: dict[str, Any] = {}
+        self.fixed_binaries: dict[str, dict[str, Any]] = {}
+        self.primal_big_m: dict[str, dict[str, Any]] = {}
+        self.tight_big_m: dict[str, dict[str, Any]] = {}
+        self.aggregate_dual_bounds: dict[str, Any] = {}
+        self.lambda_bounds: dict[str, Any] = {}
+        self.alpha_bounds: dict[tuple[int, int, int], dict[str, float]] = {}
+        self.alpha_bound_optimization_results: dict[str, Any] = {}
+        self._loaded_bounds_prepared = False
 
     # ------------------------------------------------------------------
     # Data and configuration
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _is_wind_name(name: str) -> bool:
-        stripped = str(name).strip()
-        return stripped.upper().startswith("W") or "wind" in stripped.lower()
+    def _initialize_block_structure_from_ed(self) -> None:
+        mapping_model = EconomicDispatchModel(
+            scenarios_df=self.scenarios_df,
+            costs_df=self.costs_df,
+            ramps_df=self.ramps_df,
+            p_init=None,
+        )
 
-    @staticmethod
-    def _as_profile(
-        value: Any,
-        horizon: int,
-        name: str,
-        *,
-        allow_truncate: bool = True,
-    ) -> list[float]:
-        if isinstance(value, str):
-            try:
-                value = ast.literal_eval(value)
-            except Exception:
-                return [float(value)] * horizon
-
-        if isinstance(value, (list, tuple, np.ndarray, pd.Series)):
-            profile = [float(v) for v in value]
-        else:
-            profile = [float(value)] * horizon
-
-        if allow_truncate and len(profile) >= horizon:
-            return profile[:horizon]
-        if len(profile) != horizon:
-            raise ValueError(f"{name} must have length {horizon}, got {len(profile)}")
-        return profile
-
-    @staticmethod
-    def load_support_set_config(
-        config_path: str | Path = "models/PoA/support_set_config.yaml",
-        config_name: Optional[str] = None,
-    ) -> dict[str, Any]:
-        path = Path(config_path)
-        if not path.exists():
-            raise FileNotFoundError(f"Support-set config not found: {path}")
-        with path.open("r", encoding="utf-8") as file_handle:
-            raw_config = yaml.safe_load(file_handle) or {}
-
-        if "support_sets" not in raw_config:
-            return raw_config
-
-        support_sets = raw_config.get("support_sets")
-        if not isinstance(support_sets, dict) or not support_sets:
-            raise ValueError("'support_sets' must be a non-empty mapping")
-
-        selected_name = config_name or raw_config.get("default_support_set") or next(iter(support_sets))
-        if selected_name not in support_sets:
-            raise ValueError(
-                f"Unknown support-set config '{selected_name}'. "
-                f"Available: {', '.join(support_sets.keys())}"
-            )
-        return support_sets[selected_name] or {}
-
-    def _initialize_block_structure_from_reference_case(self) -> None:
-        try:
-            (
-                num_generators,
-                _pmax_list,
-                _pmin_list,
-                _cost_vector,
-                ramp_up,
-                ramp_down,
-                demand,
-                generators,
-                players,
-                time_steps,
-            ) = load_setup_data(self.reference_case)
-        except Exception as exc:
-            raise ValueError(f"Failed to load reference case '{self.reference_case}': {exc}") from exc
-
-        normalized = normalize_generators(generators)
-        physical_generators = list(normalized["physical_generators"])
-        blocks = list(normalized["blocks"])
-
-        self.reference_time_steps = int(time_steps)
-        self.num_physical_generators = int(num_generators)
-        self.physical_generator_names = [str(gen["physical_name"]) for gen in physical_generators]
-        self.generators = generators
-        self.players_config = players
-        self.reference_demand = float(demand)
-
-        self.block_names = [str(block["block_name"]) for block in blocks]
-        self.num_blocks = len(self.block_names)
-        self.static_block_capacity = [float(block["pmax"]) for block in blocks]
-        self.block_cost_vector = [float(block["cost"]) for block in blocks]
-        self.static_physical_capacity = [float(gen["pmax"]) for gen in physical_generators]
-        self.ramp_vector_up = [float(v) for v in ramp_up]
-        self.ramp_vector_down = [float(v) for v in ramp_down]
-
-        physical_idx_by_name = {
-            name: idx for idx, name in enumerate(self.physical_generator_names)
-        }
-        self.block_to_physical = {
-            str(block["block_name"]): str(block["physical_name"])
-            for block in blocks
-        }
-        self.block_to_physical_idx = [
-            physical_idx_by_name[str(block["physical_name"])]
-            for block in blocks
+        self.block_names = list(mapping_model.block_names)
+        self.num_blocks = int(mapping_model.num_blocks)
+        self.physical_generator_names = list(mapping_model.physical_generator_names)
+        self.num_physical_generators = int(mapping_model.num_physical_generators)
+        self.block_to_physical = dict(mapping_model.block_to_physical)
+        self.block_to_physical_idx = list(mapping_model.block_to_physical_idx)
+        self.physical_to_block_indices = [
+            list(blocks) for blocks in mapping_model.physical_to_block_indices
         ]
-        self.physical_to_block_indices: list[list[int]] = [
-            [] for _ in range(self.num_physical_generators)
-        ]
-        for global_block, physical_idx in enumerate(self.block_to_physical_idx):
-            self.physical_to_block_indices[physical_idx].append(global_block)
-
         self.blocks_by_generator = {
-            i: list(blocks_for_generator)
-            for i, blocks_for_generator in enumerate(self.physical_to_block_indices)
+            int(i): list(blocks) for i, blocks in mapping_model.blocks_by_generator.items()
         }
         self.local_blocks_by_generator = {
-            i: list(range(len(blocks_for_generator)))
-            for i, blocks_for_generator in self.blocks_by_generator.items()
+            int(i): list(blocks)
+            for i, blocks in mapping_model.local_blocks_by_generator.items()
         }
-        self.local_to_global_block = {
-            (i, local_block): global_block
-            for i, blocks_for_generator in self.blocks_by_generator.items()
-            for local_block, global_block in enumerate(blocks_for_generator)
-        }
-        self.global_to_local_block = {
-            global_block: local_pair
-            for local_pair, global_block in self.local_to_global_block.items()
-        }
-        self.generator_block_pairs = list(self.local_to_global_block.keys())
+        self.local_to_global_block = dict(mapping_model.local_to_global_block)
+        self.global_to_local_block = dict(mapping_model.global_to_local_block)
+        self.generator_block_pairs = list(mapping_model.generator_block_pairs)
+        self.block_cost_vector = [float(v) for v in mapping_model.block_cost_vector]
+        self.ramp_vector_up = [float(v) for v in mapping_model.ramp_vector_up]
+        self.ramp_vector_down = [float(v) for v in mapping_model.ramp_vector_down]
 
         self.wind_physical_generator_ids = [
             i
-            for i, generator in enumerate(physical_generators)
-            if bool(generator.get("is_wind", False)) or self._is_wind_name(self.physical_generator_names[i])
+            for i, name in enumerate(self.physical_generator_names)
+            if self._is_wind_name(name)
         ]
         self.conventional_physical_generator_ids = [
             i
@@ -238,235 +220,386 @@ class DRO_PoAOptimization:
             if i in self.conventional_physical_generator_ids
         ]
 
+    @staticmethod
+    def _is_wind_name(name: str) -> bool:
+        stripped = str(name).strip()
+        return stripped.upper().startswith("W") or "wind" in stripped.lower()
+
+    @staticmethod
+    def load_regime_config(
+        regime_config_path: str | Path,
+        regime_set: str,
+        regime_name: Optional[str],
+    ) -> dict[str, Any]:
+        path = Path(regime_config_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Regime config not found: {path}")
+        with path.open("r", encoding="utf-8") as file_handle:
+            raw_config = yaml.safe_load(file_handle) or {}
+
+        regime_sets = raw_config.get("regime_sets")
+        if not isinstance(regime_sets, dict) or not regime_sets:
+            raise ValueError("Regime config must contain a non-empty 'regime_sets' mapping")
+        if regime_set not in regime_sets:
+            available = ", ".join(str(key) for key in regime_sets)
+            raise ValueError(f"Unknown regime_set '{regime_set}'. Available: {available}")
+
+        selected_set = regime_sets[regime_set] or {}
+        regimes = selected_set.get("regimes")
+        if not isinstance(regimes, list) or not regimes:
+            raise ValueError(f"regime_set '{regime_set}' has no non-empty 'regimes' list")
+
+        if regime_name is None:
+            selected = regimes[0]
+        else:
+            selected = next(
+                (regime for regime in regimes if str(regime.get("name")) == str(regime_name)),
+                None,
+            )
+            if selected is None:
+                available = ", ".join(str(regime.get("name")) for regime in regimes)
+                raise ValueError(
+                    f"Unknown regime '{regime_name}' in regime_set '{regime_set}'. "
+                    f"Available: {available}"
+                )
+
+        required_fields = ("name", "mu_D", "rho_D", "sigma_D", "mu_W", "rho_W", "sigma_W")
+        missing = [field for field in required_fields if field not in selected]
+        if missing:
+            raise ValueError(
+                f"Regime '{selected.get('name', regime_name)}' is missing fields: {missing}"
+            )
+        peak_key = "peak_W" if "peak_W" in selected else "tau_W"
+        if peak_key not in selected:
+            raise ValueError(
+                f"Regime '{selected.get('name', regime_name)}' must include peak_W or tau_W"
+            )
+
+        selected = dict(selected)
+        selected["peak_W"] = float(selected[peak_key])
+        for field in ("mu_D", "rho_D", "sigma_D", "mu_W", "rho_W", "sigma_W"):
+            selected[field] = float(selected[field])
+        selected["name"] = str(selected["name"])
+        return selected
+
+    @staticmethod
+    def load_regime_scenarios(
+        reference_case: str = "test_case_bidding_blocks",
+        regime_config_path: str | Path = "config/regime_definitions.yaml",
+        regime_set: str = "PoA_analysis",
+        seed: Optional[int] = None,
+    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        scenario_manager = ScenarioManager(reference_case)
+        scenario_set = scenario_manager.create_scenario_set_from_regimes(
+            regime_config_path=str(regime_config_path),
+            regime_set=regime_set,
+            seed=seed,
+        )
+        return (
+            scenario_set["scenarios_df"],
+            scenario_set["costs_df"],
+            scenario_set["ramps_df"],
+        )
+
+    def _filter_scenarios_to_regime(
+        self,
+        scenarios_df: pd.DataFrame,
+        regime_name: str,
+        regime_name_was_explicit: bool,
+    ) -> pd.DataFrame:
+        if scenarios_df.empty:
+            raise ValueError("scenarios_df must contain at least one empirical scenario")
+        if "regime" not in scenarios_df.columns:
+            if regime_name_was_explicit:
+                raise ValueError(
+                    "scenarios_df does not contain a 'regime' column, so it cannot "
+                    f"be filtered to selected regime '{regime_name}'"
+                )
+            return scenarios_df.reset_index(drop=True).copy()
+
+        filtered = scenarios_df[
+            scenarios_df["regime"].astype(str) == str(regime_name)
+        ].reset_index(drop=True)
+        if filtered.empty:
+            available = sorted(scenarios_df["regime"].dropna().astype(str).unique().tolist())
+            raise ValueError(
+                f"scenarios_df contains no rows for selected regime '{regime_name}'. "
+                f"Available regimes: {available}"
+            )
+        return filtered.copy()
+
+    @staticmethod
+    def _scenario_id_from_row(row: pd.Series, fallback: int) -> Any:
+        return row["scenario_id"] if "scenario_id" in row.index else int(fallback)
+
+    def _configure_fixed_regime_parameters(self) -> None:
+        self.mu_D_fixed = float(self.selected_regime["mu_D"])
+        self.sigma_D_fixed = float(self.selected_regime["sigma_D"])
+        self.demand_rho_fixed = float(self.selected_regime["rho_D"])
+        self.mu_W_fixed = float(self.selected_regime["mu_W"])
+        self.sigma_W_fixed = float(self.selected_regime["sigma_W"])
+        self.wind_rho_fixed = float(self.selected_regime["rho_W"])
+        self.peak_W_fixed = float(self.selected_regime["peak_W"])
+
+        if self.sigma_D_fixed < 0.0 or self.sigma_W_fixed < 0.0:
+            raise ValueError("Selected regime sigma_D and sigma_W must be nonnegative")
+        if not -0.999 <= self.demand_rho_fixed <= 0.999:
+            raise ValueError("Selected regime rho_D must be in [-0.999, 0.999]")
+        if not -0.999 <= self.wind_rho_fixed <= 0.999:
+            raise ValueError("Selected regime rho_W must be in [-0.999, 0.999]")
+        if not 0.0 <= self.peak_W_fixed <= 24.0:
+            raise ValueError("Selected regime peak_W must be in [0, 24]")
+
+    def _configure_regime_shape_profiles(self) -> None:
+        scenario_manager = ScenarioManager(self.reference_case)
+        self.demand_D_ref = float(scenario_manager.base_case["demand"])
+        if self.demand_D_ref <= 0.0 or not np.isfinite(self.demand_D_ref):
+            raise ValueError("Reference-case scalar demand must be positive and finite")
+
+        reference_horizon = int(scenario_manager.base_case["time_steps"])
+        raw_demand_shape = scenario_manager._build_demand_shape(reference_horizon)
+        raw_wind_shape = scenario_manager._build_wind_shape(
+            reference_horizon,
+            self.peak_W_fixed,
+        )
+        self.demand_shape = ensure_profile(
+            raw_demand_shape,
+            self.num_time_steps,
+            "demand_shape",
+            allow_truncate=True,
+        )
+        self.wind_shape = ensure_profile(
+            raw_wind_shape,
+            self.num_time_steps,
+            "wind_shape",
+            allow_truncate=True,
+        )
+        self.demand_delta_shape = {
+            t: abs(self.demand_shape[t] - self.demand_shape[t - 1])
+            for t in range(1, self.num_time_steps)
+        }
+        self.wind_delta_shape = {
+            t: abs(self.wind_shape[t] - self.wind_shape[t - 1])
+            for t in range(1, self.num_time_steps)
+        }
+
     def _normalize_p_init(
         self,
-        p_init: Optional[Sequence[float] | Sequence[Sequence[float]]],
-    ) -> list[float]:
+        p_init: Optional[list[float] | list[list[float]]],
+    ) -> list[list[float]]:
+        default_row = [0.5 * cap for cap in self.static_physical_capacity]
         if p_init is None:
-            return [0.5 * cap for cap in self.static_physical_capacity]
+            return [list(default_row) for _ in range(self.num_empirical_scenarios)]
 
         values: Any = p_init
-        if isinstance(values, np.ndarray):
-            values = values.tolist()
         if values and isinstance(values[0], (list, tuple, np.ndarray, pd.Series)):
-            values = values[0]
-        values = [float(v) for v in values]
+            if len(values) == self.num_empirical_scenarios:
+                return [self._normalize_p_init_row(row) for row in values]
+            if len(values) == 1:
+                row = self._normalize_p_init_row(values[0])
+                return [list(row) for _ in range(self.num_empirical_scenarios)]
+            raise ValueError(
+                f"p_init has {len(values)} rows; expected 1 or "
+                f"{self.num_empirical_scenarios} empirical-scenario rows"
+            )
 
-        if len(values) == self.num_physical_generators:
-            return values
-        if len(values) == self.num_blocks:
+        row = self._normalize_p_init_row(values)
+        return [list(row) for _ in range(self.num_empirical_scenarios)]
+
+    def _normalize_p_init_row(self, values: Any) -> list[float]:
+        row = [float(v) for v in values]
+        if len(row) == self.num_physical_generators:
+            return row
+        if len(row) == self.num_blocks:
             return [
-                sum(values[g] for g in self.physical_to_block_indices[i])
+                sum(row[g] for g in self.physical_to_block_indices[i])
                 for i in range(self.num_physical_generators)
             ]
         raise ValueError(
-            f"P_init has {len(values)} values; expected {self.num_physical_generators} "
-            f"physical-generator values or {self.num_blocks} block values"
+            f"p_init row has {len(row)} values; expected "
+            f"{self.num_physical_generators} physical-generator values or "
+            f"{self.num_blocks} block values"
         )
 
-    def _generator_name(self, generator_idx: int) -> str:
-        return self.physical_generator_names[int(generator_idx)]
+    def _initialize_big_m_placeholders(self) -> None:
+        cap_indices = [
+            (int(i), int(b), int(t))
+            for i, b in self.generator_block_pairs
+            for t in range(self.num_time_steps)
+        ]
+        ramp_indices = [
+            (int(i), int(t))
+            for i in range(self.num_physical_generators)
+            for t in range(self.num_time_steps)
+        ]
+        self.M_cap = {index: self.primal_big_m_placeholder for index in cap_indices}
+        self.M_lower = {index: self.primal_big_m_placeholder for index in cap_indices}
+        self.M_ramp_up = {index: self.primal_big_m_placeholder for index in ramp_indices}
+        self.M_ramp_down = {index: self.primal_big_m_placeholder for index in ramp_indices}
+        self.M_ramp_up_initial = {
+            int(i): self.primal_big_m_placeholder
+            for i in range(self.num_physical_generators)
+        }
+        self.M_ramp_down_initial = {
+            int(i): self.primal_big_m_placeholder
+            for i in range(self.num_physical_generators)
+        }
+        self.M_mu_upper_eq = {index: self.capacity_dual_bound for index in cap_indices}
+        self.M_mu_lower_eq = {index: self.capacity_dual_bound for index in cap_indices}
+        self.M_mu_upper_opt = {index: self.capacity_dual_bound for index in cap_indices}
+        self.M_mu_lower_opt = {index: self.capacity_dual_bound for index in cap_indices}
+        self.M_mu_ramp_up_eq = {index: self.ramp_dual_bound for index in ramp_indices}
+        self.M_mu_ramp_down_eq = {index: self.ramp_dual_bound for index in ramp_indices}
+        self.M_mu_ramp_up_opt = {index: self.ramp_dual_bound for index in ramp_indices}
+        self.M_mu_ramp_down_opt = {index: self.ramp_dual_bound for index in ramp_indices}
+        self.lambda_eq_bounds = {
+            int(t): (-self.lambda_bound, self.lambda_bound)
+            for t in range(self.num_time_steps)
+        }
+        self.lambda_opt_bounds = dict(self.lambda_eq_bounds)
 
-    def _feature_bound(self, feature_name: str, bound: str, default: float) -> float:
-        if feature_name not in self.feature_names:
-            return float(default)
-        feature_idx = self.feature_names.index(feature_name)
-        values = self.feature_min if bound == "min" else self.feature_max
-        if feature_idx >= len(values):
-            return float(default)
-        return float(values[feature_idx])
-
-    def _load_feature_normalization_stats_if_available(self) -> None:
-        if not self.feature_normalizer_stats_path.exists():
+    def _configure_nn_policy_generators(self) -> None:
+        if self.nn_model_dir is None:
+            self.nn_policy_generator_ids = []
+            self.nn_policy_generator_names = []
             return
-        with self.feature_normalizer_stats_path.open("r", encoding="utf-8") as file_handle:
-            stats = json.load(file_handle)
 
-        self.feature_names = list(stats.get("feature_names", []))
-        self.feature_min = np.asarray(stats.get("min", []), dtype=float)
-        self.feature_max = np.asarray(stats.get("max", []), dtype=float)
-        self.private_feature_names = list(stats.get("private_feature_names", []))
-
-        for pid_str, player_stats in stats.get("player_private_min_max", {}).items():
-            self.player_private_min_max[int(pid_str)] = {
-                "min": np.asarray(player_stats.get("min", []), dtype=float),
-                "max": np.asarray(player_stats.get("max", []), dtype=float),
-            }
-
-    def _per_generator_config_value(self, raw: Any, generator_idx: int, default: Any) -> Any:
-        if raw is None:
-            return default
-        if isinstance(raw, dict):
-            name = self._generator_name(generator_idx)
-            for key in (generator_idx, str(generator_idx), name, name.upper(), name.lower()):
-                if key in raw:
-                    return raw[key]
-            return default
-        if isinstance(raw, (list, tuple, np.ndarray, pd.Series)):
-            return raw[int(generator_idx)]
-        return raw
-
-    def _wind_generator_config_value(self, cfg: dict[str, Any], field_name: str, generator_idx: int, default: Any) -> Any:
-        grouped = cfg.get("wind_generators")
-        name = self._generator_name(generator_idx)
-        if isinstance(grouped, dict):
-            for key in (generator_idx, str(generator_idx), name, name.upper(), name.lower()):
-                if key in grouped and isinstance(grouped[key], dict) and field_name in grouped[key]:
-                    return grouped[key][field_name]
-
-        legacy_key = {"reference": "wind_reference", "min": "wind_min", "max": "wind_max"}[field_name]
-        return self._per_generator_config_value(cfg.get(legacy_key), generator_idx, default)
-
-    def _configure_support_set_parameters(self) -> None:
-        cfg = self.support_set_config
-        self.support_reference_mode = "empirical_scenario"
-
-        self.support_demand_reference = self._as_profile(
-            cfg.get("demand_reference", self.reference_demand),
-            self.num_time_steps,
-            "demand_reference",
-        )
-        demand_min_default = self._feature_bound("demand", "min", 0.8 * self.reference_demand)
-        demand_max_default = self._feature_bound("demand", "max", 1.2 * self.reference_demand)
-        self.support_demand_min = float(cfg.get("demand_min", demand_min_default))
-        self.support_demand_max = float(cfg.get("demand_max", demand_max_default))
-        if self.support_demand_min > self.support_demand_max:
-            raise ValueError("support_set_config demand_min cannot exceed demand_max")
-
-        demand_range = self.support_demand_max - self.support_demand_min
-        self.support_demand_ramp = float(cfg.get("demand_ramp", demand_range))
-        self.support_demand_budget = float(
-            cfg.get("demand_budget", self.num_time_steps * demand_range)
-        )
-
-        total_wind_capacity = sum(
-            self.static_physical_capacity[i] for i in self.wind_physical_generator_ids
-        )
-        wind_count = max(len(self.wind_physical_generator_ids), 1)
-        wind_min_default = self._feature_bound("wind_forecast", "min", 0.5 * total_wind_capacity) / wind_count
-        wind_max_default = self._feature_bound("wind_forecast", "max", total_wind_capacity) / wind_count
-
-        self.support_wind_reference: dict[int, list[float]] = {}
-        self.support_wind_min: dict[int, float] = {}
-        self.support_wind_max: dict[int, float] = {}
-        for i in self.wind_physical_generator_ids:
-            self.support_wind_reference[i] = self._as_profile(
-                self._wind_generator_config_value(
-                    cfg,
-                    "reference",
-                    i,
-                    self.static_physical_capacity[i],
-                ),
-                self.num_time_steps,
-                f"wind_generators[{self._generator_name(i)}].reference",
-            )
-            self.support_wind_min[i] = float(
-                self._wind_generator_config_value(cfg, "min", i, wind_min_default)
-            )
-            self.support_wind_max[i] = float(
-                self._wind_generator_config_value(
-                    cfg,
-                    "max",
-                    i,
-                    min(self.static_physical_capacity[i], wind_max_default),
-                )
-            )
-            if self.support_wind_min[i] > self.support_wind_max[i]:
-                raise ValueError(
-                    f"support_set_config wind_min cannot exceed wind_max for generator {i}"
-                )
-
-        total_wind_range = sum(
-            self.support_wind_max[i] - self.support_wind_min[i]
-            for i in self.wind_physical_generator_ids
-        )
-        self.support_wind_ramp = float(cfg.get("wind_ramp", max(total_wind_range, 0.0)))
-        self.support_wind_budget = float(
-            cfg.get("wind_budget", self.num_time_steps * max(total_wind_range, 0.0))
-        )
-
-    def _row_block_capacity_profile(self, row: dict[str, Any], block_name: str, block_idx: int) -> list[float]:
-        for suffix in ("_cap_profile", "_profile"):
-            column = f"{block_name}{suffix}"
-            if column not in row:
-                continue
-            raw_value = row.get(column)
-            if raw_value is None:
-                continue
-            if isinstance(raw_value, float) and np.isnan(raw_value):
-                continue
-            return self._as_profile(raw_value, self.num_time_steps, column)
-
-        cap_value = row.get(f"{block_name}_cap", self.static_block_capacity[int(block_idx)])
-        return [float(cap_value)] * self.num_time_steps
-
-    def _configure_empirical_scenarios(self, empirical_scenario: Optional[Any]) -> None:
-        if empirical_scenario is None:
-            empirical_rows = [
-                {
-                    "regime": "reference",
-                    "scenario_id": None,
-                    "demand_profile": list(self.support_demand_reference),
-                }
-            ]
-        elif isinstance(empirical_scenario, pd.DataFrame):
-            empirical_rows = [row.to_dict() for _, row in empirical_scenario.iterrows()]
-        elif isinstance(empirical_scenario, dict):
-            empirical_rows = [empirical_scenario]
+        requested = self.requested_nn_policy_generators
+        if requested is None:
+            ids = list(range(self.num_physical_generators))
         else:
-            empirical_rows = list(empirical_scenario)
+            ids = []
+            for raw_generator in requested:
+                if isinstance(raw_generator, str):
+                    generator_name = raw_generator.strip()
+                    if generator_name not in self.physical_generator_names:
+                        raise ValueError(
+                            f"Unknown NN policy generator '{raw_generator}'. "
+                            f"Available: {self.physical_generator_names}"
+                        )
+                    generator_idx = self.physical_generator_names.index(generator_name)
+                else:
+                    generator_idx = int(raw_generator)
+                    if not 0 <= generator_idx < self.num_physical_generators:
+                        raise ValueError(
+                            f"NN policy generator index {generator_idx} is outside "
+                            f"0..{self.num_physical_generators - 1}"
+                        )
+                if generator_idx not in ids:
+                    ids.append(generator_idx)
 
-        if not empirical_rows:
-            raise ValueError("At least one empirical scenario is required")
-
-        self.num_empirical_scenarios = len(empirical_rows)
-        self.empirical_regime = str(empirical_rows[0].get("regime", "unknown"))
-        self.empirical_scenario_ids = [
-            None if row.get("scenario_id") is None else int(row.get("scenario_id"))
-            for row in empirical_rows
+        self.nn_policy_generator_ids = ids
+        self.nn_policy_generator_names = [
+            self.physical_generator_names[i] for i in self.nn_policy_generator_ids
         ]
 
-        self.empirical_demand_profiles: dict[int, list[float]] = {}
-        self.empirical_capacity_profiles: dict[int, dict[int, list[float]]] = {}
+    def _load_nn_policies(self) -> None:
+        if self.nn_model_dir is None or not self.nn_model_dir.exists():
+            raise FileNotFoundError(f"NN model directory not found: {self.nn_model_dir}")
+        self.nn_policies = {}
+        for generator_name in self.nn_policy_generator_names:
+            weights_path = self.nn_model_dir / f"{generator_name}_policy_weights.json"
+            metadata_path = self.nn_model_dir / f"{generator_name}_policy_metadata.json"
+            if not weights_path.exists():
+                raise FileNotFoundError(f"Missing NN weights file: {weights_path}")
+            with weights_path.open("r", encoding="utf-8") as file_handle:
+                weights = json.load(file_handle)
+            metadata = {}
+            if metadata_path.exists():
+                with metadata_path.open("r", encoding="utf-8") as file_handle:
+                    metadata = json.load(file_handle)
 
-        for k, row in enumerate(empirical_rows):
-            self.empirical_demand_profiles[k] = self._as_profile(
-                row["demand_profile"],
-                self.num_time_steps,
-                f"empirical_scenario[{k}]['demand_profile']",
+            feature_columns = list(
+                weights.get("feature_columns") or metadata.get("feature_columns") or []
             )
-
-            block_profiles = {
-                block_idx: self._row_block_capacity_profile(row, block_name, block_idx)
-                for block_idx, block_name in enumerate(self.block_names)
+            target_columns = list(
+                weights.get("target_columns") or metadata.get("target_columns") or []
+            )
+            layers = list(weights.get("layers", []))
+            if not feature_columns or not target_columns or not layers:
+                raise ValueError(f"Invalid NN policy payload for {generator_name}")
+            self._validate_nn_policy(generator_name, feature_columns, target_columns, layers)
+            self.nn_policies[generator_name] = {
+                "feature_columns": feature_columns,
+                "target_columns": target_columns,
+                "layers": layers,
+                "metadata": metadata,
+                "target_map": target_columns_to_local_blocks(
+                    generator_name=generator_name,
+                    target_columns=target_columns,
+                    block_names=self.block_names,
+                    physical_generator_names=self.physical_generator_names,
+                    global_to_local_block=self.global_to_local_block,
+                    local_blocks_by_generator=self.local_blocks_by_generator,
+                ),
             }
-            capacity_profiles: dict[int, list[float]] = {}
-            for i in range(self.num_physical_generators):
-                if i in self.wind_physical_generator_ids:
-                    capacity_profiles[i] = [
-                        sum(block_profiles[g][t] for g in self.physical_to_block_indices[i])
-                        for t in range(self.num_time_steps)
-                    ]
-                else:
-                    capacity_profiles[i] = [
-                        sum(
-                            float(row.get(f"{self.block_names[g]}_cap", self.static_block_capacity[g]))
-                            for g in self.physical_to_block_indices[i]
-                        )
-                    ] * self.num_time_steps
-            self.empirical_capacity_profiles[k] = capacity_profiles
 
-    def _load_policy_if_requested(self) -> None:
-        if self.policy_data is None and self.policy_results_path is None:
+    def _validate_nn_policy(
+        self,
+        generator_name: str,
+        feature_columns: list[str],
+        target_columns: list[str],
+        layers: list[dict[str, Any]],
+    ) -> None:
+        expected_input = len(feature_columns)
+        current_dim = expected_input
+        previous_was_hidden_linear = False
+        linear_count = 0
+        for idx, layer in enumerate(layers):
+            layer_type = str(layer.get("type", "")).lower()
+            if layer_type == "linear":
+                weight = np.asarray(layer.get("weight"), dtype=float)
+                bias = np.asarray(layer.get("bias"), dtype=float)
+                if weight.ndim != 2 or bias.ndim != 1:
+                    raise ValueError(f"{generator_name}: linear layer {idx} has invalid dimensions")
+                if weight.shape[1] != current_dim or weight.shape[0] != bias.shape[0]:
+                    raise ValueError(f"{generator_name}: inconsistent dimensions in linear layer {idx}")
+                current_dim = int(weight.shape[0])
+                previous_was_hidden_linear = idx < len(layers) - 1
+                linear_count += 1
+            elif layer_type == "relu":
+                if not previous_was_hidden_linear:
+                    raise ValueError(
+                        f"{generator_name}: ReLU layer {idx} must follow a hidden linear layer"
+                    )
+                previous_was_hidden_linear = False
+            else:
+                raise ValueError(f"{generator_name}: unsupported layer type '{layer_type}'")
+        if str(layers[-1].get("type", "")).lower() != "linear":
+            raise ValueError(f"{generator_name}: final NN layer must be linear")
+        if current_dim != len(target_columns):
+            raise ValueError(
+                f"{generator_name}: output dimension {current_dim} does not match "
+                f"{len(target_columns)} target columns"
+            )
+        if linear_count < 1:
+            raise ValueError(f"{generator_name}: NN must contain at least one linear layer")
+
+    def _load_nn_normalization_stats(self) -> None:
+        if self.nn_normalization_stats_path is None:
+            self.nn_stats = {}
             return
-        raise NotImplementedError(
-            "The streamlined DRO model currently uses true block costs as bids. "
-            "Policy embedding should be added against the block-indexed alpha[k,i,b,t] surface."
-        )
+        if not self.nn_normalization_stats_path.exists():
+            raise FileNotFoundError(
+                f"NN normalization stats not found: {self.nn_normalization_stats_path}"
+            )
+        with self.nn_normalization_stats_path.open("r", encoding="utf-8") as file_handle:
+            self.nn_stats = json.load(file_handle)
 
-    # ------------------------------------------------------------------
-    # Big-M helpers
-    # ------------------------------------------------------------------
+    def _nn_feature_bounds(self, generator_name: str, feature_name: str) -> tuple[float, float]:
+        stats = self.nn_stats or {}
+        if bool(stats.get("per_generator")):
+            generator_stats = stats.get("stats", {}).get(generator_name, {})
+            mins = generator_stats.get("feature_min", {})
+            maxs = generator_stats.get("feature_max", {})
+            if feature_name in mins and feature_name in maxs:
+                return float(mins[feature_name]), float(maxs[feature_name])
+        if "feature_min" in stats and "feature_max" in stats:
+            mins = stats["feature_min"]
+            maxs = stats["feature_max"]
+            if isinstance(mins, dict) and feature_name in mins:
+                return float(mins[feature_name]), float(maxs[feature_name])
+        return 0.0, 1.0
 
     @staticmethod
     def _json_key(indices: tuple[int, ...]) -> str:
@@ -474,91 +607,672 @@ class DRO_PoAOptimization:
 
     @staticmethod
     def _parse_json_index(key: str) -> tuple[int, ...]:
-        return tuple(int(part) for part in str(key).split(",") if part != "")
+        try:
+            return tuple(int(part) for part in str(key).split(",") if part != "")
+        except ValueError as exc:
+            raise ValueError(f"Malformed tightening-report key '{key}'") from exc
 
-    def _tight_dual_upper_bound(
+    @staticmethod
+    def _optional_numeric_bound(payload: Any) -> Optional[float]:
+        if payload is None:
+            return None
+        if isinstance(payload, dict):
+            for value_key in ("tight_big_m", "big_m", "upper_bound", "ub", "bound", "value"):
+                if value_key in payload:
+                    return DRO_PoAOptimization._optional_numeric_bound(payload[value_key])
+            return None
+        try:
+            numeric_value = float(payload)
+        except (TypeError, ValueError):
+            return None
+        if not np.isfinite(numeric_value):
+            return None
+        return max(0.0, numeric_value)
+
+    @staticmethod
+    def _optional_float_bound(payload: Any) -> Optional[float]:
+        if payload is None:
+            return None
+        if isinstance(payload, dict):
+            for value_key in ("bound", "value", "tight_bound", "tight_big_m"):
+                if value_key in payload:
+                    return DRO_PoAOptimization._optional_float_bound(payload[value_key])
+            return None
+        try:
+            numeric_value = float(payload)
+        except (TypeError, ValueError):
+            return None
+        if not np.isfinite(numeric_value):
+            return None
+        return numeric_value
+
+    def _validate_regime_wide_tightening_metadata(self, report: dict[str, Any]) -> None:
+        metadata = report.get("metadata", {}) or {}
+        if metadata.get("tightening_type") != "regime_wide":
+            raise ValueError("DRO tightening report metadata must set tightening_type='regime_wide'")
+        if metadata.get("model_type") not in {None, "DRO_PoA"}:
+            raise ValueError("DRO tightening report metadata model_type must be 'DRO_PoA'")
+        if str(metadata.get("regime_name")) != str(self.regime_name):
+            raise ValueError(
+                "DRO tightening report regime_name mismatch: "
+                f"report has {metadata.get('regime_name')!r}, optimizer has {self.regime_name!r}"
+            )
+        if int(metadata.get("num_time_steps", self.num_time_steps)) != int(self.num_time_steps):
+            raise ValueError(
+                "DRO tightening report num_time_steps mismatch: "
+                f"report has {metadata.get('num_time_steps')}, optimizer has {self.num_time_steps}"
+            )
+
+    @staticmethod
+    def _parse_nn_relu_bound_key(key: str) -> tuple[int, int, int]:
+        parts = tuple(int(part) for part in str(key).split(",") if part != "")
+        if len(parts) != 3:
+            raise ValueError(
+                f"NN ReLU bound key '{key}' must have the form 'time_idx,linear_idx,node'"
+            )
+        return int(parts[0]), int(parts[1]), int(parts[2])
+
+    def _set_nn_relu_bounds_from_report(self, report: dict[str, Any]) -> None:
+        self.nn_relu_bounds_report = report
+        self.nn_feature_bounds = report.get("nn_feature_bounds", {}) or {}
+        self.nn_bound_warnings = list(
+            report.get("warnings", report.get("nn_bound_warnings", [])) or []
+        )
+        parsed_bounds: dict[str, dict[tuple[int, int, int], dict[str, Any]]] = {}
+        for generator_name, entries in (report.get("nn_relu_bounds", {}) or {}).items():
+            generator_bounds: dict[tuple[int, int, int], dict[str, Any]] = {}
+            for key, details in (entries or {}).items():
+                time_idx, linear_idx, node = self._parse_nn_relu_bound_key(key)
+                parsed_details = dict(details or {})
+                for numeric_key in ("L", "U", "h_lower", "h_upper"):
+                    if numeric_key not in parsed_details:
+                        raise ValueError(
+                            f"NN ReLU bound entry {generator_name}[{key}] is missing "
+                            f"'{numeric_key}'"
+                        )
+                    parsed_details[numeric_key] = float(parsed_details[numeric_key])
+                status = str(parsed_details.get("status", "ambiguous")).lower()
+                if status not in {"active", "inactive", "ambiguous"}:
+                    raise ValueError(
+                        f"NN ReLU bound entry {generator_name}[{key}] has invalid "
+                        f"status '{status}'"
+                    )
+                parsed_details["status"] = status
+                parsed_details.setdefault("time_idx", time_idx)
+                parsed_details.setdefault("linear_idx", linear_idx)
+                parsed_details.setdefault("node", node)
+                generator_bounds[(time_idx, linear_idx, node)] = parsed_details
+            parsed_bounds[str(generator_name)] = generator_bounds
+        self.nn_relu_bounds = parsed_bounds
+
+    def load_nn_relu_bounds_report(
+        self,
+        report_path: str | Path = "results/dro_poa_tightening/final_tightening_report.json",
+    ) -> dict[str, Any]:
+        path = Path(report_path)
+        if not path.exists():
+            raise FileNotFoundError(f"NN ReLU bounds report not found: {path}")
+        with path.open("r", encoding="utf-8") as file_handle:
+            report = json.load(file_handle)
+        relu_report = report.get("nn_relu_bounds_report", {}) or report
+        self.nn_relu_bounds_report_path = path
+        self._set_nn_relu_bounds_from_report(relu_report)
+        return relu_report
+
+    def _set_regime_wide_tightening_report_data(
+        self,
+        report: dict[str, Any],
+        report_path: Optional[Path] = None,
+    ) -> None:
+        self._validate_regime_wide_tightening_metadata(report)
+        self.tightening_report = report
+        if report_path is not None:
+            self.tightening_report_path = Path(report_path)
+        relu_report = report.get("nn_relu_bounds_report", {}) or {}
+        if relu_report:
+            self._set_nn_relu_bounds_from_report(relu_report)
+        self.fixed_binaries = report.get("fixed_binaries", {}) or {}
+        self.primal_big_m = report.get("primal_big_m", {}) or {}
+        self.tight_big_m = report.get("tight_big_m", {}) or {}
+        self.aggregate_dual_bounds = report.get("aggregate_dual_bounds", {}) or {}
+        self.lambda_bounds = report.get("lambda_bounds", {}) or {}
+        self.alpha_bound_optimization_results = (
+            report.get("alpha_optimization_results", {}) or {}
+        )
+        self.alpha_bounds = {
+            self._parse_json_index(key): {
+                "lower": float(value["lower"]),
+                "upper": float(value["upper"]),
+            }
+            for key, value in (report.get("alpha_bounds", {}) or {}).items()
+        }
+        self._loaded_bounds_prepared = False
+
+    def load_regime_wide_tightening_report(self, report_path: str | Path) -> dict[str, Any]:
+        path = Path(report_path)
+        if not path.exists():
+            raise FileNotFoundError(f"DRO regime-wide tightening report not found: {path}")
+        with path.open("r", encoding="utf-8") as file_handle:
+            report = json.load(file_handle)
+        self._set_regime_wide_tightening_report_data(report, path)
+        self._prepare_loaded_bounds()
+        return report
+
+    def _indexed_numeric_entries(
+        self,
+        entries: Any,
+        bound_type: str,
+        allowed_dimensions: tuple[int, ...],
+        expected_key_format: str,
+    ) -> dict[tuple[int, ...], float]:
+        if not isinstance(entries, dict):
+            return {}
+        parsed: dict[tuple[int, ...], float] = {}
+        for raw_key, details in entries.items():
+            index = self._parse_json_index(str(raw_key))
+            if len(index) not in allowed_dimensions:
+                raise ValueError(
+                    f"Invalid {bound_type} key '{raw_key}'. Expected key format "
+                    f"{expected_key_format} without scenario index k."
+                )
+            numeric_value = self._optional_numeric_bound(details)
+            if numeric_value is None:
+                raise ValueError(
+                    f"Invalid {bound_type} entry at key '{raw_key}'. Expected a "
+                    "finite numeric bound in tight_big_m, big_m, upper_bound, ub, "
+                    "bound, or value."
+                )
+            parsed[index] = float(numeric_value)
+        return parsed
+
+    def _missing_loaded_bound_error(
+        self,
+        bound_type: str,
+        index: tuple[int, ...] | int,
+        expected_key_format: str,
+    ) -> ValueError:
+        return ValueError(
+            f"Missing {bound_type} for index {index}. Expected regime-wide key "
+            f"format {expected_key_format}, without scenario index k."
+        )
+
+    def _prepare_block_time_primal_big_m(
+        self,
+        component_name: str,
+        entries: Any,
+        expected_key_format: str,
+    ) -> dict[tuple[int, int, int], float]:
+        parsed = self._indexed_numeric_entries(
+            entries,
+            f"primal Big-M '{component_name}'",
+            (2, 3),
+            expected_key_format,
+        )
+        prepared: dict[tuple[int, int, int], float] = {}
+        for i, b in self.generator_block_pairs:
+            for t in range(self.num_time_steps):
+                time_index = (int(i), int(b), int(t))
+                block_index = (int(i), int(b))
+                if time_index in parsed:
+                    prepared[time_index] = parsed[time_index]
+                elif block_index in parsed:
+                    prepared[time_index] = parsed[block_index]
+                else:
+                    raise self._missing_loaded_bound_error(
+                        f"primal Big-M '{component_name}'",
+                        time_index,
+                        expected_key_format,
+                    )
+        return prepared
+
+    def _prepare_generator_time_primal_big_m(
+        self,
+        component_name: str,
+        entries: Any,
+        expected_key_format: str,
+    ) -> dict[tuple[int, int], float]:
+        parsed = self._indexed_numeric_entries(
+            entries,
+            f"primal Big-M '{component_name}'",
+            (1, 2),
+            expected_key_format,
+        )
+        prepared: dict[tuple[int, int], float] = {}
+        for i in range(self.num_physical_generators):
+            for t in range(self.num_time_steps):
+                time_index = (int(i), int(t))
+                generator_index = (int(i),)
+                if time_index in parsed:
+                    prepared[time_index] = parsed[time_index]
+                elif generator_index in parsed:
+                    prepared[time_index] = parsed[generator_index]
+                else:
+                    raise self._missing_loaded_bound_error(
+                        f"primal Big-M '{component_name}'",
+                        time_index,
+                        expected_key_format,
+                    )
+        return prepared
+
+    def _prepare_generator_primal_big_m(
+        self,
+        component_name: str,
+        entries: Any,
+        expected_key_format: str,
+    ) -> dict[int, float]:
+        parsed = self._indexed_numeric_entries(
+            entries,
+            f"primal Big-M '{component_name}'",
+            (1, 2),
+            expected_key_format,
+        )
+        prepared: dict[int, float] = {}
+        for i in range(self.num_physical_generators):
+            generator_index = (int(i),)
+            initial_time_index = (int(i), 0)
+            if generator_index in parsed:
+                prepared[int(i)] = parsed[generator_index]
+            elif initial_time_index in parsed:
+                prepared[int(i)] = parsed[initial_time_index]
+            else:
+                raise self._missing_loaded_bound_error(
+                    f"primal Big-M '{component_name}'",
+                    int(i),
+                    expected_key_format,
+                )
+        return prepared
+
+    def _prepare_dual_big_m(
         self,
         dual_name: str,
-        index: tuple[int, ...],
+        expected_indices: list[tuple[int, ...]],
         default_bound: float,
-    ) -> float:
+        expected_key_format: str,
+    ) -> dict[tuple[int, ...], float]:
         entries = (getattr(self, "tight_big_m", {}) or {}).get(dual_name, {}) or {}
-        details = entries.get(self._json_key(index))
-        if not details:
-            return float(default_bound)
-
-        tight_value = details.get("tight_big_m")
-        if tight_value is None:
-            return float(default_bound)
-        return max(0.0, min(float(default_bound), float(tight_value)))
-
-    def _block_capacity_big_m(self, physical_generator_idx: int, local_block_idx: int) -> float:
-        global_block = self.local_to_global_block[(int(physical_generator_idx), int(local_block_idx))]
-        if int(physical_generator_idx) in self.conventional_physical_generator_ids:
-            return float(self.static_block_capacity[global_block])
-
-        local_blocks = self.local_blocks_by_generator[int(physical_generator_idx)]
-        if len(local_blocks) == 1:
-            return float(self.support_wind_max[int(physical_generator_idx)])
-
-        static_total = sum(
-            self.static_block_capacity[self.local_to_global_block[(int(physical_generator_idx), b)]]
-            for b in local_blocks
+        if not entries:
+            return {index: float(default_bound) for index in expected_indices}
+        parsed = self._indexed_numeric_entries(
+            entries,
+            f"dual Big-M '{dual_name}'",
+            (len(expected_indices[0]),),
+            expected_key_format,
         )
-        if static_total <= 0:
-            return 0.0
-        block_share = self.static_block_capacity[global_block] / static_total
-        return float(block_share * self.support_wind_max[int(physical_generator_idx)])
+        prepared: dict[tuple[int, ...], float] = {}
+        for index in expected_indices:
+            if index not in parsed:
+                raise self._missing_loaded_bound_error(
+                    f"dual Big-M '{dual_name}'",
+                    index,
+                    expected_key_format,
+                )
+            prepared[index] = max(0.0, min(float(default_bound), float(parsed[index])))
+        return prepared
 
-    def _physical_capacity_big_m(self, physical_generator_idx: int) -> float:
-        if int(physical_generator_idx) in self.wind_physical_generator_ids:
-            return float(self.support_wind_max[int(physical_generator_idx)])
-        return float(self.static_physical_capacity[int(physical_generator_idx)])
+    def _prepare_lambda_bounds(self, lambda_name: str) -> dict[int, tuple[float, float]]:
+        entries = (getattr(self, "lambda_bounds", {}) or {}).get(lambda_name, {}) or {}
+        if not entries:
+            return {
+                int(t): (-float(self.lambda_bound), float(self.lambda_bound))
+                for t in range(self.num_time_steps)
+            }
+        if not isinstance(entries, dict):
+            raise ValueError(f"Invalid lambda bound block '{lambda_name}'. Expected keys 't'.")
+        prepared: dict[int, tuple[float, float]] = {}
+        for t in range(self.num_time_steps):
+            details = entries.get(str(int(t)), entries.get(int(t)))
+            if not isinstance(details, dict):
+                raise self._missing_loaded_bound_error(
+                    f"lambda bounds '{lambda_name}'",
+                    int(t),
+                    "t",
+                )
+            lower = self._optional_float_bound(details.get("lower"))
+            upper = self._optional_float_bound(details.get("upper"))
+            if lower is None or upper is None:
+                raise ValueError(
+                    f"Invalid lambda bounds '{lambda_name}' for time {t}. "
+                    "Expected finite lower and upper entries."
+                )
+            lower = max(-float(self.lambda_bound), float(lower))
+            upper = min(float(self.lambda_bound), float(upper))
+            if lower > upper:
+                raise ValueError(
+                    f"Invalid lambda bounds '{lambda_name}' for time {t}: "
+                    f"lower {lower} exceeds upper {upper}."
+                )
+            prepared[int(t)] = (lower, upper)
+        return prepared
 
-    def _ramp_up_big_m(self, physical_generator_idx: int) -> float:
-        return float(
-            self.ramp_vector_up[int(physical_generator_idx)]
-            + self._physical_capacity_big_m(int(physical_generator_idx))
-        )
+    def _lookup_optional_time_bound(
+        self,
+        payload: Any,
+        side: str,
+        time_idx: int,
+    ) -> Optional[float]:
+        numeric_value = self._optional_numeric_bound(payload)
+        if numeric_value is not None:
+            return numeric_value
 
-    def _ramp_down_big_m(self, physical_generator_idx: int) -> float:
-        return float(
-            self.ramp_vector_down[int(physical_generator_idx)]
-            + self._physical_capacity_big_m(int(physical_generator_idx))
-        )
+        if isinstance(payload, (list, tuple)):
+            if 0 <= int(time_idx) < len(payload):
+                return self._optional_numeric_bound(payload[int(time_idx)])
+            return None
 
-    def _ramp_up_initial_big_m(self, physical_generator_idx: int) -> float:
-        return float(
-            self.p_init[int(physical_generator_idx)]
-            + self.ramp_vector_up[int(physical_generator_idx)]
-        )
+        if not isinstance(payload, dict):
+            return None
 
-    def _ramp_down_initial_big_m(self, physical_generator_idx: int) -> float:
-        return float(
-            max(
-                0.0,
-                self._physical_capacity_big_m(int(physical_generator_idx))
-                - self.p_init[int(physical_generator_idx)]
-                + self.ramp_vector_down[int(physical_generator_idx)],
+        side_candidates = tuple(dict.fromkeys((side, str(side), side.lower(), side.upper())))
+        time_candidates = tuple(dict.fromkeys((int(time_idx), str(int(time_idx)))))
+        composite_candidates = tuple(
+            dict.fromkeys(
+                (
+                    f"{side},{int(time_idx)}",
+                    f"{side}:{int(time_idx)}",
+                    f"{side}_{int(time_idx)}",
+                    f"{side}-{int(time_idx)}",
+                    f"{side.upper()},{int(time_idx)}",
+                    f"{side.upper()}:{int(time_idx)}",
+                )
             )
         )
+
+        for key in side_candidates:
+            if key in payload:
+                value = self._lookup_optional_time_bound(payload[key], side, time_idx)
+                if value is not None:
+                    return value
+        for key in time_candidates:
+            if key in payload:
+                value = self._lookup_optional_time_bound(payload[key], side, time_idx)
+                if value is not None:
+                    return value
+        for key in composite_candidates:
+            if key in payload:
+                value = self._lookup_optional_time_bound(payload[key], side, time_idx)
+                if value is not None:
+                    return value
+        return None
+
+    @staticmethod
+    def _aggregate_dual_bound_key_candidates(
+        generic_key: str,
+        side: str,
+        dual_name: str,
+    ) -> tuple[str, ...]:
+        root = (
+            generic_key[: -len("_sum_ub")]
+            if generic_key.endswith("_sum_ub")
+            else generic_key
+        )
+        dual_root = dual_name
+        for suffix in ("_eq", "_opt"):
+            if dual_root.endswith(suffix):
+                dual_root = dual_root[: -len(suffix)]
+
+        aliases = {
+            "mu_max_sum_ub": ("mu_upper_sum_ub", "mu_upper_bound_sum_ub"),
+            "mu_min_sum_ub": ("mu_lower_sum_ub", "mu_lower_bound_sum_ub"),
+            "mu_ramp_up_sum_ub": ("rho_up_sum_ub",),
+            "mu_ramp_down_sum_ub": ("rho_down_sum_ub",),
+        }
+        candidates = (
+            f"{dual_name}_sum_ub",
+            f"{dual_root}_{side}_sum_ub",
+            f"{root}_{side}_sum_ub",
+            f"{dual_root}_sum_ub",
+            generic_key,
+            *aliases.get(generic_key, ()),
+        )
+        return tuple(dict.fromkeys(candidates))
+
+    def _aggregate_dual_sum_upper_bound(
+        self,
+        generic_key: str,
+        side: str,
+        time_idx: int,
+        dual_name: str,
+    ) -> Optional[float]:
+        report = getattr(self, "tightening_report", {}) or {}
+        source_payloads: list[Any] = [
+            getattr(self, "aggregate_dual_bounds", {}) or {},
+        ]
+        if isinstance(report, dict):
+            source_payloads.extend(
+                [
+                    report.get("aggregate_dual_bounds", {}) or {},
+                    report,
+                ]
+            )
+        source_payloads.append(getattr(self, "tight_big_m", {}) or {})
+
+        for payload in source_payloads:
+            if not isinstance(payload, dict):
+                continue
+            for key in self._aggregate_dual_bound_key_candidates(
+                generic_key,
+                side,
+                dual_name,
+            ):
+                if key not in payload:
+                    continue
+                bound = self._lookup_optional_time_bound(payload[key], side, time_idx)
+                if bound is not None:
+                    return bound
+        return None
+
+    def _prepare_loaded_bounds(self) -> None:
+        if not getattr(self, "tightening_report", None) and not getattr(
+            self,
+            "primal_big_m",
+            None,
+        ):
+            return
+        if not getattr(self, "primal_big_m", None):
+            raise ValueError(
+                "Missing primal_big_m in DRO regime-wide tightening report."
+            )
+
+        primal_big_m = self.primal_big_m
+        self.M_cap = self._prepare_block_time_primal_big_m(
+            "block_capacity",
+            primal_big_m.get("block_capacity", {}),
+            "i,b or i,b,t",
+        )
+        lower_entries = (
+            primal_big_m.get("lower_generation", {})
+            or primal_big_m.get("generation_lower", {})
+            or primal_big_m.get("lower_bound", {})
+        )
+        self.M_lower = (
+            self._prepare_block_time_primal_big_m(
+                "lower_generation",
+                lower_entries,
+                "i,b or i,b,t",
+            )
+            if lower_entries
+            else dict(self.M_cap)
+        )
+        self.M_physical_capacity = self._prepare_generator_primal_big_m(
+            "physical_capacity",
+            primal_big_m.get("physical_capacity", {}),
+            "i or i,t",
+        )
+        self.M_ramp_up = self._prepare_generator_time_primal_big_m(
+            "ramp_up",
+            primal_big_m.get("ramp_up", {}),
+            "i or i,t",
+        )
+        self.M_ramp_down = self._prepare_generator_time_primal_big_m(
+            "ramp_down",
+            primal_big_m.get("ramp_down", {}),
+            "i or i,t",
+        )
+        self.M_ramp_up_initial = self._prepare_generator_primal_big_m(
+            "ramp_up_initial",
+            primal_big_m.get("ramp_up_initial", {}),
+            "i",
+        )
+        self.M_ramp_down_initial = self._prepare_generator_primal_big_m(
+            "ramp_down_initial",
+            primal_big_m.get("ramp_down_initial", {}),
+            "i",
+        )
+
+        capacity_indices = [
+            (int(i), int(b), int(t))
+            for i, b in self.generator_block_pairs
+            for t in range(self.num_time_steps)
+        ]
+        ramp_indices = [
+            (int(i), int(t))
+            for i in range(self.num_physical_generators)
+            for t in range(self.num_time_steps)
+        ]
+        self.M_mu_upper_eq = self._prepare_dual_big_m(
+            "mu_upper_eq",
+            capacity_indices,
+            self.capacity_dual_bound,
+            "i,b,t",
+        )
+        self.M_mu_lower_eq = self._prepare_dual_big_m(
+            "mu_lower_eq",
+            capacity_indices,
+            self.capacity_dual_bound,
+            "i,b,t",
+        )
+        self.M_mu_ramp_up_eq = self._prepare_dual_big_m(
+            "mu_ramp_up_eq",
+            ramp_indices,
+            self.ramp_dual_bound,
+            "i,t",
+        )
+        self.M_mu_ramp_down_eq = self._prepare_dual_big_m(
+            "mu_ramp_down_eq",
+            ramp_indices,
+            self.ramp_dual_bound,
+            "i,t",
+        )
+        self.M_mu_upper_opt = self._prepare_dual_big_m(
+            "mu_upper_opt",
+            capacity_indices,
+            self.capacity_dual_bound,
+            "i,b,t",
+        )
+        self.M_mu_lower_opt = self._prepare_dual_big_m(
+            "mu_lower_opt",
+            capacity_indices,
+            self.capacity_dual_bound,
+            "i,b,t",
+        )
+        self.M_mu_ramp_up_opt = self._prepare_dual_big_m(
+            "mu_ramp_up_opt",
+            ramp_indices,
+            self.ramp_dual_bound,
+            "i,t",
+        )
+        self.M_mu_ramp_down_opt = self._prepare_dual_big_m(
+            "mu_ramp_down_opt",
+            ramp_indices,
+            self.ramp_dual_bound,
+            "i,t",
+        )
+        self.lambda_eq_bounds = self._prepare_lambda_bounds("lambda_eq")
+        self.lambda_opt_bounds = self._prepare_lambda_bounds("lambda_opt")
+        self._loaded_bounds_prepared = True
+
+    # ------------------------------------------------------------------
+    # Data loading
+    # ------------------------------------------------------------------
+
+    def _parse_empirical_demand_profiles(self) -> list[list[float]]:
+        demand_column = find_demand_profile_column(self.scenarios_df)
+        profiles: list[list[float]] = []
+        for row_idx, row in self.scenarios_df.iterrows():
+            try:
+                profiles.append(
+                    ensure_profile(
+                        row[demand_column],
+                        self.num_time_steps,
+                        demand_column,
+                        allow_truncate=True,
+                    )
+                )
+            except Exception as exc:
+                raise ValueError(
+                    f"Could not parse empirical demand profile for row {row_idx}"
+                ) from exc
+        return profiles
+
+    def _block_capacity_profile_from_row(self, row: pd.Series, block_name: str) -> list[float]:
+        for column in (f"{block_name}_cap_profile", f"{block_name}_profile"):
+            if column in row.index:
+                return ensure_profile(
+                    row[column],
+                    self.num_time_steps,
+                    column,
+                    allow_truncate=True,
+                )
+        cap_column = f"{block_name}_cap"
+        if cap_column in row.index:
+            return ensure_profile(row[cap_column], self.num_time_steps, cap_column)
+
+        global_block = self.block_names.index(block_name)
+        return [float(self.static_block_capacity[global_block])] * self.num_time_steps
+
+    def _parse_empirical_block_capacity_profiles(self) -> list[list[list[float]]]:
+        profiles: list[list[list[float]]] = []
+        for row_idx, row in self.scenarios_df.iterrows():
+            scenario_profiles = []
+            for block_name in self.block_names:
+                try:
+                    scenario_profiles.append(
+                        self._block_capacity_profile_from_row(row, block_name)
+                    )
+                except Exception as exc:
+                    raise ValueError(
+                        f"Could not parse empirical capacity profile for block "
+                        f"'{block_name}' in row {row_idx}"
+                    ) from exc
+            profiles.append(scenario_profiles)
+        return profiles
+
+    def _build_empirical_physical_capacity_profiles(self) -> list[list[list[float]]]:
+        physical_profiles: list[list[list[float]]] = []
+        for k in range(self.num_empirical_scenarios):
+            by_generator = []
+            for i in range(self.num_physical_generators):
+                by_generator.append(
+                    [
+                        sum(
+                            self.empirical_Pmax_block[k][global_block][t]
+                            for global_block in self.physical_to_block_indices[i]
+                        )
+                        for t in range(self.num_time_steps)
+                    ]
+                )
+            physical_profiles.append(by_generator)
+        return physical_profiles
 
     # ------------------------------------------------------------------
     # Model construction
     # ------------------------------------------------------------------
 
     def build_model(self) -> None:
+        if getattr(self, "tightening_report", None):
+            self._prepare_loaded_bounds()
         self.model = ConcreteModel()
 
         self.model.scenarios = Set(initialize=range(self.num_empirical_scenarios))
         self.model.time_steps = Set(initialize=range(self.num_time_steps))
-        self.model.time_steps_plus_1 = Set(initialize=range(self.num_time_steps + 1))
         self.model.time_steps_minus_1 = Set(initialize=range(1, self.num_time_steps))
-
+        self.model.time_steps_plus_1 = Set(initialize=range(self.num_time_steps + 1))
         self.model.physical_generators = Set(initialize=range(self.num_physical_generators))
         self.model.generator_blocks = Set(dimen=2, initialize=self.generator_block_pairs)
         self.model.wind_physical_generators = Set(initialize=self.wind_physical_generator_ids)
-        self.model.conventional_physical_generators = Set(initialize=self.conventional_physical_generator_ids)
+        self.model.conventional_physical_generators = Set(
+            initialize=self.conventional_physical_generator_ids
+        )
         self.model.wind_blocks = Set(dimen=2, initialize=self.wind_block_pairs)
         self.model.conventional_blocks = Set(dimen=2, initialize=self.conventional_block_pairs)
 
@@ -574,21 +1288,10 @@ class DRO_PoAOptimization:
         self._build_complementarity_optimal_variables()
 
     def _build_PoA_variables(self) -> None:
+        self._build_regime_variables()
         m = self.model
         m.D = Var(m.scenarios, m.time_steps, domain=NonNegativeReals)
         m.P_max_block = Var(m.scenarios, m.generator_blocks, m.time_steps, domain=NonNegativeReals)
-        m.C_eq = Var(m.scenarios, domain=Reals)
-        m.C_opt = Var(m.scenarios, domain=Reals)
-        m.PoA = Var(m.scenarios, domain=Reals)
-        m.wasserstein_distance = Var(m.scenarios, domain=NonNegativeReals)
-
-        m.D_abs_deviation = Var(m.scenarios, m.time_steps, domain=NonNegativeReals)
-        m.P_max_phys_abs_deviation = Var(
-            m.scenarios,
-            m.wind_physical_generators,
-            m.time_steps,
-            domain=NonNegativeReals,
-        )
         m.D_transport_abs_deviation = Var(m.scenarios, m.time_steps, domain=NonNegativeReals)
         m.P_max_phys_transport_abs_deviation = Var(
             m.scenarios,
@@ -596,16 +1299,75 @@ class DRO_PoAOptimization:
             m.time_steps,
             domain=NonNegativeReals,
         )
+        m.wasserstein_distance = Var(m.scenarios, domain=NonNegativeReals)
+        m.C_eq = Var(m.scenarios, domain=Reals)
+        m.C_opt = Var(m.scenarios, domain=Reals)
+        m.PoA = Var(m.scenarios, domain=Reals)
+
+    def _build_regime_variables(self) -> None:
+        m = self.model
+        m.mu_D = Var(bounds=(self.mu_D_fixed, self.mu_D_fixed))
+        m.sigma_D = Var(bounds=(self.sigma_D_fixed, self.sigma_D_fixed))
+        m.mu_W = Var(bounds=(self.mu_W_fixed, self.mu_W_fixed))
+        m.sigma_W = Var(bounds=(self.sigma_W_fixed, self.sigma_W_fixed))
+        m.rho_D = Var(bounds=(self.demand_rho_fixed, self.demand_rho_fixed))
+        m.rho_W = Var(bounds=(self.wind_rho_fixed, self.wind_rho_fixed))
+        m.peak_W = Var(bounds=(self.peak_W_fixed, self.peak_W_fixed))
 
     def _build_equilibrium_variables(self) -> None:
         m = self.model
         m.P_eq = Var(m.scenarios, m.generator_blocks, m.time_steps, domain=NonNegativeReals)
         m.alpha = Var(m.scenarios, m.generator_blocks, m.time_steps, domain=Reals)
-        m.lambda_eq = Var(m.scenarios, m.time_steps, domain=Reals)
-        m.mu_upper_eq = Var(m.scenarios, m.generator_blocks, m.time_steps, domain=NonNegativeReals)
-        m.mu_lower_eq = Var(m.scenarios, m.generator_blocks, m.time_steps, domain=NonNegativeReals)
-        m.mu_ramp_up_eq = Var(m.scenarios, m.physical_generators, m.time_steps_plus_1, domain=NonNegativeReals)
-        m.mu_ramp_down_eq = Var(m.scenarios, m.physical_generators, m.time_steps_plus_1, domain=NonNegativeReals)
+        m.lambda_eq = Var(
+            m.scenarios,
+            m.time_steps,
+            domain=Reals,
+            bounds=lambda m, k, t: self.lambda_eq_bounds[int(t)],
+        )
+        m.mu_upper_eq = Var(
+            m.scenarios,
+            m.generator_blocks,
+            m.time_steps,
+            domain=Reals,
+            bounds=lambda m, k, i, b, t: (
+                0.0,
+                self.M_mu_upper_eq[int(i), int(b), int(t)],
+            ),
+        )
+        m.mu_lower_eq = Var(
+            m.scenarios,
+            m.generator_blocks,
+            m.time_steps,
+            domain=Reals,
+            bounds=lambda m, k, i, b, t: (
+                0.0,
+                self.M_mu_lower_eq[int(i), int(b), int(t)],
+            ),
+        )
+        m.mu_ramp_up_eq = Var(
+            m.scenarios,
+            m.physical_generators,
+            m.time_steps_plus_1,
+            domain=Reals,
+            bounds=lambda m, k, i, t: (
+                0.0,
+                self.M_mu_ramp_up_eq[int(i), int(t)]
+                if int(t) < self.num_time_steps
+                else 0.0,
+            ),
+        )
+        m.mu_ramp_down_eq = Var(
+            m.scenarios,
+            m.physical_generators,
+            m.time_steps_plus_1,
+            domain=Reals,
+            bounds=lambda m, k, i, t: (
+                0.0,
+                self.M_mu_ramp_down_eq[int(i), int(t)]
+                if int(t) < self.num_time_steps
+                else 0.0,
+            ),
+        )
 
     def _build_complementarity_equilibrium_variables(self) -> None:
         m = self.model
@@ -617,11 +1379,56 @@ class DRO_PoAOptimization:
     def _build_optimal_variables(self) -> None:
         m = self.model
         m.P_opt = Var(m.scenarios, m.generator_blocks, m.time_steps, domain=NonNegativeReals)
-        m.lambda_opt = Var(m.scenarios, m.time_steps, domain=Reals)
-        m.mu_upper_opt = Var(m.scenarios, m.generator_blocks, m.time_steps, domain=NonNegativeReals)
-        m.mu_lower_opt = Var(m.scenarios, m.generator_blocks, m.time_steps, domain=NonNegativeReals)
-        m.mu_ramp_up_opt = Var(m.scenarios, m.physical_generators, m.time_steps_plus_1, domain=NonNegativeReals)
-        m.mu_ramp_down_opt = Var(m.scenarios, m.physical_generators, m.time_steps_plus_1, domain=NonNegativeReals)
+        m.lambda_opt = Var(
+            m.scenarios,
+            m.time_steps,
+            domain=Reals,
+            bounds=lambda m, k, t: self.lambda_opt_bounds[int(t)],
+        )
+        m.mu_upper_opt = Var(
+            m.scenarios,
+            m.generator_blocks,
+            m.time_steps,
+            domain=Reals,
+            bounds=lambda m, k, i, b, t: (
+                0.0,
+                self.M_mu_upper_opt[int(i), int(b), int(t)],
+            ),
+        )
+        m.mu_lower_opt = Var(
+            m.scenarios,
+            m.generator_blocks,
+            m.time_steps,
+            domain=Reals,
+            bounds=lambda m, k, i, b, t: (
+                0.0,
+                self.M_mu_lower_opt[int(i), int(b), int(t)],
+            ),
+        )
+        m.mu_ramp_up_opt = Var(
+            m.scenarios,
+            m.physical_generators,
+            m.time_steps_plus_1,
+            domain=Reals,
+            bounds=lambda m, k, i, t: (
+                0.0,
+                self.M_mu_ramp_up_opt[int(i), int(t)]
+                if int(t) < self.num_time_steps
+                else 0.0,
+            ),
+        )
+        m.mu_ramp_down_opt = Var(
+            m.scenarios,
+            m.physical_generators,
+            m.time_steps_plus_1,
+            domain=Reals,
+            bounds=lambda m, k, i, t: (
+                0.0,
+                self.M_mu_ramp_down_opt[int(i), int(t)]
+                if int(t) < self.num_time_steps
+                else 0.0,
+            ),
+        )
 
     def _build_complementarity_optimal_variables(self) -> None:
         m = self.model
@@ -636,12 +1443,14 @@ class DRO_PoAOptimization:
             expr=sum(
                 m.PoA[k] - self.eta * m.wasserstein_distance[k]
                 for k in m.scenarios
-            ) / self.num_empirical_scenarios,
+            )
+            / self.num_empirical_scenarios,
             sense=maximize,
         )
 
     def _build_constraints(self) -> None:
         self._build_support_set()
+        self._build_transport_constraints()
         self._build_policy_constraints()
         self._build_lower_level_equilibrium_constraints()
         self._build_lower_level_optimal_constraints()
@@ -649,676 +1458,1503 @@ class DRO_PoAOptimization:
         self._build_KKT_stationarity_optimal_constraints()
         self._build_KKT_complementarity_equilibrium_constraints()
         self._build_KKT_complementarity_optimal_constraints()
-        self._build_wasserstein_distance_constraints()
+        self._build_aggregate_dual_bound_constraints()
         self._build_PoA_constraints()
 
     # ------------------------------------------------------------------
-    # Support set and DRO distance
+    # Support set
     # ------------------------------------------------------------------
 
     def _build_support_set(self) -> None:
-        if self.support_demand_ramp < 0 or self.support_demand_budget < 0:
-            raise ValueError("Demand ramp and budget must be non-negative")
-        if self.support_wind_ramp < 0 or self.support_wind_budget < 0:
-            raise ValueError("Wind ramp and budget must be non-negative")
-
+        self._build_regime_fixing_constraints()
         self._build_support_set_demand()
         self._build_support_set_wind()
 
+    def _build_regime_fixing_constraints(self) -> None:
+        m = self.model
+        m.regime_mu_D_fixed = Constraint(expr=m.mu_D == self.mu_D_fixed)
+        m.regime_sigma_D_fixed = Constraint(expr=m.sigma_D == self.sigma_D_fixed)
+        m.regime_mu_W_fixed = Constraint(expr=m.mu_W == self.mu_W_fixed)
+        m.regime_sigma_W_fixed = Constraint(expr=m.sigma_W == self.sigma_W_fixed)
+        m.regime_rho_D_fixed = Constraint(expr=m.rho_D == self.demand_rho_fixed)
+        m.regime_rho_W_fixed = Constraint(expr=m.rho_W == self.wind_rho_fixed)
+        m.regime_peak_W_fixed = Constraint(expr=m.peak_W == self.peak_W_fixed)
+
     def _build_support_set_demand(self) -> None:
         m = self.model
+        m.demand_reference = Expression(
+            m.time_steps,
+            rule=lambda m, t: self.demand_D_ref * m.mu_D * self.demand_shape[int(t)],
+        )
+        m.demand_lower = Expression(
+            m.time_steps,
+            rule=lambda m, t: m.demand_reference[t] - self.demand_D_ref * m.sigma_D,
+        )
+        m.demand_upper = Expression(
+            m.time_steps,
+            rule=lambda m, t: m.demand_reference[t] + self.demand_D_ref * m.sigma_D,
+        )
+        m.demand_ramp = Expression(
+            m.time_steps_minus_1,
+            rule=lambda m, t: self.demand_D_ref
+            * (
+                m.mu_D * self.demand_delta_shape[int(t)]
+                + (1.0 - self.demand_rho_fixed) * m.sigma_D
+            ),
+        )
 
-        def demand_lower_rule(model, k, t):
-            return model.D[k, t] >= self.support_demand_min
+        def demand_lower_rule(m, k, t):
+            return m.D[k, t] >= m.demand_lower[t]
 
-        def demand_upper_rule(model, k, t):
-            return model.D[k, t] <= self.support_demand_max
+        def demand_upper_rule(m, k, t):
+            return m.D[k, t] <= m.demand_upper[t]
 
-        def demand_ramp_up_rule(model, k, t):
-            return model.D[k, t] - model.D[k, t - 1] <= self.support_demand_ramp
+        def demand_ramp_up_rule(m, k, t):
+            return m.D[k, t] - m.D[k, t - 1] <= m.demand_ramp[t]
 
-        def demand_ramp_down_rule(model, k, t):
-            return model.D[k, t - 1] - model.D[k, t] <= self.support_demand_ramp
+        def demand_ramp_down_rule(m, k, t):
+            return m.D[k, t - 1] - m.D[k, t] <= m.demand_ramp[t]
 
-        def demand_abs_deviation_pos_rule(model, k, t):
-            return (
-                model.D_abs_deviation[k, t]
-                >= model.D[k, t] - self.empirical_demand_profiles[int(k)][int(t)]
-            )
+        def demand_feasibility_rule(m, t):
+            return m.demand_reference[t] - self.demand_D_ref * m.sigma_D >= 0
 
-        def demand_abs_deviation_neg_rule(model, k, t):
-            return (
-                model.D_abs_deviation[k, t]
-                >= self.empirical_demand_profiles[int(k)][int(t)] - model.D[k, t]
-            )
-
-        def demand_budget_rule(model, k):
-            return sum(model.D_abs_deviation[k, t] for t in model.time_steps) <= self.support_demand_budget
-
-        m.demand_lower_bound_constraints = Constraint(m.scenarios, m.time_steps, rule=demand_lower_rule)
-        m.demand_upper_bound_constraints = Constraint(m.scenarios, m.time_steps, rule=demand_upper_rule)
-        m.demand_ramp_up_constraints = Constraint(m.scenarios, m.time_steps_minus_1, rule=demand_ramp_up_rule)
-        m.demand_ramp_down_constraints = Constraint(m.scenarios, m.time_steps_minus_1, rule=demand_ramp_down_rule)
-        m.demand_abs_deviation_pos_constraints = Constraint(m.scenarios, m.time_steps, rule=demand_abs_deviation_pos_rule)
-        m.demand_abs_deviation_neg_constraints = Constraint(m.scenarios, m.time_steps, rule=demand_abs_deviation_neg_rule)
-        m.demand_budget_constraint = Constraint(m.scenarios, rule=demand_budget_rule)
+        m.demand_lower_bound_constraints = Constraint(
+            m.scenarios,
+            m.time_steps,
+            rule=demand_lower_rule,
+        )
+        m.demand_upper_bound_constraints = Constraint(
+            m.scenarios,
+            m.time_steps,
+            rule=demand_upper_rule,
+        )
+        m.demand_ramp_up_constraints = Constraint(
+            m.scenarios,
+            m.time_steps_minus_1,
+            rule=demand_ramp_up_rule,
+        )
+        m.demand_ramp_down_constraints = Constraint(
+            m.scenarios,
+            m.time_steps_minus_1,
+            rule=demand_ramp_down_rule,
+        )
+        m.demand_lower_feasibility = Constraint(m.time_steps, rule=demand_feasibility_rule)
 
     def _build_support_set_wind(self) -> None:
         m = self.model
-
-        def conventional_capacity_rule(model, k, i, b, t):
-            global_block = self.local_to_global_block[(int(i), int(b))]
-            return model.P_max_block[k, i, b, t] == self.static_block_capacity[global_block]
-
-        def wind_total_lower_rule(model, k, i, t):
-            return (
-                sum(model.P_max_block[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
-                >= self.support_wind_min[int(i)]
-            )
-
-        def wind_total_upper_rule(model, k, i, t):
-            return (
-                sum(model.P_max_block[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
-                <= self.support_wind_max[int(i)]
-            )
-
-        def wind_even_block_split_rule(model, k, i, b, t):
-            local_blocks = self.local_blocks_by_generator[int(i)]
-            return (
-                len(local_blocks) * model.P_max_block[k, i, b, t]
-                == sum(model.P_max_block[k, i, other_b, t] for other_b in local_blocks)
-            )
-
-        def wind_ramp_up_rule(model, k, i, t):
-            return (
-                sum(model.P_max_block[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
-                - sum(model.P_max_block[k, i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
-                <= self.support_wind_ramp
-            )
-
-        def wind_ramp_down_rule(model, k, i, t):
-            return (
-                sum(model.P_max_block[k, i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
-                - sum(model.P_max_block[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
-                <= self.support_wind_ramp
-            )
-
-        def wind_abs_deviation_pos_rule(model, k, i, t):
-            return (
-                model.P_max_phys_abs_deviation[k, i, t]
-                >= sum(model.P_max_block[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
-                - self.empirical_capacity_profiles[int(k)][int(i)][int(t)]
-            )
-
-        def wind_abs_deviation_neg_rule(model, k, i, t):
-            return (
-                model.P_max_phys_abs_deviation[k, i, t]
-                >= self.empirical_capacity_profiles[int(k)][int(i)][int(t)]
-                - sum(model.P_max_block[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
-            )
-
-        def wind_budget_rule(model, k):
-            return (
-                sum(
-                    model.P_max_phys_abs_deviation[k, i, t]
-                    for i in model.wind_physical_generators
-                    for t in model.time_steps
-                )
-                <= self.support_wind_budget
-            )
-
-        m.conventional_capacity = Constraint(m.scenarios, m.conventional_blocks, m.time_steps, rule=conventional_capacity_rule)
-        m.wind_total_lower_bound = Constraint(m.scenarios, m.wind_physical_generators, m.time_steps, rule=wind_total_lower_rule)
-        m.wind_total_upper_bound = Constraint(m.scenarios, m.wind_physical_generators, m.time_steps, rule=wind_total_upper_rule)
-        m.wind_even_block_split = Constraint(m.scenarios, m.wind_blocks, m.time_steps, rule=wind_even_block_split_rule)
-        m.wind_ramp_up = Constraint(m.scenarios, m.wind_physical_generators, m.time_steps_minus_1, rule=wind_ramp_up_rule)
-        m.wind_ramp_down = Constraint(m.scenarios, m.wind_physical_generators, m.time_steps_minus_1, rule=wind_ramp_down_rule)
-        m.wind_abs_deviation_pos = Constraint(m.scenarios, m.wind_physical_generators, m.time_steps, rule=wind_abs_deviation_pos_rule)
-        m.wind_abs_deviation_neg = Constraint(m.scenarios, m.wind_physical_generators, m.time_steps, rule=wind_abs_deviation_neg_rule)
-        m.wind_budget = Constraint(m.scenarios, rule=wind_budget_rule)
-
-    def _physical_capacity_expr(self, k: int, i: int, t: int):
-        return sum(
-            self.model.P_max_block[k, i, b, t]
-            for b in self.local_blocks_by_generator[int(i)]
+        m.wind_reference = Expression(
+            m.wind_physical_generators,
+            m.time_steps,
+            rule=lambda m, i, t: self.static_physical_capacity[int(i)]
+            * m.mu_W
+            * self.wind_shape[int(t)],
+        )
+        m.wind_lower = Expression(
+            m.wind_physical_generators,
+            m.time_steps,
+            rule=lambda m, i, t: m.wind_reference[i, t]
+            - self.static_physical_capacity[int(i)] * m.sigma_W,
+        )
+        m.wind_upper = Expression(
+            m.wind_physical_generators,
+            m.time_steps,
+            rule=lambda m, i, t: m.wind_reference[i, t]
+            + self.static_physical_capacity[int(i)] * m.sigma_W,
+        )
+        m.wind_ramp = Expression(
+            m.wind_physical_generators,
+            m.time_steps_minus_1,
+            rule=lambda m, i, t: self.static_physical_capacity[int(i)]
+            * (
+                m.mu_W * self.wind_delta_shape[int(t)]
+                + (1.0 - self.wind_rho_fixed) * m.sigma_W
+            ),
         )
 
-    def _build_wasserstein_distance_constraints(self) -> None:
+        def conventional_capacity_rule(m, k, i, b, t):
+            global_block = self.local_to_global_block[(int(i), int(b))]
+            return m.P_max_block[k, i, b, t] == self.static_block_capacity[global_block]
+
+        def wind_total_lower_rule(m, k, i, t):
+            return (
+                sum(m.P_max_block[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
+                >= m.wind_lower[i, t]
+            )
+
+        def wind_total_upper_rule(m, k, i, t):
+            return (
+                sum(m.P_max_block[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
+                <= m.wind_upper[i, t]
+            )
+
+        def wind_even_block_split_rule(m, k, i, b, t):
+            local_blocks = self.local_blocks_by_generator[int(i)]
+            return (
+                len(local_blocks) * m.P_max_block[k, i, b, t]
+                == sum(m.P_max_block[k, i, other_b, t] for other_b in local_blocks)
+            )
+
+        def wind_ramp_up_rule(m, k, i, t):
+            return (
+                sum(m.P_max_block[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
+                - sum(
+                    m.P_max_block[k, i, b, t - 1]
+                    for b in self.local_blocks_by_generator[int(i)]
+                )
+                <= m.wind_ramp[i, t]
+            )
+
+        def wind_ramp_down_rule(m, k, i, t):
+            return (
+                sum(
+                    m.P_max_block[k, i, b, t - 1]
+                    for b in self.local_blocks_by_generator[int(i)]
+                )
+                - sum(m.P_max_block[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
+                <= m.wind_ramp[i, t]
+            )
+
+        def wind_capacity_factor_lower_feasibility_rule(m, t):
+            return m.mu_W * self.wind_shape[int(t)] - m.sigma_W >= 0
+
+        def wind_capacity_factor_upper_feasibility_rule(m, t):
+            return m.mu_W * self.wind_shape[int(t)] + m.sigma_W <= 1
+
+        def dispatch_capacity_feasibility_rule(m, k, t):
+            return m.D[k, t] <= sum(
+                m.P_max_block[k, i, b, t]
+                for i, b in m.generator_blocks
+            )
+
+        m.conventional_capacity = Constraint(
+            m.scenarios,
+            m.conventional_blocks,
+            m.time_steps,
+            rule=conventional_capacity_rule,
+        )
+        m.wind_total_lower_bound = Constraint(
+            m.scenarios,
+            m.wind_physical_generators,
+            m.time_steps,
+            rule=wind_total_lower_rule,
+        )
+        m.wind_total_upper_bound = Constraint(
+            m.scenarios,
+            m.wind_physical_generators,
+            m.time_steps,
+            rule=wind_total_upper_rule,
+        )
+        m.wind_even_block_split = Constraint(
+            m.scenarios,
+            m.wind_blocks,
+            m.time_steps,
+            rule=wind_even_block_split_rule,
+        )
+        m.wind_ramp_up = Constraint(
+            m.scenarios,
+            m.wind_physical_generators,
+            m.time_steps_minus_1,
+            rule=wind_ramp_up_rule,
+        )
+        m.wind_ramp_down = Constraint(
+            m.scenarios,
+            m.wind_physical_generators,
+            m.time_steps_minus_1,
+            rule=wind_ramp_down_rule,
+        )
+        m.wind_capacity_factor_lower_feasibility = Constraint(
+            m.time_steps,
+            rule=wind_capacity_factor_lower_feasibility_rule,
+        )
+        m.wind_capacity_factor_upper_feasibility = Constraint(
+            m.time_steps,
+            rule=wind_capacity_factor_upper_feasibility_rule,
+        )
+        m.dispatch_capacity_feasibility = Constraint(
+            m.scenarios,
+            m.time_steps,
+            rule=dispatch_capacity_feasibility_rule,
+        )
+
+    def _build_transport_constraints(self) -> None:
         m = self.model
 
-        def demand_transport_pos_rule(model, k, t):
-            return model.D_transport_abs_deviation[k, t] >= model.D[k, t] - self.empirical_demand_profiles[int(k)][int(t)]
-
-        def demand_transport_neg_rule(model, k, t):
-            return model.D_transport_abs_deviation[k, t] >= self.empirical_demand_profiles[int(k)][int(t)] - model.D[k, t]
-
-        def capacity_transport_pos_rule(model, k, i, t):
-            physical_capacity = sum(model.P_max_block[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
-            return (
-                model.P_max_phys_transport_abs_deviation[k, i, t]
-                >= physical_capacity - self.empirical_capacity_profiles[int(k)][int(i)][int(t)]
+        def physical_capacity_expr(k: int, i: int, t: int):
+            return sum(
+                m.P_max_block[k, i, b, t]
+                for b in self.local_blocks_by_generator[int(i)]
             )
 
-        def capacity_transport_neg_rule(model, k, i, t):
-            physical_capacity = sum(model.P_max_block[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
+        def demand_transport_pos_rule(m, k, t):
+            return m.D_transport_abs_deviation[k, t] >= m.D[k, t] - self.empirical_D[int(k)][int(t)]
+
+        def demand_transport_neg_rule(m, k, t):
+            return m.D_transport_abs_deviation[k, t] >= self.empirical_D[int(k)][int(t)] - m.D[k, t]
+
+        def pmax_transport_pos_rule(m, k, i, t):
             return (
-                model.P_max_phys_transport_abs_deviation[k, i, t]
-                >= self.empirical_capacity_profiles[int(k)][int(i)][int(t)] - physical_capacity
+                m.P_max_phys_transport_abs_deviation[k, i, t]
+                >= physical_capacity_expr(int(k), int(i), int(t))
+                - self.empirical_Pmax_phys[int(k)][int(i)][int(t)]
             )
 
-        def wasserstein_distance_rule(model, k):
-            return model.wasserstein_distance[k] == (
-                sum(model.D_transport_abs_deviation[k, t] for t in model.time_steps)
+        def pmax_transport_neg_rule(m, k, i, t):
+            return (
+                m.P_max_phys_transport_abs_deviation[k, i, t]
+                >= self.empirical_Pmax_phys[int(k)][int(i)][int(t)]
+                - physical_capacity_expr(int(k), int(i), int(t))
+            )
+
+        def wasserstein_distance_rule(m, k):
+            return m.wasserstein_distance[k] == (
+                sum(m.D_transport_abs_deviation[k, t] for t in m.time_steps)
                 + sum(
-                    model.P_max_phys_transport_abs_deviation[k, i, t]
-                    for i in model.physical_generators
-                    for t in model.time_steps
+                    m.P_max_phys_transport_abs_deviation[k, i, t]
+                    for i in m.physical_generators
+                    for t in m.time_steps
                 )
             )
 
-        m.demand_transport_pos = Constraint(m.scenarios, m.time_steps, rule=demand_transport_pos_rule)
-        m.demand_transport_neg = Constraint(m.scenarios, m.time_steps, rule=demand_transport_neg_rule)
-        m.capacity_transport_pos = Constraint(m.scenarios, m.physical_generators, m.time_steps, rule=capacity_transport_pos_rule)
-        m.capacity_transport_neg = Constraint(m.scenarios, m.physical_generators, m.time_steps, rule=capacity_transport_neg_rule)
-        m.wasserstein_distance_definition = Constraint(m.scenarios, rule=wasserstein_distance_rule)
+        m.demand_transport_abs_pos = Constraint(
+            m.scenarios,
+            m.time_steps,
+            rule=demand_transport_pos_rule,
+        )
+        m.demand_transport_abs_neg = Constraint(
+            m.scenarios,
+            m.time_steps,
+            rule=demand_transport_neg_rule,
+        )
+        m.pmax_phys_transport_abs_pos = Constraint(
+            m.scenarios,
+            m.physical_generators,
+            m.time_steps,
+            rule=pmax_transport_pos_rule,
+        )
+        m.pmax_phys_transport_abs_neg = Constraint(
+            m.scenarios,
+            m.physical_generators,
+            m.time_steps,
+            rule=pmax_transport_neg_rule,
+        )
+        m.wasserstein_distance_definition = Constraint(
+            m.scenarios,
+            rule=wasserstein_distance_rule,
+        )
 
     # ------------------------------------------------------------------
     # Lower level equilibrium and optimality constraints
     # ------------------------------------------------------------------
 
-    def _build_policy_constraints(self) -> None:
-        def true_cost_alpha_rule(model, k, i, b, t):
-            global_block = self.local_to_global_block[(int(i), int(b))]
-            return model.alpha[k, i, b, t] == self.block_cost_vector[global_block]
-
-        self.model.true_cost_alpha = Constraint(
-            self.model.scenarios,
-            self.model.generator_blocks,
-            self.model.time_steps,
-            rule=true_cost_alpha_rule,
-        )
-
     def _build_lower_level_equilibrium_constraints(self) -> None:
         m = self.model
 
-        def power_balance_eq_rule(model, k, t):
-            return model.D[k, t] - sum(model.P_eq[k, i, b, t] for (i, b) in model.generator_blocks) == 0
+        def power_balance_eq_rule(m, k, t):
+            return m.D[k, t] - sum(m.P_eq[k, i, b, t] for (i, b) in m.generator_blocks) == 0
 
-        def generation_upper_eq_rule(model, k, i, b, t):
-            return model.P_eq[k, i, b, t] - model.P_max_block[k, i, b, t] <= 0
+        def generation_upper_eq_rule(m, k, i, b, t):
+            return m.P_eq[k, i, b, t] - m.P_max_block[k, i, b, t] <= 0
 
-        def generation_lower_eq_rule(model, k, i, b, t):
-            return model.P_eq[k, i, b, t] >= 0
+        def generation_lower_eq_rule(m, k, i, b, t):
+            return m.P_eq[k, i, b, t] >= 0
 
-        def ramp_up_eq_rule(model, k, i, t):
+        def ramp_up_eq_rule(m, k, i, t):
             return (
-                sum(model.P_eq[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
-                - sum(model.P_eq[k, i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
+                sum(m.P_eq[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
+                - sum(m.P_eq[k, i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
                 - self.ramp_vector_up[int(i)]
                 <= 0
             )
 
-        def ramp_up_initial_eq_rule(model, k, i):
+        def ramp_up_initial_eq_rule(m, k, i):
             return (
-                sum(model.P_eq[k, i, b, 0] for b in self.local_blocks_by_generator[int(i)])
-                - self.p_init[int(i)]
-                - self.ramp_vector_up[int(i)]
-                <= 0
+                sum(m.P_eq[k, i, b, 0] for b in self.local_blocks_by_generator[int(i)])
+                - self.p_init[int(k)][int(i)]
+                <= self.ramp_vector_up[int(i)]
             )
 
-        def ramp_down_eq_rule(model, k, i, t):
+        def ramp_down_eq_rule(m, k, i, t):
             return (
-                -sum(model.P_eq[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
-                + sum(model.P_eq[k, i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
+                -sum(m.P_eq[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
+                + sum(m.P_eq[k, i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
                 - self.ramp_vector_down[int(i)]
                 <= 0
             )
 
-        def ramp_down_initial_eq_rule(model, k, i):
+        def ramp_down_initial_eq_rule(m, k, i):
             return (
-                -sum(model.P_eq[k, i, b, 0] for b in self.local_blocks_by_generator[int(i)])
-                + self.p_init[int(i)]
+                -sum(m.P_eq[k, i, b, 0] for b in self.local_blocks_by_generator[int(i)])
+                + self.p_init[int(k)][int(i)]
                 - self.ramp_vector_down[int(i)]
                 <= 0
             )
 
         m.power_balance_eq = Constraint(m.scenarios, m.time_steps, rule=power_balance_eq_rule)
-        m.generation_upper_eq = Constraint(m.scenarios, m.generator_blocks, m.time_steps, rule=generation_upper_eq_rule)
-        m.generation_lower_eq = Constraint(m.scenarios, m.generator_blocks, m.time_steps, rule=generation_lower_eq_rule)
-        m.ramp_up_eq = Constraint(m.scenarios, m.physical_generators, m.time_steps_minus_1, rule=ramp_up_eq_rule)
-        m.ramp_up_initial_eq = Constraint(m.scenarios, m.physical_generators, rule=ramp_up_initial_eq_rule)
-        m.ramp_down_eq = Constraint(m.scenarios, m.physical_generators, m.time_steps_minus_1, rule=ramp_down_eq_rule)
-        m.ramp_down_initial_eq = Constraint(m.scenarios, m.physical_generators, rule=ramp_down_initial_eq_rule)
+        m.generation_upper_eq = Constraint(
+            m.scenarios,
+            m.generator_blocks,
+            m.time_steps,
+            rule=generation_upper_eq_rule,
+        )
+        m.generation_lower_eq = Constraint(
+            m.scenarios,
+            m.generator_blocks,
+            m.time_steps,
+            rule=generation_lower_eq_rule,
+        )
+        m.ramp_up_eq = Constraint(
+            m.scenarios,
+            m.physical_generators,
+            m.time_steps_minus_1,
+            rule=ramp_up_eq_rule,
+        )
+        m.ramp_up_initial_eq = Constraint(
+            m.scenarios,
+            m.physical_generators,
+            rule=ramp_up_initial_eq_rule,
+        )
+        m.ramp_down_eq = Constraint(
+            m.scenarios,
+            m.physical_generators,
+            m.time_steps_minus_1,
+            rule=ramp_down_eq_rule,
+        )
+        m.ramp_down_initial_eq = Constraint(
+            m.scenarios,
+            m.physical_generators,
+            rule=ramp_down_initial_eq_rule,
+        )
 
     def _build_lower_level_optimal_constraints(self) -> None:
         m = self.model
 
-        def power_balance_opt_rule(model, k, t):
-            return model.D[k, t] - sum(model.P_opt[k, i, b, t] for (i, b) in model.generator_blocks) == 0
+        def power_balance_opt_rule(m, k, t):
+            return m.D[k, t] - sum(m.P_opt[k, i, b, t] for (i, b) in m.generator_blocks) == 0
 
-        def generation_upper_opt_rule(model, k, i, b, t):
-            return model.P_opt[k, i, b, t] - model.P_max_block[k, i, b, t] <= 0
+        def generation_upper_opt_rule(m, k, i, b, t):
+            return m.P_opt[k, i, b, t] - m.P_max_block[k, i, b, t] <= 0
 
-        def generation_lower_opt_rule(model, k, i, b, t):
-            return model.P_opt[k, i, b, t] >= 0
+        def generation_lower_opt_rule(m, k, i, b, t):
+            return m.P_opt[k, i, b, t] >= 0
 
-        def ramp_up_opt_rule(model, k, i, t):
+        def ramp_up_opt_rule(m, k, i, t):
             return (
-                sum(model.P_opt[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
-                - sum(model.P_opt[k, i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
+                sum(m.P_opt[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
+                - sum(m.P_opt[k, i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
                 - self.ramp_vector_up[int(i)]
                 <= 0
             )
 
-        def ramp_up_initial_opt_rule(model, k, i):
+        def ramp_up_initial_opt_rule(m, k, i):
             return (
-                sum(model.P_opt[k, i, b, 0] for b in self.local_blocks_by_generator[int(i)])
-                - self.p_init[int(i)]
-                - self.ramp_vector_up[int(i)]
-                <= 0
+                sum(m.P_opt[k, i, b, 0] for b in self.local_blocks_by_generator[int(i)])
+                - self.p_init[int(k)][int(i)]
+                <= self.ramp_vector_up[int(i)]
             )
 
-        def ramp_down_opt_rule(model, k, i, t):
+        def ramp_down_opt_rule(m, k, i, t):
             return (
-                -sum(model.P_opt[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
-                + sum(model.P_opt[k, i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
+                -sum(m.P_opt[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
+                + sum(m.P_opt[k, i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
                 - self.ramp_vector_down[int(i)]
                 <= 0
             )
 
-        def ramp_down_initial_opt_rule(model, k, i):
+        def ramp_down_initial_opt_rule(m, k, i):
             return (
-                -sum(model.P_opt[k, i, b, 0] for b in self.local_blocks_by_generator[int(i)])
-                + self.p_init[int(i)]
+                -sum(m.P_opt[k, i, b, 0] for b in self.local_blocks_by_generator[int(i)])
+                + self.p_init[int(k)][int(i)]
                 - self.ramp_vector_down[int(i)]
                 <= 0
             )
 
         m.power_balance_opt = Constraint(m.scenarios, m.time_steps, rule=power_balance_opt_rule)
-        m.generation_upper_opt = Constraint(m.scenarios, m.generator_blocks, m.time_steps, rule=generation_upper_opt_rule)
-        m.generation_lower_opt = Constraint(m.scenarios, m.generator_blocks, m.time_steps, rule=generation_lower_opt_rule)
-        m.ramp_up_opt = Constraint(m.scenarios, m.physical_generators, m.time_steps_minus_1, rule=ramp_up_opt_rule)
-        m.ramp_up_initial_opt = Constraint(m.scenarios, m.physical_generators, rule=ramp_up_initial_opt_rule)
-        m.ramp_down_opt = Constraint(m.scenarios, m.physical_generators, m.time_steps_minus_1, rule=ramp_down_opt_rule)
-        m.ramp_down_initial_opt = Constraint(m.scenarios, m.physical_generators, rule=ramp_down_initial_opt_rule)
+        m.generation_upper_opt = Constraint(
+            m.scenarios,
+            m.generator_blocks,
+            m.time_steps,
+            rule=generation_upper_opt_rule,
+        )
+        m.generation_lower_opt = Constraint(
+            m.scenarios,
+            m.generator_blocks,
+            m.time_steps,
+            rule=generation_lower_opt_rule,
+        )
+        m.ramp_up_opt = Constraint(
+            m.scenarios,
+            m.physical_generators,
+            m.time_steps_minus_1,
+            rule=ramp_up_opt_rule,
+        )
+        m.ramp_up_initial_opt = Constraint(
+            m.scenarios,
+            m.physical_generators,
+            rule=ramp_up_initial_opt_rule,
+        )
+        m.ramp_down_opt = Constraint(
+            m.scenarios,
+            m.physical_generators,
+            m.time_steps_minus_1,
+            rule=ramp_down_opt_rule,
+        )
+        m.ramp_down_initial_opt = Constraint(
+            m.scenarios,
+            m.physical_generators,
+            rule=ramp_down_initial_opt_rule,
+        )
 
     # ------------------------------------------------------------------
-    # KKT stationarity and complementarity
+    # KKT stationarity conditions
     # ------------------------------------------------------------------
 
     def _build_KKT_stationarity_equilibrium_constraints(self) -> None:
         m = self.model
 
-        def stationarity_eq_rule(model, k, i, b, t):
+        def stationarity_eq_rule(m, k, i, b, t):
             return (
-                model.alpha[k, i, b, t]
-                - model.lambda_eq[k, t]
-                + model.mu_upper_eq[k, i, b, t]
-                - model.mu_lower_eq[k, i, b, t]
-                + model.mu_ramp_up_eq[k, i, t]
-                - model.mu_ramp_up_eq[k, i, t + 1]
-                - model.mu_ramp_down_eq[k, i, t]
-                + model.mu_ramp_down_eq[k, i, t + 1]
+                m.alpha[k, i, b, t]
+                - m.lambda_eq[k, t]
+                + m.mu_upper_eq[k, i, b, t]
+                - m.mu_lower_eq[k, i, b, t]
+                + m.mu_ramp_up_eq[k, i, t]
+                - m.mu_ramp_up_eq[k, i, t + 1]
+                - m.mu_ramp_down_eq[k, i, t]
+                + m.mu_ramp_down_eq[k, i, t + 1]
                 == 0
             )
 
-        def final_ramp_up_dual_eq_rule(model, k, i):
-            return model.mu_ramp_up_eq[k, i, self.num_time_steps] == 0
+        def final_ramp_up_dual_eq_rule(m, k, i):
+            return m.mu_ramp_up_eq[k, i, self.num_time_steps] == 0
 
-        def final_ramp_down_dual_eq_rule(model, k, i):
-            return model.mu_ramp_down_eq[k, i, self.num_time_steps] == 0
+        def final_ramp_down_dual_eq_rule(m, k, i):
+            return m.mu_ramp_down_eq[k, i, self.num_time_steps] == 0
 
-        m.stationarity_eq = Constraint(m.scenarios, m.generator_blocks, m.time_steps, rule=stationarity_eq_rule)
-        m.final_ramp_up_dual_eq = Constraint(m.scenarios, m.physical_generators, rule=final_ramp_up_dual_eq_rule)
-        m.final_ramp_down_dual_eq = Constraint(m.scenarios, m.physical_generators, rule=final_ramp_down_dual_eq_rule)
+        m.stationarity_eq = Constraint(
+            m.scenarios,
+            m.generator_blocks,
+            m.time_steps,
+            rule=stationarity_eq_rule,
+        )
+        m.final_ramp_up_dual_eq = Constraint(
+            m.scenarios,
+            m.physical_generators,
+            rule=final_ramp_up_dual_eq_rule,
+        )
+        m.final_ramp_down_dual_eq = Constraint(
+            m.scenarios,
+            m.physical_generators,
+            rule=final_ramp_down_dual_eq_rule,
+        )
 
     def _build_KKT_stationarity_optimal_constraints(self) -> None:
         m = self.model
 
-        def stationarity_opt_rule(model, k, i, b, t):
+        def stationarity_opt_rule(m, k, i, b, t):
             global_block = self.local_to_global_block[(int(i), int(b))]
             return (
                 self.block_cost_vector[global_block]
-                - model.lambda_opt[k, t]
-                + model.mu_upper_opt[k, i, b, t]
-                - model.mu_lower_opt[k, i, b, t]
-                + model.mu_ramp_up_opt[k, i, t]
-                - model.mu_ramp_up_opt[k, i, t + 1]
-                - model.mu_ramp_down_opt[k, i, t]
-                + model.mu_ramp_down_opt[k, i, t + 1]
+                - m.lambda_opt[k, t]
+                + m.mu_upper_opt[k, i, b, t]
+                - m.mu_lower_opt[k, i, b, t]
+                + m.mu_ramp_up_opt[k, i, t]
+                - m.mu_ramp_up_opt[k, i, t + 1]
+                - m.mu_ramp_down_opt[k, i, t]
+                + m.mu_ramp_down_opt[k, i, t + 1]
                 == 0
             )
 
-        def final_ramp_up_dual_opt_rule(model, k, i):
-            return model.mu_ramp_up_opt[k, i, self.num_time_steps] == 0
+        def final_ramp_up_dual_opt_rule(m, k, i):
+            return m.mu_ramp_up_opt[k, i, self.num_time_steps] == 0
 
-        def final_ramp_down_dual_opt_rule(model, k, i):
-            return model.mu_ramp_down_opt[k, i, self.num_time_steps] == 0
+        def final_ramp_down_dual_opt_rule(m, k, i):
+            return m.mu_ramp_down_opt[k, i, self.num_time_steps] == 0
 
-        m.stationarity_opt = Constraint(m.scenarios, m.generator_blocks, m.time_steps, rule=stationarity_opt_rule)
-        m.final_ramp_up_dual_opt = Constraint(m.scenarios, m.physical_generators, rule=final_ramp_up_dual_opt_rule)
-        m.final_ramp_down_dual_opt = Constraint(m.scenarios, m.physical_generators, rule=final_ramp_down_dual_opt_rule)
+        m.stationarity_opt = Constraint(
+            m.scenarios,
+            m.generator_blocks,
+            m.time_steps,
+            rule=stationarity_opt_rule,
+        )
+        m.final_ramp_up_dual_opt = Constraint(
+            m.scenarios,
+            m.physical_generators,
+            rule=final_ramp_up_dual_opt_rule,
+        )
+        m.final_ramp_down_dual_opt = Constraint(
+            m.scenarios,
+            m.physical_generators,
+            rule=final_ramp_down_dual_opt_rule,
+        )
+
+    # ------------------------------------------------------------------
+    # KKT complementarity conditions
+    # ------------------------------------------------------------------
 
     def _build_KKT_complementarity_equilibrium_constraints(self) -> None:
         m = self.model
 
-        def upper_bound_complementarity_eq_rule(model, k, i, b, t):
-            return -self._block_capacity_big_m(int(i), int(b)) * (1 - model.z_upper_eq[k, i, b, t]) <= (
-                model.P_eq[k, i, b, t] - model.P_max_block[k, i, b, t]
+        def upper_bound_complementarity_eq_rule(m, k, i, b, t):
+            return (
+                -self.M_cap[int(i), int(b), int(t)] * (1 - m.z_upper_eq[k, i, b, t])
+                <= m.P_eq[k, i, b, t] - m.P_max_block[k, i, b, t]
             )
 
-        def upper_bound_complementarity_dual_eq_rule(model, k, i, b, t):
-            dual_big_m = self._tight_dual_upper_bound(
-                "mu_upper_eq",
-                (int(k), int(i), int(b), int(t)),
-                self.big_m_complementarity,
+        def upper_bound_complementarity_dual_eq_rule(m, k, i, b, t):
+            return (
+                m.mu_upper_eq[k, i, b, t]
+                <= self.M_mu_upper_eq[int(i), int(b), int(t)] * m.z_upper_eq[k, i, b, t]
             )
-            return model.mu_upper_eq[k, i, b, t] <= dual_big_m * model.z_upper_eq[k, i, b, t]
 
-        def lower_bound_complementarity_eq_rule(model, k, i, b, t):
-            return -self._block_capacity_big_m(int(i), int(b)) * (1 - model.z_lower_eq[k, i, b, t]) <= -model.P_eq[k, i, b, t]
-
-        def lower_bound_complementarity_dual_eq_rule(model, k, i, b, t):
-            dual_big_m = self._tight_dual_upper_bound(
-                "mu_lower_eq",
-                (int(k), int(i), int(b), int(t)),
-                self.big_m_complementarity,
+        def lower_bound_complementarity_eq_rule(m, k, i, b, t):
+            return (
+                -self.M_lower[int(i), int(b), int(t)] * (1 - m.z_lower_eq[k, i, b, t])
+                <= -m.P_eq[k, i, b, t]
             )
-            return model.mu_lower_eq[k, i, b, t] <= dual_big_m * model.z_lower_eq[k, i, b, t]
 
-        def ramp_up_complementarity_eq_rule(model, k, i, t):
-            return -self._ramp_up_big_m(int(i)) * (1 - model.z_ramp_up_eq[k, i, t]) <= (
-                sum(model.P_eq[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
-                - sum(model.P_eq[k, i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
+        def lower_bound_complementarity_dual_eq_rule(m, k, i, b, t):
+            return (
+                m.mu_lower_eq[k, i, b, t]
+                <= self.M_mu_lower_eq[int(i), int(b), int(t)] * m.z_lower_eq[k, i, b, t]
+            )
+
+        def ramp_up_complementarity_eq_rule(m, k, i, t):
+            return -self.M_ramp_up[int(i), int(t)] * (1 - m.z_ramp_up_eq[k, i, t]) <= (
+                sum(m.P_eq[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
+                - sum(m.P_eq[k, i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
                 - self.ramp_vector_up[int(i)]
             )
 
-        def ramp_up_initial_complementarity_eq_rule(model, k, i):
-            return -self._ramp_up_initial_big_m(int(i)) * (1 - model.z_ramp_up_eq[k, i, 0]) <= (
-                sum(model.P_eq[k, i, b, 0] for b in self.local_blocks_by_generator[int(i)])
-                - self.p_init[int(i)]
+        def ramp_up_initial_complementarity_eq_rule(m, k, i):
+            return -self.M_ramp_up_initial[int(i)] * (1 - m.z_ramp_up_eq[k, i, 0]) <= (
+                sum(m.P_eq[k, i, b, 0] for b in self.local_blocks_by_generator[int(i)])
+                - self.p_init[int(k)][int(i)]
                 - self.ramp_vector_up[int(i)]
             )
 
-        def ramp_up_complementarity_dual_eq_rule(model, k, i, t):
-            dual_big_m = self._tight_dual_upper_bound(
-                "mu_ramp_up_eq",
-                (int(k), int(i), int(t)),
-                self.big_m_complementarity,
+        def ramp_up_complementarity_dual_eq_rule(m, k, i, t):
+            return (
+                m.mu_ramp_up_eq[k, i, t]
+                <= self.M_mu_ramp_up_eq[int(i), int(t)] * m.z_ramp_up_eq[k, i, t]
             )
-            return model.mu_ramp_up_eq[k, i, t] <= dual_big_m * model.z_ramp_up_eq[k, i, t]
 
-        def ramp_down_complementarity_eq_rule(model, k, i, t):
-            return -self._ramp_down_big_m(int(i)) * (1 - model.z_ramp_down_eq[k, i, t]) <= (
-                -sum(model.P_eq[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
-                + sum(model.P_eq[k, i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
+        def ramp_down_complementarity_eq_rule(m, k, i, t):
+            return -self.M_ramp_down[int(i), int(t)] * (1 - m.z_ramp_down_eq[k, i, t]) <= (
+                -sum(m.P_eq[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
+                + sum(m.P_eq[k, i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
                 - self.ramp_vector_down[int(i)]
             )
 
-        def ramp_down_initial_complementarity_eq_rule(model, k, i):
-            return -self._ramp_down_initial_big_m(int(i)) * (1 - model.z_ramp_down_eq[k, i, 0]) <= (
-                -sum(model.P_eq[k, i, b, 0] for b in self.local_blocks_by_generator[int(i)])
-                + self.p_init[int(i)]
+        def ramp_down_initial_complementarity_eq_rule(m, k, i):
+            return -self.M_ramp_down_initial[int(i)] * (1 - m.z_ramp_down_eq[k, i, 0]) <= (
+                -sum(m.P_eq[k, i, b, 0] for b in self.local_blocks_by_generator[int(i)])
+                + self.p_init[int(k)][int(i)]
                 - self.ramp_vector_down[int(i)]
             )
 
-        def ramp_down_complementarity_dual_eq_rule(model, k, i, t):
-            dual_big_m = self._tight_dual_upper_bound(
-                "mu_ramp_down_eq",
-                (int(k), int(i), int(t)),
-                self.big_m_complementarity,
+        def ramp_down_complementarity_dual_eq_rule(m, k, i, t):
+            return (
+                m.mu_ramp_down_eq[k, i, t]
+                <= self.M_mu_ramp_down_eq[int(i), int(t)] * m.z_ramp_down_eq[k, i, t]
             )
-            return model.mu_ramp_down_eq[k, i, t] <= dual_big_m * model.z_ramp_down_eq[k, i, t]
 
-        m.upper_bound_complementarity_eq = Constraint(m.scenarios, m.generator_blocks, m.time_steps, rule=upper_bound_complementarity_eq_rule)
-        m.upper_bound_complementarity_dual_eq = Constraint(m.scenarios, m.generator_blocks, m.time_steps, rule=upper_bound_complementarity_dual_eq_rule)
-        m.lower_bound_complementarity_eq = Constraint(m.scenarios, m.generator_blocks, m.time_steps, rule=lower_bound_complementarity_eq_rule)
-        m.lower_bound_complementarity_dual_eq = Constraint(m.scenarios, m.generator_blocks, m.time_steps, rule=lower_bound_complementarity_dual_eq_rule)
-        m.ramp_up_complementarity_eq = Constraint(m.scenarios, m.physical_generators, m.time_steps_minus_1, rule=ramp_up_complementarity_eq_rule)
-        m.ramp_up_initial_complementarity_eq = Constraint(m.scenarios, m.physical_generators, rule=ramp_up_initial_complementarity_eq_rule)
-        m.ramp_up_complementarity_dual_eq = Constraint(m.scenarios, m.physical_generators, m.time_steps, rule=ramp_up_complementarity_dual_eq_rule)
-        m.ramp_down_complementarity_eq = Constraint(m.scenarios, m.physical_generators, m.time_steps_minus_1, rule=ramp_down_complementarity_eq_rule)
-        m.ramp_down_initial_complementarity_eq = Constraint(m.scenarios, m.physical_generators, rule=ramp_down_initial_complementarity_eq_rule)
-        m.ramp_down_complementarity_dual_eq = Constraint(m.scenarios, m.physical_generators, m.time_steps, rule=ramp_down_complementarity_dual_eq_rule)
+        m.upper_bound_complementarity_eq = Constraint(
+            m.scenarios,
+            m.generator_blocks,
+            m.time_steps,
+            rule=upper_bound_complementarity_eq_rule,
+        )
+        m.upper_bound_complementarity_dual_eq = Constraint(
+            m.scenarios,
+            m.generator_blocks,
+            m.time_steps,
+            rule=upper_bound_complementarity_dual_eq_rule,
+        )
+        m.lower_bound_complementarity_eq = Constraint(
+            m.scenarios,
+            m.generator_blocks,
+            m.time_steps,
+            rule=lower_bound_complementarity_eq_rule,
+        )
+        m.lower_bound_complementarity_dual_eq = Constraint(
+            m.scenarios,
+            m.generator_blocks,
+            m.time_steps,
+            rule=lower_bound_complementarity_dual_eq_rule,
+        )
+        m.ramp_up_complementarity_eq = Constraint(
+            m.scenarios,
+            m.physical_generators,
+            m.time_steps_minus_1,
+            rule=ramp_up_complementarity_eq_rule,
+        )
+        m.ramp_up_complementarity_dual_eq = Constraint(
+            m.scenarios,
+            m.physical_generators,
+            m.time_steps,
+            rule=ramp_up_complementarity_dual_eq_rule,
+        )
+        m.ramp_up_initial_complementarity_eq = Constraint(
+            m.scenarios,
+            m.physical_generators,
+            rule=ramp_up_initial_complementarity_eq_rule,
+        )
+        m.ramp_down_complementarity_eq = Constraint(
+            m.scenarios,
+            m.physical_generators,
+            m.time_steps_minus_1,
+            rule=ramp_down_complementarity_eq_rule,
+        )
+        m.ramp_down_complementarity_dual_eq = Constraint(
+            m.scenarios,
+            m.physical_generators,
+            m.time_steps,
+            rule=ramp_down_complementarity_dual_eq_rule,
+        )
+        m.ramp_down_initial_complementarity_eq = Constraint(
+            m.scenarios,
+            m.physical_generators,
+            rule=ramp_down_initial_complementarity_eq_rule,
+        )
 
     def _build_KKT_complementarity_optimal_constraints(self) -> None:
         m = self.model
 
-        def upper_bound_complementarity_opt_rule(model, k, i, b, t):
-            return -self._block_capacity_big_m(int(i), int(b)) * (1 - model.z_upper_opt[k, i, b, t]) <= (
-                model.P_opt[k, i, b, t] - model.P_max_block[k, i, b, t]
+        def upper_bound_complementarity_opt_rule(m, k, i, b, t):
+            return (
+                -self.M_cap[int(i), int(b), int(t)] * (1 - m.z_upper_opt[k, i, b, t])
+                <= m.P_opt[k, i, b, t] - m.P_max_block[k, i, b, t]
             )
 
-        def upper_bound_complementarity_dual_opt_rule(model, k, i, b, t):
-            dual_big_m = self._tight_dual_upper_bound(
-                "mu_upper_opt",
-                (int(k), int(i), int(b), int(t)),
-                self.big_m_complementarity,
+        def upper_bound_complementarity_dual_opt_rule(m, k, i, b, t):
+            return (
+                m.mu_upper_opt[k, i, b, t]
+                <= self.M_mu_upper_opt[int(i), int(b), int(t)] * m.z_upper_opt[k, i, b, t]
             )
-            return model.mu_upper_opt[k, i, b, t] <= dual_big_m * model.z_upper_opt[k, i, b, t]
 
-        def lower_bound_complementarity_opt_rule(model, k, i, b, t):
-            return -self._block_capacity_big_m(int(i), int(b)) * (1 - model.z_lower_opt[k, i, b, t]) <= -model.P_opt[k, i, b, t]
-
-        def lower_bound_complementarity_dual_opt_rule(model, k, i, b, t):
-            dual_big_m = self._tight_dual_upper_bound(
-                "mu_lower_opt",
-                (int(k), int(i), int(b), int(t)),
-                self.big_m_complementarity,
+        def lower_bound_complementarity_opt_rule(m, k, i, b, t):
+            return (
+                -self.M_lower[int(i), int(b), int(t)] * (1 - m.z_lower_opt[k, i, b, t])
+                <= -m.P_opt[k, i, b, t]
             )
-            return model.mu_lower_opt[k, i, b, t] <= dual_big_m * model.z_lower_opt[k, i, b, t]
 
-        def ramp_up_complementarity_opt_rule(model, k, i, t):
-            return -self._ramp_up_big_m(int(i)) * (1 - model.z_ramp_up_opt[k, i, t]) <= (
-                sum(model.P_opt[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
-                - sum(model.P_opt[k, i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
+        def lower_bound_complementarity_dual_opt_rule(m, k, i, b, t):
+            return (
+                m.mu_lower_opt[k, i, b, t]
+                <= self.M_mu_lower_opt[int(i), int(b), int(t)] * m.z_lower_opt[k, i, b, t]
+            )
+
+        def ramp_up_complementarity_opt_rule(m, k, i, t):
+            return -self.M_ramp_up[int(i), int(t)] * (1 - m.z_ramp_up_opt[k, i, t]) <= (
+                sum(m.P_opt[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
+                - sum(m.P_opt[k, i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
                 - self.ramp_vector_up[int(i)]
             )
 
-        def ramp_up_initial_complementarity_opt_rule(model, k, i):
-            return -self._ramp_up_initial_big_m(int(i)) * (1 - model.z_ramp_up_opt[k, i, 0]) <= (
-                sum(model.P_opt[k, i, b, 0] for b in self.local_blocks_by_generator[int(i)])
-                - self.p_init[int(i)]
+        def ramp_up_initial_complementarity_opt_rule(m, k, i):
+            return -self.M_ramp_up_initial[int(i)] * (1 - m.z_ramp_up_opt[k, i, 0]) <= (
+                sum(m.P_opt[k, i, b, 0] for b in self.local_blocks_by_generator[int(i)])
+                - self.p_init[int(k)][int(i)]
                 - self.ramp_vector_up[int(i)]
             )
 
-        def ramp_up_complementarity_dual_opt_rule(model, k, i, t):
-            dual_big_m = self._tight_dual_upper_bound(
-                "mu_ramp_up_opt",
-                (int(k), int(i), int(t)),
-                self.big_m_complementarity,
+        def ramp_up_complementarity_dual_opt_rule(m, k, i, t):
+            return (
+                m.mu_ramp_up_opt[k, i, t]
+                <= self.M_mu_ramp_up_opt[int(i), int(t)] * m.z_ramp_up_opt[k, i, t]
             )
-            return model.mu_ramp_up_opt[k, i, t] <= dual_big_m * model.z_ramp_up_opt[k, i, t]
 
-        def ramp_down_complementarity_opt_rule(model, k, i, t):
-            return -self._ramp_down_big_m(int(i)) * (1 - model.z_ramp_down_opt[k, i, t]) <= (
-                -sum(model.P_opt[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
-                + sum(model.P_opt[k, i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
+        def ramp_down_complementarity_opt_rule(m, k, i, t):
+            return -self.M_ramp_down[int(i), int(t)] * (1 - m.z_ramp_down_opt[k, i, t]) <= (
+                -sum(m.P_opt[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
+                + sum(m.P_opt[k, i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
                 - self.ramp_vector_down[int(i)]
             )
 
-        def ramp_down_initial_complementarity_opt_rule(model, k, i):
-            return -self._ramp_down_initial_big_m(int(i)) * (1 - model.z_ramp_down_opt[k, i, 0]) <= (
-                -sum(model.P_opt[k, i, b, 0] for b in self.local_blocks_by_generator[int(i)])
-                + self.p_init[int(i)]
+        def ramp_down_initial_complementarity_opt_rule(m, k, i):
+            return -self.M_ramp_down_initial[int(i)] * (1 - m.z_ramp_down_opt[k, i, 0]) <= (
+                -sum(m.P_opt[k, i, b, 0] for b in self.local_blocks_by_generator[int(i)])
+                + self.p_init[int(k)][int(i)]
                 - self.ramp_vector_down[int(i)]
             )
 
-        def ramp_down_complementarity_dual_opt_rule(model, k, i, t):
-            dual_big_m = self._tight_dual_upper_bound(
-                "mu_ramp_down_opt",
-                (int(k), int(i), int(t)),
-                self.big_m_complementarity,
+        def ramp_down_complementarity_dual_opt_rule(m, k, i, t):
+            return (
+                m.mu_ramp_down_opt[k, i, t]
+                <= self.M_mu_ramp_down_opt[int(i), int(t)] * m.z_ramp_down_opt[k, i, t]
             )
-            return model.mu_ramp_down_opt[k, i, t] <= dual_big_m * model.z_ramp_down_opt[k, i, t]
 
-        m.upper_bound_complementarity_opt = Constraint(m.scenarios, m.generator_blocks, m.time_steps, rule=upper_bound_complementarity_opt_rule)
-        m.upper_bound_complementarity_dual_opt = Constraint(m.scenarios, m.generator_blocks, m.time_steps, rule=upper_bound_complementarity_dual_opt_rule)
-        m.lower_bound_complementarity_opt = Constraint(m.scenarios, m.generator_blocks, m.time_steps, rule=lower_bound_complementarity_opt_rule)
-        m.lower_bound_complementarity_dual_opt = Constraint(m.scenarios, m.generator_blocks, m.time_steps, rule=lower_bound_complementarity_dual_opt_rule)
-        m.ramp_up_complementarity_opt = Constraint(m.scenarios, m.physical_generators, m.time_steps_minus_1, rule=ramp_up_complementarity_opt_rule)
-        m.ramp_up_initial_complementarity_opt = Constraint(m.scenarios, m.physical_generators, rule=ramp_up_initial_complementarity_opt_rule)
-        m.ramp_up_complementarity_dual_opt = Constraint(m.scenarios, m.physical_generators, m.time_steps, rule=ramp_up_complementarity_dual_opt_rule)
-        m.ramp_down_complementarity_opt = Constraint(m.scenarios, m.physical_generators, m.time_steps_minus_1, rule=ramp_down_complementarity_opt_rule)
-        m.ramp_down_initial_complementarity_opt = Constraint(m.scenarios, m.physical_generators, rule=ramp_down_initial_complementarity_opt_rule)
-        m.ramp_down_complementarity_dual_opt = Constraint(m.scenarios, m.physical_generators, m.time_steps, rule=ramp_down_complementarity_dual_opt_rule)
+        m.upper_bound_complementarity_opt = Constraint(
+            m.scenarios,
+            m.generator_blocks,
+            m.time_steps,
+            rule=upper_bound_complementarity_opt_rule,
+        )
+        m.upper_bound_complementarity_dual_opt = Constraint(
+            m.scenarios,
+            m.generator_blocks,
+            m.time_steps,
+            rule=upper_bound_complementarity_dual_opt_rule,
+        )
+        m.lower_bound_complementarity_opt = Constraint(
+            m.scenarios,
+            m.generator_blocks,
+            m.time_steps,
+            rule=lower_bound_complementarity_opt_rule,
+        )
+        m.lower_bound_complementarity_dual_opt = Constraint(
+            m.scenarios,
+            m.generator_blocks,
+            m.time_steps,
+            rule=lower_bound_complementarity_dual_opt_rule,
+        )
+        m.ramp_up_complementarity_opt = Constraint(
+            m.scenarios,
+            m.physical_generators,
+            m.time_steps_minus_1,
+            rule=ramp_up_complementarity_opt_rule,
+        )
+        m.ramp_up_complementarity_dual_opt = Constraint(
+            m.scenarios,
+            m.physical_generators,
+            m.time_steps,
+            rule=ramp_up_complementarity_dual_opt_rule,
+        )
+        m.ramp_up_initial_complementarity_opt = Constraint(
+            m.scenarios,
+            m.physical_generators,
+            rule=ramp_up_initial_complementarity_opt_rule,
+        )
+        m.ramp_down_complementarity_opt = Constraint(
+            m.scenarios,
+            m.physical_generators,
+            m.time_steps_minus_1,
+            rule=ramp_down_complementarity_opt_rule,
+        )
+        m.ramp_down_complementarity_dual_opt = Constraint(
+            m.scenarios,
+            m.physical_generators,
+            m.time_steps,
+            rule=ramp_down_complementarity_dual_opt_rule,
+        )
+        m.ramp_down_initial_complementarity_opt = Constraint(
+            m.scenarios,
+            m.physical_generators,
+            rule=ramp_down_initial_complementarity_opt_rule,
+        )
 
     # ------------------------------------------------------------------
-    # PoA objective terms
+    # Aggregate dual-bound valid inequalities
+    # ------------------------------------------------------------------
+
+    def _build_aggregate_dual_bound_constraints(self) -> int:
+        m = self.model
+        if not hasattr(m, "kkt_sides"):
+            m.kkt_sides = Set(initialize=("eq", "opt"))
+
+        def dual_component(side: str, constraint_type: str) -> Any:
+            return getattr(
+                m,
+                {
+                    ("eq", "upper"): "mu_upper_eq",
+                    ("eq", "lower"): "mu_lower_eq",
+                    ("eq", "ramp_up"): "mu_ramp_up_eq",
+                    ("eq", "ramp_down"): "mu_ramp_down_eq",
+                    ("opt", "upper"): "mu_upper_opt",
+                    ("opt", "lower"): "mu_lower_opt",
+                    ("opt", "ramp_up"): "mu_ramp_up_opt",
+                    ("opt", "ramp_down"): "mu_ramp_down_opt",
+                }[(side, constraint_type)],
+            )
+
+        def dual_name(side: str, constraint_type: str) -> str:
+            return {
+                ("eq", "upper"): "mu_upper_eq",
+                ("eq", "lower"): "mu_lower_eq",
+                ("eq", "ramp_up"): "mu_ramp_up_eq",
+                ("eq", "ramp_down"): "mu_ramp_down_eq",
+                ("opt", "upper"): "mu_upper_opt",
+                ("opt", "lower"): "mu_lower_opt",
+                ("opt", "ramp_up"): "mu_ramp_up_opt",
+                ("opt", "ramp_down"): "mu_ramp_down_opt",
+            }[(side, constraint_type)]
+
+        def aggregate_bound(side: str, constraint_type: str, t: int) -> Optional[float]:
+            key = {
+                "upper": "mu_max_sum_ub",
+                "lower": "mu_min_sum_ub",
+                "ramp_up": "mu_ramp_up_sum_ub",
+                "ramp_down": "mu_ramp_down_sum_ub",
+            }[constraint_type]
+            return self._aggregate_dual_sum_upper_bound(
+                key,
+                side,
+                int(t),
+                dual_name(side, constraint_type),
+            )
+
+        def capacity_sum_rule(constraint_type: str):
+            def rule(model, k, side, t):
+                side = str(side)
+                bound = aggregate_bound(side, constraint_type, int(t))
+                if bound is None:
+                    return Constraint.Skip
+                mu = dual_component(side, constraint_type)
+                return (
+                    sum(mu[k, i, b, t] for (i, b) in model.generator_blocks)
+                    <= float(bound)
+                )
+
+            return rule
+
+        def ramp_sum_rule(constraint_type: str):
+            def rule(model, k, side, t):
+                side = str(side)
+                bound = aggregate_bound(side, constraint_type, int(t))
+                if bound is None:
+                    return Constraint.Skip
+                mu = dual_component(side, constraint_type)
+                return (
+                    sum(mu[k, i, t] for i in model.physical_generators)
+                    <= float(bound)
+                )
+
+            return rule
+
+        m.aggregate_mu_max_bound = Constraint(
+            m.scenarios,
+            m.kkt_sides,
+            m.time_steps,
+            rule=capacity_sum_rule("upper"),
+        )
+        m.aggregate_mu_min_bound = Constraint(
+            m.scenarios,
+            m.kkt_sides,
+            m.time_steps,
+            rule=capacity_sum_rule("lower"),
+        )
+        m.aggregate_mu_ramp_up_bound = Constraint(
+            m.scenarios,
+            m.kkt_sides,
+            m.time_steps,
+            rule=ramp_sum_rule("ramp_up"),
+        )
+        m.aggregate_mu_ramp_down_bound = Constraint(
+            m.scenarios,
+            m.kkt_sides,
+            m.time_steps,
+            rule=ramp_sum_rule("ramp_down"),
+        )
+
+        return sum(
+            len(getattr(m, component_name))
+            for component_name in self.aggregate_dual_bound_component_names
+        )
+
+    def _refresh_aggregate_dual_bound_constraints(self) -> int:
+        if not hasattr(self, "model"):
+            raise ValueError("Model is not built. Call build_model() first.")
+        for component_name in self.aggregate_dual_bound_component_names:
+            if hasattr(self.model, component_name):
+                self.model.del_component(component_name)
+        return self._build_aggregate_dual_bound_constraints()
+
+    # ------------------------------------------------------------------
+    # PoA constraints
     # ------------------------------------------------------------------
 
     def _build_PoA_constraints(self) -> None:
         m = self.model
 
-        def cost_eq_rule(model, k):
-            return model.C_eq[k] == sum(
+        def cost_eq_rule(m, k):
+            return m.C_eq[k] == sum(
                 self.block_cost_vector[self.local_to_global_block[(int(i), int(b))]]
-                * model.P_eq[k, i, b, t]
-                for (i, b) in model.generator_blocks
-                for t in model.time_steps
+                * m.P_eq[k, i, b, t]
+                for (i, b) in m.generator_blocks
+                for t in m.time_steps
             )
 
-        def cost_opt_rule(model, k):
-            return model.C_opt[k] == sum(
+        def cost_opt_rule(m, k):
+            return m.C_opt[k] == sum(
                 self.block_cost_vector[self.local_to_global_block[(int(i), int(b))]]
-                * model.P_opt[k, i, b, t]
-                for (i, b) in model.generator_blocks
-                for t in model.time_steps
+                * m.P_opt[k, i, b, t]
+                for (i, b) in m.generator_blocks
+                for t in m.time_steps
             )
 
-        def poa_rule(model, k):
-            return model.C_eq[k] - model.C_opt[k] == model.PoA[k]
+        def poa_rule(m, k):
+            return m.C_eq[k] - m.C_opt[k] == m.PoA[k]
 
         m.cost_definition_eq = Constraint(m.scenarios, rule=cost_eq_rule)
         m.cost_definition_opt = Constraint(m.scenarios, rule=cost_opt_rule)
         m.poa_definition = Constraint(m.scenarios, rule=poa_rule)
 
     # ------------------------------------------------------------------
-    # Apply precomputed tightening reports
+    # Policy constraints
     # ------------------------------------------------------------------
 
-    def load_tightening_report(
-        self,
-        report_path: str | Path = "results/dro_poa_bidding_blocks_tightening_report.json",
-    ) -> dict[str, Any]:
-        """
-        Load a DRO tightening report.
+    def _build_policy_constraints(self) -> None:
+        m = self.model
 
-        Alpha and dual/binary entries are expected to carry the empirical
-        scenario index first, e.g. alpha/upper/lower keys are `k,i,b,t` and ramp
-        keys are `k,i,t`.
-        """
-        path = Path(report_path)
-        if not path.exists():
-            raise FileNotFoundError(f"Tightening report not found: {path}")
-        with path.open("r", encoding="utf-8") as file_handle:
-            report = json.load(file_handle)
+        def true_cost_alpha_rule(m, k, i, b, t):
+            if int(i) in self.nn_policy_generator_ids:
+                return Constraint.Skip
+            global_block = self.local_to_global_block[(int(i), int(b))]
+            return m.alpha[k, i, b, t] == self.block_cost_vector[global_block]
 
-        self.tightening_report_path = path
-        self.tightening_report = report
-        self.fixed_binaries = report.get("fixed_binaries", {}) or {}
-        self.tight_big_m = report.get("tight_big_m", {}) or {}
-        self.alpha_bound_optimization_results = (
-            report.get("alpha_optimization_results", {}) or {}
+        m.true_cost_alpha = Constraint(
+            m.scenarios,
+            m.generator_blocks,
+            m.time_steps,
+            rule=true_cost_alpha_rule,
         )
-        self.alpha_bounds = {
-            self._parse_json_index(key): {
-                "lower": float(value["lower"]),
-                "upper": float(value["upper"]),
-            }
-            for key, value in (report.get("alpha_bounds", {}) or {}).items()
-        }
-        return report
 
-    def apply_tightened_bounds_to_model(
+        if self.nn_policy_generator_ids:
+            self._build_nn_policy_constraints()
+        else:
+            m.nn_constraints = ConstraintList()
+
+    def _raw_nn_feature_expression(
+        self,
+        feature_name: str,
+        k: int,
+        t: int,
+        physical_generator_idx: int,
+    ):
+        m = self.model
+        k = int(k)
+        t = int(t)
+        physical_generator_idx = int(physical_generator_idx)
+        previous_t = self.num_time_steps - 1 if t == 0 else t - 1
+        next_t = 0 if t == self.num_time_steps - 1 else t + 1
+
+        total_wind_capacity = lambda time_idx: sum(
+            m.P_max_block[k, i, b, time_idx] for (i, b) in self.wind_block_pairs
+        )
+        total_capacity = lambda time_idx: sum(
+            m.P_max_block[k, i, b, time_idx] for (i, b) in self.generator_block_pairs
+        )
+        own_capacity = lambda time_idx: sum(
+            m.P_max_block[k, physical_generator_idx, b, time_idx]
+            for b in self.local_blocks_by_generator[physical_generator_idx]
+        )
+
+        if feature_name == "demand":
+            return m.D[k, t]
+        if feature_name == "total_wind_generation_capacity":
+            return total_wind_capacity(t)
+        if feature_name == "total_generation_capacity":
+            return total_capacity(t)
+        if feature_name == "residual_demand":
+            return m.D[k, t] - total_wind_capacity(t)
+        if feature_name == "previous_generation_capacity":
+            return total_capacity(previous_t)
+        if feature_name == "previous_demand":
+            return m.D[k, previous_t]
+        if feature_name == "next_generation_capacity":
+            return total_capacity(next_t)
+        if feature_name == "next_demand":
+            return m.D[k, next_t]
+        if feature_name == "own_generation_capacity":
+            return own_capacity(t)
+        if feature_name == "previous_own_generation_capacity":
+            return own_capacity(previous_t)
+        if feature_name == "next_own_generation_capacity":
+            return own_capacity(next_t)
+        if feature_name == "average_true_cost":
+            costs = [
+                self.block_cost_vector[
+                    self.local_to_global_block[(physical_generator_idx, b)]
+                ]
+                for b in self.local_blocks_by_generator[physical_generator_idx]
+            ]
+            return float(np.mean(costs))
+        if feature_name == "minimum_true_cost":
+            return float(
+                min(
+                    self.block_cost_vector[
+                        self.local_to_global_block[(physical_generator_idx, b)]
+                    ]
+                    for b in self.local_blocks_by_generator[physical_generator_idx]
+                )
+            )
+        if feature_name == "maximum_true_cost":
+            return float(
+                max(
+                    self.block_cost_vector[
+                        self.local_to_global_block[(physical_generator_idx, b)]
+                    ]
+                    for b in self.local_blocks_by_generator[physical_generator_idx]
+                )
+            )
+        raise ValueError(f"Unsupported NN feature name: {feature_name}")
+
+    def _normalized_nn_feature_expression(
+        self,
+        generator_name: str,
+        feature_name: str,
+        k: int,
+        t: int,
+        physical_generator_idx: int,
+    ):
+        raw = self._raw_nn_feature_expression(feature_name, k, t, physical_generator_idx)
+        feature_min, feature_max = self._nn_feature_bounds(generator_name, feature_name)
+        denominator = feature_max - feature_min
+        if abs(denominator) <= self.normalization_epsilon:
+            return 0.0
+        return (raw - feature_min) / denominator
+
+    def _build_nn_policy_constraints(self) -> None:
+        m = self.model
+        if not self.nn_relu_bounds:
+            raise ValueError(
+                "NN ReLU bounds are required before building NN policy constraints. "
+                "Run the DRO ReLU-bound tightening stage or call "
+                "load_nn_relu_bounds_report(...)."
+            )
+        nn_input_indices: list[tuple[int, int, int, int]] = []
+        nn_z_indices: list[tuple[int, int, int, int, int]] = []
+        nn_h_indices: list[tuple[int, int, int, int, int]] = []
+        nn_output_indices: list[tuple[int, int, int, int]] = []
+
+        for i in self.nn_policy_generator_ids:
+            generator_name = self.physical_generator_names[int(i)]
+            if generator_name not in self.nn_policies:
+                raise ValueError(f"NN policy for generator {generator_name} was not loaded.")
+            if generator_name not in self.nn_relu_bounds:
+                raise ValueError(
+                    "NN ReLU bounds report is missing bounds for generator "
+                    f"{generator_name}."
+                )
+            policy = self.nn_policies[generator_name]
+            for k in range(self.num_empirical_scenarios):
+                for t in range(self.num_time_steps):
+                    for f_idx, _ in enumerate(policy["feature_columns"]):
+                        nn_input_indices.append((int(k), int(i), int(t), int(f_idx)))
+
+            linear_idx = 0
+            layers = policy["layers"]
+            for layer_pos, layer in enumerate(layers):
+                if str(layer.get("type", "")).lower() != "linear":
+                    continue
+                output_dim = len(layer["bias"])
+                is_final_linear = layer_pos == len(layers) - 1
+                for k in range(self.num_empirical_scenarios):
+                    for t in range(self.num_time_steps):
+                        for node in range(output_dim):
+                            if is_final_linear:
+                                nn_output_indices.append((int(k), int(i), int(t), int(node)))
+                            else:
+                                nn_z_indices.append(
+                                    (int(k), int(i), int(t), int(linear_idx), int(node))
+                                )
+                                nn_h_indices.append(
+                                    (int(k), int(i), int(t), int(linear_idx), int(node))
+                                )
+                linear_idx += 1
+
+        m.nn_input_index = Set(dimen=4, initialize=nn_input_indices)
+        m.nn_z_index = Set(dimen=5, initialize=nn_z_indices)
+        m.nn_h_index = Set(dimen=5, initialize=nn_h_indices)
+        m.nn_delta_index = Set(dimen=5, initialize=nn_h_indices)
+        m.nn_output_index = Set(dimen=4, initialize=nn_output_indices)
+        m.nn_input = Var(m.nn_input_index, domain=Reals)
+        m.nn_z = Var(m.nn_z_index, domain=Reals)
+        m.nn_h = Var(m.nn_h_index, domain=NonNegativeReals)
+        m.nn_delta = Var(m.nn_delta_index, domain=Binary)
+        m.nn_output = Var(m.nn_output_index, domain=Reals)
+        m.nn_constraints = ConstraintList()
+
+        for i in self.nn_policy_generator_ids:
+            generator_name = self.physical_generator_names[int(i)]
+            relu_bounds = self.nn_relu_bounds[generator_name]
+            for (time_idx, linear_idx, node), bounds in relu_bounds.items():
+                for k in m.scenarios:
+                    index = (
+                        int(k),
+                        int(i),
+                        int(time_idx),
+                        int(linear_idx),
+                        int(node),
+                    )
+                    if index not in m.nn_z:
+                        continue
+                    m.nn_z[index].setlb(float(bounds["L"]))
+                    m.nn_z[index].setub(float(bounds["U"]))
+                    m.nn_h[index].setlb(float(bounds["h_lower"]))
+                    m.nn_h[index].setub(float(bounds["h_upper"]))
+
+        for i in self.nn_policy_generator_ids:
+            i = int(i)
+            generator_name = self.physical_generator_names[i]
+            policy = self.nn_policies[generator_name]
+            relu_bounds = self.nn_relu_bounds[generator_name]
+            feature_columns = policy["feature_columns"]
+            for k in range(self.num_empirical_scenarios):
+                for t in range(self.num_time_steps):
+                    for f_idx, feature_name in enumerate(feature_columns):
+                        m.nn_constraints.add(
+                            m.nn_input[k, i, t, f_idx]
+                            == self._normalized_nn_feature_expression(
+                                generator_name,
+                                feature_name,
+                                k,
+                                t,
+                                i,
+                            )
+                        )
+
+                    previous_values = [
+                        m.nn_input[k, i, t, f_idx]
+                        for f_idx in range(len(feature_columns))
+                    ]
+                    linear_idx = 0
+                    for layer_pos, layer in enumerate(policy["layers"]):
+                        if str(layer.get("type", "")).lower() == "relu":
+                            continue
+                        weights = np.asarray(layer["weight"], dtype=float)
+                        bias = np.asarray(layer["bias"], dtype=float)
+                        is_final_linear = layer_pos == len(policy["layers"]) - 1
+                        current_values = []
+                        for node in range(weights.shape[0]):
+                            expr = float(bias[node]) + sum(
+                                float(weights[node, prev_idx]) * previous_values[prev_idx]
+                                for prev_idx in range(weights.shape[1])
+                            )
+                            if is_final_linear:
+                                m.nn_constraints.add(m.nn_output[k, i, t, node] == expr)
+                                current_values.append(m.nn_output[k, i, t, node])
+                                continue
+
+                            m.nn_constraints.add(
+                                m.nn_z[k, i, t, linear_idx, node] == expr
+                            )
+                            h = m.nn_h[k, i, t, linear_idx, node]
+                            z = m.nn_z[k, i, t, linear_idx, node]
+                            delta = m.nn_delta[k, i, t, linear_idx, node]
+                            bound_key = (int(t), int(linear_idx), int(node))
+                            if bound_key not in relu_bounds:
+                                raise ValueError(
+                                    f"NN ReLU bounds report is missing bounds for "
+                                    f"{generator_name} at time {t}, linear layer "
+                                    f"{linear_idx}, node {node}."
+                                )
+                            bounds = relu_bounds[bound_key]
+                            status = str(bounds["status"]).lower()
+                            if status == "inactive":
+                                m.nn_constraints.add(h == 0)
+                                delta.fix(0)
+                            elif status == "active":
+                                m.nn_constraints.add(h == z)
+                                delta.fix(1)
+                            elif status == "ambiguous":
+                                L = float(bounds["L"])
+                                U = float(bounds["U"])
+                                m.nn_constraints.add(h >= z)
+                                m.nn_constraints.add(h >= 0)
+                                m.nn_constraints.add(h <= z - L * (1 - delta))
+                                m.nn_constraints.add(h <= U * delta)
+                            else:
+                                raise ValueError(
+                                    f"{generator_name}: unknown ReLU bound status '{status}'"
+                                )
+                            current_values.append(h)
+                        previous_values = current_values
+                        linear_idx += 1
+
+            for output_idx, local_block in policy["target_map"].items():
+                for k in m.scenarios:
+                    for t in m.time_steps:
+                        m.nn_constraints.add(
+                            m.alpha[int(k), i, int(local_block), int(t)]
+                            == m.nn_output[int(k), i, int(t), int(output_idx)]
+                        )
+
+    # ------------------------------------------------------------------
+    # Applying regime-wide tightening reports
+    # ------------------------------------------------------------------
+
+    def apply_regime_wide_tightening_to_model(
         self,
         report: Optional[dict[str, Any]] = None,
         apply_alpha_bounds: bool = True,
         apply_fixed_binaries: bool = True,
         apply_dual_bounds: bool = True,
-    ) -> dict[str, int]:
+        apply_relu_bounds: bool = True,
+    ) -> dict[str, Any]:
         """
-        Apply a scenario-indexed tightening report to an already-built DRO model.
+        Apply a regime-wide DRO tightening report to every scenario copy k.
+
+        Report keys are intentionally non-scenario-indexed. This method expands
+        each i,b,t / i,t / t key over all empirical scenarios in the Pyomo model.
         """
         if not hasattr(self, "model"):
             raise ValueError("Model is not built. Call build_model() first.")
 
-        report = report or getattr(self, "tightening_report", None)
-        if report is None:
-            raise ValueError("No tightening report loaded. Call load_tightening_report() first.")
+        current_report = getattr(self, "tightening_report", None)
+        report = report or current_report
+        if not report:
+            raise ValueError(
+                "No DRO regime-wide tightening report loaded. "
+                "Call load_regime_wide_tightening_report() first."
+            )
+        if report is not current_report:
+            self._set_regime_wide_tightening_report_data(
+                report,
+                getattr(self, "tightening_report_path", None),
+            )
+        self._prepare_loaded_bounds()
 
-        m = self.model
-        stats = {"fixed_binaries": 0, "dual_upper_bounds": 0, "alpha_bounds": 0}
-
-        if apply_fixed_binaries:
-            for var_name, entries in (report.get("fixed_binaries", {}) or {}).items():
-                binary_var = getattr(m, var_name, None)
-                if binary_var is None:
-                    continue
-                for key, details in entries.items():
-                    index = self._parse_json_index(key)
-                    if index not in binary_var:
-                        continue
-                    binary_var[index].fix(int(details.get("fixed_value", 0)))
-                    stats["fixed_binaries"] += 1
-
-        if apply_dual_bounds:
-            for var_name, entries in (report.get("tight_big_m", {}) or {}).items():
-                dual_var = getattr(m, var_name, None)
-                if dual_var is None:
-                    continue
-                for key, details in entries.items():
-                    tight_value = details.get("tight_big_m")
-                    if tight_value is None:
-                        continue
-                    index = self._parse_json_index(key)
-                    if index not in dual_var:
-                        continue
-                    new_ub = max(0.0, float(tight_value))
-                    current_ub = dual_var[index].ub
-                    if current_ub is not None:
-                        new_ub = min(float(current_ub), new_ub)
-                    dual_var[index].setub(new_ub)
-                    stats["dual_upper_bounds"] += 1
-
+        stats = {
+            "alpha_bounds": 0,
+            "fixed_binaries": 0,
+            "lambda_bounds": 0,
+            "dual_upper_bounds": 0,
+            "aggregate_dual_bounds": 0,
+            "relu_bounds": {},
+        }
         if apply_alpha_bounds:
-            for key, bounds in (report.get("alpha_bounds", {}) or {}).items():
-                index = self._parse_json_index(key)
-                if not hasattr(m, "alpha") or index not in m.alpha:
-                    continue
-                lower = float(bounds["lower"])
-                upper = float(bounds["upper"])
-                current_lb = m.alpha[index].lb
-                current_ub = m.alpha[index].ub
-                if current_lb is not None:
-                    lower = max(float(current_lb), lower)
-                if current_ub is not None:
-                    upper = min(float(current_ub), upper)
-                if lower <= upper:
-                    m.alpha[index].setlb(lower)
-                    m.alpha[index].setub(upper)
-                    stats["alpha_bounds"] += 1
-
+            stats["alpha_bounds"] = self._apply_alpha_bounds_to_model(report)
+        if apply_fixed_binaries:
+            stats["fixed_binaries"] = self._apply_fixed_binaries_to_model(report)
+        if apply_dual_bounds:
+            stats["lambda_bounds"] = self._apply_lambda_bounds_to_model()
+            stats["dual_upper_bounds"] = self._apply_dual_bounds_to_model()
+            self.aggregate_dual_bounds = report.get("aggregate_dual_bounds", {}) or {}
+            stats["aggregate_dual_bounds"] = (
+                self._refresh_aggregate_dual_bound_constraints()
+            )
+        if apply_relu_bounds:
+            stats["relu_bounds"] = self._apply_relu_bounds_to_model(report)
         self.applied_tightening_stats = stats
         return stats
+
+    def _apply_alpha_bounds_to_model(self, report: dict[str, Any]) -> int:
+        m = self.model
+        alpha_var = getattr(m, "alpha", None)
+        if alpha_var is None:
+            return 0
+        applied = 0
+        for key, bounds in (report.get("alpha_bounds", {}) or {}).items():
+            index = self._parse_json_index(key)
+            if len(index) != 3:
+                raise ValueError(f"Alpha-bound key '{key}' must have format i,b,t")
+            lower = float(bounds["lower"])
+            upper = float(bounds["upper"])
+            for k in m.scenarios:
+                scenario_index = (int(k), *index)
+                if scenario_index not in alpha_var:
+                    continue
+                current_lb = alpha_var[scenario_index].lb
+                current_ub = alpha_var[scenario_index].ub
+                new_lower = max(float(current_lb), lower) if current_lb is not None else lower
+                new_upper = min(float(current_ub), upper) if current_ub is not None else upper
+                if new_lower <= new_upper:
+                    alpha_var[scenario_index].setlb(new_lower)
+                    alpha_var[scenario_index].setub(new_upper)
+                    applied += 1
+        return applied
+
+    def _apply_fixed_binaries_to_model(self, report: dict[str, Any]) -> int:
+        m = self.model
+        applied = 0
+        for var_name, entries in (report.get("fixed_binaries", {}) or {}).items():
+            binary_var = getattr(m, var_name, None)
+            if binary_var is None:
+                continue
+            for key, details in (entries or {}).items():
+                index = self._parse_json_index(key)
+                fixed_value = int((details or {}).get("fixed_value", 0))
+                expected_without_k = binary_var.dim() - 1
+                if len(index) != expected_without_k:
+                    raise ValueError(
+                        f"Fixed-binary key '{key}' for {var_name} must omit k and "
+                        f"have {expected_without_k} indices."
+                    )
+                for k in m.scenarios:
+                    scenario_index = (int(k), *index)
+                    if scenario_index in binary_var:
+                        binary_var[scenario_index].fix(fixed_value)
+                        applied += 1
+        return applied
+
+    def _apply_lambda_bounds_to_model(self) -> int:
+        m = self.model
+        applied = 0
+        lambda_bound_maps = {
+            "lambda_eq": self.lambda_eq_bounds,
+            "lambda_opt": self.lambda_opt_bounds,
+        }
+        for lambda_name, bound_map in lambda_bound_maps.items():
+            lambda_var = getattr(m, lambda_name, None)
+            if lambda_var is None:
+                continue
+            for k in m.scenarios:
+                for t in m.time_steps:
+                    lower, upper = bound_map[int(t)]
+                    index = (int(k), int(t))
+                    current_lb = lambda_var[index].lb
+                    current_ub = lambda_var[index].ub
+                    new_lower = max(float(current_lb), lower) if current_lb is not None else lower
+                    new_upper = min(float(current_ub), upper) if current_ub is not None else upper
+                    if new_lower <= new_upper:
+                        lambda_var[index].setlb(new_lower)
+                        lambda_var[index].setub(new_upper)
+                        applied += 1
+        return applied
+
+    def _apply_dual_bounds_to_model(self) -> int:
+        m = self.model
+        applied = 0
+        dual_bound_maps: tuple[tuple[str, dict[Any, float]], ...] = (
+            ("mu_upper_eq", self.M_mu_upper_eq),
+            ("mu_lower_eq", self.M_mu_lower_eq),
+            ("mu_ramp_up_eq", self.M_mu_ramp_up_eq),
+            ("mu_ramp_down_eq", self.M_mu_ramp_down_eq),
+            ("mu_upper_opt", self.M_mu_upper_opt),
+            ("mu_lower_opt", self.M_mu_lower_opt),
+            ("mu_ramp_up_opt", self.M_mu_ramp_up_opt),
+            ("mu_ramp_down_opt", self.M_mu_ramp_down_opt),
+        )
+        for var_name, bound_map in dual_bound_maps:
+            dual_var = getattr(m, var_name, None)
+            if dual_var is None:
+                continue
+            for regime_index, upper in bound_map.items():
+                for k in m.scenarios:
+                    scenario_index = (int(k), *tuple(regime_index))
+                    if scenario_index not in dual_var:
+                        continue
+                    current_ub = dual_var[scenario_index].ub
+                    new_ub = max(0.0, float(upper))
+                    if current_ub is not None:
+                        new_ub = min(float(current_ub), new_ub)
+                    dual_var[scenario_index].setub(new_ub)
+                    applied += 1
+        for var_name in (
+            "mu_ramp_up_eq",
+            "mu_ramp_down_eq",
+            "mu_ramp_up_opt",
+            "mu_ramp_down_opt",
+        ):
+            dual_var = getattr(m, var_name, None)
+            if dual_var is None:
+                continue
+            for k in m.scenarios:
+                for i in m.physical_generators:
+                    index = (int(k), int(i), self.num_time_steps)
+                    if index in dual_var:
+                        dual_var[index].setub(0.0)
+        return applied
+
+    def _apply_relu_bounds_to_model(self, report: dict[str, Any]) -> dict[str, int]:
+        relu_report = report.get("nn_relu_bounds_report", {}) or {}
+        if not relu_report and "nn_relu_bounds" in report:
+            relu_report = report
+        stats = {
+            "z_bounds_applied": 0,
+            "h_bounds_applied": 0,
+            "delta_fixed_active": 0,
+            "delta_fixed_inactive": 0,
+            "delta_left_ambiguous": 0,
+        }
+        if not relu_report:
+            return stats
+        self._set_nn_relu_bounds_from_report(relu_report)
+
+        m = self.model
+        if not hasattr(m, "nn_z") or not hasattr(m, "nn_h") or not hasattr(m, "nn_delta"):
+            return stats
+
+        for physical_generator_idx in self.nn_policy_generator_ids:
+            i = int(physical_generator_idx)
+            generator_name = self.physical_generator_names[i]
+            for (time_idx, linear_idx, node), bounds in (
+                self.nn_relu_bounds.get(generator_name, {}) or {}
+            ).items():
+                for k in m.scenarios:
+                    index = (
+                        int(k),
+                        i,
+                        int(time_idx),
+                        int(linear_idx),
+                        int(node),
+                    )
+                    if index in m.nn_z:
+                        m.nn_z[index].setlb(float(bounds["L"]))
+                        m.nn_z[index].setub(float(bounds["U"]))
+                        stats["z_bounds_applied"] += 1
+                    if index in m.nn_h:
+                        m.nn_h[index].setlb(float(bounds["h_lower"]))
+                        m.nn_h[index].setub(float(bounds["h_upper"]))
+                        stats["h_bounds_applied"] += 1
+                    if index not in m.nn_delta:
+                        continue
+
+                    status = str(bounds.get("status", "")).lower()
+                    if status == "inactive":
+                        m.nn_delta[index].fix(0)
+                        stats["delta_fixed_inactive"] += 1
+                    elif status == "active":
+                        m.nn_delta[index].fix(1)
+                        stats["delta_fixed_active"] += 1
+                    elif status == "ambiguous":
+                        if m.nn_delta[index].fixed:
+                            m.nn_delta[index].unfix()
+                        stats["delta_left_ambiguous"] += 1
+                    else:
+                        raise ValueError(
+                            f"{generator_name}: unknown ReLU bound status '{status}'"
+                        )
+
+        self.applied_nn_relu_stats = stats
+        return stats
+
+    def summarize_nn_feature_bounds(self) -> dict[str, Any]:
+        return dict(self.nn_feature_bounds or {})
+
+    def summarize_nn_relu_bounds(self) -> dict[str, Any]:
+        report_summary = (self.nn_relu_bounds_report or {}).get("summary")
+        if isinstance(report_summary, dict):
+            return report_summary
+        if not self.nn_relu_bounds:
+            return {}
+
+        summary: dict[str, Any] = {}
+        for generator_name, bounds in self.nn_relu_bounds.items():
+            values = list(bounds.values())
+            if not values:
+                continue
+            L_values = [float(item["L"]) for item in values]
+            U_values = [float(item["U"]) for item in values]
+            summary[generator_name] = {
+                "num_hidden_neurons_time_indexed": len(values),
+                "num_active": sum(1 for item in values if item["status"] == "active"),
+                "num_inactive": sum(1 for item in values if item["status"] == "inactive"),
+                "num_ambiguous": sum(
+                    1 for item in values if item["status"] == "ambiguous"
+                ),
+                "min_L": float(min(L_values)),
+                "max_L": float(max(L_values)),
+                "min_U": float(min(U_values)),
+                "max_U": float(max(U_values)),
+                "max_M_minus": float(max(max(0.0, -L) for L in L_values)),
+                "max_M_plus": float(max(max(0.0, U) for U in U_values)),
+            }
+        return summary
 
     # ------------------------------------------------------------------
     # Solve and results
     # ------------------------------------------------------------------
 
-    def solve(
-        self,
-        solver_name: str = "gurobi",
-        tee: bool = True,
-        time_limit: Optional[float] = None,
-    ) -> Any:
+    def solve(self, time_limit: Optional[float] = None) -> Any:
         if not hasattr(self, "model"):
             raise ValueError("Model is not built. Call build_model() first.")
-        solver = SolverFactory(solver_name)
+        solver = SolverFactory("gurobi")
         solver.options["IntFeasTol"] = 1e-8
         if time_limit is not None:
             solver.options["TimeLimit"] = float(time_limit)
-        self.solver_results = solver.solve(self.model, tee=tee)
+        self.solver_results = solver.solve(self.model, tee=True)
         return self.solver_results
 
     def _safe_value(self, expr: Any) -> Optional[float]:
@@ -1327,115 +2963,143 @@ class DRO_PoAOptimization:
             return None
         return float(raw_value)
 
-    def _profile_values(self, var: Any, scenario_idx: int, *leading_indices: int) -> list[Optional[float]]:
+    def _profile_values(self, var: Any, *leading_indices: int) -> list[Optional[float]]:
         return [
-            self._safe_value(var[(scenario_idx, *leading_indices, t)] if leading_indices else var[scenario_idx, t])
+            self._safe_value(var[(*leading_indices, t)])
+            for t in range(self.num_time_steps)
+        ]
+
+    def _physical_capacity_profile_values(self, k: int, i: int) -> list[Optional[float]]:
+        m = self.model
+        return [
+            self._safe_value(
+                sum(
+                    m.P_max_block[k, i, b, t]
+                    for b in self.local_blocks_by_generator[int(i)]
+                )
+            )
+            for t in range(self.num_time_steps)
+        ]
+
+    def _physical_dispatch_profile_values(self, var: Any, k: int, i: int) -> list[Optional[float]]:
+        return [
+            self._safe_value(
+                sum(var[k, i, b, t] for b in self.local_blocks_by_generator[int(i)])
+            )
             for t in range(self.num_time_steps)
         ]
 
     def extract_results(self) -> dict[str, Any]:
         if not hasattr(self, "model"):
             raise ValueError("Model is not built. Call build_model() first.")
-
         m = self.model
-        scenario_results: dict[str, Any] = {}
-        for k in m.scenarios:
-            scenario_key = str(int(k))
-            c_eq = self._safe_value(m.C_eq[k])
-            c_opt = self._safe_value(m.C_opt[k])
-            scenario_generators: dict[str, Any] = {}
+        inner_objective = self._safe_value(m.objective)
+        poa_values = [self._safe_value(m.PoA[k]) for k in m.scenarios]
+        wasserstein_values = [self._safe_value(m.wasserstein_distance[k]) for k in m.scenarios]
+        average_poa = (
+            float(np.mean([v for v in poa_values if v is not None]))
+            if any(v is not None for v in poa_values)
+            else None
+        )
+        average_wasserstein = (
+            float(np.mean([v for v in wasserstein_values if v is not None]))
+            if any(v is not None for v in wasserstein_values)
+            else None
+        )
+
+        scenario_results = []
+        for k in range(self.num_empirical_scenarios):
+            generators: dict[str, Any] = {}
             for i, generator_name in enumerate(self.physical_generator_names):
-                blocks = []
+                block_results = []
                 for b in self.local_blocks_by_generator[i]:
                     global_block = self.local_to_global_block[(i, b)]
-                    blocks.append(
+                    block_results.append(
                         {
                             "local_block_index": int(b),
                             "global_block_index": int(global_block),
                             "block_name": self.block_names[global_block],
-                            "capacity_profile": self._profile_values(m.P_max_block, int(k), i, b),
-                            "alpha_profile": self._profile_values(m.alpha, int(k), i, b),
-                            "equilibrium_dispatch": self._profile_values(m.P_eq, int(k), i, b),
-                            "optimal_dispatch": self._profile_values(m.P_opt, int(k), i, b),
+                            "capacity_profile": self._profile_values(m.P_max_block, k, i, b),
+                            "alpha_profile": self._profile_values(m.alpha, k, i, b),
+                            "equilibrium_dispatch": self._profile_values(m.P_eq, k, i, b),
+                            "optimal_dispatch": self._profile_values(m.P_opt, k, i, b),
                             "true_cost": float(self.block_cost_vector[global_block]),
                         }
                     )
-
-                scenario_generators[generator_name] = {
+                generators[generator_name] = {
                     "physical_generator_index": int(i),
                     "is_wind": i in self.wind_physical_generator_ids,
-                    "physical_capacity_profile": [
-                        sum(
-                            self._safe_value(m.P_max_block[int(k), i, b, t]) or 0.0
-                            for b in self.local_blocks_by_generator[i]
-                        )
-                        for t in range(self.num_time_steps)
-                    ],
-                    "equilibrium_physical_dispatch": [
-                        sum(
-                            self._safe_value(m.P_eq[int(k), i, b, t]) or 0.0
-                            for b in self.local_blocks_by_generator[i]
-                        )
-                        for t in range(self.num_time_steps)
-                    ],
-                    "optimal_physical_dispatch": [
-                        sum(
-                            self._safe_value(m.P_opt[int(k), i, b, t]) or 0.0
-                            for b in self.local_blocks_by_generator[i]
-                        )
-                        for t in range(self.num_time_steps)
-                    ],
-                    "blocks": blocks,
+                    "empirical_physical_capacity_profile": list(
+                        self.empirical_Pmax_phys[k][i]
+                    ),
+                    "optimized_physical_capacity_profile": self._physical_capacity_profile_values(k, i),
+                    "equilibrium_physical_dispatch": self._physical_dispatch_profile_values(
+                        m.P_eq,
+                        k,
+                        i,
+                    ),
+                    "optimal_physical_dispatch": self._physical_dispatch_profile_values(
+                        m.P_opt,
+                        k,
+                        i,
+                    ),
+                    "blocks": block_results,
                 }
 
-            scenario_results[scenario_key] = {
-                "scenario_id": self.empirical_scenario_ids[int(k)],
-                "C_eq": c_eq,
-                "C_opt": c_opt,
-                "PoA_difference": self._safe_value(m.PoA[k]),
-                "PoA_ratio": c_eq / c_opt if c_eq is not None and c_opt not in (None, 0.0) else None,
-                "wasserstein_distance": self._safe_value(m.wasserstein_distance[k]),
-                "demand_profile": self._profile_values(m.D, int(k)),
-                "equilibrium_price_profile": self._profile_values(m.lambda_eq, int(k)),
-                "optimal_price_profile": self._profile_values(m.lambda_opt, int(k)),
-                "generators": scenario_generators,
-            }
-
-        poa_values = [
-            self._safe_value(m.PoA[k])
-            for k in m.scenarios
-            if self._safe_value(m.PoA[k]) is not None
-        ]
-        distance_values = [
-            self._safe_value(m.wasserstein_distance[k])
-            for k in m.scenarios
-            if self._safe_value(m.wasserstein_distance[k]) is not None
-        ]
-        ratio_values = [
-            scenario["PoA_ratio"]
-            for scenario in scenario_results.values()
-            if scenario["PoA_ratio"] is not None
-        ]
+            scenario_results.append(
+                {
+                    "k": int(k),
+                    "scenario_id": self.empirical_scenario_ids[k],
+                    "empirical_demand_profile": list(self.empirical_D[k]),
+                    "optimized_demand_profile": self._profile_values(m.D, k),
+                    "empirical_physical_capacity_profiles": {
+                        self.physical_generator_names[i]: list(self.empirical_Pmax_phys[k][i])
+                        for i in range(self.num_physical_generators)
+                    },
+                    "optimized_physical_capacity_profiles": {
+                        self.physical_generator_names[i]: self._physical_capacity_profile_values(k, i)
+                        for i in range(self.num_physical_generators)
+                    },
+                    "wasserstein_distance": self._safe_value(m.wasserstein_distance[k]),
+                    "C_eq": self._safe_value(m.C_eq[k]),
+                    "C_opt": self._safe_value(m.C_opt[k]),
+                    "PoA_difference": self._safe_value(m.PoA[k]),
+                    "equilibrium_price_profile": self._profile_values(m.lambda_eq, k),
+                    "optimal_price_profile": self._profile_values(m.lambda_opt, k),
+                    "generators": generators,
+                }
+            )
 
         solver_summary: dict[str, Any] = {}
         if hasattr(self, "solver_results"):
             solver_summary = {
                 "status": str(self.solver_results.solver.status),
-                "termination_condition": str(self.solver_results.solver.termination_condition),
+                "termination_condition": str(
+                    self.solver_results.solver.termination_condition
+                ),
             }
 
+        dro_objective_with_epsilon = (
+            inner_objective + self.eta * self.epsilon
+            if inner_objective is not None
+            else None
+        )
         return {
             "reference_case": self.reference_case,
-            "regime": self.empirical_regime,
+            "regime_set": self.regime_set,
+            "regime_name": self.regime_name,
             "num_time_steps": self.num_time_steps,
             "num_empirical_scenarios": self.num_empirical_scenarios,
-            "eta": float(self.eta),
-            "objective": self._safe_value(m.objective),
-            "average_poa_proxy": float(np.mean(poa_values)) if poa_values else None,
-            "average_poa_ratio": float(np.mean(ratio_values)) if ratio_values else None,
-            "min_poa_ratio": float(np.min(ratio_values)) if ratio_values else None,
-            "max_poa_ratio": float(np.max(ratio_values)) if ratio_values else None,
-            "average_wasserstein_distance": float(np.mean(distance_values)) if distance_values else None,
+            "eta": self.eta,
+            "epsilon": self.epsilon,
+            "inner_objective": inner_objective,
+            "dro_objective_with_epsilon": dro_objective_with_epsilon,
+            "average_poa_difference": average_poa,
+            "average_wasserstein_distance": average_wasserstein,
+            "solver": solver_summary,
+            "selected_regime_parameters": dict(self.selected_regime_parameters),
+            "demand_shape": list(self.demand_shape),
+            "wind_shape": list(self.wind_shape),
             "block_names": list(self.block_names),
             "physical_generator_names": list(self.physical_generator_names),
             "block_to_physical": dict(self.block_to_physical),
@@ -1443,43 +3107,12 @@ class DRO_PoAOptimization:
                 str(i): list(blocks)
                 for i, blocks in enumerate(self.physical_to_block_indices)
             },
-            "support_set": {
-                "reference_mode": self.support_reference_mode,
-                "demand": {
-                    "configured_reference_fallback": list(self.support_demand_reference),
-                    "min": float(self.support_demand_min),
-                    "max": float(self.support_demand_max),
-                    "ramp": float(self.support_demand_ramp),
-                    "budget": float(self.support_demand_budget),
-                },
-                "wind": {
-                    self.physical_generator_names[i]: {
-                        "configured_reference_fallback": list(self.support_wind_reference[i]),
-                        "min": float(self.support_wind_min[i]),
-                        "max": float(self.support_wind_max[i]),
-                    }
-                    for i in self.wind_physical_generator_ids
-                },
-                "wind_ramp": float(self.support_wind_ramp),
-                "wind_budget": float(self.support_wind_budget),
-            },
+            "policy_type": (
+                "nn_policy"
+                if self.nn_policy_generator_ids
+                else "true_cost_baseline"
+            ),
             "scenarios": scenario_results,
-            "solver": solver_summary,
-        }
-
-    def solution_summary(self) -> dict[str, Any]:
-        results = self.extract_results()
-        return {
-            "regime": results["regime"],
-            "scenario_ids": list(self.empirical_scenario_ids),
-            "eta": results["eta"],
-            "inner_value": results["objective"],
-            "average_poa_proxy": results["average_poa_proxy"],
-            "average_wasserstein_distance": results["average_wasserstein_distance"],
-            "average_poa": results["average_poa_ratio"],
-            "min_poa": results["min_poa_ratio"],
-            "max_poa": results["max_poa_ratio"],
-            "termination_condition": results.get("solver", {}).get("termination_condition"),
         }
 
     def save_results(self, output_path: str | Path) -> Path:
@@ -1494,329 +3127,155 @@ class DRO_PoAOptimization:
             json.dump(results, file_handle, indent=2)
         return path
 
-    # ------------------------------------------------------------------
-    # Scenario helpers
-    # ------------------------------------------------------------------
+    def solution_summary(self) -> dict[str, Any]:
+        if not hasattr(self, "model"):
+            raise ValueError("Model is not built. Call build_model() first.")
+        m = self.model
+        inner_objective = self._safe_value(m.objective)
+        average_poa = self._safe_value(
+            sum(m.PoA[k] for k in m.scenarios) / self.num_empirical_scenarios
+        )
+        average_wasserstein = self._safe_value(
+            sum(m.wasserstein_distance[k] for k in m.scenarios)
+            / self.num_empirical_scenarios
+        )
+        solver_summary: dict[str, Any] = {}
+        if hasattr(self, "solver_results"):
+            solver_summary = {
+                "status": str(self.solver_results.solver.status),
+                "termination_condition": str(
+                    self.solver_results.solver.termination_condition
+                ),
+            }
+        return {
+            "reference_case": self.reference_case,
+            "regime_set": self.regime_set,
+            "regime_name": self.regime_name,
+            "num_time_steps": self.num_time_steps,
+            "num_empirical_scenarios": self.num_empirical_scenarios,
+            "eta": self.eta,
+            "epsilon": self.epsilon,
+            "inner_objective": inner_objective,
+            "dro_objective_with_epsilon": (
+                inner_objective + self.eta * self.epsilon
+                if inner_objective is not None
+                else None
+            ),
+            "average_poa_difference": average_poa,
+            "average_wasserstein_distance": average_wasserstein,
+            "solver": solver_summary,
+        }
 
-    @classmethod
-    def load_regime_scenarios(
-        cls,
-        reference_case: str = "test_case_bidding_blocks",
-        regime_config_path: str = "config/regime_definitions.yaml",
-        regime_set: str = "PoA_analysis",
-        seed: Optional[int] = None,
-    ) -> pd.DataFrame:
-        manager = ScenarioManager(base_case_reference=reference_case)
-        scenario_set = manager.create_scenario_set_from_regimes(
+
+def load_regime_scenarios(
+    reference_case: str = "test_case_bidding_blocks",
+    regime_config_path: str | Path = "config/regime_definitions.yaml",
+    regime_set: str = "PoA_analysis",
+    seed: Optional[int] = None,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    return DRO_PoAOptimization.load_regime_scenarios(
+        reference_case=reference_case,
+        regime_config_path=regime_config_path,
+        regime_set=regime_set,
+        seed=seed,
+    )
+
+
+def run_eta_sweep_by_regime(
+    etas: list[float],
+    regimes: Optional[list[str]] = None,
+    scenarios_df: Optional[pd.DataFrame] = None,
+    costs_df: Optional[pd.DataFrame] = None,
+    ramps_df: Optional[pd.DataFrame] = None,
+    reference_case: str = "test_case_bidding_blocks",
+    regime_config_path: str | Path = "config/regime_definitions.yaml",
+    regime_set: str = "PoA_analysis",
+    epsilon: float = 0.0,
+    num_time_steps: Optional[int] = None,
+    seed: Optional[int] = None,
+    time_limit: Optional[float] = None,
+) -> pd.DataFrame:
+    if scenarios_df is None or costs_df is None or ramps_df is None:
+        scenarios_df, costs_df, ramps_df = load_regime_scenarios(
+            reference_case=reference_case,
             regime_config_path=regime_config_path,
             regime_set=regime_set,
             seed=seed,
         )
-        return scenario_set["scenarios_df"]
 
-    @classmethod
-    def build_support_set_config_from_scenarios(
-        cls,
-        scenarios_df: pd.DataFrame,
-        reference_case: str = "test_case_bidding_blocks",
-        regime: Optional[str] = None,
-    ) -> dict[str, Any]:
-        if regime is not None:
-            local_df = scenarios_df[scenarios_df["regime"].astype(str) == str(regime)].copy()
-        else:
-            local_df = scenarios_df.copy()
-        if local_df.empty:
-            raise ValueError(f"No scenarios available for regime '{regime}'")
+    if regimes is None:
+        if "regime" not in scenarios_df.columns:
+            raise ValueError("regimes must be provided when scenarios_df has no 'regime' column")
+        regimes = sorted(scenarios_df["regime"].dropna().astype(str).unique().tolist())
 
-        (
-            _num_generators,
-            _pmax_list,
-            _pmin_list,
-            _cost_vector,
-            _ramp_up,
-            _ramp_down,
-            _demand,
-            generators,
-            _players,
-            time_steps,
-        ) = load_setup_data(reference_case)
-        normalized = normalize_generators(generators)
-        physical_generators = list(normalized["physical_generators"])
-        blocks = list(normalized["blocks"])
-        block_names = [str(block["block_name"]) for block in blocks]
-        static_block_capacity = [float(block["pmax"]) for block in blocks]
-
-        horizon = int(time_steps)
-        demand_profiles = np.vstack(
-            [
-                np.asarray(cls._as_profile(row["demand_profile"], horizon, "demand_profile"), dtype=float)
-                for _, row in local_df.iterrows()
-            ]
-        )
-        demand_reference = np.mean(demand_profiles, axis=0)
-        demand_ramp = float(np.max(np.abs(np.diff(demand_profiles, axis=1)))) if horizon > 1 else 0.0
-
-        def max_pairwise_l1(profile_matrix: np.ndarray) -> float:
-            if profile_matrix.shape[0] <= 1:
-                return 0.0
-            pairwise_distances = np.abs(
-                profile_matrix[:, None, :] - profile_matrix[None, :, :]
-            ).sum(axis=2)
-            return float(np.max(pairwise_distances))
-
-        demand_budget = max_pairwise_l1(demand_profiles)
-
-        physical_idx_by_name = {
-            str(gen["physical_name"]): idx
-            for idx, gen in enumerate(physical_generators)
-        }
-        physical_to_block_indices: dict[int, list[int]] = {
-            i: [] for i in range(len(physical_generators))
-        }
-        for block_idx, block in enumerate(blocks):
-            physical_to_block_indices[physical_idx_by_name[str(block["physical_name"])]].append(block_idx)
-
-        def block_capacity_profile(row: pd.Series, block_idx: int) -> list[float]:
-            block_name = block_names[block_idx]
-            for suffix in ("_cap_profile", "_profile"):
-                column = f"{block_name}{suffix}"
-                if column in row and row[column] is not None:
-                    return cls._as_profile(row[column], horizon, column)
-            return [float(row.get(f"{block_name}_cap", static_block_capacity[block_idx]))] * horizon
-
-        wind_generators: dict[str, dict[str, Any]] = {}
-        wind_ramp = 0.0
-        wind_profiles_for_budget: list[np.ndarray] = []
-
-        for gen_idx, generator in enumerate(physical_generators):
-            gen_name = str(generator["physical_name"])
-            if not (bool(generator.get("is_wind", False)) or cls._is_wind_name(gen_name)):
-                continue
-
-            physical_profiles = []
-            for _, row in local_df.iterrows():
-                block_profiles = [
-                    block_capacity_profile(row, block_idx)
-                    for block_idx in physical_to_block_indices[int(gen_idx)]
-                ]
-                physical_profiles.append(
-                    [
-                        sum(profile[t] for profile in block_profiles)
-                        for t in range(horizon)
-                    ]
-                )
-            wind_profiles = np.asarray(physical_profiles, dtype=float)
-            reference = np.mean(wind_profiles, axis=0)
-            wind_profiles_for_budget.append(wind_profiles)
-
-            wind_generators[gen_name] = {
-                "reference": reference.tolist(),
-                "min": float(np.min(wind_profiles)),
-                "max": float(min(float(generator["pmax"]), np.max(wind_profiles))),
-            }
-            if horizon > 1:
-                wind_ramp = max(wind_ramp, float(np.max(np.abs(np.diff(wind_profiles, axis=1)))))
-
-        if wind_profiles_for_budget:
-            wind_budget_profiles = np.concatenate(wind_profiles_for_budget, axis=1)
-            wind_budget = max_pairwise_l1(wind_budget_profiles)
-        else:
-            wind_budget = 0.0
-
-        return {
-            "reference_mode": "empirical_scenario",
-            "demand_reference": demand_reference.tolist(),
-            "demand_min": float(np.min(demand_profiles)),
-            "demand_max": float(np.max(demand_profiles)),
-            "demand_ramp": demand_ramp,
-            "demand_budget": demand_budget,
-            "wind_generators": wind_generators,
-            "wind_ramp": wind_ramp,
-            "wind_budget": wind_budget,
-        }
-
-    @classmethod
-    def run_eta_sweep_by_regime(
-        cls,
-        eta_values: Sequence[float],
-        P_init: Optional[Sequence[float]] = None,
-        scenarios_df: Optional[pd.DataFrame] = None,
-        regimes: Optional[Sequence[str]] = None,
-        reference_case: str = "test_case_bidding_blocks",
-        regime_config_path: str = "config/regime_definitions.yaml",
-        regime_set: str = "PoA_analysis",
-        support_set_name: Optional[str] = None,
-        solver_name: str = "gurobi",
-        tee: bool = False,
-        time_limit: Optional[float] = None,
-        max_scenarios_per_regime: Optional[int] = None,
-        big_m_complementarity: float = 1e8,
-    ) -> pd.DataFrame:
-        if scenarios_df is None:
-            scenarios_df = cls.load_regime_scenarios(
-                reference_case=reference_case,
+    summaries: list[dict[str, Any]] = []
+    for regime_name in regimes:
+        for eta in etas:
+            optimizer = DRO_PoAOptimization(
+                scenarios_df=scenarios_df,
+                costs_df=costs_df,
+                ramps_df=ramps_df,
+                p_init=None,
+                num_time_steps=num_time_steps,
                 regime_config_path=regime_config_path,
                 regime_set=regime_set,
+                regime_name=regime_name,
+                eta=float(eta),
+                epsilon=float(epsilon),
+                nn_model_dir=None,
+                reference_case=reference_case,
             )
+            optimizer.build_model()
+            optimizer.solve(time_limit=time_limit)
+            summaries.append(optimizer.solution_summary())
 
-        if regimes is None:
-            regimes = sorted(scenarios_df["regime"].dropna().astype(str).unique().tolist())
+    return pd.DataFrame(summaries)
 
-        records: list[dict[str, Any]] = []
-        for regime in regimes:
-            regime_df = scenarios_df[scenarios_df["regime"].astype(str) == str(regime)].copy()
-            if regime_df.empty:
-                raise ValueError(f"No scenarios available for regime '{regime}'")
-            if max_scenarios_per_regime is not None:
-                regime_df = regime_df.head(int(max_scenarios_per_regime)).copy()
-
-            if support_set_name is None:
-                support_set_config = cls.build_support_set_config_from_scenarios(
-                    regime_df,
-                    reference_case=reference_case,
-                    regime=str(regime),
-                )
-            else:
-                support_set_config = cls.load_support_set_config(config_name=support_set_name)
-
-            for eta in eta_values:
-                optimizer = cls(
-                    P_init=P_init,
-                    num_time_steps=int(regime_df.iloc[0]["time_steps"]),
-                    reference_case=reference_case,
-                    support_set_config=support_set_config,
-                    eta=float(eta),
-                    empirical_scenario=regime_df,
-                    big_m_complementarity=big_m_complementarity,
-                )
-                optimizer.build_model()
-                optimizer.solve(solver_name=solver_name, tee=tee, time_limit=time_limit)
-                summary = optimizer.solution_summary()
-                records.append(
-                    {
-                        "regime": summary["regime"],
-                        "n_scenarios": len(summary["scenario_ids"]),
-                        "eta": summary["eta"],
-                        "inner_value": summary["inner_value"],
-                        "average_PoA_proxy": summary["average_poa_proxy"],
-                        "average_PoA": summary["average_poa"],
-                        "min_PoA": summary["min_poa"],
-                        "max_PoA": summary["max_poa"],
-                        "average_distance": summary["average_wasserstein_distance"],
-                        "termination_condition": summary["termination_condition"],
-                    }
-                )
-
-        return pd.DataFrame(records)
-
-    def plot_demand_capacity_trajectory(
-        self,
-        save_path: str | Path = "results/dro_poa_demand_capacity_trajectory.png",
-        show: bool = True,
-        scenario_index: int = 0,
-    ) -> None:
-        if not hasattr(self, "model"):
-            raise ValueError("Model is not built. Call build_model() first.")
-        if scenario_index not in self.model.scenarios:
-            raise ValueError(f"Invalid scenario_index {scenario_index}")
-
-        import matplotlib.pyplot as plt
-
-        time_points = list(self.model.time_steps)
-        demand_vals = [
-            self._safe_value(self.model.D[scenario_index, t])
-            for t in time_points
-        ]
-
-        capacity_by_generator: dict[int, list[float]] = {}
-        for i in self.model.physical_generators:
-            capacity_by_generator[int(i)] = [
-                sum(
-                    self._safe_value(self.model.P_max_block[scenario_index, int(i), b, t]) or 0.0
-                    for b in self.local_blocks_by_generator[int(i)]
-                )
-                for t in time_points
-            ]
-
-        total_capacity = [
-            sum(capacity_by_generator[int(i)][t_idx] for i in self.model.physical_generators)
-            for t_idx in range(len(time_points))
-        ]
-
-        fig, ax = plt.subplots(figsize=(11, 6))
-        ax.plot(time_points, demand_vals, color="black", linewidth=2.5, label="Demand")
-        ax.plot(time_points, total_capacity, color="#1f77b4", linestyle="--", linewidth=2.2, label="Total Capacity")
-        for i in self.model.physical_generators:
-            ax.plot(
-                time_points,
-                capacity_by_generator[int(i)],
-                linewidth=1.4,
-                label=f"{self.physical_generator_names[int(i)]} Capacity",
-            )
-        ax.set_title(f"DRO Demand and Capacity Trajectories (Scenario {scenario_index})")
-        ax.set_xlabel("Time Step")
-        ax.set_ylabel("MW")
-        ax.grid(True, alpha=0.25)
-        ax.legend(loc="best", ncol=2, fontsize=9)
-        fig.tight_layout()
-
-        path = Path(save_path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(path, dpi=200)
-        if show:
-            plt.show()
-        else:
-            plt.close(fig)
 
 if __name__ == "__main__":
     case = "test_case_bidding_blocks"
     regime_set = "PoA_analysis"
+    regime_name = "normal"
     seed = 1
     eta = 0.5
-    max_scenarios = 10
-    tightening_report_path = Path("results/dro_poa_bidding_blocks_tightening_report.json")
+    epsilon = 0.0
+    horizon = 4
 
     scenario_manager = ScenarioManager(case)
     scenarios = scenario_manager.create_scenario_set_from_regimes(
         regime_set=regime_set,
         seed=seed,
     )
-    scenarios_df = scenarios["scenarios_df"].head(max_scenarios).copy()
-
-    support_set_config = DRO_PoAOptimization.load_support_set_config(
-        config_path="models/PoA/support_set_config.yaml",
-        config_name="test_case_bidding_blocks_base",
-    )
+    scenarios_df = scenarios["scenarios_df"]
+    costs_df = scenarios["costs_df"]
+    ramps_df = scenarios["ramps_df"]
 
     optimizer = DRO_PoAOptimization(
-        num_time_steps=int(scenarios_df.iloc[0]["time_steps"]),
-        P_init=None,
-        reference_case=case,
-        support_set_config=support_set_config,
+        scenarios_df=scenarios_df,
+        costs_df=costs_df,
+        ramps_df=ramps_df,
+        p_init=None,
+        num_time_steps=horizon,
+        regime_config_path="config/regime_definitions.yaml",
+        regime_set=regime_set,
+        regime_name=regime_name,
         eta=eta,
-        empirical_scenario=scenarios_df,
+        epsilon=epsilon,
+        nn_model_dir=None,
+        reference_case=case,
     )
 
     start = time.perf_counter()
-    if tightening_report_path.exists():
-        optimizer.load_tightening_report(tightening_report_path)
     optimizer.build_model()
-    applied_stats = (
-        optimizer.apply_tightened_bounds_to_model()
-        if tightening_report_path.exists()
-        else {"fixed_binaries": 0, "dual_upper_bounds": 0, "alpha_bounds": 0}
-    )
     optimizer.solve(time_limit=400)
-    result_path = optimizer.save_results("results/dro_poa_optimization_bidding_blocks_results.json")
+    result_path = optimizer.save_results(
+        "results/dro_poa/dro_poa_optimization_results.json"
+    )
     elapsed = time.perf_counter() - start
 
-    print("\nDRO-PoA solve complete")
-    print(f"  Regime set: {regime_set}")
-    print(f"  Empirical scenarios: {len(scenarios_df)}")
+    print("\nDRO PoA solve complete")
+    print(f"  Regime: {regime_set}/{regime_name}")
     print(f"  Eta: {eta}")
-    print(f"  Tightening report: {tightening_report_path if tightening_report_path.exists() else 'not applied'}")
-    print(f"  Applied fixed binaries: {applied_stats['fixed_binaries']}")
-    print(f"  Applied dual upper bounds: {applied_stats['dual_upper_bounds']}")
-    print(f"  Applied alpha bounds: {applied_stats['alpha_bounds']}")
+    print(f"  Epsilon: {epsilon}")
     print(f"  Results: {result_path}")
     print(f"  Runtime: {elapsed:.2f} seconds")

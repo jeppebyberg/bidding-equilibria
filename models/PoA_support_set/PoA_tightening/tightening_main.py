@@ -41,7 +41,7 @@ class PoATighteningMain:
         ramps_df,
         p_init: Optional[list[float] | list[list[float]]] = None,
         num_time_steps: Optional[int] = None,
-        ambiguity_set_config: Optional[dict[str, Any]] = None,
+        support_set_config: Optional[dict[str, Any]] = None,
         nn_model_dir: Optional[str | Path] = None,
         nn_normalization_stats_path: Optional[str | Path] = None,
         nn_policy_generators: Optional[list[int | str]] = None,
@@ -53,7 +53,7 @@ class PoATighteningMain:
             ramps_df=ramps_df,
             p_init=p_init,
             num_time_steps=num_time_steps,
-            ambiguity_set_config=ambiguity_set_config,
+            support_set_config=support_set_config,
             nn_model_dir=nn_model_dir,
             nn_normalization_stats_path=nn_normalization_stats_path,
             nn_policy_generators=nn_policy_generators,
@@ -207,33 +207,12 @@ class PoATighteningMain:
         self._merge_report(report)
         return report
 
-    def _ambiguity_metadata(self) -> dict[str, Any]:
-        poa = self.poa
-        return {
-            "regime_bounds": {
-                "mu_D": list(poa.mu_D_bounds),
-                "sigma_D": list(poa.sigma_D_bounds),
-                "mu_W": list(poa.mu_W_bounds),
-                "sigma_W": list(poa.sigma_W_bounds),
-            },
-            "fixed_parameters": {
-                "rho_D": float(poa.demand_rho_fixed),
-                "rho_W": float(poa.wind_rho_fixed),
-                "tau_W": float(poa.wind_tau_fixed),
-                "kappa": float(poa.ambiguity_kappa),
-                "D_ref": float(poa.demand_D_ref),
-            },
-            "demand_shape": [float(value) for value in poa.demand_shape],
-            "wind_shape": [float(value) for value in poa.wind_shape],
-        }
-
     def _metadata(self) -> dict[str, Any]:
         return {
             "reference_case": self.poa.reference_case,
             "num_time_steps": self.poa.num_time_steps,
             "physical_generator_names": list(self.poa.physical_generator_names),
             "block_names": list(self.poa.block_names),
-            "ambiguity_set": self._ambiguity_metadata(),
             "nn_policy_generators": list(getattr(self.poa, "nn_policy_generator_names", [])),
             "nn_model_dir": str(self.poa.nn_model_dir) if self.poa.nn_model_dir else None,
             "nn_normalization_stats_path": (

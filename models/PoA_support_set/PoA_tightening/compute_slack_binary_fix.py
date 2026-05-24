@@ -26,7 +26,7 @@ def _initialize_parallel_slack_computer(state: dict[str, Any]) -> None:
         ramps_df=state["ramps_df"],
         p_init=state["p_init"],
         num_time_steps=state["num_time_steps"],
-        ambiguity_set_config=state["ambiguity_set_config"],
+        support_set_config=state["support_set_config"],
         nn_model_dir=state["nn_model_dir"],
         nn_normalization_stats_path=state["nn_normalization_stats_path"],
         nn_policy_generators=state["nn_policy_generators"],
@@ -147,7 +147,7 @@ class SlackBinaryFixComputer(PoATighteningMain):
             "ramps_df": self.poa.ramps_df,
             "p_init": self.poa.requested_p_init,
             "num_time_steps": self.poa.num_time_steps,
-            "ambiguity_set_config": self.poa.ambiguity_set_config,
+            "support_set_config": self.poa.support_set_config,
             "nn_model_dir": (
                 str(self.poa.nn_model_dir) if self.poa.nn_model_dir is not None else None
             ),
@@ -611,7 +611,6 @@ class SlackBinaryFixComputer(PoATighteningMain):
                 ),
                 "reference_case": self.poa.reference_case,
                 "num_time_steps": self.poa.num_time_steps,
-                "ambiguity_set": self._ambiguity_metadata(),
                 "runtime_seconds": elapsed,
             },
             "epsilon": slack_report["epsilon"],

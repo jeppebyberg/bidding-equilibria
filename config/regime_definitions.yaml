@@ -58,7 +58,7 @@ regime_sets:
 
     regimes:
       - name: normal
-        n_scenarios: 2
+        n_scenarios: 5
         mu_D: 0.73
         rho_D: 0.85
         sigma_D: 0.012
@@ -68,7 +68,7 @@ regime_sets:
         sigma_W: 0.05
 
       - name: high_demand
-        n_scenarios: 2
+        n_scenarios: 5
         mu_D: 0.87
         rho_D: 0.85
         sigma_D: 0.012
@@ -94,24 +94,5 @@ regime_sets:
         sigma_D: 0.012
         mu_W: 0.70
         peak_W: 1.0
-        rho_W: 0.80
-        sigma_W: 0.05
-
-  debugging:
-    description: A simple regime with only a few scenarios for debugging.
-    # mu_D and sigma_D are in selected-reference-demand units.
-    seed: 42
-    enforce_dispatch_feasibility: true
-    n_minus_one_margin: 0.0
-    max_draw_attempts: 500
-
-    regimes:
-      - name: normal
-        n_scenarios: 2
-        mu_D: 0.73
-        rho_D: 0.85
-        sigma_D: 0.012
-        mu_W: 0.70
-        peak_W: 14.0
         rho_W: 0.80
         sigma_W: 0.05

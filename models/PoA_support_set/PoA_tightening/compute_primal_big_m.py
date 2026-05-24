@@ -10,23 +10,6 @@ from models.PoA.PoA_tightening.tightening_main import (
 )
 
 
-def _ambiguity_wind_physical_capacity_ub(
-    optimizer: Any,
-    physical_generator_idx: int,
-) -> float:
-    i = int(physical_generator_idx)
-    installed_capacity = float(optimizer.static_physical_capacity[i])
-    if installed_capacity <= 0:
-        return 0.0
-    mu_w_max = float(optimizer.mu_W_bounds[1])
-    sigma_w_max = float(optimizer.sigma_W_bounds[1])
-    profile_upper = max(
-        installed_capacity * (mu_w_max * float(shape_value) + sigma_w_max)
-        for shape_value in optimizer.wind_shape
-    )
-    return float(min(installed_capacity, max(0.0, profile_upper)))
-
-
 def _block_capacity_big_m(optimizer: Any, physical_generator_idx: int, local_block_idx: int) -> float:
     global_block = optimizer.local_to_global_block[
         (physical_generator_idx, local_block_idx)
@@ -36,12 +19,8 @@ def _block_capacity_big_m(optimizer: Any, physical_generator_idx: int, local_blo
         return float(optimizer.static_block_capacity[global_block])
 
     local_blocks = optimizer.local_blocks_by_generator[physical_generator_idx]
-    physical_capacity_ub = _ambiguity_wind_physical_capacity_ub(
-        optimizer,
-        physical_generator_idx,
-    )
     if len(local_blocks) == 1:
-        return physical_capacity_ub
+        return float(optimizer.support_wind_max[physical_generator_idx])
 
     static_total = sum(
         optimizer.static_block_capacity[
@@ -53,17 +32,14 @@ def _block_capacity_big_m(optimizer: Any, physical_generator_idx: int, local_blo
         return 0.0
 
     block_share = optimizer.static_block_capacity[global_block] / static_total
-    return float(block_share * physical_capacity_ub)
+    return float(block_share * optimizer.support_wind_max[physical_generator_idx])
 
 def _computed_physical_capacity_big_m(
     optimizer: Any,
     physical_generator_idx: int,
 ) -> float:
     if physical_generator_idx in optimizer.wind_physical_generator_ids:
-        return _ambiguity_wind_physical_capacity_ub(
-            optimizer,
-            physical_generator_idx,
-        )
+        return float(optimizer.support_wind_max[physical_generator_idx])
     return float(optimizer.static_physical_capacity[physical_generator_idx])
 
 def _physical_capacity_big_m(optimizer: Any, physical_generator_idx: int) -> float:
@@ -178,33 +154,25 @@ def compute_primal_big_m_bounds(optimizer: Any) -> dict[str, dict[str, Any]]:
         "ramp_down_initial": ramp_down_initial,
     }
 
-def ambiguity_set_summary(optimizer: Any) -> dict[str, Any]:
+def support_set_summary(optimizer: Any) -> dict[str, Any]:
     return {
-        "regime_bounds": {
-            "mu_D": list(optimizer.mu_D_bounds),
-            "sigma_D": list(optimizer.sigma_D_bounds),
-            "mu_W": list(optimizer.mu_W_bounds),
-            "sigma_W": list(optimizer.sigma_W_bounds),
+        "demand": {
+            "reference": list(optimizer.support_demand_reference),
+            "min": float(optimizer.support_demand_min),
+            "max": float(optimizer.support_demand_max),
+            "ramp": float(optimizer.support_demand_ramp),
+            "budget": float(optimizer.support_demand_budget),
         },
-        "fixed_parameters": {
-            "rho_D": float(optimizer.demand_rho_fixed),
-            "rho_W": float(optimizer.wind_rho_fixed),
-            "tau_W": float(optimizer.wind_tau_fixed),
-            "kappa": float(optimizer.ambiguity_kappa),
-            "D_ref": float(optimizer.demand_D_ref),
-        },
-        "demand_shape": [float(value) for value in optimizer.demand_shape],
-        "wind_shape": [float(value) for value in optimizer.wind_shape],
-        "wind_physical_capacity_big_m_ub": {
+        "wind": {
             optimizer.physical_generator_names[i]: {
-                "installed_capacity": float(optimizer.static_physical_capacity[i]),
-                "capacity_upper_bound": _ambiguity_wind_physical_capacity_ub(
-                    optimizer,
-                    i,
-                ),
+                "reference": list(optimizer.support_wind_reference[i]),
+                "min": float(optimizer.support_wind_min[i]),
+                "max": float(optimizer.support_wind_max[i]),
             }
             for i in optimizer.wind_physical_generator_ids
         },
+        "wind_ramp": float(optimizer.support_wind_ramp),
+        "wind_budget": float(optimizer.support_wind_budget),
     }
 
 def summarize_primal_big_m(primal_big_m: dict[str, dict[str, Any]]) -> dict[str, Any]:
@@ -237,7 +205,7 @@ class PrimalBigMComputer(PoATighteningMain):
                 "num_time_steps": self.poa.num_time_steps,
                 "physical_generator_names": list(self.poa.physical_generator_names),
                 "block_names": list(self.poa.block_names),
-                "ambiguity_set": ambiguity_set_summary(self.poa),
+                "support_set": support_set_summary(self.poa),
                 "summary": summarize_primal_big_m(primal_big_m),
                 "runtime_seconds": elapsed,
             },
