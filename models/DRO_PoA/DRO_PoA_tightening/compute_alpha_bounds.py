@@ -139,10 +139,12 @@ class DROAlphaBoundsComputer(DROPoATighteningMain):
                         "termination_condition": "true_cost_policy_fixed",
                     }
 
-        alpha_bounds = self.aggregate_lower_upper_bounds_over_k(scenario_bounds)
+        scenario_alpha_bounds = self._jsonify_indexed_dict(scenario_bounds)
+        regime_alpha_bounds = self.aggregate_lower_upper_bounds_over_k(scenario_bounds)
         return {
-            "alpha_bounds": alpha_bounds,
-            "scenario_alpha_bounds": self._jsonify_indexed_dict(scenario_bounds),
+            "alpha_bounds": scenario_alpha_bounds,
+            "scenario_alpha_bounds": scenario_alpha_bounds,
+            "regime_alpha_bounds": regime_alpha_bounds,
             "optimization_results": optimization_results,
             "num_optimization_programs": 0,
         }
@@ -258,10 +260,12 @@ class DROAlphaBoundsComputer(DROPoATighteningMain):
                         "upper": float(lower_upper["upper"]),
                     }
 
-            alpha_bounds = self.aggregate_lower_upper_bounds_over_k(scenario_alpha_bounds)
+            scenario_json_bounds = self._jsonify_indexed_dict(scenario_alpha_bounds)
+            regime_alpha_bounds = self.aggregate_lower_upper_bounds_over_k(scenario_alpha_bounds)
             return {
-                "alpha_bounds": alpha_bounds,
-                "scenario_alpha_bounds": self._jsonify_indexed_dict(scenario_alpha_bounds),
+                "alpha_bounds": scenario_json_bounds,
+                "scenario_alpha_bounds": scenario_json_bounds,
+                "regime_alpha_bounds": regime_alpha_bounds,
                 "optimization_results": optimization_results,
                 "num_optimization_programs": total_programs,
             }
@@ -303,20 +307,25 @@ class DROAlphaBoundsComputer(DROPoATighteningMain):
             "metadata": {
                 **self._metadata(),
                 "description": (
-                    "Certified regime-wide alpha bounds for DRO PoA. Internal "
-                    "scenario-indexed bounds are aggregated to i,b,t keys."
+                    "Certified scenario-wise alpha bounds for DRO PoA. Regime-wide "
+                    "aggregations are saved only as diagnostics/fallbacks."
                 ),
+                "tightening_scope": "scenario_wise",
                 "num_optimization_programs": alpha_report["num_optimization_programs"],
                 "primal_big_m_summary": summarize_primal_big_m(
                     self.tightening_data.get("primal_big_m", {})
                 ),
                 "runtime_seconds": elapsed,
             },
+            "scenario_alpha_bounds": alpha_report["scenario_alpha_bounds"],
+            "regime_alpha_bounds": alpha_report["regime_alpha_bounds"],
             "alpha_bounds": alpha_report["alpha_bounds"],
             "alpha_optimization_results": alpha_report["optimization_results"],
             "num_optimization_programs": alpha_report["num_optimization_programs"],
             "primal_big_m": self.tightening_data.get("primal_big_m", {}),
         }
+        self.tightening_data["scenario_alpha_bounds"] = report["scenario_alpha_bounds"]
+        self.tightening_data["regime_alpha_bounds"] = report["regime_alpha_bounds"]
         self.tightening_data["alpha_bounds"] = report["alpha_bounds"]
         self.tightening_data["alpha_optimization_results"] = report[
             "alpha_optimization_results"

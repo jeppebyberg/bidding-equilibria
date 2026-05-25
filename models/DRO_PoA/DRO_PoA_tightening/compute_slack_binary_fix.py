@@ -120,7 +120,7 @@ class DROSlackBinaryFixComputer(DROPoATighteningMain):
     def _build_side_kkt_model_for_slack_fixing(
         self,
         side: str,
-        alpha_bounds: Optional[dict[tuple[int, int, int], dict[str, float]]] = None,
+        alpha_bounds: Optional[dict[tuple[int, ...], dict[str, float]]] = None,
         include_complementarity: bool = True,
         fixed_binaries: Optional[dict[str, dict[str, Any]]] = None,
     ) -> ConcreteModel:
@@ -173,13 +173,20 @@ class DROSlackBinaryFixComputer(DROPoATighteningMain):
     def _apply_alpha_bounds(
         self,
         m: ConcreteModel,
-        alpha_bounds: dict[tuple[int, int, int], dict[str, float]],
+        alpha_bounds: dict[tuple[int, ...], dict[str, float]],
     ) -> None:
         m.alpha_certified_bounds = ConstraintList()
         for k in m.scenarios:
             for i, b in m.generator_blocks:
                 for t in m.time_steps:
-                    bounds = alpha_bounds[(int(i), int(b), int(t))]
+                    scenario_key = (int(k), int(i), int(b), int(t))
+                    regime_key = (int(i), int(b), int(t))
+                    bounds = alpha_bounds.get(scenario_key, alpha_bounds.get(regime_key))
+                    if bounds is None:
+                        raise KeyError(
+                            f"Missing alpha bounds for scenario key {scenario_key} "
+                            f"or fallback regime key {regime_key}"
+                        )
                     lower = float(bounds["lower"])
                     upper = float(bounds["upper"])
                     m.alpha_certified_bounds.add(m.alpha[k, i, b, t] >= lower)
@@ -290,7 +297,7 @@ class DROSlackBinaryFixComputer(DROPoATighteningMain):
 
     def run_slack_based_obbt(
         self,
-        alpha_bounds: Optional[dict[tuple[int, int, int], dict[str, float]]] = None,
+        alpha_bounds: Optional[dict[tuple[int, ...], dict[str, float]]] = None,
         epsilon: float = 1e-6,
         solver_name: str = "gurobi",
         time_limit: Optional[float] = None,
@@ -421,14 +428,21 @@ class DROSlackBinaryFixComputer(DROPoATighteningMain):
                     "result_classification": result["result_classification"],
                 }
 
-        fixed_binaries = self.aggregate_fixed_binaries_over_k(scenario_fixed_binaries)
+        regime_fixed_binaries = self.aggregate_fixed_binaries_over_k(scenario_fixed_binaries)
         return {
             "epsilon": float(epsilon),
             "stop_at_zero_slack": bool(stop_at_zero_slack),
             "slack_stop_tolerance": zero_slack_tol,
             "slack_bounds": slack_bounds,
-            "fixed_binaries": fixed_binaries,
-            "num_fixed_binaries": int(sum(len(entries) for entries in fixed_binaries.values())),
+            "scenario_fixed_binaries": scenario_fixed_binaries,
+            "regime_fixed_binaries": regime_fixed_binaries,
+            "fixed_binaries": scenario_fixed_binaries,
+            "num_fixed_binaries": int(
+                sum(len(entries) for entries in scenario_fixed_binaries.values())
+            ),
+            "num_regime_fixed_binaries": int(
+                sum(len(entries) for entries in regime_fixed_binaries.values())
+            ),
         }
 
     def run_slack_binary_fix(
@@ -466,9 +480,10 @@ class DROSlackBinaryFixComputer(DROPoATighteningMain):
             "metadata": {
                 **self._metadata(),
                 "description": (
-                    "Scenario-indexed slack minimization certificates aggregated "
-                    "to regime-wide complementarity binary fixes."
+                    "Scenario-indexed slack minimization certificates. Regime-wide "
+                    "binary fixes are saved only as diagnostics/fallbacks."
                 ),
+                "tightening_scope": "scenario_wise",
                 "runtime_seconds": elapsed,
             },
             **slack_report,
@@ -476,6 +491,8 @@ class DROSlackBinaryFixComputer(DROPoATighteningMain):
             "alpha_bounds": self.tightening_data.get("alpha_bounds", {}),
         }
         self.tightening_data["slack_bounds"] = report["slack_bounds"]
+        self.tightening_data["scenario_fixed_binaries"] = report["scenario_fixed_binaries"]
+        self.tightening_data["regime_fixed_binaries"] = report["regime_fixed_binaries"]
         self.tightening_data["fixed_binaries"] = report["fixed_binaries"]
         self.poa.slack_bounds = report["slack_bounds"]
         self.poa.fixed_binaries = report["fixed_binaries"]

@@ -4,6 +4,7 @@ from models.DRO_PoA.DRO_PoA_tightening.compute_relu_bounds import DROReLUBoundsC
 from models.DRO_PoA.DRO_PoA_tightening.compute_alpha_bounds import DROAlphaBoundsComputer
 from models.DRO_PoA.DRO_PoA_tightening.compute_slack_binary_fix import DROSlackBinaryFixComputer
 from models.DRO_PoA.DRO_PoA_tightening.compute_dual_big_m import DRODualBigMComputer
+from models.DRO_PoA.DRO_PoA_tightening.compute_optimal_cost_bounds import DROOptimalCostBoundsComputer
 
 __all__ = [
     "DROPoATighteningMain",
@@ -12,4 +13,5 @@ __all__ = [
     "DROAlphaBoundsComputer",
     "DROSlackBinaryFixComputer",
     "DRODualBigMComputer",
+    "DROOptimalCostBoundsComputer",
 ]

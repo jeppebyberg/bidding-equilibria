@@ -34,6 +34,12 @@ class PoAOptimization:
     default_lambda_bound = 40.0
     default_capacity_dual_bound = 40.02
     default_ramp_dual_bound = 20.0
+    allowed_objective_modes = {
+        "difference",
+        "ratio_mccormick",
+        "ratio_piecewise_mccormick",
+    }
+    ratio_bounds_tolerance = 1e-7
 
     def __init__(
         self,
@@ -47,6 +53,8 @@ class PoAOptimization:
         nn_normalization_stats_path: Optional[str | Path] = None,
         nn_policy_generators: Optional[list[int | str]] = None,
         reference_case: str = "test_case_bidding_blocks",
+        objective_mode: str = "difference",
+        ratio_bounds: Optional[dict[str, tuple[float, float]]] = None,
     ):
         self.scenarios_df = scenarios_df.reset_index(drop=True)
         self.costs_df = costs_df
@@ -73,6 +81,8 @@ class PoAOptimization:
         self.aggregate_dual_bounds: dict[str, Any] = {}
         self.lambda_bounds: dict[str, Any] = {}
         self.reference_case = reference_case
+        self.objective_mode = self._validate_objective_mode(objective_mode)
+        self.ratio_bounds = self._validate_ratio_bounds(ratio_bounds)
         self._initialize_loaded_bound_dictionaries()
 
         self._initialize_block_structure_from_ed()
@@ -97,6 +107,129 @@ class PoAOptimization:
         if self.nn_model_dir is not None and self.nn_policy_generator_ids:
             self._load_nn_policies()
             self._load_nn_normalization_stats()
+
+    def _validate_objective_mode(self, objective_mode: str) -> str:
+        normalized_mode = str(objective_mode).strip().lower()
+        if normalized_mode not in self.allowed_objective_modes:
+            allowed = ", ".join(sorted(self.allowed_objective_modes))
+            raise ValueError(
+                f"objective_mode must be one of {{{allowed}}}; got {objective_mode!r}"
+            )
+        return normalized_mode
+
+    def _validate_ratio_bounds(
+        self,
+        ratio_bounds: Optional[dict[str, tuple[float, float]]],
+    ) -> Optional[dict[str, tuple[float, float]]]:
+        if self.objective_mode == "difference":
+            return ratio_bounds
+
+        if ratio_bounds is None:
+            raise ValueError(
+                f"ratio_bounds is required when objective_mode='{self.objective_mode}'"
+            )
+        if not isinstance(ratio_bounds, dict):
+            raise ValueError("ratio_bounds must be a dictionary")
+        missing = [key for key in ("phi", "C_opt") if key not in ratio_bounds]
+        if missing:
+            raise ValueError(
+                "ratio_bounds must contain bounds for: " + ", ".join(missing)
+            )
+
+        def parse_bounds(key: str) -> tuple[float, float]:
+            raw_bounds = ratio_bounds[key]
+            if not isinstance(raw_bounds, (list, tuple)) or len(raw_bounds) != 2:
+                raise ValueError(f"ratio_bounds['{key}'] must be a pair (lower, upper)")
+            lower = float(raw_bounds[0])
+            upper = float(raw_bounds[1])
+            if not np.isfinite(lower) or not np.isfinite(upper):
+                raise ValueError(f"ratio_bounds['{key}'] entries must be finite")
+            return lower, upper
+
+        phi_L, phi_U = parse_bounds("phi")
+        C_opt_L, C_opt_U = parse_bounds("C_opt")
+
+        if C_opt_L <= 0.0:
+            raise ValueError("ratio_bounds['C_opt'][0] must be strictly positive")
+        if C_opt_U < C_opt_L:
+            raise ValueError(
+                "ratio_bounds['C_opt'][1] must be greater than or equal to "
+                "ratio_bounds['C_opt'][0]"
+            )
+        if phi_L < 0.0:
+            raise ValueError("ratio_bounds['phi'][0] must be nonnegative")
+        if phi_U <= phi_L:
+            raise ValueError(
+                "ratio_bounds['phi'][1] must be greater than ratio_bounds['phi'][0]"
+            )
+
+        validated_bounds: dict[str, Any] = {
+            "phi": (phi_L, phi_U),
+            "C_opt": (C_opt_L, C_opt_U),
+        }
+        if self.objective_mode == "ratio_piecewise_mccormick":
+            validated_bounds["C_opt_breakpoints"] = self._validate_ratio_breakpoints(
+                ratio_bounds,
+                C_opt_L,
+                C_opt_U,
+            )
+            validated_bounds["num_pieces"] = (
+                len(validated_bounds["C_opt_breakpoints"]) - 1
+            )
+        return validated_bounds
+
+    def _validate_ratio_breakpoints(
+        self,
+        ratio_bounds: dict[str, Any],
+        C_opt_L: float,
+        C_opt_U: float,
+    ) -> list[float]:
+        tolerance = self.ratio_bounds_tolerance
+        if "C_opt_breakpoints" in ratio_bounds:
+            raw_breakpoints = ratio_bounds["C_opt_breakpoints"]
+            if not isinstance(raw_breakpoints, (list, tuple)):
+                raise ValueError("ratio_bounds['C_opt_breakpoints'] must be a list")
+            breakpoints = [float(value) for value in raw_breakpoints]
+            if len(breakpoints) < 3:
+                raise ValueError(
+                    "ratio_bounds['C_opt_breakpoints'] must contain at least 3 values"
+                )
+            if not all(np.isfinite(value) for value in breakpoints):
+                raise ValueError("ratio_bounds['C_opt_breakpoints'] entries must be finite")
+            if abs(breakpoints[0] - C_opt_L) > tolerance:
+                raise ValueError(
+                    "ratio_bounds['C_opt_breakpoints'][0] must match "
+                    "ratio_bounds['C_opt'][0]"
+                )
+            if abs(breakpoints[-1] - C_opt_U) > tolerance:
+                raise ValueError(
+                    "ratio_bounds['C_opt_breakpoints'][-1] must match "
+                    "ratio_bounds['C_opt'][1]"
+                )
+            if any(
+                breakpoints[idx + 1] <= breakpoints[idx]
+                for idx in range(len(breakpoints) - 1)
+            ):
+                raise ValueError(
+                    "ratio_bounds['C_opt_breakpoints'] must be strictly increasing"
+                )
+            return breakpoints
+
+        if "num_pieces" not in ratio_bounds:
+            raise ValueError(
+                "ratio_bounds must include either 'num_pieces' or "
+                "'C_opt_breakpoints' for objective_mode='ratio_piecewise_mccormick'"
+            )
+        try:
+            num_pieces = int(ratio_bounds["num_pieces"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("ratio_bounds['num_pieces'] must be an integer") from exc
+        if num_pieces < 2:
+            raise ValueError("ratio_bounds['num_pieces'] must be at least 2")
+        return [
+            float(value)
+            for value in np.linspace(C_opt_L, C_opt_U, num_pieces + 1)
+        ]
 
     # ------------------------------------------------------------------
     # Data and configuration
@@ -1254,8 +1387,59 @@ class PoAOptimization:
         self.model.D = Var(self.model.time_steps, domain=NonNegativeReals)
         self.model.P_max_block = Var(self.model.generator_blocks, self.model.time_steps, domain=NonNegativeReals)
         self.model.C_eq = Var(domain=Reals)
-        self.model.C_opt = Var(domain=Reals)
+        c_opt_bounds = (
+            self.ratio_bounds["C_opt"]
+            if self.objective_mode in {
+                "ratio_mccormick",
+                "ratio_piecewise_mccormick",
+            } and self.ratio_bounds is not None
+            else (None, None)
+        )
+        self.model.C_opt = Var(domain=Reals, bounds=c_opt_bounds)
         self.model.PoA = Var(domain=Reals)
+        if self.objective_mode in {"ratio_mccormick", "ratio_piecewise_mccormick"}:
+            self._build_ratio_mccormick_variables()
+        if self.objective_mode == "ratio_piecewise_mccormick":
+            self._build_ratio_piecewise_mccormick_variables()
+
+    def _build_ratio_mccormick_variables(self) -> None:
+        if self.ratio_bounds is None:
+            raise ValueError(
+                f"ratio_bounds is required when objective_mode='{self.objective_mode}'"
+            )
+        phi_L, phi_U = self.ratio_bounds["phi"]
+        C_opt_L, C_opt_U = self.ratio_bounds["C_opt"]
+        self.model.phi = Var(bounds=(phi_L, phi_U))
+        self.model.z_ratio_product = Var(
+            domain=Reals,
+            bounds=(phi_L * C_opt_L, phi_U * C_opt_U),
+        )
+
+    def _build_ratio_piecewise_mccormick_variables(self) -> None:
+        if self.ratio_bounds is None:
+            raise ValueError(
+                "ratio_bounds is required when "
+                "objective_mode='ratio_piecewise_mccormick'"
+            )
+        breakpoints = list(self.ratio_bounds["C_opt_breakpoints"])
+        phi_L, phi_U = self.ratio_bounds["phi"]
+        self.model.ratio_piece_index = Set(initialize=range(len(breakpoints) - 1))
+        self.model.ratio_piece_active = Var(self.model.ratio_piece_index, domain=Binary)
+        self.model.C_opt_piece = Var(
+            self.model.ratio_piece_index,
+            domain=NonNegativeReals,
+            bounds=lambda m, k: (0.0, breakpoints[int(k) + 1]),
+        )
+        self.model.phi_piece = Var(
+            self.model.ratio_piece_index,
+            domain=NonNegativeReals,
+            bounds=(0.0, phi_U),
+        )
+        self.model.z_ratio_piece = Var(
+            self.model.ratio_piece_index,
+            domain=NonNegativeReals,
+            bounds=lambda m, k: (0.0, phi_U * breakpoints[int(k) + 1]),
+        )
 
     def _build_ambiguity_set_variables(self) -> None:
         self.model.mu_D = Var(bounds=self.mu_D_bounds)
@@ -1379,7 +1563,27 @@ class PoAOptimization:
         self.model.z_ramp_down_opt = Var(self.model.physical_generators, self.model.time_steps, domain=Binary)
 
     def _build_objective(self) -> None:
+        if self.objective_mode == "difference":
+            self._build_difference_objective()
+        elif self.objective_mode == "ratio_mccormick":
+            self._build_ratio_mccormick_objective()
+        elif self.objective_mode == "ratio_piecewise_mccormick":
+            self._build_ratio_piecewise_mccormick_objective()
+        else:
+            raise ValueError(f"Unsupported objective_mode: {self.objective_mode}")
+
+    def _build_difference_objective(self) -> None:
+        # Difference proxy objective: maximize C_eq - C_opt.
         self.model.objective = Objective(expr=self.model.PoA, sense=maximize)
+
+    def _build_ratio_mccormick_objective(self) -> None:
+        # Ratio objective: maximize phi, with C_eq = phi * C_opt relaxed below.
+        self.model.objective = Objective(expr=self.model.phi, sense=maximize)
+
+    def _build_ratio_piecewise_mccormick_objective(self) -> None:
+        # Piecewise ratio objective: maximize phi, using disaggregated McCormick
+        # envelopes over the C_opt denominator intervals.
+        self.model.objective = Objective(expr=self.model.phi, sense=maximize)
 
     def _build_constraints(self) -> None:
         self._build_support_set()
@@ -1987,22 +2191,28 @@ class PoAOptimization:
     # PoA constraints
     # ------------------------------------------------------------------
 
+    def _get_equilibrium_cost_expression(self, m: ConcreteModel) -> Any:
+        return sum(
+            self.block_cost_vector[self.local_to_global_block[(int(i), int(b))]]
+            * m.P_eq[i, b, t]
+            for (i, b) in m.generator_blocks
+            for t in m.time_steps
+        )
+
+    def _get_optimal_cost_expression(self, m: ConcreteModel) -> Any:
+        return sum(
+            self.block_cost_vector[self.local_to_global_block[(int(i), int(b))]]
+            * m.P_opt[i, b, t]
+            for (i, b) in m.generator_blocks
+            for t in m.time_steps
+        )
+
     def _build_PoA_constraints(self) -> None:
         def cost_eq_rule(m):
-            return m.C_eq == sum(
-                self.block_cost_vector[self.local_to_global_block[(int(i), int(b))]]
-                * m.P_eq[i, b, t]
-                for (i, b) in m.generator_blocks
-                for t in m.time_steps
-            )
+            return m.C_eq == self._get_equilibrium_cost_expression(m)
 
         def cost_opt_rule(m):
-            return m.C_opt == sum(
-                self.block_cost_vector[self.local_to_global_block[(int(i), int(b))]]
-                * m.P_opt[i, b, t]
-                for (i, b) in m.generator_blocks
-                for t in m.time_steps
-            )
+            return m.C_opt == self._get_optimal_cost_expression(m)
         
         def PoA_rule(m):
             return m.C_eq - m.C_opt == m.PoA 
@@ -2010,6 +2220,155 @@ class PoAOptimization:
         self.model.cost_definition_eq = Constraint(rule=cost_eq_rule)
         self.model.cost_definition_opt = Constraint(rule=cost_opt_rule)
         self.model.poa_definition = Constraint(rule=PoA_rule)
+        if self.objective_mode == "ratio_mccormick":
+            self._build_ratio_mccormick_constraints()
+        if self.objective_mode == "ratio_piecewise_mccormick":
+            self._build_ratio_piecewise_mccormick_constraints()
+
+    def _build_ratio_mccormick_constraints(self) -> None:
+        if self.ratio_bounds is None:
+            raise ValueError(
+                "ratio_bounds is required when objective_mode='ratio_mccormick'"
+            )
+        m = self.model
+        phi_L, phi_U = self.ratio_bounds["phi"]
+        C_opt_L, C_opt_U = self.ratio_bounds["C_opt"]
+
+        # McCormick relaxation of C_eq = phi * C_opt. Because this is a
+        # relaxation, the realized ratio C_eq / C_opt should be checked ex post.
+        m.ratio_link_eq_cost = Constraint(expr=m.z_ratio_product == m.C_eq)
+        m.ratio_mccormick_lower_1 = Constraint(
+            expr=m.z_ratio_product
+            >= phi_L * m.C_opt + C_opt_L * m.phi - phi_L * C_opt_L
+        )
+        m.ratio_mccormick_lower_2 = Constraint(
+            expr=m.z_ratio_product
+            >= phi_U * m.C_opt + C_opt_U * m.phi - phi_U * C_opt_U
+        )
+        m.ratio_mccormick_upper_1 = Constraint(
+            expr=m.z_ratio_product
+            <= phi_U * m.C_opt + C_opt_L * m.phi - phi_U * C_opt_L
+        )
+        m.ratio_mccormick_upper_2 = Constraint(
+            expr=m.z_ratio_product
+            <= phi_L * m.C_opt + C_opt_U * m.phi - phi_L * C_opt_U
+        )
+
+    def _build_ratio_piecewise_mccormick_constraints(self) -> None:
+        if self.ratio_bounds is None:
+            raise ValueError(
+                "ratio_bounds is required when "
+                "objective_mode='ratio_piecewise_mccormick'"
+            )
+        m = self.model
+        phi_L, phi_U = self.ratio_bounds["phi"]
+        breakpoints = list(self.ratio_bounds["C_opt_breakpoints"])
+
+        m.ratio_piece_select_one = Constraint(
+            expr=sum(m.ratio_piece_active[k] for k in m.ratio_piece_index) == 1
+        )
+        m.ratio_piece_C_opt_link = Constraint(
+            expr=m.C_opt == sum(m.C_opt_piece[k] for k in m.ratio_piece_index)
+        )
+        m.ratio_piece_phi_link = Constraint(
+            expr=m.phi == sum(m.phi_piece[k] for k in m.ratio_piece_index)
+        )
+        m.ratio_piece_z_link = Constraint(
+            expr=m.z_ratio_product
+            == sum(m.z_ratio_piece[k] for k in m.ratio_piece_index)
+        )
+        m.ratio_piece_C_eq_link = Constraint(expr=m.C_eq == m.z_ratio_product)
+
+        def C_opt_piece_lower_rule(m, k):
+            return (
+                breakpoints[int(k)] * m.ratio_piece_active[k]
+                <= m.C_opt_piece[k]
+            )
+
+        def C_opt_piece_upper_rule(m, k):
+            return (
+                m.C_opt_piece[k]
+                <= breakpoints[int(k) + 1] * m.ratio_piece_active[k]
+            )
+
+        def phi_piece_lower_rule(m, k):
+            return phi_L * m.ratio_piece_active[k] <= m.phi_piece[k]
+
+        def phi_piece_upper_rule(m, k):
+            return m.phi_piece[k] <= phi_U * m.ratio_piece_active[k]
+
+        def lower_1_rule(m, k):
+            k_int = int(k)
+            y_L = breakpoints[k_int]
+            return (
+                m.z_ratio_piece[k]
+                >= phi_L * m.C_opt_piece[k]
+                + y_L * m.phi_piece[k]
+                - phi_L * y_L * m.ratio_piece_active[k]
+            )
+
+        def lower_2_rule(m, k):
+            k_int = int(k)
+            y_U = breakpoints[k_int + 1]
+            return (
+                m.z_ratio_piece[k]
+                >= phi_U * m.C_opt_piece[k]
+                + y_U * m.phi_piece[k]
+                - phi_U * y_U * m.ratio_piece_active[k]
+            )
+
+        def upper_1_rule(m, k):
+            k_int = int(k)
+            y_L = breakpoints[k_int]
+            return (
+                m.z_ratio_piece[k]
+                <= phi_U * m.C_opt_piece[k]
+                + y_L * m.phi_piece[k]
+                - phi_U * y_L * m.ratio_piece_active[k]
+            )
+
+        def upper_2_rule(m, k):
+            k_int = int(k)
+            y_U = breakpoints[k_int + 1]
+            return (
+                m.z_ratio_piece[k]
+                <= phi_L * m.C_opt_piece[k]
+                + y_U * m.phi_piece[k]
+                - phi_L * y_U * m.ratio_piece_active[k]
+            )
+
+        m.ratio_piece_C_opt_lower = Constraint(
+            m.ratio_piece_index,
+            rule=C_opt_piece_lower_rule,
+        )
+        m.ratio_piece_C_opt_upper = Constraint(
+            m.ratio_piece_index,
+            rule=C_opt_piece_upper_rule,
+        )
+        m.ratio_piece_phi_lower = Constraint(
+            m.ratio_piece_index,
+            rule=phi_piece_lower_rule,
+        )
+        m.ratio_piece_phi_upper = Constraint(
+            m.ratio_piece_index,
+            rule=phi_piece_upper_rule,
+        )
+        m.ratio_piece_mccormick_lower_1 = Constraint(
+            m.ratio_piece_index,
+            rule=lower_1_rule,
+        )
+        m.ratio_piece_mccormick_lower_2 = Constraint(
+            m.ratio_piece_index,
+            rule=lower_2_rule,
+        )
+        m.ratio_piece_mccormick_upper_1 = Constraint(
+            m.ratio_piece_index,
+            rule=upper_1_rule,
+        )
+        m.ratio_piece_mccormick_upper_2 = Constraint(
+            m.ratio_piece_index,
+            rule=upper_2_rule,
+        )
 
     # ------------------------------------------------------------------
     # Policy constraints
@@ -2538,6 +2897,148 @@ class PoAOptimization:
             for t in range(self.num_time_steps)
         ]
 
+    def extract_objective_metrics(self) -> dict[str, Any]:
+        if not hasattr(self, "model"):
+            raise ValueError("Model is not built. Call build_model() first.")
+        m = self.model
+        C_eq = self._safe_value(m.C_eq)
+        C_opt = self._safe_value(m.C_opt)
+        difference_proxy = None
+        ex_post_ratio = None
+        if C_eq is not None and C_opt is not None:
+            difference_proxy = C_eq - C_opt
+            if C_opt != 0.0:
+                ex_post_ratio = C_eq / C_opt
+
+        objective_value = self._safe_value(m.objective)
+        metrics: dict[str, Any] = {
+            "objective_mode": self.objective_mode,
+            "model_objective_value": objective_value,
+            "objective_value": objective_value,
+            "PoA_difference": self._safe_value(m.PoA),
+            "PoA_ratio": ex_post_ratio,
+            "C_eq": C_eq,
+            "C_opt": C_opt,
+            "difference_proxy": difference_proxy,
+            "ex_post_ratio": ex_post_ratio,
+        }
+
+        if self.objective_mode in {
+            "ratio_mccormick",
+            "ratio_piecewise_mccormick",
+        }:
+            phi = self._safe_value(m.phi)
+            z_ratio_product = self._safe_value(m.z_ratio_product)
+            product_gap = None
+            ratio_gap = None
+            if (
+                phi is not None
+                and C_opt is not None
+                and z_ratio_product is not None
+            ):
+                product_gap = z_ratio_product - phi * C_opt
+            if phi is not None and ex_post_ratio is not None:
+                ratio_gap = phi - ex_post_ratio
+            metrics.update(
+                {
+                    "phi": phi,
+                    "z_ratio_product": z_ratio_product,
+                    "mccormick_product_gap": product_gap,
+                    "ratio_gap": ratio_gap,
+                }
+            )
+            if self.objective_mode == "ratio_piecewise_mccormick":
+                metrics.update(self._extract_piecewise_ratio_metrics())
+        return metrics
+
+    def _extract_piecewise_ratio_metrics(self) -> dict[str, Any]:
+        m = self.model
+        breakpoints = list((self.ratio_bounds or {}).get("C_opt_breakpoints", []))
+        phi_L, phi_U = (self.ratio_bounds or {}).get("phi", (None, None))
+        piece_indices = [int(k) for k in m.ratio_piece_index]
+        delta_values = {
+            k: self._safe_value(m.ratio_piece_active[k])
+            for k in piece_indices
+        }
+        selected_delta_sum = sum(
+            value for value in delta_values.values() if value is not None
+        )
+        active_piece = max(
+            piece_indices,
+            key=lambda k: (
+                delta_values[k] if delta_values[k] is not None else float("-inf")
+            ),
+        )
+        active_delta = delta_values[active_piece]
+        active_lower = breakpoints[active_piece]
+        active_upper = breakpoints[active_piece + 1]
+        active_phi_piece = self._safe_value(m.phi_piece[active_piece])
+        active_C_opt_piece = self._safe_value(m.C_opt_piece[active_piece])
+        active_z_piece = self._safe_value(m.z_ratio_piece[active_piece])
+
+        slacks: dict[str, Optional[float]] = {
+            "active_mccormick_slack_lower_1": None,
+            "active_mccormick_slack_lower_2": None,
+            "active_mccormick_slack_upper_1": None,
+            "active_mccormick_slack_upper_2": None,
+        }
+        if (
+            phi_L is not None
+            and phi_U is not None
+            and active_delta is not None
+            and active_phi_piece is not None
+            and active_C_opt_piece is not None
+            and active_z_piece is not None
+        ):
+            lower_1_rhs = (
+                phi_L * active_C_opt_piece
+                + active_lower * active_phi_piece
+                - phi_L * active_lower * active_delta
+            )
+            lower_2_rhs = (
+                phi_U * active_C_opt_piece
+                + active_upper * active_phi_piece
+                - phi_U * active_upper * active_delta
+            )
+            upper_1_rhs = (
+                phi_U * active_C_opt_piece
+                + active_lower * active_phi_piece
+                - phi_U * active_lower * active_delta
+            )
+            upper_2_rhs = (
+                phi_L * active_C_opt_piece
+                + active_upper * active_phi_piece
+                - phi_L * active_upper * active_delta
+            )
+            slacks = {
+                "active_mccormick_slack_lower_1": active_z_piece - lower_1_rhs,
+                "active_mccormick_slack_lower_2": active_z_piece - lower_2_rhs,
+                "active_mccormick_slack_upper_1": upper_1_rhs - active_z_piece,
+                "active_mccormick_slack_upper_2": upper_2_rhs - active_z_piece,
+            }
+
+        phi = self._safe_value(m.phi)
+        C_opt = self._safe_value(m.C_opt)
+        sum_z_piece = sum(
+            self._safe_value(m.z_ratio_piece[k]) or 0.0
+            for k in piece_indices
+        )
+        piecewise_product_gap = None
+        if phi is not None and C_opt is not None:
+            piecewise_product_gap = sum_z_piece - phi * C_opt
+
+        return {
+            "active_piece": int(active_piece),
+            "active_piece_lower": active_lower,
+            "active_piece_upper": active_upper,
+            "num_pieces": len(piece_indices),
+            "C_opt_breakpoints": list(breakpoints),
+            "piecewise_product_gap": piecewise_product_gap,
+            "piecewise_selected_delta_sum": selected_delta_sum,
+            "active_piece_delta_value": active_delta,
+            **slacks,
+        }
+
     def check_dual_bound_activity(self, tol: float = 1e-5) -> list[dict]:
         if not hasattr(self, "model"):
             raise ValueError("Model is not built. Call build_model() first.")
@@ -2599,14 +3100,7 @@ class PoAOptimization:
         if not hasattr(self, "model"):
             raise ValueError("Model is not built. Call build_model() first.")
         m = self.model
-        objective = {
-            "PoA_difference": self._safe_value(m.PoA),
-            "C_eq": self._safe_value(m.C_eq),
-            "C_opt": self._safe_value(m.C_opt),
-            "PoA_ratio": None,
-        }
-        if objective["C_eq"] is not None and objective["C_opt"] not in (None, 0.0):
-            objective["PoA_ratio"] = objective["C_eq"] / objective["C_opt"]
+        objective = self.extract_objective_metrics()
 
         generators: dict[str, Any] = {}
         for i, generator_name in enumerate(self.physical_generator_names):

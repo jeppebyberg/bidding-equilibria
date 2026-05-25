@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
 import json
 from pathlib import Path
 from typing import Any
@@ -27,6 +26,15 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 
 def _find_default_result_path(results_dir: Path) -> Path:
+    ambiguity_candidates = _find_ambiguity_result_paths(results_dir)
+    if not ambiguity_candidates:
+        raise FileNotFoundError(
+            f"No PoA result with an 'ambiguity_set' block found in {results_dir}"
+        )
+    return max(ambiguity_candidates, key=lambda path: path.stat().st_mtime)
+
+
+def _find_ambiguity_result_paths(results_dir: Path) -> list[Path]:
     candidates = sorted(results_dir.glob("poa_optimization*.json"))
     ambiguity_candidates: list[Path] = []
     for candidate in candidates:
@@ -36,12 +44,31 @@ def _find_default_result_path(results_dir: Path) -> Path:
             continue
         if isinstance(payload.get("ambiguity_set"), dict):
             ambiguity_candidates.append(candidate)
+    return ambiguity_candidates
 
-    if not ambiguity_candidates:
-        raise FileNotFoundError(
-            f"No PoA result with an 'ambiguity_set' block found in {results_dir}"
-        )
-    return max(ambiguity_candidates, key=lambda path: path.stat().st_mtime)
+
+def _resolve_result_paths(
+    result_paths: list[Path],
+    results_dir: Path,
+    plot_all_matching_results: bool,
+) -> list[Path]:
+    explicit_paths = [Path(path) for path in result_paths]
+    if explicit_paths:
+        missing_paths = [path for path in explicit_paths if not path.exists()]
+        if missing_paths:
+            missing = ", ".join(str(path) for path in missing_paths)
+            raise FileNotFoundError(f"Result path(s) not found: {missing}")
+        return explicit_paths
+
+    if plot_all_matching_results:
+        paths = _find_ambiguity_result_paths(results_dir)
+        if not paths:
+            raise FileNotFoundError(
+                f"No PoA result with an 'ambiguity_set' block found in {results_dir}"
+            )
+        return paths
+
+    return [_find_default_result_path(results_dir)]
 
 
 def _wind_generator_names(results: dict[str, Any]) -> list[str]:
@@ -181,41 +208,30 @@ def plot_ambiguity_regime_trajectories(
     return output_path
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description=(
-            "Plot selected ambiguity regime support bounds and optimized demand/wind "
-            "trajectories from a PoA result JSON."
-        )
-    )
-    parser.add_argument(
-        "--result-path",
-        type=Path,
-        default=None,
-        help=(
-            "PoA result JSON. Defaults to the newest results/poa_optimization*.json "
-            "containing an ambiguity_set block."
-        ),
-    )
-    parser.add_argument(
-        "--output-dir",
-        type=Path,
-        default=DEFAULT_OUTPUT_DIR,
-        help="Directory where the figure is written.",
-    )
-    parser.add_argument("--show", action="store_true", help="Show the figure interactively.")
-    return parser.parse_args()
-
-
 def main() -> None:
-    args = parse_args()
-    result_path = args.result_path or _find_default_result_path(Path("results"))
-    output_path = plot_ambiguity_regime_trajectories(
-        result_path=result_path,
-        output_dir=args.output_dir,
-        show=args.show,
+    # Edit these paths/settings directly when running this script.
+    # Leave result_paths empty to use either the newest or all matching PoA results.
+    result_paths = [
+        # Path("results/temporary_poa_results/poa_optimization_T8.json"),
+        # Path("results/temporary_poa_results/poa_optimization_T8_ratio_piecewise_mccormick.json"),
+    ]
+    results_dir = Path("results/temporary_poa_results")
+    plot_all_matching_results = True
+    output_dir = DEFAULT_OUTPUT_DIR
+    show = False
+
+    selected_result_paths = _resolve_result_paths(
+        result_paths=result_paths,
+        results_dir=results_dir,
+        plot_all_matching_results=plot_all_matching_results,
     )
-    print(f"Saved ambiguity-regime trajectory plot: {output_path}")
+    for result_path in selected_result_paths:
+        output_path = plot_ambiguity_regime_trajectories(
+            result_path=result_path,
+            output_dir=output_dir,
+            show=show,
+        )
+        print(f"Saved ambiguity-regime trajectory plot: {output_path}")
 
 
 if __name__ == "__main__":

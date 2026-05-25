@@ -14,14 +14,15 @@ DEFAULT_DRO_TIGHTENING_OUTPUT_PATHS: dict[str, str] = {
     "alpha_bounds": "results/dro_poa_tightening/{regime_name}/alpha_bounds_report.json",
     "slack_binary_fix": "results/dro_poa_tightening/{regime_name}/slack_binary_fix_report.json",
     "dual_big_m": "results/dro_poa_tightening/{regime_name}/dual_big_m_report.json",
+    "optimal_cost_bounds": "results/dro_poa_tightening/{regime_name}/optimal_cost_bounds_report.json",
     "final": "results/dro_poa_tightening/{regime_name}/final_tightening_report.json",
 }
 
 
 class DROPoATighteningMain:
-    """Shared orchestrator for regime-wide DRO PoA tightening."""
+    """Shared orchestrator for DRO PoA tightening."""
 
-    _MAIN_STATE_ATTRS = {"poa", "dro_poa", "tightening_data", "stage_reports"}
+    _MAIN_STATE_ATTRS = {"poa", "dro", "dro_poa", "tightening_data", "stage_reports"}
 
     def __getattr__(self, name: str) -> Any:
         poa = self.__dict__.get("poa")
@@ -68,6 +69,7 @@ class DROPoATighteningMain:
             nn_policy_generators=nn_policy_generators,
             reference_case=reference_case,
         )
+        self.dro = self.poa
         self.dro_poa = self.poa
         self.tightening_data: dict[str, Any] = {}
         self.stage_reports: dict[str, dict[str, Any]] = {}
@@ -116,6 +118,7 @@ class DROPoATighteningMain:
         if not isinstance(report, dict):
             raise ValueError("Tightening report payload must be a dictionary")
 
+        self._validate_report_metadata_if_present(report)
         self.tightening_data.setdefault("metadata", {}).update(report.get("metadata", {}) or {})
         if isinstance(report.get("stage_reports"), dict):
             self.stage_reports.update(report["stage_reports"])
@@ -123,34 +126,126 @@ class DROPoATighteningMain:
         relu_report = report.get("nn_relu_bounds_report")
         if isinstance(relu_report, dict) and relu_report:
             self.tightening_data["nn_relu_bounds_report"] = relu_report
-            self.tightening_data["nn_relu_bounds"] = relu_report.get("nn_relu_bounds", {}) or {}
+            self.tightening_data["scenario_nn_relu_bounds"] = (
+                relu_report.get("scenario_nn_relu_bounds", {}) or {}
+            )
+            self.tightening_data["regime_nn_relu_bounds"] = (
+                relu_report.get("regime_nn_relu_bounds", {}) or {}
+            )
+            self.tightening_data["nn_relu_bounds"] = self._prefer_scenario_report_field(
+                relu_report,
+                "scenario_nn_relu_bounds",
+                "nn_relu_bounds",
+            )
             if hasattr(self.poa, "_set_nn_relu_bounds_from_report"):
-                self.poa._set_nn_relu_bounds_from_report(relu_report)
-        elif "nn_relu_bounds" in report:
+                self.poa._set_nn_relu_bounds_from_report(
+                    {
+                        **relu_report,
+                        "nn_relu_bounds": self.tightening_data["nn_relu_bounds"],
+                    }
+                )
+        elif "nn_relu_bounds" in report or "scenario_nn_relu_bounds" in report:
             self.tightening_data["nn_relu_bounds_report"] = report
-            self.tightening_data["nn_relu_bounds"] = report.get("nn_relu_bounds", {}) or {}
+            self.tightening_data["scenario_nn_relu_bounds"] = (
+                report.get("scenario_nn_relu_bounds", {}) or {}
+            )
+            self.tightening_data["regime_nn_relu_bounds"] = (
+                report.get("regime_nn_relu_bounds", {}) or {}
+            )
+            self.tightening_data["nn_relu_bounds"] = self._prefer_scenario_report_field(
+                report,
+                "scenario_nn_relu_bounds",
+                "nn_relu_bounds",
+            )
             if hasattr(self.poa, "_set_nn_relu_bounds_from_report"):
-                self.poa._set_nn_relu_bounds_from_report(report)
+                self.poa._set_nn_relu_bounds_from_report(
+                    {
+                        **report,
+                        "nn_relu_bounds": self.tightening_data["nn_relu_bounds"],
+                    }
+                )
 
         for key in (
             "primal_big_m",
-            "alpha_bounds",
             "alpha_optimization_results",
             "slack_bounds",
-            "fixed_binaries",
-            "lambda_bounds",
-            "tight_big_m",
             "aggregate_dual_bounds",
         ):
             if key in report:
                 self.tightening_data[key] = report.get(key, {}) or {}
                 setattr(self.poa, key, self.tightening_data[key])
 
-        if "alpha_bounds" in report:
-            self.poa.alpha_bounds = self._parse_alpha_bounds(report.get("alpha_bounds", {}) or {})
+        scenario_preferred_fields = {
+            "alpha_bounds": "scenario_alpha_bounds",
+            "fixed_binaries": "scenario_fixed_binaries",
+            "lambda_bounds": "scenario_lambda_bounds",
+            "tight_big_m": "scenario_tight_big_m",
+        }
+        for main_key, scenario_key in scenario_preferred_fields.items():
+            regime_key = f"regime_{main_key}"
+            if scenario_key in report:
+                self.tightening_data[scenario_key] = report.get(scenario_key, {}) or {}
+            if regime_key in report:
+                self.tightening_data[regime_key] = report.get(regime_key, {}) or {}
+            if main_key in report or scenario_key in report:
+                selected = self._prefer_scenario_report_field(report, scenario_key, main_key)
+                self.tightening_data[main_key] = selected
+                setattr(self.poa, main_key, selected)
+
+        if "optimal_cost_bounds" in report:
+            self.tightening_data["optimal_cost_bounds"] = (
+                report.get("optimal_cost_bounds", {}) or {}
+            )
+        if "scenario_optimal_cost_bounds" in report:
+            self.tightening_data["scenario_optimal_cost_bounds"] = (
+                report.get("scenario_optimal_cost_bounds", {}) or {}
+            )
+        if "optimal_cost_bound_optimization_results" in report:
+            self.tightening_data["optimal_cost_bound_optimization_results"] = (
+                report.get("optimal_cost_bound_optimization_results", {}) or {}
+            )
+        if (
+            "optimal_cost_bounds" in report
+            or "scenario_optimal_cost_bounds" in report
+            or "optimal_cost_bound_optimization_results" in report
+        ) and hasattr(self.poa, "_set_optimal_cost_bounds_from_report"):
+            self.poa._set_optimal_cost_bounds_from_report(report)
+
+        if "alpha_bounds" in self.tightening_data:
+            self.poa.alpha_bounds = self._parse_alpha_bounds(
+                self.tightening_data.get("alpha_bounds", {}) or {}
+            )
         if hasattr(self.poa, "_loaded_bounds_prepared"):
             self.poa._loaded_bounds_prepared = False
         return report
+
+    def _validate_report_metadata_if_present(self, report: dict[str, Any]) -> None:
+        metadata = report.get("metadata", {}) or {}
+        if not isinstance(metadata, dict) or not metadata:
+            return
+
+        report_regime = metadata.get("regime_name")
+        if report_regime is not None and str(report_regime) != str(self.poa.regime_name):
+            raise ValueError(
+                "DRO tightening report regime_name mismatch: "
+                f"report has {report_regime!r}, current regime is {self.poa.regime_name!r}"
+            )
+
+        report_time_steps = metadata.get("num_time_steps")
+        if report_time_steps is not None and int(report_time_steps) != int(self.poa.num_time_steps):
+            raise ValueError(
+                "DRO tightening report num_time_steps mismatch: "
+                f"report has {report_time_steps}, current model has {self.poa.num_time_steps}"
+            )
+
+        report_scenarios = metadata.get("num_empirical_scenarios")
+        if report_scenarios is not None and int(report_scenarios) != int(self.poa.num_empirical_scenarios):
+            raise ValueError(
+                "DRO tightening report num_empirical_scenarios mismatch: "
+                f"report has {report_scenarios}, current model has "
+                f"{self.poa.num_empirical_scenarios}. Rerun this DRO tightening "
+                "stage for the current scenario set."
+            )
 
     def _load_previous_stage(self, stage_name: str, path: str | Path) -> dict[str, Any]:
         previous_path = Path(path)
@@ -253,17 +348,49 @@ class DROPoATighteningMain:
     def _parse_alpha_bounds(
         self,
         alpha_bounds: dict[str, Any],
-    ) -> dict[tuple[int, int, int], dict[str, float]]:
-        parsed: dict[tuple[int, int, int], dict[str, float]] = {}
+    ) -> dict[tuple[int, ...], dict[str, float]]:
+        parsed: dict[tuple[int, ...], dict[str, float]] = {}
         for key, value in (alpha_bounds or {}).items():
             index = self._parse_json_index(key)
-            if len(index) != 3:
-                raise ValueError(f"Alpha-bound key '{key}' must have three indices: i,b,t")
-            parsed[(int(index[0]), int(index[1]), int(index[2]))] = {
+            if len(index) not in {3, 4}:
+                raise ValueError(
+                    f"Alpha-bound key '{key}' must have i,b,t or k,i,b,t indices"
+                )
+            parsed[tuple(int(part) for part in index)] = {
                 "lower": float(value["lower"]),
                 "upper": float(value["upper"]),
             }
         return parsed
+
+    def _has_scenario_indexed_keys(self, payload: Any, expected_scenario_dim: int) -> bool:
+        if not isinstance(payload, dict):
+            return False
+        entries = (
+            payload.values()
+            if payload and all(isinstance(value, dict) for value in payload.values())
+            else [payload]
+        )
+        for maybe_entries in entries:
+            if not isinstance(maybe_entries, dict):
+                continue
+            for key in maybe_entries:
+                try:
+                    if len(self._parse_json_index(key)) == int(expected_scenario_dim):
+                        return True
+                except (TypeError, ValueError):
+                    continue
+        return False
+
+    @staticmethod
+    def _prefer_scenario_report_field(
+        report: dict[str, Any],
+        scenario_key: str,
+        fallback_key: str,
+    ) -> Any:
+        scenario_payload = report.get(scenario_key)
+        if scenario_payload:
+            return scenario_payload
+        return report.get(fallback_key, {}) or {}
 
     def _require_relu_before_alpha(self) -> None:
         if getattr(self.poa, "nn_policy_generator_ids", []) and not getattr(
@@ -291,6 +418,7 @@ class DROPoATighteningMain:
         return {
             "model_type": "DRO_PoA",
             "tightening_type": "regime_wide",
+            "tightening_scope": "scenario_wise",
             "reference_case": self.poa.reference_case,
             "regime_set": self.poa.regime_set,
             "regime_name": self.poa.regime_name,
@@ -301,8 +429,21 @@ class DROPoATighteningMain:
             "physical_generator_names": list(self.poa.physical_generator_names),
             "block_names": list(self.poa.block_names),
             "nn_policy_generators": list(getattr(self.poa, "nn_policy_generator_names", [])),
+            "nn_model_dir": str(self.poa.nn_model_dir) if self.poa.nn_model_dir else None,
+            "nn_normalization_stats_path": (
+                str(self.poa.nn_normalization_stats_path)
+                if self.poa.nn_normalization_stats_path
+                else None
+            ),
             "selected_regime_parameters": dict(getattr(self.poa, "selected_regime_parameters", {})),
-            "aggregation_rule": "minimum lower bound over k and maximum upper bound over k",
+            "aggregation_rule": (
+                "applies only to regime_* diagnostic/fallback fields: minimum lower "
+                "bound over k and maximum upper bound over k"
+            ),
+            "primal_big_m_scope": (
+                "regime_wide; primal slack Big-M values remain support-set valid "
+                "across empirical scenarios"
+            ),
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
 
@@ -438,16 +579,36 @@ class DROPoATighteningMain:
             "metadata": self._metadata(),
             "primal_big_m": self.tightening_data.get("primal_big_m", {}),
             "nn_relu_bounds_report": self.tightening_data.get("nn_relu_bounds_report", {}),
+            "scenario_nn_relu_bounds": self.tightening_data.get("scenario_nn_relu_bounds", {}),
+            "regime_nn_relu_bounds": self.tightening_data.get("regime_nn_relu_bounds", {}),
+            "nn_relu_bounds": self.tightening_data.get("nn_relu_bounds", {}),
+            "scenario_alpha_bounds": self.tightening_data.get("scenario_alpha_bounds", {}),
+            "regime_alpha_bounds": self.tightening_data.get("regime_alpha_bounds", {}),
             "alpha_bounds": self.tightening_data.get("alpha_bounds", {}),
             "alpha_optimization_results": self.tightening_data.get(
                 "alpha_optimization_results",
                 {},
             ),
             "slack_bounds": self.tightening_data.get("slack_bounds", {}),
+            "scenario_fixed_binaries": self.tightening_data.get("scenario_fixed_binaries", {}),
+            "regime_fixed_binaries": self.tightening_data.get("regime_fixed_binaries", {}),
             "fixed_binaries": self.tightening_data.get("fixed_binaries", {}),
+            "scenario_lambda_bounds": self.tightening_data.get("scenario_lambda_bounds", {}),
+            "regime_lambda_bounds": self.tightening_data.get("regime_lambda_bounds", {}),
             "lambda_bounds": self.tightening_data.get("lambda_bounds", {}),
+            "scenario_tight_big_m": self.tightening_data.get("scenario_tight_big_m", {}),
+            "regime_tight_big_m": self.tightening_data.get("regime_tight_big_m", {}),
             "tight_big_m": self.tightening_data.get("tight_big_m", {}),
             "aggregate_dual_bounds": self.tightening_data.get("aggregate_dual_bounds", {}),
+            "optimal_cost_bounds": self.tightening_data.get("optimal_cost_bounds", {}),
+            "scenario_optimal_cost_bounds": self.tightening_data.get(
+                "scenario_optimal_cost_bounds",
+                {},
+            ),
+            "optimal_cost_bound_optimization_results": self.tightening_data.get(
+                "optimal_cost_bound_optimization_results",
+                {},
+            ),
             "stage_reports": self.stage_reports,
         }
         return self._save_json(payload, output_path)
@@ -459,6 +620,7 @@ class DROPoATighteningMain:
         run_alpha_bounds: bool = True,
         run_slack_binary_fix: bool = True,
         run_dual_big_m: bool = True,
+        run_optimal_cost_bounds: bool = True,
         previous_paths: Optional[dict[str, str | Path]] = None,
         output_paths: Optional[dict[str, str | Path]] = None,
         solver_name: str = "gurobi",
@@ -474,6 +636,9 @@ class DROPoATighteningMain:
     ) -> Path:
         from models.DRO_PoA.DRO_PoA_tightening.compute_alpha_bounds import DROAlphaBoundsComputer
         from models.DRO_PoA.DRO_PoA_tightening.compute_dual_big_m import DRODualBigMComputer
+        from models.DRO_PoA.DRO_PoA_tightening.compute_optimal_cost_bounds import (
+            DROOptimalCostBoundsComputer,
+        )
         from models.DRO_PoA.DRO_PoA_tightening.compute_primal_big_m import DROPrimalBigMComputer
         from models.DRO_PoA.DRO_PoA_tightening.compute_relu_bounds import DROReLUBoundsComputer
         from models.DRO_PoA.DRO_PoA_tightening.compute_slack_binary_fix import DROSlackBinaryFixComputer
@@ -486,6 +651,7 @@ class DROPoATighteningMain:
         alpha_stage = self._as_stage(DROAlphaBoundsComputer)
         slack_stage = self._as_stage(DROSlackBinaryFixComputer)
         dual_stage = self._as_stage(DRODualBigMComputer)
+        optimal_cost_stage = self._as_stage(DROOptimalCostBoundsComputer)
 
         self._load_or_run_stage(
             "primal_big_m",
@@ -560,6 +726,20 @@ class DROPoATighteningMain:
             ),
             previous_paths["dual_big_m"],
             output_paths["dual_big_m"],
+        )
+
+        self._load_or_run_stage(
+            "optimal_cost_bounds",
+            run_optimal_cost_bounds,
+            lambda output_path: optimal_cost_stage.run_optimal_cost_bounds(
+                output_path=output_path,
+                solver_name=solver_name,
+                time_limit=time_limit,
+                tee=tee,
+                solver_threads=solver_threads,
+            ),
+            previous_paths["optimal_cost_bounds"],
+            output_paths["optimal_cost_bounds"],
         )
 
         return self.save_final_report(output_paths["final"])

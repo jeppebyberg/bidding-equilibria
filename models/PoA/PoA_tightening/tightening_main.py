@@ -13,6 +13,7 @@ DEFAULT_TIGHTENING_OUTPUT_PATHS: dict[str, str] = {
     "alpha_bounds": "results/poa_tightening/alpha_bounds_report.json",
     "slack_binary_fix": "results/poa_tightening/slack_binary_fix_report.json",
     "dual_big_m": "results/poa_tightening/dual_big_m_report.json",
+    "optimal_cost_bounds": "results/poa_tightening/optimal_cost_bounds_report.json",
     "final": "results/poa_tightening/final_tightening_report.json",
 }
 
@@ -164,6 +165,16 @@ class PoATighteningMain:
             self.poa.aggregate_dual_bounds = self.tightening_data["aggregate_dual_bounds"]
             self.poa._loaded_bounds_prepared = False
 
+        if "optimal_cost_bounds" in report:
+            self.tightening_data["optimal_cost_bounds"] = (
+                report.get("optimal_cost_bounds", {}) or {}
+            )
+
+        if "optimal_cost_bound_optimization_results" in report:
+            self.tightening_data["optimal_cost_bound_optimization_results"] = (
+                report.get("optimal_cost_bound_optimization_results", {}) or {}
+            )
+
         return report
 
     def _load_previous_stage(self, stage_name: str, path: str | Path) -> dict[str, Any]:
@@ -258,6 +269,11 @@ class PoATighteningMain:
             "lambda_bounds": self.tightening_data.get("lambda_bounds", {}),
             "tight_big_m": self.tightening_data.get("tight_big_m", {}),
             "aggregate_dual_bounds": self.tightening_data.get("aggregate_dual_bounds", {}),
+            "optimal_cost_bounds": self.tightening_data.get("optimal_cost_bounds", {}),
+            "optimal_cost_bound_optimization_results": self.tightening_data.get(
+                "optimal_cost_bound_optimization_results",
+                {},
+            ),
             "stage_reports": self.stage_reports,
         }
         return self._save_json(payload, output_path)
@@ -292,6 +308,7 @@ class PoATighteningMain:
         run_alpha_bounds: bool = True,
         run_slack_binary_fix: bool = True,
         run_dual_big_m: bool = True,
+        run_optimal_cost_bounds: bool = True,
         previous_paths: Optional[dict[str, str | Path]] = None,
         output_paths: Optional[dict[str, str | Path]] = None,
         solver_name: str = "gurobi",
@@ -307,6 +324,9 @@ class PoATighteningMain:
     ) -> Path:
         from models.PoA.PoA_tightening.compute_alpha_bounds import AlphaBoundsComputer
         from models.PoA.PoA_tightening.compute_dual_big_m import DualBigMComputer
+        from models.PoA.PoA_tightening.compute_optimal_cost_bounds import (
+            OptimalCostBoundsComputer,
+        )
         from models.PoA.PoA_tightening.compute_primal_big_m import PrimalBigMComputer
         from models.PoA.PoA_tightening.compute_relu_bounds import ReLUBoundsComputer
         from models.PoA.PoA_tightening.compute_slack_binary_fix import SlackBinaryFixComputer
@@ -319,6 +339,7 @@ class PoATighteningMain:
         alpha_stage = self._as_stage(AlphaBoundsComputer)
         slack_stage = self._as_stage(SlackBinaryFixComputer)
         dual_stage = self._as_stage(DualBigMComputer)
+        optimal_cost_stage = self._as_stage(OptimalCostBoundsComputer)
 
         self._load_or_run_stage(
             "primal_big_m",
@@ -392,6 +413,20 @@ class PoATighteningMain:
             ),
             previous_paths["dual_big_m"],
             output_paths["dual_big_m"],
+        )
+
+        self._load_or_run_stage(
+            "optimal_cost_bounds",
+            run_optimal_cost_bounds,
+            lambda output_path: optimal_cost_stage.run_optimal_cost_bounds(
+                output_path=output_path,
+                solver_name=solver_name,
+                time_limit=time_limit,
+                tee=tee,
+                solver_threads=solver_threads,
+            ),
+            previous_paths["optimal_cost_bounds"],
+            output_paths["optimal_cost_bounds"],
         )
 
         return self.save_final_report(output_paths["final"])

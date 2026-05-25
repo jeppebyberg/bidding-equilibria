@@ -104,7 +104,10 @@ def _solve_parallel_dual_big_m(task: tuple[Any, ...]) -> dict[str, Any]:
     binary_name = computer._binary_name(side, constraint_type)
     regime_key = computer._json_key(regime_index)
     scenario_key = computer._json_key(scenario_index)
-    if regime_key in fixed_binaries.get(binary_name, {}):
+    if (
+        scenario_key in fixed_binaries.get(binary_name, {})
+        or regime_key in fixed_binaries.get(binary_name, {})
+    ):
         return {
             "side": side,
             "constraint_type": constraint_type,
@@ -204,7 +207,7 @@ class DRODualBigMComputer(DROPoATighteningMain):
     def _build_side_kkt_model_for_dual_big_m(
         self,
         side: str,
-        alpha_bounds: Optional[dict[tuple[int, int, int], dict[str, float]]] = None,
+        alpha_bounds: Optional[dict[tuple[int, ...], dict[str, float]]] = None,
         include_complementarity: bool = True,
         fixed_binaries: Optional[dict[str, dict[str, Any]]] = None,
     ) -> ConcreteModel:
@@ -257,13 +260,20 @@ class DRODualBigMComputer(DROPoATighteningMain):
     def _apply_alpha_bounds(
         self,
         m: ConcreteModel,
-        alpha_bounds: dict[tuple[int, int, int], dict[str, float]],
+        alpha_bounds: dict[tuple[int, ...], dict[str, float]],
     ) -> None:
         m.alpha_certified_bounds = ConstraintList()
         for k in m.scenarios:
             for i, b in m.generator_blocks:
                 for t in m.time_steps:
-                    bounds = alpha_bounds[(int(i), int(b), int(t))]
+                    scenario_key = (int(k), int(i), int(b), int(t))
+                    regime_key = (int(i), int(b), int(t))
+                    bounds = alpha_bounds.get(scenario_key, alpha_bounds.get(regime_key))
+                    if bounds is None:
+                        raise KeyError(
+                            f"Missing alpha bounds for scenario key {scenario_key} "
+                            f"or fallback regime key {regime_key}"
+                        )
                     lower = float(bounds["lower"])
                     upper = float(bounds["upper"])
                     m.alpha_certified_bounds.add(m.alpha[k, i, b, t] >= lower)
@@ -381,7 +391,7 @@ class DRODualBigMComputer(DROPoATighteningMain):
 
     def run_lambda_bound_tightening(
         self,
-        alpha_bounds: Optional[dict[tuple[int, int, int], dict[str, float]]] = None,
+        alpha_bounds: Optional[dict[tuple[int, ...], dict[str, float]]] = None,
         fixed_binaries: Optional[dict[str, dict[str, Any]]] = None,
         solver_name: str = "gurobi",
         time_limit: Optional[float] = None,
@@ -487,7 +497,7 @@ class DRODualBigMComputer(DROPoATighteningMain):
 
     def run_dual_big_m_tightening(
         self,
-        alpha_bounds: Optional[dict[tuple[int, int, int], dict[str, float]]] = None,
+        alpha_bounds: Optional[dict[tuple[int, ...], dict[str, float]]] = None,
         fixed_binaries: Optional[dict[str, dict[str, Any]]] = None,
         solver_name: str = "gurobi",
         time_limit: Optional[float] = None,
@@ -679,11 +689,13 @@ class DRODualBigMComputer(DROPoATighteningMain):
         self.tight_big_m = tight_big_m
         self.aggregate_dual_bounds = aggregate_dual_bounds
         return {
-            "lambda_bounds": lambda_report["lambda_bounds"],
-            "tight_big_m": tight_big_m,
-            "aggregate_dual_bounds": aggregate_dual_bounds,
             "scenario_lambda_bounds": lambda_report["scenario_lambda_bounds"],
             "scenario_tight_big_m": scenario_tight_big_m,
+            "regime_lambda_bounds": lambda_report["lambda_bounds"],
+            "regime_tight_big_m": tight_big_m,
+            "lambda_bounds": lambda_report["scenario_lambda_bounds"],
+            "tight_big_m": scenario_tight_big_m,
+            "aggregate_dual_bounds": aggregate_dual_bounds,
         }
 
     def run_dual_big_m(
@@ -721,19 +733,28 @@ class DRODualBigMComputer(DROPoATighteningMain):
             "metadata": {
                 **self._metadata(),
                 "description": (
-                    "Scenario-indexed lambda and dual Big-M optimizations "
-                    "aggregated into regime-wide DRO tightening bounds."
+                    "Scenario-indexed lambda and dual Big-M bounds. Regime-wide "
+                    "aggregations are saved only as diagnostics/fallbacks."
                 ),
+                "tightening_scope": "scenario_wise",
                 "runtime_seconds": elapsed,
             },
+            "scenario_lambda_bounds": dual_report["scenario_lambda_bounds"],
+            "regime_lambda_bounds": dual_report["regime_lambda_bounds"],
             "lambda_bounds": dual_report["lambda_bounds"],
+            "scenario_tight_big_m": dual_report["scenario_tight_big_m"],
+            "regime_tight_big_m": dual_report["regime_tight_big_m"],
             "tight_big_m": dual_report["tight_big_m"],
             "aggregate_dual_bounds": dual_report["aggregate_dual_bounds"],
             "primal_big_m": self.tightening_data.get("primal_big_m", {}),
             "alpha_bounds": self.tightening_data.get("alpha_bounds", {}),
             "fixed_binaries": self.tightening_data.get("fixed_binaries", {}),
         }
+        self.tightening_data["scenario_lambda_bounds"] = report["scenario_lambda_bounds"]
+        self.tightening_data["regime_lambda_bounds"] = report["regime_lambda_bounds"]
         self.tightening_data["lambda_bounds"] = report["lambda_bounds"]
+        self.tightening_data["scenario_tight_big_m"] = report["scenario_tight_big_m"]
+        self.tightening_data["regime_tight_big_m"] = report["regime_tight_big_m"]
         self.tightening_data["tight_big_m"] = report["tight_big_m"]
         self.tightening_data["aggregate_dual_bounds"] = report["aggregate_dual_bounds"]
         self.poa.lambda_bounds = report["lambda_bounds"]

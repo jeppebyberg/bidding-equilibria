@@ -20,17 +20,6 @@ if str(ROOT) not in sys.path:
 from config.scenarios.scenario_generator import ScenarioManager
 
 
-RESULTS_PATH = Path("results/merit_order_best_response_results.json")
-OUTPUT_DIR = Path("results_viz/figures/merit_order_best_response")
-
-CASE = "test_case_bidding_blocks"
-REGIME_SET = "policy_training"
-SEED = 1
-
-SCENARIO_IDX = 0
-TIME_STEP = 0
-
-
 def _as_profile(value: Any) -> List[float]:
     if isinstance(value, str):
         value = ast.literal_eval(value)
@@ -39,12 +28,12 @@ def _as_profile(value: Any) -> List[float]:
     return [float(v) for v in value]
 
 
-def _load_scenarios() -> Optional[pd.DataFrame]:
+def _load_scenarios(case: str, regime_set: str, seed: int) -> Optional[pd.DataFrame]:
     try:
-        manager = ScenarioManager(CASE)
+        manager = ScenarioManager(case)
         scenarios = manager.create_scenario_set_from_regimes(
-            regime_set=REGIME_SET,
-            seed=SEED,
+            regime_set=regime_set,
+            seed=seed,
         )
         return scenarios["scenarios_df"].reset_index(drop=True)
     except Exception as exc:
@@ -309,15 +298,27 @@ def plot_final_merit_order(
     return output_path
 
 
-if __name__ == "__main__":
-    result = json.loads(RESULTS_PATH.read_text(encoding="utf-8"))
-    scenarios_df = _load_scenarios()
+def main() -> None:
+    # Edit these paths/settings directly when running this script.
+    results_path = Path("results/merit_order_best_response_results.json")
+    output_dir = Path("results_viz/figures/merit_order_best_response")
+    case = "test_case_bidding_blocks"
+    regime_set = "policy_training"
+    seed = 1
+    time_step = 0
+
+    result = json.loads(results_path.read_text(encoding="utf-8"))
+    scenarios_df = _load_scenarios(case=case, regime_set=regime_set, seed=seed)
     for scenario_idx in range(len(result["final_bids"])):
         saved = plot_final_merit_order(
             result=result,
             scenarios_df=scenarios_df,
             scenario_idx=scenario_idx,
-            time_step=TIME_STEP,
-            output_dir=OUTPUT_DIR,
+            time_step=time_step,
+            output_dir=output_dir,
         )
         print(f"Saved one-pass merit-order diagnostic to {saved}")
+
+
+if __name__ == "__main__":
+    main()

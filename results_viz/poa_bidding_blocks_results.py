@@ -7,7 +7,6 @@ models/PoA/PoA_optimization_bidding_blocks.py.
 
 from __future__ import annotations
 
-import argparse
 import json
 from pathlib import Path
 from typing import Any
@@ -20,6 +19,53 @@ import numpy as np
 from scipy.optimize import linprog
 
 
+def _load_json(path: Path) -> dict[str, Any]:
+    with path.open("r", encoding="utf-8") as file_handle:
+        return json.load(file_handle)
+
+
+def _find_poa_result_paths(results_dir: Path) -> list[Path]:
+    candidates = sorted(results_dir.glob("poa_optimization*.json"))
+    result_paths: list[Path] = []
+    for candidate in candidates:
+        try:
+            payload = _load_json(candidate)
+        except Exception:
+            continue
+        if isinstance(payload.get("generators"), dict) and "num_time_steps" in payload:
+            result_paths.append(candidate)
+    return result_paths
+
+
+def _find_default_result_path(results_dir: Path) -> Path:
+    result_paths = _find_poa_result_paths(results_dir)
+    if not result_paths:
+        raise FileNotFoundError(f"No PoA result JSON found in {results_dir}")
+    return max(result_paths, key=lambda path: path.stat().st_mtime)
+
+
+def _resolve_result_paths(
+    result_paths: list[Path],
+    results_dir: Path,
+    plot_all_matching_results: bool,
+) -> list[Path]:
+    explicit_paths = [Path(path) for path in result_paths]
+    if explicit_paths:
+        missing_paths = [path for path in explicit_paths if not path.exists()]
+        if missing_paths:
+            missing = ", ".join(str(path) for path in missing_paths)
+            raise FileNotFoundError(f"Result path(s) not found: {missing}")
+        return explicit_paths
+
+    if plot_all_matching_results:
+        paths = _find_poa_result_paths(results_dir)
+        if not paths:
+            raise FileNotFoundError(f"No PoA result JSON found in {results_dir}")
+        return paths
+
+    return [_find_default_result_path(results_dir)]
+
+
 class PoABiddingBlocksVisualizer:
     def __init__(self, results: dict[str, Any], output_dir: Path):
         self.results = results
@@ -30,8 +76,7 @@ class PoABiddingBlocksVisualizer:
 
     @classmethod
     def from_json(cls, path: Path, output_dir: Path) -> "PoABiddingBlocksVisualizer":
-        with path.open("r", encoding="utf-8") as file_handle:
-            results = json.load(file_handle)
+        results = _load_json(path)
         return cls(results=results, output_dir=output_dir)
 
     @staticmethod
@@ -565,24 +610,29 @@ class PoABiddingBlocksVisualizer:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Visualize block-aware PoA optimization results")
-    parser.add_argument(
-        "--results",
-        type=Path,
-        default=Path("results/poa_optimization_T24.json"),
-    )
-    parser.add_argument(
-        "--outdir",
-        type=Path,
-        default=Path("results_viz/figures/poa_optimization"),
-    )
-    parser.add_argument("--show", action="store_true")
-    args = parser.parse_args()
+    # Edit these paths/settings directly when running this script.
+    # Leave result_paths empty to use either the newest or all matching PoA results.
+    result_paths = [
+        # Path("results/temporary_poa_results/poa_optimization_T8.json"),
+        # Path("results/temporary_poa_results/poa_optimization_T8_ratio_piecewise_mccormick.json"),
+    ]
+    results_dir = Path("results/temporary_poa_results")
+    plot_all_matching_results = True
+    output_root = Path("results_viz/figures/poa_optimization")
+    show = False
 
-    visualizer = PoABiddingBlocksVisualizer.from_json(args.results, args.outdir)
-    saved_paths = visualizer.plot_all(show=args.show)
-    for path in saved_paths:
-        print(f"[saved] {path}")
+    selected_result_paths = _resolve_result_paths(
+        result_paths=result_paths,
+        results_dir=results_dir,
+        plot_all_matching_results=plot_all_matching_results,
+    )
+    for result_path in selected_result_paths:
+        output_dir = output_root / result_path.stem
+        visualizer = PoABiddingBlocksVisualizer.from_json(result_path, output_dir)
+        saved_paths = visualizer.plot_all(show=show)
+        print(f"\nPlotted PoA result: {result_path}")
+        for path in saved_paths:
+            print(f"[saved] {path}")
 
 
 if __name__ == "__main__":

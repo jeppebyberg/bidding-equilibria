@@ -765,6 +765,18 @@ class DROReLUBoundsComputer(DROPoATighteningMain):
             for generator_name, generator_bounds in bounds.items()
         }
 
+    def _jsonify_scenario_relu_bounds(
+        self,
+        bounds: dict[str, dict[tuple[int, int, int, int], dict[str, Any]]],
+    ) -> dict[str, dict[str, Any]]:
+        return {
+            generator_name: {
+                self._json_key(tuple(index)): details
+                for index, details in sorted(generator_bounds.items())
+            }
+            for generator_name, generator_bounds in bounds.items()
+        }
+
     def _summarize_relu_bounds(
         self,
         bounds: dict[str, dict[tuple[int, int, int], dict[str, Any]]],
@@ -798,7 +810,12 @@ class DROReLUBoundsComputer(DROPoATighteningMain):
 
     def _relu_fixed_binaries(self, report: dict[str, Any]) -> dict[str, Any]:
         fixed: dict[str, Any] = {}
-        for generator_name, entries in (report.get("nn_relu_bounds", {}) or {}).items():
+        relu_bounds = (
+            report.get("scenario_nn_relu_bounds", {})
+            or report.get("nn_relu_bounds", {})
+            or {}
+        )
+        for generator_name, entries in relu_bounds.items():
             for key, details in (entries or {}).items():
                 status = str(details.get("status", "")).lower()
                 if status not in {"active", "inactive"}:
@@ -807,9 +824,14 @@ class DROReLUBoundsComputer(DROPoATighteningMain):
                 fixed.setdefault(generator_name, {})[key] = {
                     "fixed_value": 1 if status == "active" else 0,
                     "status": status,
-                    "time_idx": int(details.get("time_idx", parsed_key[0])),
-                    "linear_idx": int(details.get("linear_idx", parsed_key[1])),
-                    "node": int(details.get("node", parsed_key[2])),
+                    "scenario_idx": (
+                        int(details.get("scenario_idx", parsed_key[0]))
+                        if len(parsed_key) == 4
+                        else None
+                    ),
+                    "time_idx": int(details.get("time_idx", parsed_key[-3])),
+                    "linear_idx": int(details.get("linear_idx", parsed_key[-2])),
+                    "node": int(details.get("node", parsed_key[-1])),
                 }
         return fixed
 
@@ -828,13 +850,16 @@ class DROReLUBoundsComputer(DROPoATighteningMain):
             return {
                 "metadata": {
                     **self._metadata(),
+                    "tightening_scope": "scenario_wise",
                     "bound_methods": {
                         "first_layer": "scenario_indexed_dro_support_optimization",
                         "later_layers": "activation_bound_optimization",
-                        "aggregation": "min L over k, max U over k",
+                        "aggregation": "diagnostic regime_* fields use min L over k, max U over k",
                     },
                 },
                 "nn_feature_bounds": {},
+                "scenario_nn_relu_bounds": {},
+                "regime_nn_relu_bounds": {},
                 "nn_relu_bounds": {},
                 "summary": {},
                 "warnings": [],
@@ -869,25 +894,29 @@ class DROReLUBoundsComputer(DROPoATighteningMain):
             scenario_bounds,
             tolerance=tolerance,
         )
-        json_bounds = self._jsonify_relu_bounds(regime_bounds)
+        scenario_json_bounds = self._jsonify_scenario_relu_bounds(scenario_bounds)
+        regime_json_bounds = self._jsonify_relu_bounds(regime_bounds)
         nn_feature_bounds = self.summarize_nn_feature_bounds()
-        summary = self._summarize_relu_bounds(regime_bounds)
+        summary = self._summarize_relu_bounds(scenario_bounds)
         report = {
             "metadata": {
                 **self._metadata(),
                 "description": (
-                    "Exact scenario-indexed DRO ReLU preactivation bounds "
-                    "aggregated into regime-wide bounds."
+                    "Exact scenario-indexed DRO ReLU preactivation bounds. "
+                    "Regime-wide aggregations are saved only as diagnostics/fallbacks."
                 ),
+                "tightening_scope": "scenario_wise",
                 "bound_methods": {
                     "first_layer": "scenario_indexed_dro_support_optimization",
                     "later_layers": "activation_bound_optimization",
-                    "aggregation": "min L over k, max U over k",
+                    "aggregation": "diagnostic regime_* fields use min L over k, max U over k",
                 },
                 "tolerance": float(tolerance),
             },
             "nn_feature_bounds": nn_feature_bounds,
-            "nn_relu_bounds": json_bounds,
+            "scenario_nn_relu_bounds": scenario_json_bounds,
+            "regime_nn_relu_bounds": regime_json_bounds,
+            "nn_relu_bounds": scenario_json_bounds,
             "summary": summary,
             "warnings": list(getattr(self, "nn_bound_warnings", [])),
             "optimization_results": {
@@ -954,14 +983,20 @@ class DROReLUBoundsComputer(DROPoATighteningMain):
             {
                 **self._metadata(),
                 "description": (
-                    "Regime-wide DRO ReLU preactivation bounds. Keys are "
-                    "generator_name -> t,linear_idx,node."
+                    "Scenario-wise DRO ReLU preactivation bounds. Main keys are "
+                    "generator_name -> k,t,linear_idx,node; regime_* keys are diagnostics."
                 ),
+                "tightening_scope": "scenario_wise",
                 "relu_tolerance": float(tolerance),
                 "runtime_seconds": time.perf_counter() - start,
             }
         )
         self.poa._set_nn_relu_bounds_from_report(report)
         self.tightening_data["nn_relu_bounds_report"] = report
+        self.tightening_data["scenario_nn_relu_bounds"] = report.get(
+            "scenario_nn_relu_bounds",
+            {},
+        )
+        self.tightening_data["regime_nn_relu_bounds"] = report.get("regime_nn_relu_bounds", {})
         self.tightening_data["nn_relu_bounds"] = report.get("nn_relu_bounds", {})
         return self._save_stage_report("relu_bounds", report, output_path)

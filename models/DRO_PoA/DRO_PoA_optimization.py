@@ -59,6 +59,12 @@ class DRO_PoAOptimization:
         "aggregate_mu_ramp_up_bound",
         "aggregate_mu_ramp_down_bound",
     )
+    allowed_objective_modes = {
+        "difference",
+        "ratio_mccormick",
+        "ratio_piecewise_mccormick",
+    }
+    ratio_bounds_tolerance = 1e-7
 
     def __init__(
         self,
@@ -76,6 +82,9 @@ class DRO_PoAOptimization:
         nn_normalization_stats_path: Optional[str | Path] = None,
         nn_policy_generators: Optional[list[int | str]] = None,
         reference_case: str = "test_case_bidding_blocks",
+        objective_mode: str = "difference",
+        ratio_bounds: Optional[dict[str, Any]] = None,
+        defer_ratio_bound_validation: bool = False,
     ):
         if float(eta) < 0.0:
             raise ValueError("eta must be nonnegative")
@@ -97,6 +106,20 @@ class DRO_PoAOptimization:
         self.eta = float(eta)
         self.epsilon = float(epsilon)
         self.reference_case = reference_case
+        self.objective_mode = self._validate_objective_mode(objective_mode)
+        self.defer_ratio_bound_validation = bool(defer_ratio_bound_validation)
+        self._raw_ratio_bounds = ratio_bounds
+        if (
+            self.defer_ratio_bound_validation
+            and self.objective_mode in {
+                "ratio_mccormick",
+                "ratio_piecewise_mccormick",
+            }
+            and (ratio_bounds is None or "C_opt" not in ratio_bounds)
+        ):
+            self.ratio_bounds = self._validate_deferred_ratio_bounds(ratio_bounds)
+        else:
+            self.ratio_bounds = self._validate_ratio_bounds(ratio_bounds)
         self.lambda_bound = float(self.default_lambda_bound)
         self.capacity_dual_bound = float(self.default_capacity_dual_bound)
         self.ramp_dual_bound = float(self.default_ramp_dual_bound)
@@ -104,7 +127,7 @@ class DRO_PoAOptimization:
         self.nn_policy_generator_ids: list[int] = []
         self.nn_policy_generator_names: list[str] = []
         self.nn_relu_bounds_report: dict[str, Any] = {}
-        self.nn_relu_bounds: dict[str, dict[tuple[int, int, int], dict[str, Any]]] = {}
+        self.nn_relu_bounds: dict[str, dict[tuple[int, ...], dict[str, Any]]] = {}
         self.nn_feature_bounds: dict[str, Any] = {}
         self.nn_bound_warnings: list[str] = []
         self.nn_policies: dict[str, Any] = {}
@@ -160,9 +183,203 @@ class DRO_PoAOptimization:
         self.tight_big_m: dict[str, dict[str, Any]] = {}
         self.aggregate_dual_bounds: dict[str, Any] = {}
         self.lambda_bounds: dict[str, Any] = {}
-        self.alpha_bounds: dict[tuple[int, int, int], dict[str, float]] = {}
+        self.alpha_bounds: dict[tuple[int, ...], dict[str, float]] = {}
         self.alpha_bound_optimization_results: dict[str, Any] = {}
+        self.optimal_cost_bounds: dict[str, Any] = {}
+        self.scenario_optimal_cost_bounds: dict[str, Any] = {}
+        self.optimal_cost_bound_optimization_results: dict[str, Any] = {}
         self._loaded_bounds_prepared = False
+
+    def _validate_objective_mode(self, objective_mode: str) -> str:
+        normalized_mode = str(objective_mode).strip().lower()
+        if normalized_mode not in self.allowed_objective_modes:
+            allowed = ", ".join(sorted(self.allowed_objective_modes))
+            raise ValueError(
+                f"objective_mode must be one of {{{allowed}}}; got {objective_mode!r}"
+            )
+        return normalized_mode
+
+    def _validate_deferred_ratio_bounds(
+        self,
+        ratio_bounds: Optional[dict[str, Any]],
+    ) -> Optional[dict[str, Any]]:
+        if ratio_bounds is None:
+            raise ValueError(
+                f"ratio_bounds with at least 'phi' is required when "
+                f"objective_mode='{self.objective_mode}' and "
+                "defer_ratio_bound_validation=True"
+            )
+        if not isinstance(ratio_bounds, dict):
+            raise ValueError("ratio_bounds must be a dictionary")
+        if "phi" not in ratio_bounds:
+            raise ValueError("ratio_bounds must contain 'phi' for deferred ratio validation")
+        raw_phi = ratio_bounds["phi"]
+        if not isinstance(raw_phi, (list, tuple)) or len(raw_phi) != 2:
+            raise ValueError("ratio_bounds['phi'] must be a pair (lower, upper)")
+        phi_L = float(raw_phi[0])
+        phi_U = float(raw_phi[1])
+        if not np.isfinite(phi_L) or not np.isfinite(phi_U):
+            raise ValueError("ratio_bounds['phi'] entries must be finite")
+        if phi_L < 0.0:
+            raise ValueError("ratio_bounds['phi'][0] must be nonnegative")
+        if phi_U <= phi_L:
+            raise ValueError(
+                "ratio_bounds['phi'][1] must be greater than ratio_bounds['phi'][0]"
+            )
+        if self.objective_mode == "ratio_piecewise_mccormick":
+            if "num_pieces" not in ratio_bounds and "C_opt_breakpoints" not in ratio_bounds:
+                raise ValueError(
+                    "deferred ratio_piecewise_mccormick bounds must include "
+                    "'num_pieces' or 'C_opt_breakpoints'"
+                )
+            if "num_pieces" in ratio_bounds:
+                try:
+                    num_pieces = int(ratio_bounds["num_pieces"])
+                except (TypeError, ValueError) as exc:
+                    raise ValueError("ratio_bounds['num_pieces'] must be an integer") from exc
+                if num_pieces < 2:
+                    raise ValueError("ratio_bounds['num_pieces'] must be at least 2")
+        return dict(ratio_bounds)
+
+    def _validate_ratio_bounds(
+        self,
+        ratio_bounds: Optional[dict[str, Any]],
+    ) -> Optional[dict[str, Any]]:
+        if self.objective_mode == "difference":
+            return ratio_bounds
+
+        if ratio_bounds is None:
+            raise ValueError(
+                f"ratio_bounds is required when objective_mode='{self.objective_mode}'"
+            )
+        if not isinstance(ratio_bounds, dict):
+            raise ValueError("ratio_bounds must be a dictionary")
+        missing = [key for key in ("phi", "C_opt") if key not in ratio_bounds]
+        if missing:
+            raise ValueError(
+                "ratio_bounds must contain bounds for: " + ", ".join(missing)
+            )
+
+        def parse_bounds(key: str) -> tuple[float, float]:
+            raw_bounds = ratio_bounds[key]
+            if not isinstance(raw_bounds, (list, tuple)) or len(raw_bounds) != 2:
+                raise ValueError(f"ratio_bounds['{key}'] must be a pair (lower, upper)")
+            lower = float(raw_bounds[0])
+            upper = float(raw_bounds[1])
+            if not np.isfinite(lower) or not np.isfinite(upper):
+                raise ValueError(f"ratio_bounds['{key}'] entries must be finite")
+            return lower, upper
+
+        phi_L, phi_U = parse_bounds("phi")
+        C_opt_L, C_opt_U = parse_bounds("C_opt")
+
+        if C_opt_L <= 0.0:
+            raise ValueError("ratio_bounds['C_opt'][0] must be strictly positive")
+        if C_opt_U < C_opt_L:
+            raise ValueError(
+                "ratio_bounds['C_opt'][1] must be greater than or equal to "
+                "ratio_bounds['C_opt'][0]"
+            )
+        if phi_L < 0.0:
+            raise ValueError("ratio_bounds['phi'][0] must be nonnegative")
+        if phi_U <= phi_L:
+            raise ValueError(
+                "ratio_bounds['phi'][1] must be greater than ratio_bounds['phi'][0]"
+            )
+
+        validated_bounds: dict[str, Any] = {
+            "phi": (phi_L, phi_U),
+            "C_opt": (C_opt_L, C_opt_U),
+        }
+        if self.objective_mode == "ratio_piecewise_mccormick":
+            validated_bounds["C_opt_breakpoints"] = self._validate_ratio_breakpoints(
+                ratio_bounds,
+                C_opt_L,
+                C_opt_U,
+            )
+            validated_bounds["num_pieces"] = (
+                len(validated_bounds["C_opt_breakpoints"]) - 1
+            )
+        return validated_bounds
+
+    def _validate_ratio_breakpoints(
+        self,
+        ratio_bounds: dict[str, Any],
+        C_opt_L: float,
+        C_opt_U: float,
+    ) -> list[float]:
+        tolerance = self.ratio_bounds_tolerance
+        if "C_opt_breakpoints" in ratio_bounds:
+            raw_breakpoints = ratio_bounds["C_opt_breakpoints"]
+            if not isinstance(raw_breakpoints, (list, tuple)):
+                raise ValueError("ratio_bounds['C_opt_breakpoints'] must be a list")
+            breakpoints = [float(value) for value in raw_breakpoints]
+            if len(breakpoints) < 3:
+                raise ValueError(
+                    "ratio_bounds['C_opt_breakpoints'] must contain at least 3 values"
+                )
+            if not all(np.isfinite(value) for value in breakpoints):
+                raise ValueError("ratio_bounds['C_opt_breakpoints'] entries must be finite")
+            if abs(breakpoints[0] - C_opt_L) > tolerance:
+                raise ValueError(
+                    "ratio_bounds['C_opt_breakpoints'][0] must match "
+                    "ratio_bounds['C_opt'][0]"
+                )
+            if abs(breakpoints[-1] - C_opt_U) > tolerance:
+                raise ValueError(
+                    "ratio_bounds['C_opt_breakpoints'][-1] must match "
+                    "ratio_bounds['C_opt'][1]"
+                )
+            if any(
+                breakpoints[idx + 1] <= breakpoints[idx]
+                for idx in range(len(breakpoints) - 1)
+            ):
+                raise ValueError(
+                    "ratio_bounds['C_opt_breakpoints'] must be strictly increasing"
+                )
+            return breakpoints
+
+        if "num_pieces" not in ratio_bounds:
+            raise ValueError(
+                "ratio_bounds must include either 'num_pieces' or "
+                "'C_opt_breakpoints' for objective_mode='ratio_piecewise_mccormick'"
+            )
+        try:
+            num_pieces = int(ratio_bounds["num_pieces"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("ratio_bounds['num_pieces'] must be an integer") from exc
+        if num_pieces < 2:
+            raise ValueError("ratio_bounds['num_pieces'] must be at least 2")
+        return [
+            float(value)
+            for value in np.linspace(C_opt_L, C_opt_U, num_pieces + 1)
+        ]
+
+    def _ratio_bounds_with_loaded_C_opt_bounds(
+        self,
+        ratio_bounds: Optional[dict[str, Any]],
+    ) -> Optional[dict[str, Any]]:
+        if self.objective_mode == "difference":
+            return ratio_bounds
+        if ratio_bounds is None:
+            raise ValueError(
+                f"ratio_bounds is required when objective_mode='{self.objective_mode}'"
+            )
+        if "C_opt" in ratio_bounds:
+            return ratio_bounds
+
+        C_opt_bounds = (self.optimal_cost_bounds or {}).get("C_opt", {})
+        lower = C_opt_bounds.get("lower")
+        upper = C_opt_bounds.get("upper")
+        if lower is None or upper is None:
+            raise ValueError(
+                "Ratio objective modes require denominator bounds. Pass "
+                "ratio_bounds['C_opt'] explicitly or run/load the DRO "
+                "optimal-cost-bound tightening stage first."
+            )
+        completed = dict(ratio_bounds)
+        completed["C_opt"] = (float(lower), float(upper))
+        return completed
 
     # ------------------------------------------------------------------
     # Data and configuration
@@ -650,6 +867,11 @@ class DRO_PoAOptimization:
         metadata = report.get("metadata", {}) or {}
         if metadata.get("tightening_type") != "regime_wide":
             raise ValueError("DRO tightening report metadata must set tightening_type='regime_wide'")
+        if metadata.get("tightening_scope") not in {None, "regime_wide", "scenario_wise"}:
+            raise ValueError(
+                "DRO tightening report metadata tightening_scope must be "
+                "'scenario_wise' or 'regime_wide'"
+            )
         if metadata.get("model_type") not in {None, "DRO_PoA"}:
             raise ValueError("DRO tightening report metadata model_type must be 'DRO_PoA'")
         if str(metadata.get("regime_name")) != str(self.regime_name):
@@ -664,13 +886,14 @@ class DRO_PoAOptimization:
             )
 
     @staticmethod
-    def _parse_nn_relu_bound_key(key: str) -> tuple[int, int, int]:
+    def _parse_nn_relu_bound_key(key: str) -> tuple[int, ...]:
         parts = tuple(int(part) for part in str(key).split(",") if part != "")
-        if len(parts) != 3:
+        if len(parts) not in {3, 4}:
             raise ValueError(
-                f"NN ReLU bound key '{key}' must have the form 'time_idx,linear_idx,node'"
+                f"NN ReLU bound key '{key}' must have the form "
+                "'time_idx,linear_idx,node' or 'k,time_idx,linear_idx,node'"
             )
-        return int(parts[0]), int(parts[1]), int(parts[2])
+        return tuple(int(part) for part in parts)
 
     def _set_nn_relu_bounds_from_report(self, report: dict[str, Any]) -> None:
         self.nn_relu_bounds_report = report
@@ -678,11 +901,16 @@ class DRO_PoAOptimization:
         self.nn_bound_warnings = list(
             report.get("warnings", report.get("nn_bound_warnings", [])) or []
         )
-        parsed_bounds: dict[str, dict[tuple[int, int, int], dict[str, Any]]] = {}
-        for generator_name, entries in (report.get("nn_relu_bounds", {}) or {}).items():
-            generator_bounds: dict[tuple[int, int, int], dict[str, Any]] = {}
+        relu_entries = report.get("scenario_nn_relu_bounds", {}) or report.get(
+            "nn_relu_bounds",
+            {},
+        )
+        parsed_bounds: dict[str, dict[tuple[int, ...], dict[str, Any]]] = {}
+        for generator_name, entries in (relu_entries or {}).items():
+            generator_bounds: dict[tuple[int, ...], dict[str, Any]] = {}
             for key, details in (entries or {}).items():
-                time_idx, linear_idx, node = self._parse_nn_relu_bound_key(key)
+                parsed_key = self._parse_nn_relu_bound_key(key)
+                time_idx, linear_idx, node = parsed_key[-3:]
                 parsed_details = dict(details or {})
                 for numeric_key in ("L", "U", "h_lower", "h_upper"):
                     if numeric_key not in parsed_details:
@@ -698,10 +926,12 @@ class DRO_PoAOptimization:
                         f"status '{status}'"
                     )
                 parsed_details["status"] = status
+                if len(parsed_key) == 4:
+                    parsed_details.setdefault("scenario_idx", parsed_key[0])
                 parsed_details.setdefault("time_idx", time_idx)
                 parsed_details.setdefault("linear_idx", linear_idx)
                 parsed_details.setdefault("node", node)
-                generator_bounds[(time_idx, linear_idx, node)] = parsed_details
+                generator_bounds[parsed_key] = parsed_details
             parsed_bounds[str(generator_name)] = generator_bounds
         self.nn_relu_bounds = parsed_bounds
 
@@ -729,13 +959,26 @@ class DRO_PoAOptimization:
         if report_path is not None:
             self.tightening_report_path = Path(report_path)
         relu_report = report.get("nn_relu_bounds_report", {}) or {}
+        if not relu_report and (
+            "nn_relu_bounds" in report or "scenario_nn_relu_bounds" in report
+        ):
+            relu_report = report
         if relu_report:
             self._set_nn_relu_bounds_from_report(relu_report)
-        self.fixed_binaries = report.get("fixed_binaries", {}) or {}
+        self.fixed_binaries = report.get("scenario_fixed_binaries", {}) or report.get(
+            "fixed_binaries",
+            {},
+        ) or {}
         self.primal_big_m = report.get("primal_big_m", {}) or {}
-        self.tight_big_m = report.get("tight_big_m", {}) or {}
+        self.tight_big_m = report.get("scenario_tight_big_m", {}) or report.get(
+            "tight_big_m",
+            {},
+        ) or {}
         self.aggregate_dual_bounds = report.get("aggregate_dual_bounds", {}) or {}
-        self.lambda_bounds = report.get("lambda_bounds", {}) or {}
+        self.lambda_bounds = report.get("scenario_lambda_bounds", {}) or report.get(
+            "lambda_bounds",
+            {},
+        ) or {}
         self.alpha_bound_optimization_results = (
             report.get("alpha_optimization_results", {}) or {}
         )
@@ -744,8 +987,16 @@ class DRO_PoAOptimization:
                 "lower": float(value["lower"]),
                 "upper": float(value["upper"]),
             }
-            for key, value in (report.get("alpha_bounds", {}) or {}).items()
+            for key, value in (
+                report.get("scenario_alpha_bounds", {}) or report.get("alpha_bounds", {}) or {}
+            ).items()
         }
+        if (
+            "optimal_cost_bounds" in report
+            or "scenario_optimal_cost_bounds" in report
+            or "optimal_cost_bound_optimization_results" in report
+        ):
+            self._set_optimal_cost_bounds_from_report(report)
         self._loaded_bounds_prepared = False
 
     def load_regime_wide_tightening_report(self, report_path: str | Path) -> dict[str, Any]:
@@ -756,6 +1007,53 @@ class DRO_PoAOptimization:
             report = json.load(file_handle)
         self._set_regime_wide_tightening_report_data(report, path)
         self._prepare_loaded_bounds()
+        return report
+
+    def _set_optimal_cost_bounds_from_report(self, report: dict[str, Any]) -> None:
+        raw_bounds = report.get("optimal_cost_bounds", {}) or {}
+        if "C_opt" in raw_bounds and isinstance(raw_bounds.get("C_opt"), dict):
+            C_opt_payload = raw_bounds.get("C_opt", {}) or {}
+        else:
+            C_opt_payload = raw_bounds
+
+        if C_opt_payload:
+            lower = C_opt_payload.get("lower")
+            upper = C_opt_payload.get("upper")
+            if lower is None or upper is None:
+                raise ValueError(
+                    "optimal_cost_bounds must contain finite 'lower' and 'upper' entries"
+                )
+            self.optimal_cost_bounds = {
+                "C_opt": {
+                    "lower": float(lower),
+                    "upper": float(upper),
+                    "raw_lower": (
+                        float(C_opt_payload["raw_lower"])
+                        if C_opt_payload.get("raw_lower") is not None
+                        else None
+                    ),
+                    "raw_upper": (
+                        float(C_opt_payload["raw_upper"])
+                        if C_opt_payload.get("raw_upper") is not None
+                        else None
+                    ),
+                }
+            }
+
+        self.scenario_optimal_cost_bounds = (
+            report.get("scenario_optimal_cost_bounds", {}) or {}
+        )
+        self.optimal_cost_bound_optimization_results = (
+            report.get("optimal_cost_bound_optimization_results", {}) or {}
+        )
+
+    def load_optimal_cost_bounds_report(self, report_path: str | Path) -> dict[str, Any]:
+        path = Path(report_path)
+        if not path.exists():
+            raise FileNotFoundError(f"DRO optimal-cost bounds report not found: {path}")
+        with path.open("r", encoding="utf-8") as file_handle:
+            report = json.load(file_handle)
+        self._set_optimal_cost_bounds_from_report(report)
         return report
 
     def _indexed_numeric_entries(
@@ -771,9 +1069,14 @@ class DRO_PoAOptimization:
         for raw_key, details in entries.items():
             index = self._parse_json_index(str(raw_key))
             if len(index) not in allowed_dimensions:
+                scenario_note = (
+                    "including scenario index k"
+                    if "k," in expected_key_format
+                    else "without scenario index k"
+                )
                 raise ValueError(
                     f"Invalid {bound_type} key '{raw_key}'. Expected key format "
-                    f"{expected_key_format} without scenario index k."
+                    f"{expected_key_format} {scenario_note}."
                 )
             numeric_value = self._optional_numeric_bound(details)
             if numeric_value is None:
@@ -791,10 +1094,40 @@ class DRO_PoAOptimization:
         index: tuple[int, ...] | int,
         expected_key_format: str,
     ) -> ValueError:
-        return ValueError(
-            f"Missing {bound_type} for index {index}. Expected regime-wide key "
-            f"format {expected_key_format}, without scenario index k."
+        scenario_note = (
+            "including scenario index k"
+            if "k," in expected_key_format
+            else "without scenario index k"
         )
+        return ValueError(
+            f"Missing {bound_type} for index {index}. Expected key format "
+            f"{expected_key_format} {scenario_note}. If this is a reused DRO "
+            "tightening report, rerun the corresponding stage for the current "
+            "num_empirical_scenarios."
+        )
+
+    @staticmethod
+    def _scenario_or_regime_value(
+        bound_map: dict[tuple[int, ...], float],
+        scenario_idx: int,
+        regime_index: tuple[int, ...],
+    ) -> float:
+        scenario_key = (int(scenario_idx), *tuple(int(part) for part in regime_index))
+        regime_key = tuple(int(part) for part in regime_index)
+        if scenario_key in bound_map:
+            return float(bound_map[scenario_key])
+        return float(bound_map[regime_key])
+
+    @staticmethod
+    def _scenario_or_regime_lambda_bounds(
+        bound_map: dict[Any, tuple[float, float]],
+        scenario_idx: int,
+        time_idx: int,
+    ) -> tuple[float, float]:
+        scenario_key = (int(scenario_idx), int(time_idx))
+        if scenario_key in bound_map:
+            return bound_map[scenario_key]
+        return bound_map[int(time_idx)]
 
     def _prepare_block_time_primal_big_m(
         self,
@@ -895,21 +1228,39 @@ class DRO_PoAOptimization:
         parsed = self._indexed_numeric_entries(
             entries,
             f"dual Big-M '{dual_name}'",
-            (len(expected_indices[0]),),
-            expected_key_format,
+            (len(expected_indices[0]), len(expected_indices[0]) + 1),
+            f"{expected_key_format} or k,{expected_key_format}",
         )
         prepared: dict[tuple[int, ...], float] = {}
-        for index in expected_indices:
-            if index not in parsed:
+        has_scenario_keys = any(len(index) == len(expected_indices[0]) + 1 for index in parsed)
+        for regime_index in expected_indices:
+            if has_scenario_keys:
+                for k in range(self.num_empirical_scenarios):
+                    scenario_index = (int(k), *tuple(regime_index))
+                    if scenario_index not in parsed:
+                        raise self._missing_loaded_bound_error(
+                            f"scenario-wise dual Big-M '{dual_name}'",
+                            scenario_index,
+                            f"k,{expected_key_format}",
+                        )
+                    prepared[scenario_index] = max(
+                        0.0,
+                        min(float(default_bound), float(parsed[scenario_index])),
+                    )
+                continue
+            if regime_index not in parsed:
                 raise self._missing_loaded_bound_error(
                     f"dual Big-M '{dual_name}'",
-                    index,
+                    regime_index,
                     expected_key_format,
                 )
-            prepared[index] = max(0.0, min(float(default_bound), float(parsed[index])))
+            prepared[regime_index] = max(
+                0.0,
+                min(float(default_bound), float(parsed[regime_index])),
+            )
         return prepared
 
-    def _prepare_lambda_bounds(self, lambda_name: str) -> dict[int, tuple[float, float]]:
+    def _prepare_lambda_bounds(self, lambda_name: str) -> dict[Any, tuple[float, float]]:
         entries = (getattr(self, "lambda_bounds", {}) or {}).get(lambda_name, {}) or {}
         if not entries:
             return {
@@ -917,31 +1268,42 @@ class DRO_PoAOptimization:
                 for t in range(self.num_time_steps)
             }
         if not isinstance(entries, dict):
-            raise ValueError(f"Invalid lambda bound block '{lambda_name}'. Expected keys 't'.")
-        prepared: dict[int, tuple[float, float]] = {}
+            raise ValueError(f"Invalid lambda bound block '{lambda_name}'. Expected keys 't' or 'k,t'.")
+        parsed_entries: dict[tuple[int, ...], Any] = {
+            self._parse_json_index(str(key)): details
+            for key, details in entries.items()
+        }
+        has_scenario_keys = any(len(index) == 2 for index in parsed_entries)
+        prepared: dict[Any, tuple[float, float]] = {}
         for t in range(self.num_time_steps):
-            details = entries.get(str(int(t)), entries.get(int(t)))
-            if not isinstance(details, dict):
-                raise self._missing_loaded_bound_error(
-                    f"lambda bounds '{lambda_name}'",
-                    int(t),
-                    "t",
-                )
-            lower = self._optional_float_bound(details.get("lower"))
-            upper = self._optional_float_bound(details.get("upper"))
-            if lower is None or upper is None:
-                raise ValueError(
-                    f"Invalid lambda bounds '{lambda_name}' for time {t}. "
-                    "Expected finite lower and upper entries."
-                )
-            lower = max(-float(self.lambda_bound), float(lower))
-            upper = min(float(self.lambda_bound), float(upper))
-            if lower > upper:
-                raise ValueError(
-                    f"Invalid lambda bounds '{lambda_name}' for time {t}: "
-                    f"lower {lower} exceeds upper {upper}."
-                )
-            prepared[int(t)] = (lower, upper)
+            keys = (
+                [(int(k), int(t)) for k in range(self.num_empirical_scenarios)]
+                if has_scenario_keys
+                else [(int(t),)]
+            )
+            for key in keys:
+                details = parsed_entries.get(key)
+                if not isinstance(details, dict):
+                    raise self._missing_loaded_bound_error(
+                        f"lambda bounds '{lambda_name}'",
+                        key,
+                        "t or k,t",
+                    )
+                lower = self._optional_float_bound(details.get("lower"))
+                upper = self._optional_float_bound(details.get("upper"))
+                if lower is None or upper is None:
+                    raise ValueError(
+                        f"Invalid lambda bounds '{lambda_name}' for index {key}. "
+                        "Expected finite lower and upper entries."
+                    )
+                lower = max(-float(self.lambda_bound), float(lower))
+                upper = min(float(self.lambda_bound), float(upper))
+                if lower > upper:
+                    raise ValueError(
+                        f"Invalid lambda bounds '{lambda_name}' for index {key}: "
+                        f"lower {lower} exceeds upper {upper}."
+                    )
+                prepared[key if len(key) == 2 else int(t)] = (lower, upper)
         return prepared
 
     def _lookup_optional_time_bound(
@@ -1276,6 +1638,11 @@ class DRO_PoAOptimization:
         self.model.wind_blocks = Set(dimen=2, initialize=self.wind_block_pairs)
         self.model.conventional_blocks = Set(dimen=2, initialize=self.conventional_block_pairs)
 
+        if self.objective_mode in {"ratio_mccormick", "ratio_piecewise_mccormick"}:
+            ratio_bounds = self.ratio_bounds or self._raw_ratio_bounds
+            completed_bounds = self._ratio_bounds_with_loaded_C_opt_bounds(ratio_bounds)
+            self.ratio_bounds = self._validate_ratio_bounds(completed_bounds)
+
         self._build_variables()
         self._build_objective()
         self._build_constraints()
@@ -1301,8 +1668,65 @@ class DRO_PoAOptimization:
         )
         m.wasserstein_distance = Var(m.scenarios, domain=NonNegativeReals)
         m.C_eq = Var(m.scenarios, domain=Reals)
-        m.C_opt = Var(m.scenarios, domain=Reals)
+        c_opt_bounds = (
+            self.ratio_bounds["C_opt"]
+            if self.objective_mode in {
+                "ratio_mccormick",
+                "ratio_piecewise_mccormick",
+            } and self.ratio_bounds is not None
+            else (None, None)
+        )
+        m.C_opt = Var(m.scenarios, domain=Reals, bounds=c_opt_bounds)
         m.PoA = Var(m.scenarios, domain=Reals)
+        if self.objective_mode in {"ratio_mccormick", "ratio_piecewise_mccormick"}:
+            self._build_ratio_mccormick_variables()
+        if self.objective_mode == "ratio_piecewise_mccormick":
+            self._build_ratio_piecewise_mccormick_variables()
+
+    def _build_ratio_mccormick_variables(self) -> None:
+        if self.ratio_bounds is None:
+            raise ValueError(
+                f"ratio_bounds is required when objective_mode='{self.objective_mode}'"
+            )
+        m = self.model
+        phi_L, phi_U = self.ratio_bounds["phi"]
+        C_opt_L, C_opt_U = self.ratio_bounds["C_opt"]
+        m.phi = Var(m.scenarios, bounds=(phi_L, phi_U))
+        m.z_ratio_product = Var(
+            m.scenarios,
+            domain=Reals,
+            bounds=(phi_L * C_opt_L, phi_U * C_opt_U),
+        )
+
+    def _build_ratio_piecewise_mccormick_variables(self) -> None:
+        if self.ratio_bounds is None:
+            raise ValueError(
+                "ratio_bounds is required when "
+                "objective_mode='ratio_piecewise_mccormick'"
+        )
+        m = self.model
+        breakpoints = list(self.ratio_bounds["C_opt_breakpoints"])
+        _phi_L, phi_U = self.ratio_bounds["phi"]
+        m.ratio_piece_index = Set(initialize=range(len(breakpoints) - 1))
+        m.ratio_piece_active = Var(m.scenarios, m.ratio_piece_index, domain=Binary)
+        m.C_opt_piece = Var(
+            m.scenarios,
+            m.ratio_piece_index,
+            domain=NonNegativeReals,
+            bounds=lambda m, k, p: (0.0, breakpoints[int(p) + 1]),
+        )
+        m.phi_piece = Var(
+            m.scenarios,
+            m.ratio_piece_index,
+            domain=NonNegativeReals,
+            bounds=(0.0, phi_U),
+        )
+        m.z_ratio_piece = Var(
+            m.scenarios,
+            m.ratio_piece_index,
+            domain=NonNegativeReals,
+            bounds=lambda m, k, p: (0.0, phi_U * breakpoints[int(p) + 1]),
+        )
 
     def _build_regime_variables(self) -> None:
         m = self.model
@@ -1322,7 +1746,11 @@ class DRO_PoAOptimization:
             m.scenarios,
             m.time_steps,
             domain=Reals,
-            bounds=lambda m, k, t: self.lambda_eq_bounds[int(t)],
+            bounds=lambda m, k, t: self._scenario_or_regime_lambda_bounds(
+                self.lambda_eq_bounds,
+                int(k),
+                int(t),
+            ),
         )
         m.mu_upper_eq = Var(
             m.scenarios,
@@ -1331,7 +1759,11 @@ class DRO_PoAOptimization:
             domain=Reals,
             bounds=lambda m, k, i, b, t: (
                 0.0,
-                self.M_mu_upper_eq[int(i), int(b), int(t)],
+                self._scenario_or_regime_value(
+                    self.M_mu_upper_eq,
+                    int(k),
+                    (int(i), int(b), int(t)),
+                ),
             ),
         )
         m.mu_lower_eq = Var(
@@ -1341,7 +1773,11 @@ class DRO_PoAOptimization:
             domain=Reals,
             bounds=lambda m, k, i, b, t: (
                 0.0,
-                self.M_mu_lower_eq[int(i), int(b), int(t)],
+                self._scenario_or_regime_value(
+                    self.M_mu_lower_eq,
+                    int(k),
+                    (int(i), int(b), int(t)),
+                ),
             ),
         )
         m.mu_ramp_up_eq = Var(
@@ -1351,7 +1787,11 @@ class DRO_PoAOptimization:
             domain=Reals,
             bounds=lambda m, k, i, t: (
                 0.0,
-                self.M_mu_ramp_up_eq[int(i), int(t)]
+                self._scenario_or_regime_value(
+                    self.M_mu_ramp_up_eq,
+                    int(k),
+                    (int(i), int(t)),
+                )
                 if int(t) < self.num_time_steps
                 else 0.0,
             ),
@@ -1363,7 +1803,11 @@ class DRO_PoAOptimization:
             domain=Reals,
             bounds=lambda m, k, i, t: (
                 0.0,
-                self.M_mu_ramp_down_eq[int(i), int(t)]
+                self._scenario_or_regime_value(
+                    self.M_mu_ramp_down_eq,
+                    int(k),
+                    (int(i), int(t)),
+                )
                 if int(t) < self.num_time_steps
                 else 0.0,
             ),
@@ -1383,7 +1827,11 @@ class DRO_PoAOptimization:
             m.scenarios,
             m.time_steps,
             domain=Reals,
-            bounds=lambda m, k, t: self.lambda_opt_bounds[int(t)],
+            bounds=lambda m, k, t: self._scenario_or_regime_lambda_bounds(
+                self.lambda_opt_bounds,
+                int(k),
+                int(t),
+            ),
         )
         m.mu_upper_opt = Var(
             m.scenarios,
@@ -1392,7 +1840,11 @@ class DRO_PoAOptimization:
             domain=Reals,
             bounds=lambda m, k, i, b, t: (
                 0.0,
-                self.M_mu_upper_opt[int(i), int(b), int(t)],
+                self._scenario_or_regime_value(
+                    self.M_mu_upper_opt,
+                    int(k),
+                    (int(i), int(b), int(t)),
+                ),
             ),
         )
         m.mu_lower_opt = Var(
@@ -1402,7 +1854,11 @@ class DRO_PoAOptimization:
             domain=Reals,
             bounds=lambda m, k, i, b, t: (
                 0.0,
-                self.M_mu_lower_opt[int(i), int(b), int(t)],
+                self._scenario_or_regime_value(
+                    self.M_mu_lower_opt,
+                    int(k),
+                    (int(i), int(b), int(t)),
+                ),
             ),
         )
         m.mu_ramp_up_opt = Var(
@@ -1412,7 +1868,11 @@ class DRO_PoAOptimization:
             domain=Reals,
             bounds=lambda m, k, i, t: (
                 0.0,
-                self.M_mu_ramp_up_opt[int(i), int(t)]
+                self._scenario_or_regime_value(
+                    self.M_mu_ramp_up_opt,
+                    int(k),
+                    (int(i), int(t)),
+                )
                 if int(t) < self.num_time_steps
                 else 0.0,
             ),
@@ -1424,7 +1884,11 @@ class DRO_PoAOptimization:
             domain=Reals,
             bounds=lambda m, k, i, t: (
                 0.0,
-                self.M_mu_ramp_down_opt[int(i), int(t)]
+                self._scenario_or_regime_value(
+                    self.M_mu_ramp_down_opt,
+                    int(k),
+                    (int(i), int(t)),
+                )
                 if int(t) < self.num_time_steps
                 else 0.0,
             ),
@@ -1438,10 +1902,42 @@ class DRO_PoAOptimization:
         m.z_ramp_down_opt = Var(m.scenarios, m.physical_generators, m.time_steps, domain=Binary)
 
     def _build_objective(self) -> None:
+        if self.objective_mode == "difference":
+            self._build_difference_objective()
+        elif self.objective_mode == "ratio_mccormick":
+            self._build_ratio_mccormick_objective()
+        elif self.objective_mode == "ratio_piecewise_mccormick":
+            self._build_ratio_piecewise_mccormick_objective()
+        else:
+            raise ValueError(f"Unsupported objective_mode: {self.objective_mode}")
+
+    def _build_difference_objective(self) -> None:
         m = self.model
         m.objective = Objective(
             expr=sum(
                 m.PoA[k] - self.eta * m.wasserstein_distance[k]
+                for k in m.scenarios
+            )
+            / self.num_empirical_scenarios,
+            sense=maximize,
+        )
+
+    def _build_ratio_mccormick_objective(self) -> None:
+        m = self.model
+        m.objective = Objective(
+            expr=sum(
+                m.phi[k] - self.eta * m.wasserstein_distance[k]
+                for k in m.scenarios
+            )
+            / self.num_empirical_scenarios,
+            sense=maximize,
+        )
+
+    def _build_ratio_piecewise_mccormick_objective(self) -> None:
+        m = self.model
+        m.objective = Objective(
+            expr=sum(
+                m.phi[k] - self.eta * m.wasserstein_distance[k]
                 for k in m.scenarios
             )
             / self.num_empirical_scenarios,
@@ -2003,7 +2499,11 @@ class DRO_PoAOptimization:
         def upper_bound_complementarity_dual_eq_rule(m, k, i, b, t):
             return (
                 m.mu_upper_eq[k, i, b, t]
-                <= self.M_mu_upper_eq[int(i), int(b), int(t)] * m.z_upper_eq[k, i, b, t]
+                <= self._scenario_or_regime_value(
+                    self.M_mu_upper_eq,
+                    int(k),
+                    (int(i), int(b), int(t)),
+                ) * m.z_upper_eq[k, i, b, t]
             )
 
         def lower_bound_complementarity_eq_rule(m, k, i, b, t):
@@ -2015,7 +2515,11 @@ class DRO_PoAOptimization:
         def lower_bound_complementarity_dual_eq_rule(m, k, i, b, t):
             return (
                 m.mu_lower_eq[k, i, b, t]
-                <= self.M_mu_lower_eq[int(i), int(b), int(t)] * m.z_lower_eq[k, i, b, t]
+                <= self._scenario_or_regime_value(
+                    self.M_mu_lower_eq,
+                    int(k),
+                    (int(i), int(b), int(t)),
+                ) * m.z_lower_eq[k, i, b, t]
             )
 
         def ramp_up_complementarity_eq_rule(m, k, i, t):
@@ -2035,7 +2539,11 @@ class DRO_PoAOptimization:
         def ramp_up_complementarity_dual_eq_rule(m, k, i, t):
             return (
                 m.mu_ramp_up_eq[k, i, t]
-                <= self.M_mu_ramp_up_eq[int(i), int(t)] * m.z_ramp_up_eq[k, i, t]
+                <= self._scenario_or_regime_value(
+                    self.M_mu_ramp_up_eq,
+                    int(k),
+                    (int(i), int(t)),
+                ) * m.z_ramp_up_eq[k, i, t]
             )
 
         def ramp_down_complementarity_eq_rule(m, k, i, t):
@@ -2055,7 +2563,11 @@ class DRO_PoAOptimization:
         def ramp_down_complementarity_dual_eq_rule(m, k, i, t):
             return (
                 m.mu_ramp_down_eq[k, i, t]
-                <= self.M_mu_ramp_down_eq[int(i), int(t)] * m.z_ramp_down_eq[k, i, t]
+                <= self._scenario_or_regime_value(
+                    self.M_mu_ramp_down_eq,
+                    int(k),
+                    (int(i), int(t)),
+                ) * m.z_ramp_down_eq[k, i, t]
             )
 
         m.upper_bound_complementarity_eq = Constraint(
@@ -2129,7 +2641,11 @@ class DRO_PoAOptimization:
         def upper_bound_complementarity_dual_opt_rule(m, k, i, b, t):
             return (
                 m.mu_upper_opt[k, i, b, t]
-                <= self.M_mu_upper_opt[int(i), int(b), int(t)] * m.z_upper_opt[k, i, b, t]
+                <= self._scenario_or_regime_value(
+                    self.M_mu_upper_opt,
+                    int(k),
+                    (int(i), int(b), int(t)),
+                ) * m.z_upper_opt[k, i, b, t]
             )
 
         def lower_bound_complementarity_opt_rule(m, k, i, b, t):
@@ -2141,7 +2657,11 @@ class DRO_PoAOptimization:
         def lower_bound_complementarity_dual_opt_rule(m, k, i, b, t):
             return (
                 m.mu_lower_opt[k, i, b, t]
-                <= self.M_mu_lower_opt[int(i), int(b), int(t)] * m.z_lower_opt[k, i, b, t]
+                <= self._scenario_or_regime_value(
+                    self.M_mu_lower_opt,
+                    int(k),
+                    (int(i), int(b), int(t)),
+                ) * m.z_lower_opt[k, i, b, t]
             )
 
         def ramp_up_complementarity_opt_rule(m, k, i, t):
@@ -2161,7 +2681,11 @@ class DRO_PoAOptimization:
         def ramp_up_complementarity_dual_opt_rule(m, k, i, t):
             return (
                 m.mu_ramp_up_opt[k, i, t]
-                <= self.M_mu_ramp_up_opt[int(i), int(t)] * m.z_ramp_up_opt[k, i, t]
+                <= self._scenario_or_regime_value(
+                    self.M_mu_ramp_up_opt,
+                    int(k),
+                    (int(i), int(t)),
+                ) * m.z_ramp_up_opt[k, i, t]
             )
 
         def ramp_down_complementarity_opt_rule(m, k, i, t):
@@ -2181,7 +2705,11 @@ class DRO_PoAOptimization:
         def ramp_down_complementarity_dual_opt_rule(m, k, i, t):
             return (
                 m.mu_ramp_down_opt[k, i, t]
-                <= self.M_mu_ramp_down_opt[int(i), int(t)] * m.z_ramp_down_opt[k, i, t]
+                <= self._scenario_or_regime_value(
+                    self.M_mu_ramp_down_opt,
+                    int(k),
+                    (int(i), int(t)),
+                ) * m.z_ramp_down_opt[k, i, t]
             )
 
         m.upper_bound_complementarity_opt = Constraint(
@@ -2388,6 +2916,189 @@ class DRO_PoAOptimization:
         m.cost_definition_eq = Constraint(m.scenarios, rule=cost_eq_rule)
         m.cost_definition_opt = Constraint(m.scenarios, rule=cost_opt_rule)
         m.poa_definition = Constraint(m.scenarios, rule=poa_rule)
+        if self.objective_mode == "ratio_mccormick":
+            self._build_ratio_mccormick_constraints()
+        if self.objective_mode == "ratio_piecewise_mccormick":
+            self._build_ratio_piecewise_mccormick_constraints()
+
+    def _build_ratio_mccormick_constraints(self) -> None:
+        if self.ratio_bounds is None:
+            raise ValueError(
+                "ratio_bounds is required when objective_mode='ratio_mccormick'"
+            )
+        m = self.model
+        phi_L, phi_U = self.ratio_bounds["phi"]
+        C_opt_L, C_opt_U = self.ratio_bounds["C_opt"]
+
+        def ratio_link_eq_cost_rule(m, k):
+            return m.z_ratio_product[k] == m.C_eq[k]
+
+        def lower_1_rule(m, k):
+            return (
+                m.z_ratio_product[k]
+                >= phi_L * m.C_opt[k] + C_opt_L * m.phi[k] - phi_L * C_opt_L
+            )
+
+        def lower_2_rule(m, k):
+            return (
+                m.z_ratio_product[k]
+                >= phi_U * m.C_opt[k] + C_opt_U * m.phi[k] - phi_U * C_opt_U
+            )
+
+        def upper_1_rule(m, k):
+            return (
+                m.z_ratio_product[k]
+                <= phi_U * m.C_opt[k] + C_opt_L * m.phi[k] - phi_U * C_opt_L
+            )
+
+        def upper_2_rule(m, k):
+            return (
+                m.z_ratio_product[k]
+                <= phi_L * m.C_opt[k] + C_opt_U * m.phi[k] - phi_L * C_opt_U
+            )
+
+        m.ratio_link_eq_cost = Constraint(m.scenarios, rule=ratio_link_eq_cost_rule)
+        m.ratio_mccormick_lower_1 = Constraint(m.scenarios, rule=lower_1_rule)
+        m.ratio_mccormick_lower_2 = Constraint(m.scenarios, rule=lower_2_rule)
+        m.ratio_mccormick_upper_1 = Constraint(m.scenarios, rule=upper_1_rule)
+        m.ratio_mccormick_upper_2 = Constraint(m.scenarios, rule=upper_2_rule)
+
+    def _build_ratio_piecewise_mccormick_constraints(self) -> None:
+        if self.ratio_bounds is None:
+            raise ValueError(
+                "ratio_bounds is required when "
+                "objective_mode='ratio_piecewise_mccormick'"
+            )
+        m = self.model
+        phi_L, phi_U = self.ratio_bounds["phi"]
+        breakpoints = list(self.ratio_bounds["C_opt_breakpoints"])
+
+        def select_one_rule(m, k):
+            return sum(
+                m.ratio_piece_active[k, p] for p in m.ratio_piece_index
+            ) == 1
+
+        def C_opt_link_rule(m, k):
+            return m.C_opt[k] == sum(
+                m.C_opt_piece[k, p] for p in m.ratio_piece_index
+            )
+
+        def phi_link_rule(m, k):
+            return m.phi[k] == sum(
+                m.phi_piece[k, p] for p in m.ratio_piece_index
+            )
+
+        def z_link_rule(m, k):
+            return m.z_ratio_product[k] == sum(
+                m.z_ratio_piece[k, p] for p in m.ratio_piece_index
+            )
+
+        def C_eq_link_rule(m, k):
+            return m.C_eq[k] == m.z_ratio_product[k]
+
+        def C_opt_piece_lower_rule(m, k, p):
+            return (
+                breakpoints[int(p)] * m.ratio_piece_active[k, p]
+                <= m.C_opt_piece[k, p]
+            )
+
+        def C_opt_piece_upper_rule(m, k, p):
+            return (
+                m.C_opt_piece[k, p]
+                <= breakpoints[int(p) + 1] * m.ratio_piece_active[k, p]
+            )
+
+        def phi_piece_lower_rule(m, k, p):
+            return phi_L * m.ratio_piece_active[k, p] <= m.phi_piece[k, p]
+
+        def phi_piece_upper_rule(m, k, p):
+            return m.phi_piece[k, p] <= phi_U * m.ratio_piece_active[k, p]
+
+        def lower_1_rule(m, k, p):
+            p_int = int(p)
+            y_L = breakpoints[p_int]
+            return (
+                m.z_ratio_piece[k, p]
+                >= phi_L * m.C_opt_piece[k, p]
+                + y_L * m.phi_piece[k, p]
+                - phi_L * y_L * m.ratio_piece_active[k, p]
+            )
+
+        def lower_2_rule(m, k, p):
+            p_int = int(p)
+            y_U = breakpoints[p_int + 1]
+            return (
+                m.z_ratio_piece[k, p]
+                >= phi_U * m.C_opt_piece[k, p]
+                + y_U * m.phi_piece[k, p]
+                - phi_U * y_U * m.ratio_piece_active[k, p]
+            )
+
+        def upper_1_rule(m, k, p):
+            p_int = int(p)
+            y_L = breakpoints[p_int]
+            return (
+                m.z_ratio_piece[k, p]
+                <= phi_U * m.C_opt_piece[k, p]
+                + y_L * m.phi_piece[k, p]
+                - phi_U * y_L * m.ratio_piece_active[k, p]
+            )
+
+        def upper_2_rule(m, k, p):
+            p_int = int(p)
+            y_U = breakpoints[p_int + 1]
+            return (
+                m.z_ratio_piece[k, p]
+                <= phi_L * m.C_opt_piece[k, p]
+                + y_U * m.phi_piece[k, p]
+                - phi_L * y_U * m.ratio_piece_active[k, p]
+            )
+
+        m.ratio_piece_select_one = Constraint(m.scenarios, rule=select_one_rule)
+        m.ratio_piece_C_opt_link = Constraint(m.scenarios, rule=C_opt_link_rule)
+        m.ratio_piece_phi_link = Constraint(m.scenarios, rule=phi_link_rule)
+        m.ratio_piece_z_link = Constraint(m.scenarios, rule=z_link_rule)
+        m.ratio_piece_C_eq_link = Constraint(m.scenarios, rule=C_eq_link_rule)
+        m.ratio_piece_C_opt_lower = Constraint(
+            m.scenarios,
+            m.ratio_piece_index,
+            rule=C_opt_piece_lower_rule,
+        )
+        m.ratio_piece_C_opt_upper = Constraint(
+            m.scenarios,
+            m.ratio_piece_index,
+            rule=C_opt_piece_upper_rule,
+        )
+        m.ratio_piece_phi_lower = Constraint(
+            m.scenarios,
+            m.ratio_piece_index,
+            rule=phi_piece_lower_rule,
+        )
+        m.ratio_piece_phi_upper = Constraint(
+            m.scenarios,
+            m.ratio_piece_index,
+            rule=phi_piece_upper_rule,
+        )
+        m.ratio_piece_mccormick_lower_1 = Constraint(
+            m.scenarios,
+            m.ratio_piece_index,
+            rule=lower_1_rule,
+        )
+        m.ratio_piece_mccormick_lower_2 = Constraint(
+            m.scenarios,
+            m.ratio_piece_index,
+            rule=lower_2_rule,
+        )
+        m.ratio_piece_mccormick_upper_1 = Constraint(
+            m.scenarios,
+            m.ratio_piece_index,
+            rule=upper_1_rule,
+        )
+        m.ratio_piece_mccormick_upper_2 = Constraint(
+            m.scenarios,
+            m.ratio_piece_index,
+            rule=upper_2_rule,
+        )
 
     # ------------------------------------------------------------------
     # Policy constraints
@@ -2565,18 +3276,38 @@ class DRO_PoAOptimization:
         m.nn_output = Var(m.nn_output_index, domain=Reals)
         m.nn_constraints = ConstraintList()
 
+        def relu_bound_for_node(
+            relu_bounds: dict[tuple[int, ...], dict[str, Any]],
+            k: int,
+            t: int,
+            linear_idx: int,
+            node: int,
+            generator_name: str,
+        ) -> dict[str, Any]:
+            scenario_key = (int(k), int(t), int(linear_idx), int(node))
+            regime_key = (int(t), int(linear_idx), int(node))
+            if scenario_key in relu_bounds:
+                return relu_bounds[scenario_key]
+            if regime_key in relu_bounds:
+                return relu_bounds[regime_key]
+            raise ValueError(
+                f"NN ReLU bounds report is missing bounds for {generator_name} "
+                f"at scenario {k}, time {t}, linear layer {linear_idx}, node {node}."
+            )
+
         for i in self.nn_policy_generator_ids:
             generator_name = self.physical_generator_names[int(i)]
             relu_bounds = self.nn_relu_bounds[generator_name]
-            for (time_idx, linear_idx, node), bounds in relu_bounds.items():
-                for k in m.scenarios:
-                    index = (
-                        int(k),
-                        int(i),
-                        int(time_idx),
-                        int(linear_idx),
-                        int(node),
-                    )
+            for raw_key, bounds in relu_bounds.items():
+                key = tuple(int(part) for part in raw_key)
+                scenario_keys = (
+                    [key]
+                    if len(key) == 4
+                    else [(int(k), *key) for k in m.scenarios]
+                )
+                for scenario_key in scenario_keys:
+                    k, time_idx, linear_idx, node = scenario_key
+                    index = (int(k), int(i), int(time_idx), int(linear_idx), int(node))
                     if index not in m.nn_z:
                         continue
                     m.nn_z[index].setlb(float(bounds["L"]))
@@ -2632,14 +3363,14 @@ class DRO_PoAOptimization:
                             h = m.nn_h[k, i, t, linear_idx, node]
                             z = m.nn_z[k, i, t, linear_idx, node]
                             delta = m.nn_delta[k, i, t, linear_idx, node]
-                            bound_key = (int(t), int(linear_idx), int(node))
-                            if bound_key not in relu_bounds:
-                                raise ValueError(
-                                    f"NN ReLU bounds report is missing bounds for "
-                                    f"{generator_name} at time {t}, linear layer "
-                                    f"{linear_idx}, node {node}."
-                                )
-                            bounds = relu_bounds[bound_key]
+                            bounds = relu_bound_for_node(
+                                relu_bounds,
+                                int(k),
+                                int(t),
+                                int(linear_idx),
+                                int(node),
+                                generator_name,
+                            )
                             status = str(bounds["status"]).lower()
                             if status == "inactive":
                                 m.nn_constraints.add(h == 0)
@@ -2683,10 +3414,10 @@ class DRO_PoAOptimization:
         apply_relu_bounds: bool = True,
     ) -> dict[str, Any]:
         """
-        Apply a regime-wide DRO tightening report to every scenario copy k.
+        Apply DRO tightening to the Pyomo model.
 
-        Report keys are intentionally non-scenario-indexed. This method expands
-        each i,b,t / i,t / t key over all empirical scenarios in the Pyomo model.
+        Scenario-indexed keys are applied to their exact scenario copy k.
+        Regime-wide keys are still accepted and broadcast across scenarios.
         """
         if not hasattr(self, "model"):
             raise ValueError("Model is not built. Call build_model() first.")
@@ -2735,14 +3466,20 @@ class DRO_PoAOptimization:
         if alpha_var is None:
             return 0
         applied = 0
-        for key, bounds in (report.get("alpha_bounds", {}) or {}).items():
+        alpha_bounds = report.get("scenario_alpha_bounds", {}) or report.get(
+            "alpha_bounds",
+            {},
+        )
+        for key, bounds in (alpha_bounds or {}).items():
             index = self._parse_json_index(key)
-            if len(index) != 3:
-                raise ValueError(f"Alpha-bound key '{key}' must have format i,b,t")
+            if len(index) not in {3, 4}:
+                raise ValueError(f"Alpha-bound key '{key}' must have format i,b,t or k,i,b,t")
             lower = float(bounds["lower"])
             upper = float(bounds["upper"])
-            for k in m.scenarios:
-                scenario_index = (int(k), *index)
+            scenario_indices = [index] if len(index) == 4 else [
+                (int(k), *index) for k in m.scenarios
+            ]
+            for scenario_index in scenario_indices:
                 if scenario_index not in alpha_var:
                     continue
                 current_lb = alpha_var[scenario_index].lb
@@ -2758,7 +3495,11 @@ class DRO_PoAOptimization:
     def _apply_fixed_binaries_to_model(self, report: dict[str, Any]) -> int:
         m = self.model
         applied = 0
-        for var_name, entries in (report.get("fixed_binaries", {}) or {}).items():
+        fixed_binaries = report.get("scenario_fixed_binaries", {}) or report.get(
+            "fixed_binaries",
+            {},
+        )
+        for var_name, entries in (fixed_binaries or {}).items():
             binary_var = getattr(m, var_name, None)
             if binary_var is None:
                 continue
@@ -2766,9 +3507,15 @@ class DRO_PoAOptimization:
                 index = self._parse_json_index(key)
                 fixed_value = int((details or {}).get("fixed_value", 0))
                 expected_without_k = binary_var.dim() - 1
+                if len(index) == binary_var.dim():
+                    if index in binary_var:
+                        binary_var[index].fix(fixed_value)
+                        applied += 1
+                    continue
                 if len(index) != expected_without_k:
                     raise ValueError(
-                        f"Fixed-binary key '{key}' for {var_name} must omit k and "
+                        f"Fixed-binary key '{key}' for {var_name} must have "
+                        f"{binary_var.dim()} scenario-indexed indices or omit k and "
                         f"have {expected_without_k} indices."
                     )
                 for k in m.scenarios:
@@ -2791,7 +3538,11 @@ class DRO_PoAOptimization:
                 continue
             for k in m.scenarios:
                 for t in m.time_steps:
-                    lower, upper = bound_map[int(t)]
+                    lower, upper = self._scenario_or_regime_lambda_bounds(
+                        bound_map,
+                        int(k),
+                        int(t),
+                    )
                     index = (int(k), int(t))
                     current_lb = lambda_var[index].lb
                     current_ub = lambda_var[index].ub
@@ -2820,9 +3571,14 @@ class DRO_PoAOptimization:
             dual_var = getattr(m, var_name, None)
             if dual_var is None:
                 continue
-            for regime_index, upper in bound_map.items():
-                for k in m.scenarios:
-                    scenario_index = (int(k), *tuple(regime_index))
+            for raw_index, upper in bound_map.items():
+                index = tuple(int(part) for part in raw_index)
+                scenario_indices = (
+                    [index]
+                    if len(index) == dual_var.dim()
+                    else [(int(k), *index) for k in m.scenarios]
+                )
+                for scenario_index in scenario_indices:
                     if scenario_index not in dual_var:
                         continue
                     current_ub = dual_var[scenario_index].ub
@@ -2849,7 +3605,9 @@ class DRO_PoAOptimization:
 
     def _apply_relu_bounds_to_model(self, report: dict[str, Any]) -> dict[str, int]:
         relu_report = report.get("nn_relu_bounds_report", {}) or {}
-        if not relu_report and "nn_relu_bounds" in report:
+        if not relu_report and (
+            "nn_relu_bounds" in report or "scenario_nn_relu_bounds" in report
+        ):
             relu_report = report
         stats = {
             "z_bounds_applied": 0,
@@ -2869,17 +3627,16 @@ class DRO_PoAOptimization:
         for physical_generator_idx in self.nn_policy_generator_ids:
             i = int(physical_generator_idx)
             generator_name = self.physical_generator_names[i]
-            for (time_idx, linear_idx, node), bounds in (
-                self.nn_relu_bounds.get(generator_name, {}) or {}
-            ).items():
-                for k in m.scenarios:
-                    index = (
-                        int(k),
-                        i,
-                        int(time_idx),
-                        int(linear_idx),
-                        int(node),
-                    )
+            for raw_key, bounds in (self.nn_relu_bounds.get(generator_name, {}) or {}).items():
+                key = tuple(int(part) for part in raw_key)
+                scenario_keys = (
+                    [key]
+                    if len(key) == 4
+                    else [(int(k), *key) for k in m.scenarios]
+                )
+                for scenario_key in scenario_keys:
+                    k, time_idx, linear_idx, node = scenario_key
+                    index = (int(k), i, int(time_idx), int(linear_idx), int(node))
                     if index in m.nn_z:
                         m.nn_z[index].setlb(float(bounds["L"]))
                         m.nn_z[index].setub(float(bounds["U"]))
@@ -2909,6 +3666,75 @@ class DRO_PoAOptimization:
 
         self.applied_nn_relu_stats = stats
         return stats
+
+    def compute_optimal_cost_bounds(
+        self,
+        output_path: str | Path = "results/dro_poa_tightening/optimal_cost_bounds_report.json",
+        solver_name: str = "gurobi",
+        time_limit: Optional[float] = None,
+        tee: bool = False,
+        solver_threads: Optional[int] = None,
+    ) -> dict[str, Any]:
+        from models.DRO_PoA.DRO_PoA_tightening.compute_optimal_cost_bounds import (
+            DROOptimalCostBoundsComputer,
+        )
+
+        stage = DROOptimalCostBoundsComputer.__new__(DROOptimalCostBoundsComputer)
+        stage.poa = self
+        stage.dro = self
+        stage.dro_poa = self
+        stage.tightening_data = {
+            "primal_big_m": getattr(self, "primal_big_m", {}) or {},
+            "optimal_cost_bounds": getattr(self, "optimal_cost_bounds", {}) or {},
+            "scenario_optimal_cost_bounds": getattr(
+                self,
+                "scenario_optimal_cost_bounds",
+                {},
+            ) or {},
+            "optimal_cost_bound_optimization_results": getattr(
+                self,
+                "optimal_cost_bound_optimization_results",
+                {},
+            ) or {},
+        }
+        stage.stage_reports = {}
+        report = stage.run_optimal_cost_bounds(
+            output_path=output_path,
+            solver_name=solver_name,
+            time_limit=time_limit,
+            tee=tee,
+            solver_threads=solver_threads,
+        )
+        self._set_optimal_cost_bounds_from_report(report)
+        return report
+
+    def make_ratio_bounds_from_optimal_cost_bounds(
+        self,
+        phi_bounds: tuple[float, float],
+        num_pieces: Optional[int] = None,
+        C_opt_breakpoints: Optional[list[float]] = None,
+    ) -> dict[str, Any]:
+        if num_pieces is not None and C_opt_breakpoints is not None:
+            raise ValueError("Provide either num_pieces or C_opt_breakpoints, not both")
+        C_opt_bounds = (self.optimal_cost_bounds or {}).get("C_opt", {})
+        lower = C_opt_bounds.get("lower")
+        upper = C_opt_bounds.get("upper")
+        if lower is None or upper is None:
+            raise ValueError(
+                "Optimal cost bounds are not loaded. Run compute_optimal_cost_bounds() "
+                "or load_optimal_cost_bounds_report() first."
+            )
+        ratio_bounds: dict[str, Any] = {
+            "phi": phi_bounds,
+            "C_opt": (float(lower), float(upper)),
+        }
+        if num_pieces is not None:
+            ratio_bounds["num_pieces"] = int(num_pieces)
+        if C_opt_breakpoints is not None:
+            ratio_bounds["C_opt_breakpoints"] = [
+                float(value) for value in C_opt_breakpoints
+            ]
+        return ratio_bounds
 
     def summarize_nn_feature_bounds(self) -> dict[str, Any]:
         return dict(self.nn_feature_bounds or {})
@@ -2989,11 +3815,31 @@ class DRO_PoAOptimization:
             for t in range(self.num_time_steps)
         ]
 
+    def _json_serializable_payload(self, payload: Any) -> Any:
+        if isinstance(payload, dict):
+            return {str(key): self._json_serializable_payload(value) for key, value in payload.items()}
+        if isinstance(payload, (list, tuple)):
+            return [self._json_serializable_payload(value) for value in payload]
+        if isinstance(payload, np.generic):
+            return payload.item()
+        if isinstance(payload, (str, int, float, bool)) or payload is None:
+            return payload
+        return str(payload)
+
+    def _json_serializable_ratio_bounds(self) -> Optional[dict[str, Any]]:
+        if self.ratio_bounds is None:
+            return None
+        return self._json_serializable_payload(self.ratio_bounds)
+
     def extract_results(self) -> dict[str, Any]:
         if not hasattr(self, "model"):
             raise ValueError("Model is not built. Call build_model() first.")
         m = self.model
         inner_objective = self._safe_value(m.objective)
+        ratio_mode = self.objective_mode in {
+            "ratio_mccormick",
+            "ratio_piecewise_mccormick",
+        }
         poa_values = [self._safe_value(m.PoA[k]) for k in m.scenarios]
         wasserstein_values = [self._safe_value(m.wasserstein_distance[k]) for k in m.scenarios]
         average_poa = (
@@ -3006,9 +3852,46 @@ class DRO_PoAOptimization:
             if any(v is not None for v in wasserstein_values)
             else None
         )
+        scenario_ratio_metrics: dict[int, dict[str, Optional[float]]] = {}
+        poa_ratio_values: list[float] = []
+        relaxed_phi_values: list[float] = []
+        for k in range(self.num_empirical_scenarios):
+            C_eq = self._safe_value(m.C_eq[k])
+            C_opt = self._safe_value(m.C_opt[k])
+            poa_ratio = (
+                C_eq / C_opt
+                if C_eq is not None and C_opt not in (None, 0.0)
+                else None
+            )
+            relaxed_phi = self._safe_value(m.phi[k]) if ratio_mode else None
+            ratio_relaxation_gap = (
+                relaxed_phi - poa_ratio
+                if relaxed_phi is not None and poa_ratio is not None
+                else None
+            )
+            if poa_ratio is not None:
+                poa_ratio_values.append(float(poa_ratio))
+            if relaxed_phi is not None:
+                relaxed_phi_values.append(float(relaxed_phi))
+            scenario_ratio_metrics[k] = {
+                "C_eq": C_eq,
+                "C_opt": C_opt,
+                "PoA_ratio": poa_ratio,
+                "relaxed_phi": relaxed_phi,
+                "ratio_relaxation_gap": ratio_relaxation_gap,
+            }
+        average_poa_ratio = (
+            float(np.mean(poa_ratio_values)) if poa_ratio_values else None
+        )
+        average_relaxed_phi = (
+            float(np.mean(relaxed_phi_values))
+            if ratio_mode and relaxed_phi_values
+            else None
+        )
 
         scenario_results = []
         for k in range(self.num_empirical_scenarios):
+            ratio_metrics = scenario_ratio_metrics[k]
             generators: dict[str, Any] = {}
             for i, generator_name in enumerate(self.physical_generator_names):
                 block_results = []
@@ -3061,9 +3944,12 @@ class DRO_PoAOptimization:
                         for i in range(self.num_physical_generators)
                     },
                     "wasserstein_distance": self._safe_value(m.wasserstein_distance[k]),
-                    "C_eq": self._safe_value(m.C_eq[k]),
-                    "C_opt": self._safe_value(m.C_opt[k]),
+                    "C_eq": ratio_metrics["C_eq"],
+                    "C_opt": ratio_metrics["C_opt"],
                     "PoA_difference": self._safe_value(m.PoA[k]),
+                    "PoA_ratio": ratio_metrics["PoA_ratio"],
+                    "relaxed_phi": ratio_metrics["relaxed_phi"],
+                    "ratio_relaxation_gap": ratio_metrics["ratio_relaxation_gap"],
                     "equilibrium_price_profile": self._profile_values(m.lambda_eq, k),
                     "optimal_price_profile": self._profile_values(m.lambda_opt, k),
                     "generators": generators,
@@ -3092,9 +3978,22 @@ class DRO_PoAOptimization:
             "num_empirical_scenarios": self.num_empirical_scenarios,
             "eta": self.eta,
             "epsilon": self.epsilon,
+            "objective_mode": self.objective_mode,
+            "ratio_bounds": self._json_serializable_ratio_bounds(),
+            "optimal_cost_bounds": self._json_serializable_payload(
+                self.optimal_cost_bounds
+            ),
+            "scenario_optimal_cost_bounds": self._json_serializable_payload(
+                self.scenario_optimal_cost_bounds
+            ),
+            "optimal_cost_bound_optimization_results": self._json_serializable_payload(
+                self.optimal_cost_bound_optimization_results
+            ),
             "inner_objective": inner_objective,
             "dro_objective_with_epsilon": dro_objective_with_epsilon,
             "average_poa_difference": average_poa,
+            "average_poa_ratio": average_poa_ratio,
+            "average_relaxed_phi": average_relaxed_phi,
             "average_wasserstein_distance": average_wasserstein,
             "solver": solver_summary,
             "selected_regime_parameters": dict(self.selected_regime_parameters),
@@ -3135,6 +4034,29 @@ class DRO_PoAOptimization:
         average_poa = self._safe_value(
             sum(m.PoA[k] for k in m.scenarios) / self.num_empirical_scenarios
         )
+        ratio_mode = self.objective_mode in {
+            "ratio_mccormick",
+            "ratio_piecewise_mccormick",
+        }
+        poa_ratio_values = []
+        relaxed_phi_values = []
+        for k in m.scenarios:
+            C_eq = self._safe_value(m.C_eq[k])
+            C_opt = self._safe_value(m.C_opt[k])
+            if C_eq is not None and C_opt not in (None, 0.0):
+                poa_ratio_values.append(C_eq / C_opt)
+            if ratio_mode:
+                relaxed_phi = self._safe_value(m.phi[k])
+                if relaxed_phi is not None:
+                    relaxed_phi_values.append(relaxed_phi)
+        average_poa_ratio = (
+            float(np.mean(poa_ratio_values)) if poa_ratio_values else None
+        )
+        average_relaxed_phi = (
+            float(np.mean(relaxed_phi_values))
+            if ratio_mode and relaxed_phi_values
+            else None
+        )
         average_wasserstein = self._safe_value(
             sum(m.wasserstein_distance[k] for k in m.scenarios)
             / self.num_empirical_scenarios
@@ -3155,6 +4077,17 @@ class DRO_PoAOptimization:
             "num_empirical_scenarios": self.num_empirical_scenarios,
             "eta": self.eta,
             "epsilon": self.epsilon,
+            "objective_mode": self.objective_mode,
+            "ratio_bounds": self._json_serializable_ratio_bounds(),
+            "optimal_cost_bounds": self._json_serializable_payload(
+                self.optimal_cost_bounds
+            ),
+            "scenario_optimal_cost_bounds": self._json_serializable_payload(
+                self.scenario_optimal_cost_bounds
+            ),
+            "optimal_cost_bound_optimization_results": self._json_serializable_payload(
+                self.optimal_cost_bound_optimization_results
+            ),
             "inner_objective": inner_objective,
             "dro_objective_with_epsilon": (
                 inner_objective + self.eta * self.epsilon
@@ -3162,6 +4095,8 @@ class DRO_PoAOptimization:
                 else None
             ),
             "average_poa_difference": average_poa,
+            "average_poa_ratio": average_poa_ratio,
+            "average_relaxed_phi": average_relaxed_phi,
             "average_wasserstein_distance": average_wasserstein,
             "solver": solver_summary,
         }
@@ -3194,6 +4129,8 @@ def run_eta_sweep_by_regime(
     num_time_steps: Optional[int] = None,
     seed: Optional[int] = None,
     time_limit: Optional[float] = None,
+    objective_mode: str = "difference",
+    ratio_bounds: Optional[dict[str, Any]] = None,
 ) -> pd.DataFrame:
     if scenarios_df is None or costs_df is None or ramps_df is None:
         scenarios_df, costs_df, ramps_df = load_regime_scenarios(
@@ -3224,6 +4161,8 @@ def run_eta_sweep_by_regime(
                 epsilon=float(epsilon),
                 nn_model_dir=None,
                 reference_case=reference_case,
+                objective_mode=objective_mode,
+                ratio_bounds=ratio_bounds,
             )
             optimizer.build_model()
             optimizer.solve(time_limit=time_limit)
@@ -3263,6 +4202,17 @@ if __name__ == "__main__":
         epsilon=epsilon,
         nn_model_dir=None,
         reference_case=case,
+        # objective_mode="ratio_mccormick",
+        # ratio_bounds={
+        #     "phi": (1.0, 5.0),
+        #     "C_opt": (1000.0, 20000.0),
+        # },
+        # objective_mode="ratio_piecewise_mccormick",
+        # ratio_bounds={
+        #     "phi": (1.0, 5.0),
+        #     "C_opt": (1000.0, 20000.0),
+        #     "num_pieces": 4,
+        # },
     )
 
     start = time.perf_counter()

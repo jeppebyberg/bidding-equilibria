@@ -10,7 +10,6 @@ Expected default input:
 
 from __future__ import annotations
 
-import argparse
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -405,47 +404,19 @@ class IntertemporalResultsVisualizer:
 		self.plot_theta_norm_evolution(show=show)
 
 
-def parse_args() -> argparse.Namespace:
-	parser = argparse.ArgumentParser(description="Visualize intertemporal best-response results")
-	parser.add_argument(
-		"--results",
-		type=Path,
-		default=Path("results/best_response_results.json"),
-		help="Path to saved JSON results",
-	)
-	parser.add_argument(
-		"--outdir",
-		type=Path,
-		default=Path("results_viz/figures"),
-		help="Directory for generated figures",
-	)
-	parser.add_argument(
-		"--scenario",
-		type=int,
-		default=0,
-		help="Scenario index used for scenario-specific plots",
-	)
-	parser.add_argument(
-		"--time-step",
-		type=int,
-		default=0,
-		help="Time-step index used in bid-evolution plot",
-	)
-	parser.add_argument(
-		"--show",
-		action="store_true",
-		help="Display figures interactively in addition to saving",
-	)
-	return parser.parse_args()
-
-
 def main() -> None:
-	args = parse_args()
-	if not args.results.exists():
-		raise FileNotFoundError(f"Results file not found: {args.results}")
+	# Edit these paths/settings directly when running this script.
+	results_path = Path("results/best_response_results.json")
+	output_dir = Path("results_viz/figures")
+	scenario_id = 0
+	time_step = 0
+	show = False
 
-	viz = IntertemporalResultsVisualizer.from_json(path=args.results, output_dir=args.outdir)
-	viz.run_default_analysis(scenario_id=args.scenario, time_step=args.time_step, show=args.show)
+	if not results_path.exists():
+		raise FileNotFoundError(f"Results file not found: {results_path}")
+
+	viz = IntertemporalResultsVisualizer.from_json(path=results_path, output_dir=output_dir)
+	viz.run_default_analysis(scenario_id=scenario_id, time_step=time_step, show=show)
 
 
 if __name__ == "__main__":

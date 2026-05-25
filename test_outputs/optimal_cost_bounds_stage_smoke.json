@@ -1,24 +1,9 @@
 {
   "metadata": {
-    "description": "Analytic primal slack Big-M values used by PoAOptimization KKT complementarity constraints.",
+    "description": "Optimal dispatch cost bounds computed over the regime-induced support set using only the true-cost optimal KKT block.",
+    "method": "poa_optimal_dispatch_kkt_bounds",
     "reference_case": "test_case_bidding_blocks",
-    "num_time_steps": 8,
-    "physical_generator_names": [
-      "G2",
-      "G1",
-      "W3",
-      "W2",
-      "W1"
-    ],
-    "block_names": [
-      "G2_B1",
-      "G2_B2",
-      "G1_B1",
-      "G1_B2",
-      "W3_B1",
-      "W2_B1",
-      "W1_B1"
-    ],
+    "num_time_steps": 2,
     "ambiguity_set": {
       "regime_bounds": {
         "mu_D": [
@@ -47,73 +32,42 @@
       },
       "demand_shape": [
         0.8996399098216742,
-        0.9039287333523228,
-        0.9144903381180386,
-        0.9357222998688407,
-        0.9700279530191137,
-        1.013169466723415,
-        1.0520331078458793,
-        1.0697054682217695
+        0.9039287333523228
       ],
       "wind_shape": [
         0.9041892106661034,
-        0.89875325468952,
-        0.8957489085449363,
-        0.89875325468952,
-        0.9041892106661034,
-        0.9133480346078648,
-        0.9276883931493098,
-        0.9484960566459846
-      ],
-      "wind_physical_capacity_big_m_ub": {
-        "W3": {
-          "installed_capacity": 50.0,
-          "capacity_upper_bound": 41.43984226583939
-        },
-        "W2": {
-          "installed_capacity": 50.0,
-          "capacity_upper_bound": 41.43984226583939
-        },
-        "W1": {
-          "installed_capacity": 50.0,
-          "capacity_upper_bound": 41.43984226583939
-        }
-      }
+        0.89875325468952
+      ]
     },
-    "summary": {
-      "block_capacity": {
-        "entries": 7,
-        "min_big_m": 25.0,
-        "max_big_m": 41.43984226583939
-      },
-      "physical_capacity": {
-        "entries": 5,
-        "min_big_m": 41.43984226583939,
-        "max_big_m": 50.0
-      },
-      "ramp_up": {
-        "entries": 5,
-        "min_big_m": 70.0,
-        "max_big_m": 91.43984226583939
-      },
-      "ramp_down": {
-        "entries": 5,
-        "min_big_m": 70.0,
-        "max_big_m": 91.43984226583939
-      },
-      "ramp_up_initial": {
-        "entries": 5,
-        "min_big_m": 45.0,
-        "max_big_m": 75.0
-      },
-      "ramp_down_initial": {
-        "entries": 5,
-        "min_big_m": 45.0,
-        "max_big_m": 66.43984226583939
-      }
-    },
-    "runtime_seconds": 7.879998884163797e-05
+    "runtime_seconds": 0.2689634999987902
   },
+  "optimal_cost_bounds": {
+    "lower": 1152.0878903361836,
+    "upper": 5334.914266019635,
+    "raw_lower": 1152.0890434252271,
+    "raw_upper": 5334.908930110704
+  },
+  "optimal_cost_bound_optimization_results": {
+    "lower": {
+      "bound_name": "lower",
+      "value": 1152.0890434252271,
+      "solver_status": "ok",
+      "termination_condition": "optimal",
+      "num_variables": 153,
+      "num_constraints": 235,
+      "active_constraints": 235
+    },
+    "upper": {
+      "bound_name": "upper",
+      "value": 5334.908930110704,
+      "solver_status": "ok",
+      "termination_condition": "optimal",
+      "num_variables": 153,
+      "num_constraints": 235,
+      "active_constraints": 235
+    }
+  },
+  "num_optimization_programs": 2,
   "primal_big_m": {
     "block_capacity": {
       "0,0": {
@@ -149,7 +103,7 @@
         "block_name": "G1_B2"
       },
       "2,0": {
-        "big_m": 41.43984226583939,
+        "big_m": 39.66756842664414,
         "physical_generator_index": 2,
         "physical_generator_name": "W3",
         "local_block_index": 0,
@@ -157,7 +111,7 @@
         "block_name": "W3_B1"
       },
       "3,0": {
-        "big_m": 41.43984226583939,
+        "big_m": 39.66756842664414,
         "physical_generator_index": 3,
         "physical_generator_name": "W2",
         "local_block_index": 0,
@@ -165,7 +119,7 @@
         "block_name": "W2_B1"
       },
       "4,0": {
-        "big_m": 41.43984226583939,
+        "big_m": 39.66756842664414,
         "physical_generator_index": 4,
         "physical_generator_name": "W1",
         "local_block_index": 0,
@@ -187,19 +141,19 @@
         "is_wind": false
       },
       "2": {
-        "big_m": 41.43984226583939,
+        "big_m": 39.66756842664414,
         "physical_generator_index": 2,
         "physical_generator_name": "W3",
         "is_wind": true
       },
       "3": {
-        "big_m": 41.43984226583939,
+        "big_m": 39.66756842664414,
         "physical_generator_index": 3,
         "physical_generator_name": "W2",
         "is_wind": true
       },
       "4": {
-        "big_m": 41.43984226583939,
+        "big_m": 39.66756842664414,
         "physical_generator_index": 4,
         "physical_generator_name": "W1",
         "is_wind": true
@@ -221,21 +175,21 @@
         "is_wind": false
       },
       "2": {
-        "big_m": 91.43984226583939,
+        "big_m": 89.66756842664414,
         "ramp_limit": 50.0,
         "physical_generator_index": 2,
         "physical_generator_name": "W3",
         "is_wind": true
       },
       "3": {
-        "big_m": 91.43984226583939,
+        "big_m": 89.66756842664414,
         "ramp_limit": 50.0,
         "physical_generator_index": 3,
         "physical_generator_name": "W2",
         "is_wind": true
       },
       "4": {
-        "big_m": 91.43984226583939,
+        "big_m": 89.66756842664414,
         "ramp_limit": 50.0,
         "physical_generator_index": 4,
         "physical_generator_name": "W1",
@@ -258,21 +212,21 @@
         "is_wind": false
       },
       "2": {
-        "big_m": 91.43984226583939,
+        "big_m": 89.66756842664414,
         "ramp_limit": 50.0,
         "physical_generator_index": 2,
         "physical_generator_name": "W3",
         "is_wind": true
       },
       "3": {
-        "big_m": 91.43984226583939,
+        "big_m": 89.66756842664414,
         "ramp_limit": 50.0,
         "physical_generator_index": 3,
         "physical_generator_name": "W2",
         "is_wind": true
       },
       "4": {
-        "big_m": 91.43984226583939,
+        "big_m": 89.66756842664414,
         "ramp_limit": 50.0,
         "physical_generator_index": 4,
         "physical_generator_name": "W1",
@@ -339,7 +293,7 @@
         "is_wind": false
       },
       "2": {
-        "big_m": 66.43984226583939,
+        "big_m": 64.66756842664414,
         "p_init": 25.0,
         "ramp_limit": 50.0,
         "physical_generator_index": 2,
@@ -347,7 +301,7 @@
         "is_wind": true
       },
       "3": {
-        "big_m": 66.43984226583939,
+        "big_m": 64.66756842664414,
         "p_init": 25.0,
         "ramp_limit": 50.0,
         "physical_generator_index": 3,
@@ -355,7 +309,7 @@
         "is_wind": true
       },
       "4": {
-        "big_m": 66.43984226583939,
+        "big_m": 64.66756842664414,
         "p_init": 25.0,
         "ramp_limit": 50.0,
         "physical_generator_index": 4,

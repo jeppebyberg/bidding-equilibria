@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 import numpy as np
@@ -35,6 +37,7 @@ DRO_TIGHTENING_FLAGS = {
     "alpha_bounds": True,
     "slack_binary_fix": True,
     "dual_big_m": True,
+    "optimal_cost_bounds": True,
 }
 
 DRO_TIGHTENING_STAGE_ORDER = (
@@ -43,6 +46,7 @@ DRO_TIGHTENING_STAGE_ORDER = (
     "alpha_bounds",
     "slack_binary_fix",
     "dual_big_m",
+    "optimal_cost_bounds",
 )
 
 DRO_TIGHTENING_STAGE_LABELS = {
@@ -51,6 +55,7 @@ DRO_TIGHTENING_STAGE_LABELS = {
     "alpha_bounds": "Alpha bounds",
     "slack_binary_fix": "Slack binary fix",
     "dual_big_m": "Dual Big-M",
+    "optimal_cost_bounds": "C_opt bounds",
 }
 
 
@@ -122,6 +127,19 @@ class DROFullPipelineConfig:
     # The value is kept in tightening metadata but the report is reused for all eta.
     dro_tightening_eta: float = 0.0
     nn_policy_generators: list[int] = field(default_factory=lambda: [1, 2])
+
+    # Objective modes: "difference", "ratio_mccormick", or
+    # "ratio_piecewise_mccormick". Difference is the historical default.
+    dro_objective_mode: str = "difference"
+    # You may pass a complete DRO_PoAOptimization ratio_bounds dictionary directly.
+    # If omitted for ratio modes, set dro_ratio_phi_bounds and either
+    # dro_ratio_c_opt_bounds or run/load the optimal_cost_bounds stage.
+    dro_ratio_bounds: dict[str, Any] | None = None
+    dro_ratio_phi_bounds: tuple[float, float] | None = None
+    dro_ratio_c_opt_bounds: tuple[float, float] | None = None
+    dro_ratio_num_pieces: int = 4
+    dro_ratio_c_opt_breakpoints: list[float] | None = None
+
     solver_name: str = "gurobi"
     preprocessing_time_limit: int | None = 200
     dro_time_limit: int | None = 400
@@ -156,6 +174,8 @@ class DROFullPipelineConfig:
     model_dir: Path = Path("models/neural_network/training/trained_models")
     training_result_dir: Path = Path("models/neural_network/training/training_results")
     dro_result_dir: Path = Path("results/dro_poa")
+    archive_existing_dro_results: bool = True
+    dro_result_archive_dir: Path = Path("results/dro_poa/old_results")
 
     @property
     def nn_normalization_stats_path(self) -> Path:
@@ -198,6 +218,8 @@ def main(config: DROFullPipelineConfig) -> None:
             run_dro_tightening_for_regime(config, dro_scenarios, regime_name)
 
     if config.run_dro_optimization:
+        if config.archive_existing_dro_results:
+            archive_existing_dro_result_folders(config, regime_names)
         sweep_summary = run_dro_eta_sweep(config, dro_scenarios, regime_names)
         summary_path = config.dro_result_dir / "eta_sweep_summary.json"
         write_json(summary_path, sweep_summary)
@@ -216,6 +238,7 @@ def print_pipeline_header(config: DROFullPipelineConfig) -> None:
         f"  synthetic_regime_set={config.synthetic_regime_set}, seed={config.synthetic_seed}\n"
         f"  dro_regime_set={config.poa_regime_set}, seed={config.poa_seed}\n"
         f"  regimes={config.dro_regime_names or 'all generated DRO regimes'}\n"
+        f"  dro_objective_mode={config.dro_objective_mode}\n"
         f"  etas=[{eta_values}], wasserstein_epsilon={config.dro_wasserstein_epsilon}\n"
         f"  solver={config.solver_name}, parallel_workers={config.poa_parallel_workers}"
     )
@@ -303,6 +326,7 @@ def run_dro_tightening_for_regime(
         run_alpha_bounds=bool(flags["alpha_bounds"]),
         run_slack_binary_fix=bool(flags["slack_binary_fix"]),
         run_dual_big_m=bool(flags["dual_big_m"]),
+        run_optimal_cost_bounds=bool(flags["optimal_cost_bounds"]),
         previous_paths=previous_paths,
         output_paths=output_paths,
         solver_name=config.solver_name,
@@ -381,6 +405,39 @@ def run_dro_eta_sweep(
     return summaries
 
 
+def archive_existing_dro_result_folders(
+    config: DROFullPipelineConfig,
+    regime_names: list[str],
+) -> list[Path]:
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    archived_paths: list[Path] = []
+    for regime_name in regime_names:
+        regime_dir = config.dro_result_dir / regime_name
+        if not regime_dir.exists():
+            continue
+        if not any(regime_dir.iterdir()):
+            continue
+
+        archive_dir = config.dro_result_archive_dir / f"{regime_name}_{timestamp}"
+        archive_dir.parent.mkdir(parents=True, exist_ok=True)
+        archive_dir = _available_archive_path(archive_dir)
+        shutil.move(str(regime_dir), str(archive_dir))
+        archived_paths.append(archive_dir)
+        print(f"\nArchived existing DRO results for regime '{regime_name}': {archive_dir}")
+    return archived_paths
+
+
+def _available_archive_path(path: Path) -> Path:
+    if not path.exists():
+        return path
+    suffix = 2
+    while True:
+        candidate = path.with_name(f"{path.name}_{suffix}")
+        if not candidate.exists():
+            return candidate
+        suffix += 1
+
+
 def run_final_dro_for_eta(
     config: DROFullPipelineConfig,
     scenarios: dict[str, Any],
@@ -402,6 +459,11 @@ def run_final_dro_for_eta(
     print(f"\nDRO PoA optimization complete: {output_path}")
     print(f"  Regime: {regime_name}")
     print(f"  Eta: {eta}")
+    print(f"  Objective mode: {optimizer.objective_mode}")
+    if optimizer.objective_mode != "difference":
+        summary = optimizer.solution_summary()
+        print(f"  Average ex-post ratio: {summary.get('average_poa_ratio')}")
+        print(f"  Average relaxed phi: {summary.get('average_relaxed_phi')}")
     print(f"  Reused tightening report: {tightening_report_path}")
     print(f"  Applied alpha bounds: {applied_stats['alpha_bounds']}")
     print(f"  Applied fixed binaries: {applied_stats['fixed_binaries']}")
@@ -411,12 +473,89 @@ def run_final_dro_for_eta(
     return output_path
 
 
+def build_dro_ratio_bounds(
+    config: DROFullPipelineConfig,
+    regime_name: str,
+) -> dict[str, Any] | None:
+    mode = str(config.dro_objective_mode).strip().lower()
+    if mode not in DRO_PoAOptimization.allowed_objective_modes:
+        allowed = ", ".join(sorted(DRO_PoAOptimization.allowed_objective_modes))
+        raise ValueError(
+            f"dro_objective_mode must be one of {{{allowed}}}; got "
+            f"{config.dro_objective_mode!r}"
+        )
+    if mode == "difference":
+        return None
+
+    if config.dro_ratio_bounds is not None:
+        return dict(config.dro_ratio_bounds)
+
+    c_opt_bounds = config.dro_ratio_c_opt_bounds
+    if c_opt_bounds is None:
+        c_opt_bounds = load_dro_optimal_cost_bounds(config, regime_name)
+
+    if config.dro_ratio_phi_bounds is None or c_opt_bounds is None:
+        raise ValueError(
+            "DRO ratio objective modes require ratio bounds. Set either "
+            "dro_ratio_bounds={'phi': (...), 'C_opt': (...), ...} or both "
+            "dro_ratio_phi_bounds and dro_ratio_c_opt_bounds in "
+            "DROFullPipelineConfig. Alternatively, run the optimal_cost_bounds "
+            "tightening stage and provide dro_ratio_phi_bounds."
+        )
+
+    ratio_bounds: dict[str, Any] = {
+        "phi": tuple(config.dro_ratio_phi_bounds),
+        "C_opt": tuple(c_opt_bounds),
+    }
+    if mode == "ratio_piecewise_mccormick":
+        if config.dro_ratio_c_opt_breakpoints is not None:
+            ratio_bounds["C_opt_breakpoints"] = list(
+                config.dro_ratio_c_opt_breakpoints
+            )
+        else:
+            ratio_bounds["num_pieces"] = int(config.dro_ratio_num_pieces)
+    return ratio_bounds
+
+
+def load_dro_optimal_cost_bounds(
+    config: DROFullPipelineConfig,
+    regime_name: str,
+) -> tuple[float, float] | None:
+    output_stage_paths = resolved_stage_paths(config.tightening_output_paths, regime_name)
+    previous_stage_paths = resolved_stage_paths(config.tightening_previous_paths, regime_name)
+    candidate_paths = tuple(
+        dict.fromkeys(
+            [
+                output_stage_paths["final"],
+                output_stage_paths["optimal_cost_bounds"],
+                previous_stage_paths["final"],
+                previous_stage_paths["optimal_cost_bounds"],
+            ]
+        )
+    )
+    for path in candidate_paths:
+        report_path = Path(path)
+        if not report_path.exists():
+            continue
+        with report_path.open("r", encoding="utf-8") as file_handle:
+            report = json.load(file_handle)
+        bounds = report.get("optimal_cost_bounds", {}) or {}
+        if "C_opt" in bounds and isinstance(bounds.get("C_opt"), dict):
+            bounds = bounds.get("C_opt", {}) or {}
+        lower = bounds.get("lower")
+        upper = bounds.get("upper")
+        if lower is not None and upper is not None:
+            return (float(lower), float(upper))
+    return None
+
+
 def build_dro_optimizer(
     config: DROFullPipelineConfig,
     scenarios: dict[str, Any],
     regime_name: str,
     eta: float,
 ) -> DRO_PoAOptimization:
+    ratio_bounds = build_dro_ratio_bounds(config, regime_name)
     return DRO_PoAOptimization(
         scenarios_df=scenarios["scenarios_df"],
         costs_df=scenarios["costs_df"],
@@ -436,6 +575,8 @@ def build_dro_optimizer(
         ),
         nn_policy_generators=list(config.nn_policy_generators),
         reference_case=config.case,
+        objective_mode=config.dro_objective_mode,
+        ratio_bounds=ratio_bounds,
     )
 
 
@@ -459,10 +600,15 @@ def dro_result_path(
     regime_name: str,
     eta: float,
 ) -> Path:
+    objective_suffix = (
+        ""
+        if str(config.dro_objective_mode).strip().lower() == "difference"
+        else f"_{str(config.dro_objective_mode).strip().lower()}"
+    )
     return (
         config.dro_result_dir
         / regime_name
-        / f"dro_poa_eta_{eta_label(eta)}_T{config.horizon}.json"
+        / f"dro_poa_eta_{eta_label(eta)}_T{config.horizon}{objective_suffix}.json"
     )
 
 
@@ -480,10 +626,35 @@ def load_result_summary(result_path: Path) -> dict[str, Any]:
         "epsilon": result.get("epsilon"),
         "inner_objective": result.get("inner_objective"),
         "dro_objective_with_epsilon": result.get("dro_objective_with_epsilon"),
+        "objective_mode": result.get("objective_mode"),
         "average_poa_difference": result.get("average_poa_difference"),
+        "average_poa_ratio": result.get("average_poa_ratio", average_poa_ratio(result)),
+        "average_relaxed_phi": result.get("average_relaxed_phi"),
         "average_wasserstein_distance": result.get("average_wasserstein_distance"),
         "solver": result.get("solver", {}),
     }
+
+
+def optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def average_poa_ratio(result: dict[str, Any]) -> float | None:
+    ratios = []
+    for scenario in result.get("scenarios", []) or []:
+        c_eq = optional_float(scenario.get("C_eq"))
+        c_opt = optional_float(scenario.get("C_opt"))
+        if c_eq is None or c_opt in (None, 0.0):
+            continue
+        ratios.append(c_eq / c_opt)
+    if not ratios:
+        return None
+    return float(np.mean(ratios))
 
 
 if __name__ == "__main__":
@@ -494,7 +665,7 @@ if __name__ == "__main__":
         dro_time_steps=None,
         synthetic_seed=1,
         poa_seed=1,
-        horizon=4,
+        horizon=6,
 
         synthetic_scenarios_per_regime={
         "normal": 100,
@@ -504,28 +675,45 @@ if __name__ == "__main__":
         },
         
         poa_context_scenarios_per_regime={
-        "normal": 20,
-        "high_demand": 20,
-        "normal_peak_shift_wind": 20,
-        "high_demand_peak_shift_wind": 20,
+        "normal": 6,
+        "high_demand": 10,
+        "normal_peak_shift_wind": 10,
+        "high_demand_peak_shift_wind": 10,
         },
 
         # Set to None to solve all generated regimes, or list regime names here.
-        dro_regime_names=None,
-        # dro_regime_names=['high_demand'],
+        dro_regime_names=["normal"],
+        # dro_regime_names=['normal'],
         # Eta grid for the final DRO sweep. Tightening is still run once per regime.
-        etas=np.linspace(0, 1, 20).tolist(),
-        dro_wasserstein_epsilon=0.5,
+        etas=np.linspace(0, 0.5, 20).tolist(),
+        dro_wasserstein_epsilon=0.1,
+
+        # Objective modes:
+        #   "difference"
+        #   "ratio_mccormick"
+        #   "ratio_piecewise_mccormick"
+        # For ratio modes, set dro_ratio_phi_bounds. If dro_ratio_c_opt_bounds
+        # is omitted, the pipeline reads C_opt bounds from the DRO
+        # optimal_cost_bounds tightening stage.
+        dro_objective_mode="ratio_piecewise_mccormick",
+        dro_ratio_phi_bounds=(1.0, 5.0),
+        dro_ratio_num_pieces=50,
+
         # Neural policy controls.
         nn_policy_generators=[1, 2],
         hidden_layers=[7, 7],
         num_epochs=500,
+
         # Solver controls.
         solver_name="gurobi",
+
         preprocessing_time_limit=200,
         dro_time_limit=None,
-        poa_parallel_workers=4,
+        poa_parallel_workers=6,
         poa_solver_threads_per_worker=None,
+
+        archive_existing_dro_results = True,
+
         # Expensive upstream stages can be turned on when regenerating artifacts.
         run_scenario_generation=True,
         run_heuristic_labels=False,
@@ -539,6 +727,7 @@ if __name__ == "__main__":
             "alpha_bounds": True,
             "slack_binary_fix": True,
             "dual_big_m": True,
+            "optimal_cost_bounds": True,
         },
     )
     main(run_config)

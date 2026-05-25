@@ -59,7 +59,7 @@ regime_sets:
       rho_W: 0.8
       sigma_W: 0.05
     - name: high_demand
-      n_scenarios: 2
+      n_scenarios: 5
       mu_D: 0.87
       rho_D: 0.85
       sigma_D: 0.012

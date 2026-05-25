@@ -33,6 +33,9 @@ from models.PoA.PoA_tightening.tightening_main import (
 )
 from models.PoA.PoA_tightening.compute_alpha_bounds import AlphaBoundsComputer
 from models.PoA.PoA_tightening.compute_dual_big_m import DualBigMComputer
+from models.PoA.PoA_tightening.compute_optimal_cost_bounds import (
+    OptimalCostBoundsComputer,
+)
 from models.PoA.PoA_tightening.compute_relu_bounds import ReLUBoundsComputer
 from models.PoA.PoA_tightening.compute_slack_binary_fix import SlackBinaryFixComputer
 from models.synthetic_data_generation.merit_order_best_response import MeritOrderHeuristic
@@ -46,6 +49,7 @@ TIGHTENING_FLAGS = {
     "alpha_bounds": True,
     "slack_binary_fix": True,
     "dual_big_m": True,
+    "optimal_cost_bounds": True,
 }
 
 TIGHTENING_PREVIOUS_PATHS = {
@@ -54,6 +58,7 @@ TIGHTENING_PREVIOUS_PATHS = {
     "alpha_bounds": "results/poa_tightening/alpha_bounds_report.json",
     "slack_binary_fix": "results/poa_tightening/slack_binary_fix_report.json",
     "dual_big_m": "results/poa_tightening/dual_big_m_report.json",
+    "optimal_cost_bounds": "results/poa_tightening/optimal_cost_bounds_report.json",
 }
 
 TIGHTENING_OUTPUT_PATHS = {
@@ -62,6 +67,7 @@ TIGHTENING_OUTPUT_PATHS = {
     "alpha_bounds": "results/poa_tightening/alpha_bounds_report.json",
     "slack_binary_fix": "results/poa_tightening/slack_binary_fix_report.json",
     "dual_big_m": "results/poa_tightening/dual_big_m_report.json",
+    "optimal_cost_bounds": "results/poa_tightening/optimal_cost_bounds_report.json",
     "final": "results/poa_tightening/final_tightening_report.json",
 }
 
@@ -71,6 +77,7 @@ TIGHTENING_STAGE_ORDER = (
     "alpha_bounds",
     "slack_binary_fix",
     "dual_big_m",
+    "optimal_cost_bounds",
 )
 
 TIGHTENING_STAGE_LABELS = {
@@ -79,6 +86,7 @@ TIGHTENING_STAGE_LABELS = {
     "alpha_bounds": "Alpha bounds",
     "slack_binary_fix": "Slack binary fix",
     "dual_big_m": "Dual Big-M",
+    "optimal_cost_bounds": "C_opt bounds",
 }
 
 
@@ -150,6 +158,19 @@ class FullPipelineConfig:
     ambiguity_set_config_path: str = "models/PoA/ambiguity_set_config.yaml"
     ambiguity_set_config_name: str = "test_case_bidding_blocks_base"
     nn_policy_generators: list[int] = field(default_factory=lambda: [1, 2])
+
+    # Objective modes: "difference", "ratio_mccormick", or
+    # "ratio_piecewise_mccormick". Difference is the historical default.
+    poa_objective_mode: str = "difference"
+    # You may pass a complete PoAOptimization ratio_bounds dictionary directly.
+    # If omitted for ratio modes, set poa_ratio_phi_bounds and
+    # poa_ratio_c_opt_bounds below.
+    poa_ratio_bounds: dict[str, Any] | None = None
+    poa_ratio_phi_bounds: tuple[float, float] | None = None
+    poa_ratio_c_opt_bounds: tuple[float, float] | None = None
+    poa_ratio_num_pieces: int = 4
+    poa_ratio_c_opt_breakpoints: list[float] | None = None
+
     solver_name: str = "gurobi"
     preprocessing_time_limit: int = 200
     poa_time_limit: int | None = 400
@@ -180,6 +201,7 @@ class FullPipelineConfig:
     run_poa_alpha_bounds: bool = True
     run_poa_slack_binary_fix: bool = True
     run_poa_dual_big_m: bool = True
+    run_poa_optimal_cost_bounds: bool = True
     run_poa_optimization: bool = True
 
     # Outputs.
@@ -222,9 +244,18 @@ class FullPipelineConfig:
         return Path(self.tightening_output_paths["dual_big_m"])
 
     @property
+    def optimal_cost_bounds_path(self) -> Path:
+        return Path(self.tightening_output_paths["optimal_cost_bounds"])
+
+    @property
     def poa_results_path(self) -> Path:
+        objective_suffix = (
+            ""
+            if self.poa_objective_mode == "difference"
+            else f"_{self.poa_objective_mode}"
+        )
         return self.poa_result_dir / (
-            f"poa_optimization_T{self.horizon}.json"
+            f"poa_optimization_T{self.horizon}{objective_suffix}.json"
         )
 
 
@@ -283,6 +314,7 @@ def print_pipeline_header(config: FullPipelineConfig) -> None:
         f"  case={config.case}\n"
         f"  synthetic_time_steps={config.synthetic_time_steps or 'case default'}\n"
         f"  poa_time_steps={config.poa_time_steps or 'case default'}, poa_horizon={config.horizon}\n"
+        f"  poa_objective_mode={config.poa_objective_mode}\n"
         f"  synthetic_regime_set={config.synthetic_regime_set}, seed={config.synthetic_seed}\n"
         f"  poa_regime_set={config.poa_regime_set}, seed={config.poa_seed}\n"
         f"  hidden_layers={config.hidden_layers}, epochs={config.num_epochs}, "
@@ -500,12 +532,68 @@ def load_ambiguity_set_config(config: FullPipelineConfig) -> dict[str, Any]:
     )
 
 
+def build_poa_ratio_bounds(config: FullPipelineConfig) -> dict[str, Any] | None:
+    mode = str(config.poa_objective_mode).strip().lower()
+    if mode not in PoAOptimization.allowed_objective_modes:
+        allowed = ", ".join(sorted(PoAOptimization.allowed_objective_modes))
+        raise ValueError(
+            f"poa_objective_mode must be one of {{{allowed}}}; got "
+            f"{config.poa_objective_mode!r}"
+        )
+    if mode == "difference":
+        return None
+
+    if config.poa_ratio_bounds is not None:
+        return dict(config.poa_ratio_bounds)
+
+    c_opt_bounds = config.poa_ratio_c_opt_bounds
+    if c_opt_bounds is None:
+        c_opt_bounds = load_poa_optimal_cost_bounds(config)
+
+    if config.poa_ratio_phi_bounds is None or c_opt_bounds is None:
+        raise ValueError(
+            "Ratio objective modes require ratio bounds. Set either "
+            "poa_ratio_bounds={'phi': (...), 'C_opt': (...), ...} or both "
+            "poa_ratio_phi_bounds and poa_ratio_c_opt_bounds in FullPipelineConfig. "
+            "Alternatively, run the optimal_cost_bounds tightening stage and provide "
+            "poa_ratio_phi_bounds."
+        )
+
+    ratio_bounds: dict[str, Any] = {
+        "phi": tuple(config.poa_ratio_phi_bounds),
+        "C_opt": tuple(c_opt_bounds),
+    }
+    if mode == "ratio_piecewise_mccormick":
+        if config.poa_ratio_c_opt_breakpoints is not None:
+            ratio_bounds["C_opt_breakpoints"] = list(
+                config.poa_ratio_c_opt_breakpoints
+            )
+        else:
+            ratio_bounds["num_pieces"] = int(config.poa_ratio_num_pieces)
+    return ratio_bounds
+
+
+def load_poa_optimal_cost_bounds(config: FullPipelineConfig) -> tuple[float, float] | None:
+    for path in (config.tightening_report_path, config.optimal_cost_bounds_path):
+        if not Path(path).exists():
+            continue
+        with Path(path).open("r", encoding="utf-8") as file_handle:
+            report = json.load(file_handle)
+        bounds = report.get("optimal_cost_bounds", {}) or {}
+        lower = bounds.get("lower")
+        upper = bounds.get("upper")
+        if lower is not None and upper is not None:
+            return (float(lower), float(upper))
+    return None
+
+
 def build_poa_optimizer(
     config: FullPipelineConfig,
     optimizer_cls: type[PoAOptimization] = PoAOptimization,
 ) -> PoAOptimization:
     scenarios = load_poa_scenario_data(config)
     ambiguity_set_config = load_ambiguity_set_config(config)
+    ratio_bounds = build_poa_ratio_bounds(config)
     return optimizer_cls(
         scenarios_df=scenarios["scenarios_df"],
         costs_df=scenarios["costs_df"],
@@ -517,6 +605,8 @@ def build_poa_optimizer(
         nn_normalization_stats_path=str(config.nn_normalization_stats_path),
         nn_policy_generators=list(config.nn_policy_generators),
         reference_case=config.case,
+        objective_mode=config.poa_objective_mode,
+        ratio_bounds=ratio_bounds,
     )
 
 
@@ -561,6 +651,7 @@ def run_tightening_pipeline(config: FullPipelineConfig) -> Path:
         run_alpha_bounds=bool(flags["alpha_bounds"]),
         run_slack_binary_fix=bool(flags["slack_binary_fix"]),
         run_dual_big_m=bool(flags["dual_big_m"]),
+        run_optimal_cost_bounds=bool(flags["optimal_cost_bounds"]),
         previous_paths=previous_paths,
         output_paths=output_paths,
         solver_name=config.solver_name,
@@ -787,6 +878,34 @@ def run_dual_big_m(config: FullPipelineConfig) -> Path:
     return output_path
 
 
+def run_optimal_cost_bounds(config: FullPipelineConfig) -> Path:
+    stage = build_poa_tightening(config, OptimalCostBoundsComputer)
+    if config.primal_big_m_path.exists():
+        stage._load_previous_stage("primal_big_m", config.primal_big_m_path)
+    else:
+        stage._as_stage(PrimalBigMComputer).run_primal_big_m(
+            output_path=config.primal_big_m_path
+        )
+
+    start = time.perf_counter()
+    report = stage.run_optimal_cost_bounds(
+        output_path=config.optimal_cost_bounds_path,
+        solver_name=config.solver_name,
+        time_limit=config.preprocessing_time_limit,
+        tee=False,
+        solver_threads=config.poa_solver_threads_per_worker,
+    )
+    output_path = config.optimal_cost_bounds_path
+    elapsed = time.perf_counter() - start
+    bounds = report.get("optimal_cost_bounds", {}) or {}
+
+    print(f"\nC_opt bound tightening complete: {output_path}")
+    print(f"C_opt lower: {bounds.get('lower')}")
+    print(f"C_opt upper: {bounds.get('upper')}")
+    print(f"C_opt bound runtime: {elapsed:.2f} seconds")
+    return output_path
+
+
 def run_final_poa(config: FullPipelineConfig) -> Path:
     optimizer = build_poa_optimizer(config, PoAOptimization)
     start = time.perf_counter()
@@ -806,6 +925,13 @@ def run_final_poa(config: FullPipelineConfig) -> Path:
     elapsed = time.perf_counter() - start
 
     print(f"\nPoA optimization complete: {output_path}")
+    print(f"PoA objective mode: {optimizer.objective_mode}")
+    if optimizer.objective_mode != "difference":
+        objective_metrics = optimizer.extract_objective_metrics()
+        print(f"  phi: {objective_metrics.get('phi')}")
+        print(f"  ex-post ratio: {objective_metrics.get('ex_post_ratio')}")
+        print(f"  ratio gap: {objective_metrics.get('ratio_gap')}")
+        print(f"  McCormick product gap: {objective_metrics.get('mccormick_product_gap')}")
     print(f"Applied active NN ReLU fixes: {applied_nn_relu_stats['delta_fixed_active']}")
     print(f"Applied inactive NN ReLU fixes: {applied_nn_relu_stats['delta_fixed_inactive']}")
     print(f"Ambiguous NN ReLUs left binary: {applied_nn_relu_stats['delta_left_ambiguous']}")
@@ -901,10 +1027,23 @@ if __name__ == "__main__":
         device=None,
 
         # PoA parameters.
-        horizon=24,
+        horizon=8,
         ambiguity_set_config_path="models/PoA/ambiguity_set_config.yaml",
         ambiguity_set_config_name="test_case_bidding_blocks_base",
         nn_policy_generators=[1, 2],
+
+        # Toggle PoA objective here:
+        #   "difference"
+        #   "ratio_mccormick"
+        #   "ratio_piecewise_mccormick"
+        # poa_objective_mode="difference",
+        poa_objective_mode="ratio_piecewise_mccormick",
+        
+        # Required for ratio modes. Example:
+        poa_ratio_phi_bounds=(1.0, 4.0),
+        # poa_ratio_c_opt_bounds=(3283.9068, 16958.9619),
+        poa_ratio_num_pieces=25,
+
         solver_name="gurobi",
         preprocessing_time_limit=200,
         poa_time_limit=None,
@@ -919,19 +1058,21 @@ if __name__ == "__main__":
         run_nn_training=False,
         run_tightening=True,
         tightening_flags={
-            "primal_big_m": True,
-            "relu_bounds": True,
-            "alpha_bounds": True,
-            "slack_binary_fix": True,
-            "dual_big_m": True,
+            "primal_big_m": False,
+            "relu_bounds": False,
+            "alpha_bounds": False,
+            "slack_binary_fix": False,
+            "dual_big_m": False,
+            "optimal_cost_bounds": True,
         },
         tightening_previous_paths=dict(TIGHTENING_PREVIOUS_PATHS),
         tightening_output_paths=dict(TIGHTENING_OUTPUT_PATHS),
         
-        run_poa_nn_relu_bounds=True,
-        run_poa_alpha_bounds=True,
-        run_poa_slack_binary_fix=True,
-        run_poa_dual_big_m=True,
+        run_poa_nn_relu_bounds=False,
+        run_poa_alpha_bounds=False,
+        run_poa_slack_binary_fix=False,
+        run_poa_dual_big_m=False,
+        run_poa_optimal_cost_bounds=True,
         run_poa_optimization=True,
 
         # Outputs
@@ -943,6 +1084,6 @@ if __name__ == "__main__":
         normalized_feature_dir=Path("models/neural_network/features/generated/normalized"),
         model_dir=Path("models/neural_network/training/trained_models"),
         training_result_dir=Path("models/neural_network/training/training_results"),
-        poa_result_dir=Path("results"),
+        poa_result_dir=Path("results/temporary_poa_results"),
     )
     main(run_config)

@@ -2,7 +2,7 @@
   "metadata": {
     "description": "Exact alpha bounds from ambiguity-set optimization with embedded ReLU policy constraints.",
     "reference_case": "test_case_bidding_blocks",
-    "num_time_steps": 24,
+    "num_time_steps": 8,
     "ambiguity_set": {
       "regime_bounds": {
         "mu_D": [
@@ -37,23 +37,7 @@
         0.9700279530191137,
         1.013169466723415,
         1.0520331078458793,
-        1.0697054682217695,
-        1.057572166611955,
-        1.0258660946887939,
-        1.000837577372248,
-        1.0060284645802706,
-        1.042943515161071,
-        1.090566733113257,
-        1.1227976549251169,
-        1.125,
-        1.0980377842315576,
-        1.0531149882246311,
-        1.004277742573699,
-        0.9624149092596244,
-        0.9325113939131798,
-        0.9142903809693013,
-        0.9047044258345305,
-        0.9003188915697108
+        1.0697054682217695
       ],
       "wind_shape": [
         0.9041892106661034,
@@ -63,50 +47,34 @@
         0.9041892106661034,
         0.9133480346078648,
         0.9276883931493098,
-        0.9484960566459846,
-        0.9763632223525793,
-        1.01060500192889,
-        1.0488361620522766,
-        1.08696747310103,
-        1.1197890964093773,
-        1.1420896401245964,
-        1.15,
-        1.1420896401245964,
-        1.1197890964093773,
-        1.08696747310103,
-        1.0488361620522766,
-        1.01060500192889,
-        0.9763632223525793,
-        0.9484960566459846,
-        0.9276883931493098,
-        0.9133480346078648
+        0.9484960566459846
       ]
     },
     "nn_policy_generators": [
       "G1",
       "W3"
     ],
-    "num_optimization_programs": 336,
+    "num_optimization_programs": 112,
     "primal_big_m_summary": {
       "block_capacity": {
         "entries": 7,
         "min_big_m": 25.0,
-        "max_big_m": 49.5
+        "max_big_m": 41.43984226583939
       },
       "physical_capacity": {
         "entries": 5,
-        "min_big_m": 49.5,
+        "min_big_m": 41.43984226583939,
         "max_big_m": 50.0
       },
       "ramp_up": {
         "entries": 5,
         "min_big_m": 70.0,
-        "max_big_m": 99.5
+        "max_big_m": 91.43984226583939
       },
       "ramp_down": {
         "entries": 5,
         "min_big_m": 70.0,
-        "max_big_m": 99.5
+        "max_big_m": 91.43984226583939
       },
       "ramp_up_initial": {
         "entries": 5,
@@ -116,10 +84,10 @@
       "ramp_down_initial": {
         "entries": 5,
         "min_big_m": 45.0,
-        "max_big_m": 74.5
+        "max_big_m": 66.43984226583939
       }
     },
-    "runtime_seconds": 89.6088490000111
+    "runtime_seconds": 26.72244789999968
   },
   "alpha_bounds": {
     "0,0,0": {
@@ -151,70 +119,6 @@
       "upper": 30.0
     },
     "0,0,7": {
-      "lower": 30.0,
-      "upper": 30.0
-    },
-    "0,0,8": {
-      "lower": 30.0,
-      "upper": 30.0
-    },
-    "0,0,9": {
-      "lower": 30.0,
-      "upper": 30.0
-    },
-    "0,0,10": {
-      "lower": 30.0,
-      "upper": 30.0
-    },
-    "0,0,11": {
-      "lower": 30.0,
-      "upper": 30.0
-    },
-    "0,0,12": {
-      "lower": 30.0,
-      "upper": 30.0
-    },
-    "0,0,13": {
-      "lower": 30.0,
-      "upper": 30.0
-    },
-    "0,0,14": {
-      "lower": 30.0,
-      "upper": 30.0
-    },
-    "0,0,15": {
-      "lower": 30.0,
-      "upper": 30.0
-    },
-    "0,0,16": {
-      "lower": 30.0,
-      "upper": 30.0
-    },
-    "0,0,17": {
-      "lower": 30.0,
-      "upper": 30.0
-    },
-    "0,0,18": {
-      "lower": 30.0,
-      "upper": 30.0
-    },
-    "0,0,19": {
-      "lower": 30.0,
-      "upper": 30.0
-    },
-    "0,0,20": {
-      "lower": 30.0,
-      "upper": 30.0
-    },
-    "0,0,21": {
-      "lower": 30.0,
-      "upper": 30.0
-    },
-    "0,0,22": {
-      "lower": 30.0,
-      "upper": 30.0
-    },
-    "0,0,23": {
       "lower": 30.0,
       "upper": 30.0
     },
@@ -250,357 +154,101 @@
       "lower": 40.0,
       "upper": 40.0
     },
-    "0,1,8": {
-      "lower": 40.0,
-      "upper": 40.0
-    },
-    "0,1,9": {
-      "lower": 40.0,
-      "upper": 40.0
-    },
-    "0,1,10": {
-      "lower": 40.0,
-      "upper": 40.0
-    },
-    "0,1,11": {
-      "lower": 40.0,
-      "upper": 40.0
-    },
-    "0,1,12": {
-      "lower": 40.0,
-      "upper": 40.0
-    },
-    "0,1,13": {
-      "lower": 40.0,
-      "upper": 40.0
-    },
-    "0,1,14": {
-      "lower": 40.0,
-      "upper": 40.0
-    },
-    "0,1,15": {
-      "lower": 40.0,
-      "upper": 40.0
-    },
-    "0,1,16": {
-      "lower": 40.0,
-      "upper": 40.0
-    },
-    "0,1,17": {
-      "lower": 40.0,
-      "upper": 40.0
-    },
-    "0,1,18": {
-      "lower": 40.0,
-      "upper": 40.0
-    },
-    "0,1,19": {
-      "lower": 40.0,
-      "upper": 40.0
-    },
-    "0,1,20": {
-      "lower": 40.0,
-      "upper": 40.0
-    },
-    "0,1,21": {
-      "lower": 40.0,
-      "upper": 40.0
-    },
-    "0,1,22": {
-      "lower": 40.0,
-      "upper": 40.0
-    },
-    "0,1,23": {
-      "lower": 40.0,
-      "upper": 40.0
-    },
     "1,0,0": {
-      "lower": -1.0609591788184503,
-      "upper": 30.03774268499324
+      "lower": 0.08665756959973869,
+      "upper": 30.037396046930496
     },
     "1,0,1": {
-      "lower": -0.11269000017977238,
-      "upper": 30.038329629332527
+      "lower": 2.699964190799637,
+      "upper": 30.037217213230974
     },
     "1,0,2": {
-      "lower": 1.1583285283305091,
-      "upper": 30.039298386938817
+      "lower": 3.993783716375262,
+      "upper": 30.03792772530058
     },
     "1,0,3": {
-      "lower": 2.7781499592825245,
-      "upper": 30.04030730908923
+      "lower": 5.18552815794892,
+      "upper": 30.039036390940772
     },
     "1,0,4": {
-      "lower": 5.2895697924539355,
-      "upper": 30.04066259336546
+      "lower": 7.226722690910146,
+      "upper": 30.039475893601274
     },
     "1,0,5": {
-      "lower": 8.154107208300072,
-      "upper": 30.315928135693696
+      "lower": 9.188292577814995,
+      "upper": 30.186720022652974
     },
     "1,0,6": {
-      "lower": 10.052860841836956,
-      "upper": 30.793621380570983
+      "lower": 10.76514449730473,
+      "upper": 30.691096460539626
     },
     "1,0,7": {
-      "lower": 9.396067237634975,
-      "upper": 31.009052340954398
-    },
-    "1,0,8": {
-      "lower": 5.437491734459057,
-      "upper": 30.856472659673905
-    },
-    "1,0,9": {
-      "lower": -0.7875054510779416,
-      "upper": 30.44126908496673
-    },
-    "1,0,10": {
-      "lower": -6.73076832078189,
-      "upper": 30.098008001768747
-    },
-    "1,0,11": {
-      "lower": -9.986601734977523,
-      "upper": 30.15057930168154
-    },
-    "1,0,12": {
-      "lower": -9.984298913461867,
-      "upper": 30.59002773538788
-    },
-    "1,0,13": {
-      "lower": -8.074612327099832,
-      "upper": 31.154599152515843
-    },
-    "1,0,14": {
-      "lower": -6.1293414193856295,
-      "upper": 31.542198431915985
-    },
-    "1,0,15": {
-      "lower": -5.238834852382812,
-      "upper": 31.599209253026523
-    },
-    "1,0,16": {
-      "lower": -5.433018398475179,
-      "upper": 31.291115058911377
-    },
-    "1,0,17": {
-      "lower": -6.1028552081815155,
-      "upper": 30.752029617023723
-    },
-    "1,0,18": {
-      "lower": -6.545662614465474,
-      "upper": 30.156777298838243
-    },
-    "1,0,19": {
-      "lower": -6.346986140783203,
-      "upper": 30.039365965640286
-    },
-    "1,0,20": {
-      "lower": -5.497598587284122,
-      "upper": 30.03868057071398
-    },
-    "1,0,21": {
-      "lower": -4.271468113415718,
-      "upper": 30.03807709088062
-    },
-    "1,0,22": {
-      "lower": -3.006998408799566,
-      "upper": 30.037689116671405
-    },
-    "1,0,23": {
-      "lower": -1.9396365746900273,
-      "upper": 30.072916995771052
+      "lower": 9.307630722404644,
+      "upper": 31.261635927940215
     },
     "1,1,0": {
-      "lower": 14.496852180611047,
-      "upper": 30.07573947463134
+      "lower": 15.071816095790668,
+      "upper": 30.075465980683735
     },
     "1,1,1": {
-      "lower": 14.970488542623327,
-      "upper": 30.076916555717997
+      "lower": 16.376221739204468,
+      "upper": 30.07660653082214
     },
     "1,1,2": {
-      "lower": 15.60347018704126,
-      "upper": 30.080623918691508
+      "lower": 17.02177614070944,
+      "upper": 30.080201883350856
     },
     "1,1,3": {
-      "lower": 16.40808733731596,
-      "upper": 30.087317600021667
+      "lower": 17.61424028196005,
+      "upper": 30.082307292311373
     },
     "1,1,4": {
-      "lower": 17.65435574487422,
-      "upper": 30.096310551462086
+      "lower": 18.627751953049504,
+      "upper": 30.088611237824942
     },
     "1,1,5": {
-      "lower": 19.073395218626477,
-      "upper": 30.349470492513483
+      "lower": 19.598997450146165,
+      "upper": 30.229992488656357
     },
     "1,1,6": {
-      "lower": 20.008849120189126,
-      "upper": 30.811245736880956
+      "lower": 20.37358591540289,
+      "upper": 30.71343994417792
     },
     "1,1,7": {
-      "lower": 19.67086488923316,
-      "upper": 31.01979771845362
-    },
-    "1,1,8": {
-      "lower": 17.690032324291636,
-      "upper": 30.87268340384022
-    },
-    "1,1,9": {
-      "lower": 14.58271983699351,
-      "upper": 30.475061385060414
-    },
-    "1,1,10": {
-      "lower": 11.616298060889642,
-      "upper": 30.147686760854096
-    },
-    "1,1,11": {
-      "lower": 9.986356154944312,
-      "upper": 30.197138569988148
-    },
-    "1,1,12": {
-      "lower": 9.976755907346812,
-      "upper": 30.620037367858465
-    },
-    "1,1,13": {
-      "lower": 10.91764690647874,
-      "upper": 31.164796932010454
-    },
-    "1,1,14": {
-      "lower": 11.880898223472677,
-      "upper": 31.540194487995358
-    },
-    "1,1,15": {
-      "lower": 12.326078652249354,
-      "upper": 31.59321346838939
-    },
-    "1,1,16": {
-      "lower": 12.238265778179478,
-      "upper": 31.294911930292145
-    },
-    "1,1,17": {
-      "lower": 11.918686417028347,
-      "upper": 30.77495873754272
-    },
-    "1,1,18": {
-      "lower": 11.714251336427942,
-      "upper": 30.201485842198668
-    },
-    "1,1,19": {
-      "lower": 11.82856265267507,
-      "upper": 30.099799782927683
-    },
-    "1,1,20": {
-      "lower": 12.264371872563608,
-      "upper": 30.08989963910282
-    },
-    "1,1,21": {
-      "lower": 12.884566766134252,
-      "upper": 30.083301134409403
-    },
-    "1,1,22": {
-      "lower": 13.5208227041613,
-      "upper": 30.07895271283031
-    },
-    "1,1,23": {
-      "lower": 14.056604036790453,
-      "upper": 30.116621566116656
+      "lower": 19.638699323305797,
+      "upper": 31.253765843186603
     },
     "2,0,0": {
-      "lower": 5.434705839804348,
-      "upper": 10.008885088228684
+      "lower": 5.435614788534327,
+      "upper": 10.008831908841797
     },
     "2,0,1": {
-      "lower": 5.430897309210623,
-      "upper": 10.008887891686015
+      "lower": 5.432977108096862,
+      "upper": 10.008127935232883
     },
     "2,0,2": {
-      "lower": 5.423845099451464,
-      "upper": 10.008918950249573
+      "lower": 5.426506766304849,
+      "upper": 10.008125906084588
     },
     "2,0,3": {
-      "lower": 5.413710226985751,
-      "upper": 10.008979965155003
+      "lower": 5.426243064444144,
+      "upper": 10.007947018921165
     },
     "2,0,4": {
-      "lower": 5.403317998763962,
-      "upper": 10.008788498280454
+      "lower": 5.424336972345502,
+      "upper": 10.007919134214925
     },
     "2,0,5": {
-      "lower": 5.397746298963123,
-      "upper": 10.008170242579478
+      "lower": 5.4109390153026355,
+      "upper": 10.007753889895444
     },
     "2,0,6": {
-      "lower": 5.401178653839942,
-      "upper": 10.007315437045873
+      "lower": 5.403360598736828,
+      "upper": 10.007118606374886
     },
     "2,0,7": {
-      "lower": 5.400762347321591,
-      "upper": 10.00721648265704
-    },
-    "2,0,8": {
-      "lower": 5.393413640308694,
-      "upper": 10.007667646863922
-    },
-    "2,0,9": {
-      "lower": 5.402313879129578,
-      "upper": 10.00813155280952
-    },
-    "2,0,10": {
-      "lower": 5.416417608147144,
-      "upper": 10.008384592888053
-    },
-    "2,0,11": {
-      "lower": 5.4000227760298545,
-      "upper": 10.008411510815922
-    },
-    "2,0,12": {
-      "lower": 5.388780948611838,
-      "upper": 10.007811260778354
-    },
-    "2,0,13": {
-      "lower": 5.390581759682211,
-      "upper": 10.006876052563271
-    },
-    "2,0,14": {
-      "lower": 5.397342109254036,
-      "upper": 10.006246210436968
-    },
-    "2,0,15": {
-      "lower": 5.390100709316491,
-      "upper": 10.006510844989762
-    },
-    "2,0,16": {
-      "lower": 5.387147727303637,
-      "upper": 10.00713530805274
-    },
-    "2,0,17": {
-      "lower": 5.389637515190666,
-      "upper": 10.0078945508298
-    },
-    "2,0,18": {
-      "lower": 5.398506912173799,
-      "upper": 10.00859597117592
-    },
-    "2,0,19": {
-      "lower": 5.410953261944579,
-      "upper": 10.009122368414678
-    },
-    "2,0,20": {
-      "lower": 5.42198895603018,
-      "upper": 10.009117562908873
-    },
-    "2,0,21": {
-      "lower": 5.429462603885223,
-      "upper": 10.009032662565353
-    },
-    "2,0,22": {
-      "lower": 5.433724468550815,
-      "upper": 10.008960920217037
-    },
-    "2,0,23": {
-      "lower": 5.387805178714995,
-      "upper": 10.010727925907336
+      "lower": 5.339340278876198,
+      "upper": 10.007986923850025
     },
     "3,0,0": {
       "lower": 5.0,
@@ -634,70 +282,6 @@
       "lower": 5.0,
       "upper": 5.0
     },
-    "3,0,8": {
-      "lower": 5.0,
-      "upper": 5.0
-    },
-    "3,0,9": {
-      "lower": 5.0,
-      "upper": 5.0
-    },
-    "3,0,10": {
-      "lower": 5.0,
-      "upper": 5.0
-    },
-    "3,0,11": {
-      "lower": 5.0,
-      "upper": 5.0
-    },
-    "3,0,12": {
-      "lower": 5.0,
-      "upper": 5.0
-    },
-    "3,0,13": {
-      "lower": 5.0,
-      "upper": 5.0
-    },
-    "3,0,14": {
-      "lower": 5.0,
-      "upper": 5.0
-    },
-    "3,0,15": {
-      "lower": 5.0,
-      "upper": 5.0
-    },
-    "3,0,16": {
-      "lower": 5.0,
-      "upper": 5.0
-    },
-    "3,0,17": {
-      "lower": 5.0,
-      "upper": 5.0
-    },
-    "3,0,18": {
-      "lower": 5.0,
-      "upper": 5.0
-    },
-    "3,0,19": {
-      "lower": 5.0,
-      "upper": 5.0
-    },
-    "3,0,20": {
-      "lower": 5.0,
-      "upper": 5.0
-    },
-    "3,0,21": {
-      "lower": 5.0,
-      "upper": 5.0
-    },
-    "3,0,22": {
-      "lower": 5.0,
-      "upper": 5.0
-    },
-    "3,0,23": {
-      "lower": 5.0,
-      "upper": 5.0
-    },
     "4,0,0": {
       "lower": 4.5,
       "upper": 4.5
@@ -727,70 +311,6 @@
       "upper": 4.5
     },
     "4,0,7": {
-      "lower": 4.5,
-      "upper": 4.5
-    },
-    "4,0,8": {
-      "lower": 4.5,
-      "upper": 4.5
-    },
-    "4,0,9": {
-      "lower": 4.5,
-      "upper": 4.5
-    },
-    "4,0,10": {
-      "lower": 4.5,
-      "upper": 4.5
-    },
-    "4,0,11": {
-      "lower": 4.5,
-      "upper": 4.5
-    },
-    "4,0,12": {
-      "lower": 4.5,
-      "upper": 4.5
-    },
-    "4,0,13": {
-      "lower": 4.5,
-      "upper": 4.5
-    },
-    "4,0,14": {
-      "lower": 4.5,
-      "upper": 4.5
-    },
-    "4,0,15": {
-      "lower": 4.5,
-      "upper": 4.5
-    },
-    "4,0,16": {
-      "lower": 4.5,
-      "upper": 4.5
-    },
-    "4,0,17": {
-      "lower": 4.5,
-      "upper": 4.5
-    },
-    "4,0,18": {
-      "lower": 4.5,
-      "upper": 4.5
-    },
-    "4,0,19": {
-      "lower": 4.5,
-      "upper": 4.5
-    },
-    "4,0,20": {
-      "lower": 4.5,
-      "upper": 4.5
-    },
-    "4,0,21": {
-      "lower": 4.5,
-      "upper": 4.5
-    },
-    "4,0,22": {
-      "lower": 4.5,
-      "upper": 4.5
-    },
-    "4,0,23": {
       "lower": 4.5,
       "upper": 4.5
     }
@@ -860,134 +380,6 @@
       "value": 30.0,
       "termination_condition": "optimal"
     },
-    "0,0,8:lower": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,8:upper": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,9:lower": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,9:upper": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,10:lower": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,10:upper": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,11:lower": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,11:upper": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,12:lower": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,12:upper": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,13:lower": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,13:upper": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,14:lower": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,14:upper": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,15:lower": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,15:upper": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,16:lower": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,16:upper": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,17:lower": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,17:upper": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,18:lower": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,18:upper": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,19:lower": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,19:upper": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,20:lower": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,20:upper": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,21:lower": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,21:upper": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,22:lower": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,22:upper": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,23:lower": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,23:upper": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
     "0,1,0:lower": {
       "value": 40.0,
       "termination_condition": "optimal"
@@ -1052,708 +444,196 @@
       "value": 40.0,
       "termination_condition": "optimal"
     },
-    "0,1,8:lower": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,8:upper": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,9:lower": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,9:upper": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,10:lower": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,10:upper": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,11:lower": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,11:upper": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,12:lower": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,12:upper": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,13:lower": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,13:upper": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,14:lower": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,14:upper": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,15:lower": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,15:upper": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,16:lower": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,16:upper": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,17:lower": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,17:upper": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,18:lower": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,18:upper": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,19:lower": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,19:upper": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,20:lower": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,20:upper": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,21:lower": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,21:upper": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,22:lower": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,22:upper": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,23:lower": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,23:upper": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
     "1,0,0:lower": {
-      "value": -1.0609591788184503,
+      "value": 0.08665756959973869,
       "termination_condition": "optimal"
     },
     "1,0,0:upper": {
-      "value": 30.03774268499324,
+      "value": 30.037396046930496,
       "termination_condition": "optimal"
     },
     "1,0,1:lower": {
-      "value": -0.11269000017977238,
+      "value": 2.699964190799637,
       "termination_condition": "optimal"
     },
     "1,0,1:upper": {
-      "value": 30.038329629332527,
+      "value": 30.037217213230974,
       "termination_condition": "optimal"
     },
     "1,0,2:lower": {
-      "value": 1.1583285283305091,
+      "value": 3.993783716375262,
       "termination_condition": "optimal"
     },
     "1,0,2:upper": {
-      "value": 30.039298386938817,
+      "value": 30.03792772530058,
       "termination_condition": "optimal"
     },
     "1,0,3:lower": {
-      "value": 2.7781499592825245,
+      "value": 5.18552815794892,
       "termination_condition": "optimal"
     },
     "1,0,3:upper": {
-      "value": 30.04030730908923,
+      "value": 30.039036390940772,
       "termination_condition": "optimal"
     },
     "1,0,4:lower": {
-      "value": 5.2895697924539355,
+      "value": 7.226722690910146,
       "termination_condition": "optimal"
     },
     "1,0,4:upper": {
-      "value": 30.04066259336546,
+      "value": 30.039475893601274,
       "termination_condition": "optimal"
     },
     "1,0,5:lower": {
-      "value": 8.154107208300072,
+      "value": 9.188292577814995,
       "termination_condition": "optimal"
     },
     "1,0,5:upper": {
-      "value": 30.315928135693696,
+      "value": 30.186720022652974,
       "termination_condition": "optimal"
     },
     "1,0,6:lower": {
-      "value": 10.052860841836956,
+      "value": 10.76514449730473,
       "termination_condition": "optimal"
     },
     "1,0,6:upper": {
-      "value": 30.793621380570983,
+      "value": 30.691096460539626,
       "termination_condition": "optimal"
     },
     "1,0,7:lower": {
-      "value": 9.396067237634975,
+      "value": 9.307630722404644,
       "termination_condition": "optimal"
     },
     "1,0,7:upper": {
-      "value": 31.009052340954398,
-      "termination_condition": "optimal"
-    },
-    "1,0,8:lower": {
-      "value": 5.437491734459057,
-      "termination_condition": "optimal"
-    },
-    "1,0,8:upper": {
-      "value": 30.856472659673905,
-      "termination_condition": "optimal"
-    },
-    "1,0,9:lower": {
-      "value": -0.7875054510779416,
-      "termination_condition": "optimal"
-    },
-    "1,0,9:upper": {
-      "value": 30.44126908496673,
-      "termination_condition": "optimal"
-    },
-    "1,0,10:lower": {
-      "value": -6.73076832078189,
-      "termination_condition": "optimal"
-    },
-    "1,0,10:upper": {
-      "value": 30.098008001768747,
-      "termination_condition": "optimal"
-    },
-    "1,0,11:lower": {
-      "value": -9.986601734977523,
-      "termination_condition": "optimal"
-    },
-    "1,0,11:upper": {
-      "value": 30.15057930168154,
-      "termination_condition": "optimal"
-    },
-    "1,0,12:lower": {
-      "value": -9.984298913461867,
-      "termination_condition": "optimal"
-    },
-    "1,0,12:upper": {
-      "value": 30.59002773538788,
-      "termination_condition": "optimal"
-    },
-    "1,0,13:lower": {
-      "value": -8.074612327099832,
-      "termination_condition": "optimal"
-    },
-    "1,0,13:upper": {
-      "value": 31.154599152515843,
-      "termination_condition": "optimal"
-    },
-    "1,0,14:lower": {
-      "value": -6.1293414193856295,
-      "termination_condition": "optimal"
-    },
-    "1,0,14:upper": {
-      "value": 31.542198431915985,
-      "termination_condition": "optimal"
-    },
-    "1,0,15:lower": {
-      "value": -5.238834852382812,
-      "termination_condition": "optimal"
-    },
-    "1,0,15:upper": {
-      "value": 31.599209253026523,
-      "termination_condition": "optimal"
-    },
-    "1,0,16:lower": {
-      "value": -5.433018398475179,
-      "termination_condition": "optimal"
-    },
-    "1,0,16:upper": {
-      "value": 31.291115058911377,
-      "termination_condition": "optimal"
-    },
-    "1,0,17:lower": {
-      "value": -6.1028552081815155,
-      "termination_condition": "optimal"
-    },
-    "1,0,17:upper": {
-      "value": 30.752029617023723,
-      "termination_condition": "optimal"
-    },
-    "1,0,18:lower": {
-      "value": -6.545662614465474,
-      "termination_condition": "optimal"
-    },
-    "1,0,18:upper": {
-      "value": 30.156777298838243,
-      "termination_condition": "optimal"
-    },
-    "1,0,19:lower": {
-      "value": -6.346986140783203,
-      "termination_condition": "optimal"
-    },
-    "1,0,19:upper": {
-      "value": 30.039365965640286,
-      "termination_condition": "optimal"
-    },
-    "1,0,20:lower": {
-      "value": -5.497598587284122,
-      "termination_condition": "optimal"
-    },
-    "1,0,20:upper": {
-      "value": 30.03868057071398,
-      "termination_condition": "optimal"
-    },
-    "1,0,21:lower": {
-      "value": -4.271468113415718,
-      "termination_condition": "optimal"
-    },
-    "1,0,21:upper": {
-      "value": 30.03807709088062,
-      "termination_condition": "optimal"
-    },
-    "1,0,22:lower": {
-      "value": -3.006998408799566,
-      "termination_condition": "optimal"
-    },
-    "1,0,22:upper": {
-      "value": 30.037689116671405,
-      "termination_condition": "optimal"
-    },
-    "1,0,23:lower": {
-      "value": -1.9396365746900273,
-      "termination_condition": "optimal"
-    },
-    "1,0,23:upper": {
-      "value": 30.072916995771052,
+      "value": 31.261635927940215,
       "termination_condition": "optimal"
     },
     "1,1,0:lower": {
-      "value": 14.496852180611047,
+      "value": 15.071816095790668,
       "termination_condition": "optimal"
     },
     "1,1,0:upper": {
-      "value": 30.07573947463134,
+      "value": 30.075465980683735,
       "termination_condition": "optimal"
     },
     "1,1,1:lower": {
-      "value": 14.970488542623327,
+      "value": 16.376221739204468,
       "termination_condition": "optimal"
     },
     "1,1,1:upper": {
-      "value": 30.076916555717997,
+      "value": 30.07660653082214,
       "termination_condition": "optimal"
     },
     "1,1,2:lower": {
-      "value": 15.60347018704126,
+      "value": 17.02177614070944,
       "termination_condition": "optimal"
     },
     "1,1,2:upper": {
-      "value": 30.080623918691508,
+      "value": 30.080201883350856,
       "termination_condition": "optimal"
     },
     "1,1,3:lower": {
-      "value": 16.40808733731596,
+      "value": 17.61424028196005,
       "termination_condition": "optimal"
     },
     "1,1,3:upper": {
-      "value": 30.087317600021667,
+      "value": 30.082307292311373,
       "termination_condition": "optimal"
     },
     "1,1,4:lower": {
-      "value": 17.65435574487422,
+      "value": 18.627751953049504,
       "termination_condition": "optimal"
     },
     "1,1,4:upper": {
-      "value": 30.096310551462086,
+      "value": 30.088611237824942,
       "termination_condition": "optimal"
     },
     "1,1,5:lower": {
-      "value": 19.073395218626477,
+      "value": 19.598997450146165,
       "termination_condition": "optimal"
     },
     "1,1,5:upper": {
-      "value": 30.349470492513483,
+      "value": 30.229992488656357,
       "termination_condition": "optimal"
     },
     "1,1,6:lower": {
-      "value": 20.008849120189126,
+      "value": 20.37358591540289,
       "termination_condition": "optimal"
     },
     "1,1,6:upper": {
-      "value": 30.811245736880956,
+      "value": 30.71343994417792,
       "termination_condition": "optimal"
     },
     "1,1,7:lower": {
-      "value": 19.67086488923316,
+      "value": 19.638699323305797,
       "termination_condition": "optimal"
     },
     "1,1,7:upper": {
-      "value": 31.01979771845362,
-      "termination_condition": "optimal"
-    },
-    "1,1,8:lower": {
-      "value": 17.690032324291636,
-      "termination_condition": "optimal"
-    },
-    "1,1,8:upper": {
-      "value": 30.87268340384022,
-      "termination_condition": "optimal"
-    },
-    "1,1,9:lower": {
-      "value": 14.58271983699351,
-      "termination_condition": "optimal"
-    },
-    "1,1,9:upper": {
-      "value": 30.475061385060414,
-      "termination_condition": "optimal"
-    },
-    "1,1,10:lower": {
-      "value": 11.616298060889642,
-      "termination_condition": "optimal"
-    },
-    "1,1,10:upper": {
-      "value": 30.147686760854096,
-      "termination_condition": "optimal"
-    },
-    "1,1,11:lower": {
-      "value": 9.986356154944312,
-      "termination_condition": "optimal"
-    },
-    "1,1,11:upper": {
-      "value": 30.197138569988148,
-      "termination_condition": "optimal"
-    },
-    "1,1,12:lower": {
-      "value": 9.976755907346812,
-      "termination_condition": "optimal"
-    },
-    "1,1,12:upper": {
-      "value": 30.620037367858465,
-      "termination_condition": "optimal"
-    },
-    "1,1,13:lower": {
-      "value": 10.91764690647874,
-      "termination_condition": "optimal"
-    },
-    "1,1,13:upper": {
-      "value": 31.164796932010454,
-      "termination_condition": "optimal"
-    },
-    "1,1,14:lower": {
-      "value": 11.880898223472677,
-      "termination_condition": "optimal"
-    },
-    "1,1,14:upper": {
-      "value": 31.540194487995358,
-      "termination_condition": "optimal"
-    },
-    "1,1,15:lower": {
-      "value": 12.326078652249354,
-      "termination_condition": "optimal"
-    },
-    "1,1,15:upper": {
-      "value": 31.59321346838939,
-      "termination_condition": "optimal"
-    },
-    "1,1,16:lower": {
-      "value": 12.238265778179478,
-      "termination_condition": "optimal"
-    },
-    "1,1,16:upper": {
-      "value": 31.294911930292145,
-      "termination_condition": "optimal"
-    },
-    "1,1,17:lower": {
-      "value": 11.918686417028347,
-      "termination_condition": "optimal"
-    },
-    "1,1,17:upper": {
-      "value": 30.77495873754272,
-      "termination_condition": "optimal"
-    },
-    "1,1,18:lower": {
-      "value": 11.714251336427942,
-      "termination_condition": "optimal"
-    },
-    "1,1,18:upper": {
-      "value": 30.201485842198668,
-      "termination_condition": "optimal"
-    },
-    "1,1,19:lower": {
-      "value": 11.82856265267507,
-      "termination_condition": "optimal"
-    },
-    "1,1,19:upper": {
-      "value": 30.099799782927683,
-      "termination_condition": "optimal"
-    },
-    "1,1,20:lower": {
-      "value": 12.264371872563608,
-      "termination_condition": "optimal"
-    },
-    "1,1,20:upper": {
-      "value": 30.08989963910282,
-      "termination_condition": "optimal"
-    },
-    "1,1,21:lower": {
-      "value": 12.884566766134252,
-      "termination_condition": "optimal"
-    },
-    "1,1,21:upper": {
-      "value": 30.083301134409403,
-      "termination_condition": "optimal"
-    },
-    "1,1,22:lower": {
-      "value": 13.5208227041613,
-      "termination_condition": "optimal"
-    },
-    "1,1,22:upper": {
-      "value": 30.07895271283031,
-      "termination_condition": "optimal"
-    },
-    "1,1,23:lower": {
-      "value": 14.056604036790453,
-      "termination_condition": "optimal"
-    },
-    "1,1,23:upper": {
-      "value": 30.116621566116656,
+      "value": 31.253765843186603,
       "termination_condition": "optimal"
     },
     "2,0,0:lower": {
-      "value": 5.434705839804348,
+      "value": 5.435614788534327,
       "termination_condition": "optimal"
     },
     "2,0,0:upper": {
-      "value": 10.008885088228684,
+      "value": 10.008831908841797,
       "termination_condition": "optimal"
     },
     "2,0,1:lower": {
-      "value": 5.430897309210623,
+      "value": 5.432977108096862,
       "termination_condition": "optimal"
     },
     "2,0,1:upper": {
-      "value": 10.008887891686015,
+      "value": 10.008127935232883,
       "termination_condition": "optimal"
     },
     "2,0,2:lower": {
-      "value": 5.423845099451464,
+      "value": 5.426506766304849,
       "termination_condition": "optimal"
     },
     "2,0,2:upper": {
-      "value": 10.008918950249573,
+      "value": 10.008125906084588,
       "termination_condition": "optimal"
     },
     "2,0,3:lower": {
-      "value": 5.413710226985751,
+      "value": 5.426243064444144,
       "termination_condition": "optimal"
     },
     "2,0,3:upper": {
-      "value": 10.008979965155003,
+      "value": 10.007947018921165,
       "termination_condition": "optimal"
     },
     "2,0,4:lower": {
-      "value": 5.403317998763962,
+      "value": 5.424336972345502,
       "termination_condition": "optimal"
     },
     "2,0,4:upper": {
-      "value": 10.008788498280454,
+      "value": 10.007919134214925,
       "termination_condition": "optimal"
     },
     "2,0,5:lower": {
-      "value": 5.397746298963123,
+      "value": 5.4109390153026355,
       "termination_condition": "optimal"
     },
     "2,0,5:upper": {
-      "value": 10.008170242579478,
+      "value": 10.007753889895444,
       "termination_condition": "optimal"
     },
     "2,0,6:lower": {
-      "value": 5.401178653839942,
+      "value": 5.403360598736828,
       "termination_condition": "optimal"
     },
     "2,0,6:upper": {
-      "value": 10.007315437045873,
+      "value": 10.007118606374886,
       "termination_condition": "optimal"
     },
     "2,0,7:lower": {
-      "value": 5.400762347321591,
+      "value": 5.339340278876198,
       "termination_condition": "optimal"
     },
     "2,0,7:upper": {
-      "value": 10.00721648265704,
-      "termination_condition": "optimal"
-    },
-    "2,0,8:lower": {
-      "value": 5.393413640308694,
-      "termination_condition": "optimal"
-    },
-    "2,0,8:upper": {
-      "value": 10.007667646863922,
-      "termination_condition": "optimal"
-    },
-    "2,0,9:lower": {
-      "value": 5.402313879129578,
-      "termination_condition": "optimal"
-    },
-    "2,0,9:upper": {
-      "value": 10.00813155280952,
-      "termination_condition": "optimal"
-    },
-    "2,0,10:lower": {
-      "value": 5.416417608147144,
-      "termination_condition": "optimal"
-    },
-    "2,0,10:upper": {
-      "value": 10.008384592888053,
-      "termination_condition": "optimal"
-    },
-    "2,0,11:lower": {
-      "value": 5.4000227760298545,
-      "termination_condition": "optimal"
-    },
-    "2,0,11:upper": {
-      "value": 10.008411510815922,
-      "termination_condition": "optimal"
-    },
-    "2,0,12:lower": {
-      "value": 5.388780948611838,
-      "termination_condition": "optimal"
-    },
-    "2,0,12:upper": {
-      "value": 10.007811260778354,
-      "termination_condition": "optimal"
-    },
-    "2,0,13:lower": {
-      "value": 5.390581759682211,
-      "termination_condition": "optimal"
-    },
-    "2,0,13:upper": {
-      "value": 10.006876052563271,
-      "termination_condition": "optimal"
-    },
-    "2,0,14:lower": {
-      "value": 5.397342109254036,
-      "termination_condition": "optimal"
-    },
-    "2,0,14:upper": {
-      "value": 10.006246210436968,
-      "termination_condition": "optimal"
-    },
-    "2,0,15:lower": {
-      "value": 5.390100709316491,
-      "termination_condition": "optimal"
-    },
-    "2,0,15:upper": {
-      "value": 10.006510844989762,
-      "termination_condition": "optimal"
-    },
-    "2,0,16:lower": {
-      "value": 5.387147727303637,
-      "termination_condition": "optimal"
-    },
-    "2,0,16:upper": {
-      "value": 10.00713530805274,
-      "termination_condition": "optimal"
-    },
-    "2,0,17:lower": {
-      "value": 5.389637515190666,
-      "termination_condition": "optimal"
-    },
-    "2,0,17:upper": {
-      "value": 10.0078945508298,
-      "termination_condition": "optimal"
-    },
-    "2,0,18:lower": {
-      "value": 5.398506912173799,
-      "termination_condition": "optimal"
-    },
-    "2,0,18:upper": {
-      "value": 10.00859597117592,
-      "termination_condition": "optimal"
-    },
-    "2,0,19:lower": {
-      "value": 5.410953261944579,
-      "termination_condition": "optimal"
-    },
-    "2,0,19:upper": {
-      "value": 10.009122368414678,
-      "termination_condition": "optimal"
-    },
-    "2,0,20:lower": {
-      "value": 5.42198895603018,
-      "termination_condition": "optimal"
-    },
-    "2,0,20:upper": {
-      "value": 10.009117562908873,
-      "termination_condition": "optimal"
-    },
-    "2,0,21:lower": {
-      "value": 5.429462603885223,
-      "termination_condition": "optimal"
-    },
-    "2,0,21:upper": {
-      "value": 10.009032662565353,
-      "termination_condition": "optimal"
-    },
-    "2,0,22:lower": {
-      "value": 5.433724468550815,
-      "termination_condition": "optimal"
-    },
-    "2,0,22:upper": {
-      "value": 10.008960920217037,
-      "termination_condition": "optimal"
-    },
-    "2,0,23:lower": {
-      "value": 5.387805178714995,
-      "termination_condition": "optimal"
-    },
-    "2,0,23:upper": {
-      "value": 10.010727925907336,
+      "value": 10.007986923850025,
       "termination_condition": "optimal"
     },
     "3,0,0:lower": {
@@ -1820,134 +700,6 @@
       "value": 5.0,
       "termination_condition": "optimal"
     },
-    "3,0,8:lower": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,8:upper": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,9:lower": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,9:upper": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,10:lower": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,10:upper": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,11:lower": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,11:upper": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,12:lower": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,12:upper": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,13:lower": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,13:upper": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,14:lower": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,14:upper": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,15:lower": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,15:upper": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,16:lower": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,16:upper": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,17:lower": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,17:upper": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,18:lower": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,18:upper": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,19:lower": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,19:upper": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,20:lower": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,20:upper": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,21:lower": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,21:upper": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,22:lower": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,22:upper": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,23:lower": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,23:upper": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
     "4,0,0:lower": {
       "value": 4.5,
       "termination_condition": "optimal"
@@ -2011,137 +763,9 @@
     "4,0,7:upper": {
       "value": 4.5,
       "termination_condition": "optimal"
-    },
-    "4,0,8:lower": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,8:upper": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,9:lower": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,9:upper": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,10:lower": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,10:upper": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,11:lower": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,11:upper": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,12:lower": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,12:upper": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,13:lower": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,13:upper": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,14:lower": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,14:upper": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,15:lower": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,15:upper": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,16:lower": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,16:upper": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,17:lower": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,17:upper": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,18:lower": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,18:upper": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,19:lower": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,19:upper": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,20:lower": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,20:upper": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,21:lower": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,21:upper": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,22:lower": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,22:upper": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,23:lower": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,23:upper": {
-      "value": 4.5,
-      "termination_condition": "optimal"
     }
   },
-  "num_optimization_programs": 336,
+  "num_optimization_programs": 112,
   "primal_big_m": {
     "block_capacity": {
       "0,0": {
@@ -2177,7 +801,7 @@
         "block_name": "G1_B2"
       },
       "2,0": {
-        "big_m": 49.5,
+        "big_m": 41.43984226583939,
         "physical_generator_index": 2,
         "physical_generator_name": "W3",
         "local_block_index": 0,
@@ -2185,7 +809,7 @@
         "block_name": "W3_B1"
       },
       "3,0": {
-        "big_m": 49.5,
+        "big_m": 41.43984226583939,
         "physical_generator_index": 3,
         "physical_generator_name": "W2",
         "local_block_index": 0,
@@ -2193,7 +817,7 @@
         "block_name": "W2_B1"
       },
       "4,0": {
-        "big_m": 49.5,
+        "big_m": 41.43984226583939,
         "physical_generator_index": 4,
         "physical_generator_name": "W1",
         "local_block_index": 0,
@@ -2215,19 +839,19 @@
         "is_wind": false
       },
       "2": {
-        "big_m": 49.5,
+        "big_m": 41.43984226583939,
         "physical_generator_index": 2,
         "physical_generator_name": "W3",
         "is_wind": true
       },
       "3": {
-        "big_m": 49.5,
+        "big_m": 41.43984226583939,
         "physical_generator_index": 3,
         "physical_generator_name": "W2",
         "is_wind": true
       },
       "4": {
-        "big_m": 49.5,
+        "big_m": 41.43984226583939,
         "physical_generator_index": 4,
         "physical_generator_name": "W1",
         "is_wind": true
@@ -2249,21 +873,21 @@
         "is_wind": false
       },
       "2": {
-        "big_m": 99.5,
+        "big_m": 91.43984226583939,
         "ramp_limit": 50.0,
         "physical_generator_index": 2,
         "physical_generator_name": "W3",
         "is_wind": true
       },
       "3": {
-        "big_m": 99.5,
+        "big_m": 91.43984226583939,
         "ramp_limit": 50.0,
         "physical_generator_index": 3,
         "physical_generator_name": "W2",
         "is_wind": true
       },
       "4": {
-        "big_m": 99.5,
+        "big_m": 91.43984226583939,
         "ramp_limit": 50.0,
         "physical_generator_index": 4,
         "physical_generator_name": "W1",
@@ -2286,21 +910,21 @@
         "is_wind": false
       },
       "2": {
-        "big_m": 99.5,
+        "big_m": 91.43984226583939,
         "ramp_limit": 50.0,
         "physical_generator_index": 2,
         "physical_generator_name": "W3",
         "is_wind": true
       },
       "3": {
-        "big_m": 99.5,
+        "big_m": 91.43984226583939,
         "ramp_limit": 50.0,
         "physical_generator_index": 3,
         "physical_generator_name": "W2",
         "is_wind": true
       },
       "4": {
-        "big_m": 99.5,
+        "big_m": 91.43984226583939,
         "ramp_limit": 50.0,
         "physical_generator_index": 4,
         "physical_generator_name": "W1",
@@ -2367,7 +991,7 @@
         "is_wind": false
       },
       "2": {
-        "big_m": 74.5,
+        "big_m": 66.43984226583939,
         "p_init": 25.0,
         "ramp_limit": 50.0,
         "physical_generator_index": 2,
@@ -2375,7 +999,7 @@
         "is_wind": true
       },
       "3": {
-        "big_m": 74.5,
+        "big_m": 66.43984226583939,
         "p_init": 25.0,
         "ramp_limit": 50.0,
         "physical_generator_index": 3,
@@ -2383,7 +1007,7 @@
         "is_wind": true
       },
       "4": {
-        "big_m": 74.5,
+        "big_m": 66.43984226583939,
         "p_init": 25.0,
         "ramp_limit": 50.0,
         "physical_generator_index": 4,
