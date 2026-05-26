@@ -2,7 +2,7 @@
   "metadata": {
     "description": "Exact alpha bounds from ambiguity-set optimization with embedded ReLU policy constraints.",
     "reference_case": "test_case_bidding_blocks",
-    "num_time_steps": 8,
+    "num_time_steps": 6,
     "ambiguity_set": {
       "regime_bounds": {
         "mu_D": [
@@ -35,9 +35,7 @@
         0.9144903381180386,
         0.9357222998688407,
         0.9700279530191137,
-        1.013169466723415,
-        1.0520331078458793,
-        1.0697054682217695
+        1.013169466723415
       ],
       "wind_shape": [
         0.9041892106661034,
@@ -45,36 +43,34 @@
         0.8957489085449363,
         0.89875325468952,
         0.9041892106661034,
-        0.9133480346078648,
-        0.9276883931493098,
-        0.9484960566459846
+        0.9133480346078648
       ]
     },
     "nn_policy_generators": [
       "G1",
       "W3"
     ],
-    "num_optimization_programs": 112,
+    "num_optimization_programs": 84,
     "primal_big_m_summary": {
       "block_capacity": {
         "entries": 7,
         "min_big_m": 25.0,
-        "max_big_m": 41.43984226583939
+        "max_big_m": 40.033921384314596
       },
       "physical_capacity": {
         "entries": 5,
-        "min_big_m": 41.43984226583939,
+        "min_big_m": 40.033921384314596,
         "max_big_m": 50.0
       },
       "ramp_up": {
         "entries": 5,
         "min_big_m": 70.0,
-        "max_big_m": 91.43984226583939
+        "max_big_m": 90.0339213843146
       },
       "ramp_down": {
         "entries": 5,
         "min_big_m": 70.0,
-        "max_big_m": 91.43984226583939
+        "max_big_m": 90.0339213843146
       },
       "ramp_up_initial": {
         "entries": 5,
@@ -84,10 +80,10 @@
       "ramp_down_initial": {
         "entries": 5,
         "min_big_m": 45.0,
-        "max_big_m": 66.43984226583939
+        "max_big_m": 65.0339213843146
       }
     },
-    "runtime_seconds": 26.72244789999968
+    "runtime_seconds": 11.982863199984422
   },
   "alpha_bounds": {
     "0,0,0": {
@@ -111,14 +107,6 @@
       "upper": 30.0
     },
     "0,0,5": {
-      "lower": 30.0,
-      "upper": 30.0
-    },
-    "0,0,6": {
-      "lower": 30.0,
-      "upper": 30.0
-    },
-    "0,0,7": {
       "lower": 30.0,
       "upper": 30.0
     },
@@ -146,109 +134,77 @@
       "lower": 40.0,
       "upper": 40.0
     },
-    "0,1,6": {
-      "lower": 40.0,
-      "upper": 40.0
-    },
-    "0,1,7": {
-      "lower": 40.0,
-      "upper": 40.0
-    },
     "1,0,0": {
-      "lower": 0.08665756959973869,
-      "upper": 30.037396046930496
+      "lower": 2.4795930742034322,
+      "upper": 30.036533025079745
     },
     "1,0,1": {
-      "lower": 2.699964190799637,
-      "upper": 30.037217213230974
+      "lower": 5.010520355320449,
+      "upper": 30.036391887543296
     },
     "1,0,2": {
-      "lower": 3.993783716375262,
-      "upper": 30.03792772530058
+      "lower": 5.920433336850515,
+      "upper": 30.037229902193673
     },
     "1,0,3": {
-      "lower": 5.18552815794892,
-      "upper": 30.039036390940772
+      "lower": 7.04235883086893,
+      "upper": 30.038617424705716
     },
     "1,0,4": {
-      "lower": 7.226722690910146,
-      "upper": 30.039475893601274
+      "lower": 7.7556146884456005,
+      "upper": 30.03928733755206
     },
     "1,0,5": {
-      "lower": 9.188292577814995,
-      "upper": 30.186720022652974
-    },
-    "1,0,6": {
-      "lower": 10.76514449730473,
-      "upper": 30.691096460539626
-    },
-    "1,0,7": {
-      "lower": 9.307630722404644,
-      "upper": 31.261635927940215
+      "lower": 9.379531160225344,
+      "upper": 30.36865565071789
     },
     "1,1,0": {
-      "lower": 15.071816095790668,
-      "upper": 30.075465980683735
+      "lower": 16.266288060666312,
+      "upper": 30.07506287355784
     },
     "1,1,1": {
-      "lower": 16.376221739204468,
-      "upper": 30.07660653082214
+      "lower": 17.529751265891527,
+      "upper": 30.074746165713783
     },
     "1,1,2": {
-      "lower": 17.02177614070944,
-      "upper": 30.080201883350856
+      "lower": 17.983467403344264,
+      "upper": 30.076833527715763
     },
     "1,1,3": {
-      "lower": 17.61424028196005,
-      "upper": 30.082307292311373
+      "lower": 18.541821846379555,
+      "upper": 30.079086571549116
     },
     "1,1,4": {
-      "lower": 18.627751953049504,
-      "upper": 30.088611237824942
+      "lower": 18.895217928463673,
+      "upper": 30.087780572353704
     },
     "1,1,5": {
-      "lower": 19.598997450146165,
-      "upper": 30.229992488656357
-    },
-    "1,1,6": {
-      "lower": 20.37358591540289,
-      "upper": 30.71343994417792
-    },
-    "1,1,7": {
-      "lower": 19.638699323305797,
-      "upper": 31.253765843186603
+      "lower": 19.69238097761312,
+      "upper": 30.39925925575767
     },
     "2,0,0": {
-      "lower": 5.435614788534327,
-      "upper": 10.008831908841797
+      "lower": 5.4368125643093554,
+      "upper": 10.008367140315036
     },
     "2,0,1": {
-      "lower": 5.432977108096862,
-      "upper": 10.008127935232883
+      "lower": 5.435655688186139,
+      "upper": 10.007704528529038
     },
     "2,0,2": {
-      "lower": 5.426506766304849,
-      "upper": 10.008125906084588
+      "lower": 5.4305909406826345,
+      "upper": 10.007146495297699
     },
     "2,0,3": {
-      "lower": 5.426243064444144,
-      "upper": 10.007947018921165
+      "lower": 5.432094608496755,
+      "upper": 10.007207880735892
     },
     "2,0,4": {
-      "lower": 5.424336972345502,
-      "upper": 10.007919134214925
+      "lower": 5.418695601847392,
+      "upper": 10.007883519216337
     },
     "2,0,5": {
-      "lower": 5.4109390153026355,
-      "upper": 10.007753889895444
-    },
-    "2,0,6": {
-      "lower": 5.403360598736828,
-      "upper": 10.007118606374886
-    },
-    "2,0,7": {
-      "lower": 5.339340278876198,
-      "upper": 10.007986923850025
+      "lower": 5.3614848950569725,
+      "upper": 10.008250279933161
     },
     "3,0,0": {
       "lower": 5.0,
@@ -274,14 +230,6 @@
       "lower": 5.0,
       "upper": 5.0
     },
-    "3,0,6": {
-      "lower": 5.0,
-      "upper": 5.0
-    },
-    "3,0,7": {
-      "lower": 5.0,
-      "upper": 5.0
-    },
     "4,0,0": {
       "lower": 4.5,
       "upper": 4.5
@@ -303,14 +251,6 @@
       "upper": 4.5
     },
     "4,0,5": {
-      "lower": 4.5,
-      "upper": 4.5
-    },
-    "4,0,6": {
-      "lower": 4.5,
-      "upper": 4.5
-    },
-    "4,0,7": {
       "lower": 4.5,
       "upper": 4.5
     }
@@ -364,22 +304,6 @@
       "value": 30.0,
       "termination_condition": "optimal"
     },
-    "0,0,6:lower": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,6:upper": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,7:lower": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
-    "0,0,7:upper": {
-      "value": 30.0,
-      "termination_condition": "optimal"
-    },
     "0,1,0:lower": {
       "value": 40.0,
       "termination_condition": "optimal"
@@ -428,212 +352,148 @@
       "value": 40.0,
       "termination_condition": "optimal"
     },
-    "0,1,6:lower": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,6:upper": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,7:lower": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
-    "0,1,7:upper": {
-      "value": 40.0,
-      "termination_condition": "optimal"
-    },
     "1,0,0:lower": {
-      "value": 0.08665756959973869,
+      "value": 2.4795930742034322,
       "termination_condition": "optimal"
     },
     "1,0,0:upper": {
-      "value": 30.037396046930496,
+      "value": 30.036533025079745,
       "termination_condition": "optimal"
     },
     "1,0,1:lower": {
-      "value": 2.699964190799637,
+      "value": 5.010520355320449,
       "termination_condition": "optimal"
     },
     "1,0,1:upper": {
-      "value": 30.037217213230974,
+      "value": 30.036391887543296,
       "termination_condition": "optimal"
     },
     "1,0,2:lower": {
-      "value": 3.993783716375262,
+      "value": 5.920433336850515,
       "termination_condition": "optimal"
     },
     "1,0,2:upper": {
-      "value": 30.03792772530058,
+      "value": 30.037229902193673,
       "termination_condition": "optimal"
     },
     "1,0,3:lower": {
-      "value": 5.18552815794892,
+      "value": 7.04235883086893,
       "termination_condition": "optimal"
     },
     "1,0,3:upper": {
-      "value": 30.039036390940772,
+      "value": 30.038617424705716,
       "termination_condition": "optimal"
     },
     "1,0,4:lower": {
-      "value": 7.226722690910146,
+      "value": 7.7556146884456005,
       "termination_condition": "optimal"
     },
     "1,0,4:upper": {
-      "value": 30.039475893601274,
+      "value": 30.03928733755206,
       "termination_condition": "optimal"
     },
     "1,0,5:lower": {
-      "value": 9.188292577814995,
+      "value": 9.379531160225344,
       "termination_condition": "optimal"
     },
     "1,0,5:upper": {
-      "value": 30.186720022652974,
-      "termination_condition": "optimal"
-    },
-    "1,0,6:lower": {
-      "value": 10.76514449730473,
-      "termination_condition": "optimal"
-    },
-    "1,0,6:upper": {
-      "value": 30.691096460539626,
-      "termination_condition": "optimal"
-    },
-    "1,0,7:lower": {
-      "value": 9.307630722404644,
-      "termination_condition": "optimal"
-    },
-    "1,0,7:upper": {
-      "value": 31.261635927940215,
+      "value": 30.36865565071789,
       "termination_condition": "optimal"
     },
     "1,1,0:lower": {
-      "value": 15.071816095790668,
+      "value": 16.266288060666312,
       "termination_condition": "optimal"
     },
     "1,1,0:upper": {
-      "value": 30.075465980683735,
+      "value": 30.07506287355784,
       "termination_condition": "optimal"
     },
     "1,1,1:lower": {
-      "value": 16.376221739204468,
+      "value": 17.529751265891527,
       "termination_condition": "optimal"
     },
     "1,1,1:upper": {
-      "value": 30.07660653082214,
+      "value": 30.074746165713783,
       "termination_condition": "optimal"
     },
     "1,1,2:lower": {
-      "value": 17.02177614070944,
+      "value": 17.983467403344264,
       "termination_condition": "optimal"
     },
     "1,1,2:upper": {
-      "value": 30.080201883350856,
+      "value": 30.076833527715763,
       "termination_condition": "optimal"
     },
     "1,1,3:lower": {
-      "value": 17.61424028196005,
+      "value": 18.541821846379555,
       "termination_condition": "optimal"
     },
     "1,1,3:upper": {
-      "value": 30.082307292311373,
+      "value": 30.079086571549116,
       "termination_condition": "optimal"
     },
     "1,1,4:lower": {
-      "value": 18.627751953049504,
+      "value": 18.895217928463673,
       "termination_condition": "optimal"
     },
     "1,1,4:upper": {
-      "value": 30.088611237824942,
+      "value": 30.087780572353704,
       "termination_condition": "optimal"
     },
     "1,1,5:lower": {
-      "value": 19.598997450146165,
+      "value": 19.69238097761312,
       "termination_condition": "optimal"
     },
     "1,1,5:upper": {
-      "value": 30.229992488656357,
-      "termination_condition": "optimal"
-    },
-    "1,1,6:lower": {
-      "value": 20.37358591540289,
-      "termination_condition": "optimal"
-    },
-    "1,1,6:upper": {
-      "value": 30.71343994417792,
-      "termination_condition": "optimal"
-    },
-    "1,1,7:lower": {
-      "value": 19.638699323305797,
-      "termination_condition": "optimal"
-    },
-    "1,1,7:upper": {
-      "value": 31.253765843186603,
+      "value": 30.39925925575767,
       "termination_condition": "optimal"
     },
     "2,0,0:lower": {
-      "value": 5.435614788534327,
+      "value": 5.4368125643093554,
       "termination_condition": "optimal"
     },
     "2,0,0:upper": {
-      "value": 10.008831908841797,
+      "value": 10.008367140315036,
       "termination_condition": "optimal"
     },
     "2,0,1:lower": {
-      "value": 5.432977108096862,
+      "value": 5.435655688186139,
       "termination_condition": "optimal"
     },
     "2,0,1:upper": {
-      "value": 10.008127935232883,
+      "value": 10.007704528529038,
       "termination_condition": "optimal"
     },
     "2,0,2:lower": {
-      "value": 5.426506766304849,
+      "value": 5.4305909406826345,
       "termination_condition": "optimal"
     },
     "2,0,2:upper": {
-      "value": 10.008125906084588,
+      "value": 10.007146495297699,
       "termination_condition": "optimal"
     },
     "2,0,3:lower": {
-      "value": 5.426243064444144,
+      "value": 5.432094608496755,
       "termination_condition": "optimal"
     },
     "2,0,3:upper": {
-      "value": 10.007947018921165,
+      "value": 10.007207880735892,
       "termination_condition": "optimal"
     },
     "2,0,4:lower": {
-      "value": 5.424336972345502,
+      "value": 5.418695601847392,
       "termination_condition": "optimal"
     },
     "2,0,4:upper": {
-      "value": 10.007919134214925,
+      "value": 10.007883519216337,
       "termination_condition": "optimal"
     },
     "2,0,5:lower": {
-      "value": 5.4109390153026355,
+      "value": 5.3614848950569725,
       "termination_condition": "optimal"
     },
     "2,0,5:upper": {
-      "value": 10.007753889895444,
-      "termination_condition": "optimal"
-    },
-    "2,0,6:lower": {
-      "value": 5.403360598736828,
-      "termination_condition": "optimal"
-    },
-    "2,0,6:upper": {
-      "value": 10.007118606374886,
-      "termination_condition": "optimal"
-    },
-    "2,0,7:lower": {
-      "value": 5.339340278876198,
-      "termination_condition": "optimal"
-    },
-    "2,0,7:upper": {
-      "value": 10.007986923850025,
+      "value": 10.008250279933161,
       "termination_condition": "optimal"
     },
     "3,0,0:lower": {
@@ -684,22 +544,6 @@
       "value": 5.0,
       "termination_condition": "optimal"
     },
-    "3,0,6:lower": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,6:upper": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,7:lower": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
-    "3,0,7:upper": {
-      "value": 5.0,
-      "termination_condition": "optimal"
-    },
     "4,0,0:lower": {
       "value": 4.5,
       "termination_condition": "optimal"
@@ -747,25 +591,9 @@
     "4,0,5:upper": {
       "value": 4.5,
       "termination_condition": "optimal"
-    },
-    "4,0,6:lower": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,6:upper": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,7:lower": {
-      "value": 4.5,
-      "termination_condition": "optimal"
-    },
-    "4,0,7:upper": {
-      "value": 4.5,
-      "termination_condition": "optimal"
     }
   },
-  "num_optimization_programs": 112,
+  "num_optimization_programs": 84,
   "primal_big_m": {
     "block_capacity": {
       "0,0": {
@@ -801,7 +629,7 @@
         "block_name": "G1_B2"
       },
       "2,0": {
-        "big_m": 41.43984226583939,
+        "big_m": 40.033921384314596,
         "physical_generator_index": 2,
         "physical_generator_name": "W3",
         "local_block_index": 0,
@@ -809,7 +637,7 @@
         "block_name": "W3_B1"
       },
       "3,0": {
-        "big_m": 41.43984226583939,
+        "big_m": 40.033921384314596,
         "physical_generator_index": 3,
         "physical_generator_name": "W2",
         "local_block_index": 0,
@@ -817,7 +645,7 @@
         "block_name": "W2_B1"
       },
       "4,0": {
-        "big_m": 41.43984226583939,
+        "big_m": 40.033921384314596,
         "physical_generator_index": 4,
         "physical_generator_name": "W1",
         "local_block_index": 0,
@@ -839,19 +667,19 @@
         "is_wind": false
       },
       "2": {
-        "big_m": 41.43984226583939,
+        "big_m": 40.033921384314596,
         "physical_generator_index": 2,
         "physical_generator_name": "W3",
         "is_wind": true
       },
       "3": {
-        "big_m": 41.43984226583939,
+        "big_m": 40.033921384314596,
         "physical_generator_index": 3,
         "physical_generator_name": "W2",
         "is_wind": true
       },
       "4": {
-        "big_m": 41.43984226583939,
+        "big_m": 40.033921384314596,
         "physical_generator_index": 4,
         "physical_generator_name": "W1",
         "is_wind": true
@@ -873,21 +701,21 @@
         "is_wind": false
       },
       "2": {
-        "big_m": 91.43984226583939,
+        "big_m": 90.0339213843146,
         "ramp_limit": 50.0,
         "physical_generator_index": 2,
         "physical_generator_name": "W3",
         "is_wind": true
       },
       "3": {
-        "big_m": 91.43984226583939,
+        "big_m": 90.0339213843146,
         "ramp_limit": 50.0,
         "physical_generator_index": 3,
         "physical_generator_name": "W2",
         "is_wind": true
       },
       "4": {
-        "big_m": 91.43984226583939,
+        "big_m": 90.0339213843146,
         "ramp_limit": 50.0,
         "physical_generator_index": 4,
         "physical_generator_name": "W1",
@@ -910,21 +738,21 @@
         "is_wind": false
       },
       "2": {
-        "big_m": 91.43984226583939,
+        "big_m": 90.0339213843146,
         "ramp_limit": 50.0,
         "physical_generator_index": 2,
         "physical_generator_name": "W3",
         "is_wind": true
       },
       "3": {
-        "big_m": 91.43984226583939,
+        "big_m": 90.0339213843146,
         "ramp_limit": 50.0,
         "physical_generator_index": 3,
         "physical_generator_name": "W2",
         "is_wind": true
       },
       "4": {
-        "big_m": 91.43984226583939,
+        "big_m": 90.0339213843146,
         "ramp_limit": 50.0,
         "physical_generator_index": 4,
         "physical_generator_name": "W1",
@@ -991,7 +819,7 @@
         "is_wind": false
       },
       "2": {
-        "big_m": 66.43984226583939,
+        "big_m": 65.0339213843146,
         "p_init": 25.0,
         "ramp_limit": 50.0,
         "physical_generator_index": 2,
@@ -999,7 +827,7 @@
         "is_wind": true
       },
       "3": {
-        "big_m": 66.43984226583939,
+        "big_m": 65.0339213843146,
         "p_init": 25.0,
         "ramp_limit": 50.0,
         "physical_generator_index": 3,
@@ -1007,7 +835,7 @@
         "is_wind": true
       },
       "4": {
-        "big_m": 66.43984226583939,
+        "big_m": 65.0339213843146,
         "p_init": 25.0,
         "ramp_limit": 50.0,
         "physical_generator_index": 4,

@@ -41,6 +41,7 @@ class ScenarioManager:
 	"""Generate stochastic demand and wind scenarios from YAML-defined regimes."""
 
 	DEFAULT_REGIME_CONFIG_PATH = Path(__file__).resolve().parents[1] / "regime_definitions.yaml"
+	DEFAULT_AMBIGUITY_CONFIG_PATH = Path(__file__).resolve().parents[1] / "ambiguity_set_config.yaml"
 
 	def __init__(self, base_case_reference: str = "test_case_bidding_blocks") -> None:
 		self.base_case_reference = base_case_reference
@@ -306,6 +307,184 @@ class ScenarioManager:
 			"raw": selected_config,
 		}
 
+	def load_ambiguity_set_configuration(
+		self,
+		ambiguity_config_path: Optional[str] = None,
+		ambiguity_set: Optional[str] = None,
+	) -> Dict[str, Any]:
+		"""Load and validate ambiguity-set configuration from YAML."""
+		config_path = (
+			Path(ambiguity_config_path)
+			if ambiguity_config_path is not None
+			else self.DEFAULT_AMBIGUITY_CONFIG_PATH
+		)
+		if not config_path.is_absolute() and not config_path.exists():
+			repo_relative = Path(__file__).resolve().parents[2] / config_path
+			config_path = (
+				repo_relative
+				if repo_relative.exists()
+				else Path(__file__).resolve().parents[1] / config_path.name
+			)
+		if not config_path.exists():
+			raise FileNotFoundError(f"Ambiguity-set YAML was not found: {config_path}")
+
+		with open(config_path, "r", encoding="utf-8") as file:
+			raw_config = yaml.safe_load(file) or {}
+		if not isinstance(raw_config, dict):
+			raise ValueError("Ambiguity configuration YAML must contain a mapping at the top level")
+
+		ambiguity_sets = raw_config.get("ambiguity_sets")
+		if not isinstance(ambiguity_sets, dict) or not ambiguity_sets:
+			raise ValueError("Ambiguity configuration must include a non-empty 'ambiguity_sets' mapping")
+
+		selected_name = ambiguity_set or raw_config.get("default_ambiguity_set") or next(iter(ambiguity_sets))
+		if selected_name not in ambiguity_sets:
+			available = ", ".join(ambiguity_sets.keys())
+			raise ValueError(f"Unknown ambiguity_set '{selected_name}'. Available: {available}")
+
+		selected_config = ambiguity_sets[selected_name] or {}
+		if not isinstance(selected_config, dict):
+			raise ValueError(f"Ambiguity set '{selected_name}' must be a mapping")
+
+		def require_mapping(source: Dict[str, Any], key: str, context: str) -> Dict[str, Any]:
+			value = source.get(key)
+			field_name = f"{context}.{key}" if context else key
+			if not isinstance(value, dict):
+				raise ValueError(f"Ambiguity set '{selected_name}': '{field_name}' must be a mapping")
+			return value
+
+		def require_float(source: Dict[str, Any], key: str, context: str) -> float:
+			field_name = f"{context}.{key}" if context else key
+			if key not in source:
+				raise ValueError(f"Ambiguity set '{selected_name}': missing required field '{field_name}'")
+			try:
+				return float(source[key])
+			except (TypeError, ValueError) as exc:
+				raise ValueError(
+					f"Ambiguity set '{selected_name}': field '{field_name}' must be numeric"
+				) from exc
+
+		demand = require_mapping(selected_config, "demand", "")
+		demand_mu = require_mapping(demand, "mu", "demand")
+		demand_sigma = require_mapping(demand, "sigma", "demand")
+		wind = require_mapping(selected_config, "wind", "")
+		wind_mu = require_mapping(wind, "mu", "wind")
+		wind_sigma = require_mapping(wind, "sigma", "wind")
+
+		demand_mu_min = require_float(demand_mu, "min", "demand.mu")
+		demand_mu_max = require_float(demand_mu, "max", "demand.mu")
+		demand_sigma_min = require_float(demand_sigma, "min", "demand.sigma")
+		demand_sigma_max = require_float(demand_sigma, "max", "demand.sigma")
+		rho_D = require_float(demand, "rho_fixed", "demand")
+		wind_mu_min = require_float(wind_mu, "min", "wind.mu")
+		wind_mu_max = require_float(wind_mu, "max", "wind.mu")
+		wind_sigma_min = require_float(wind_sigma, "min", "wind.sigma")
+		wind_sigma_max = require_float(wind_sigma, "max", "wind.sigma")
+		rho_W = require_float(wind, "rho_fixed", "wind")
+		peak_W = require_float(wind, "tau_fixed", "wind")
+
+		if demand_mu_min > demand_mu_max:
+			raise ValueError(f"Ambiguity set '{selected_name}': demand.mu.min must be <= demand.mu.max")
+		if demand_sigma_min > demand_sigma_max:
+			raise ValueError(
+				f"Ambiguity set '{selected_name}': demand.sigma.min must be <= demand.sigma.max"
+			)
+		if wind_mu_min > wind_mu_max:
+			raise ValueError(f"Ambiguity set '{selected_name}': wind.mu.min must be <= wind.mu.max")
+		if wind_sigma_min > wind_sigma_max:
+			raise ValueError(f"Ambiguity set '{selected_name}': wind.sigma.min must be <= wind.sigma.max")
+		if demand_mu_min <= 0:
+			raise ValueError(f"Ambiguity set '{selected_name}': demand mu bounds must be positive")
+		if demand_sigma_min < 0:
+			raise ValueError(f"Ambiguity set '{selected_name}': demand sigma bounds must be non-negative")
+		if not 0 <= wind_mu_min <= 1 or not 0 <= wind_mu_max <= 1:
+			raise ValueError(f"Ambiguity set '{selected_name}': wind mu bounds must be in [0, 1]")
+		if wind_sigma_min < 0:
+			raise ValueError(f"Ambiguity set '{selected_name}': wind sigma bounds must be non-negative")
+		if not -0.999 <= rho_D <= 0.999:
+			raise ValueError(f"Ambiguity set '{selected_name}': demand.rho_fixed must be in [-0.999, 0.999]")
+		if not -0.999 <= rho_W <= 0.999:
+			raise ValueError(f"Ambiguity set '{selected_name}': wind.rho_fixed must be in [-0.999, 0.999]")
+		if not 0 <= peak_W <= 24:
+			raise ValueError(f"Ambiguity set '{selected_name}': wind.tau_fixed must be in [0, 24]")
+
+		max_draw_attempts = int(
+			selected_config.get("max_draw_attempts", raw_config.get("max_draw_attempts", 500))
+		)
+		if max_draw_attempts <= 0:
+			raise ValueError("max_draw_attempts must be a positive integer")
+
+		enforce_feasibility = bool(
+			selected_config.get(
+				"enforce_dispatch_feasibility",
+				raw_config.get("enforce_dispatch_feasibility", True),
+			)
+		)
+		contingency_margin = float(
+			selected_config.get(
+				"n_minus_one_margin",
+				selected_config.get(
+					"contingency_margin",
+					raw_config.get("n_minus_one_margin", raw_config.get("contingency_margin", 0.0)),
+				),
+			)
+		)
+		if contingency_margin < 0:
+			raise ValueError("n_minus_one_margin/contingency_margin must be non-negative")
+
+		seed = selected_config.get("seed", raw_config.get("seed"))
+		if seed is not None:
+			seed = int(seed)
+
+		kappa = selected_config.get("kappa", raw_config.get("kappa"))
+		if kappa is not None:
+			kappa = float(kappa)
+
+		return {
+			"name": selected_name,
+			"description": str(selected_config.get("description", "")),
+			"demand_mu_min": demand_mu_min,
+			"demand_mu_max": demand_mu_max,
+			"demand_sigma_min": demand_sigma_min,
+			"demand_sigma_max": demand_sigma_max,
+			"rho_D": rho_D,
+			"wind_mu_min": wind_mu_min,
+			"wind_mu_max": wind_mu_max,
+			"wind_sigma_min": wind_sigma_min,
+			"wind_sigma_max": wind_sigma_max,
+			"rho_W": rho_W,
+			"peak_W": peak_W,
+			"kappa": kappa,
+			"seed": seed,
+			"max_draw_attempts": max_draw_attempts,
+			"enforce_dispatch_feasibility": enforce_feasibility,
+			"n_minus_one_margin": contingency_margin,
+			"raw": selected_config,
+		}
+
+	def _draw_regime_parameters_from_ambiguity_set(
+		self,
+		ambiguity_config: Dict[str, Any],
+		rng: np.random.Generator,
+		scenario_index: int,
+	) -> RegimeParameters:
+		"""Draw one stochastic-process parameter vector from an ambiguity set."""
+		return RegimeParameters(
+			name=f"{ambiguity_config['name']}_draw_{scenario_index}",
+			n_scenarios=1,
+			mu_D=float(rng.uniform(ambiguity_config["demand_mu_min"], ambiguity_config["demand_mu_max"])),
+			rho_D=float(ambiguity_config["rho_D"]),
+			sigma_D=float(
+				rng.uniform(ambiguity_config["demand_sigma_min"], ambiguity_config["demand_sigma_max"])
+			),
+			mu_W=float(rng.uniform(ambiguity_config["wind_mu_min"], ambiguity_config["wind_mu_max"])),
+			peak_W=float(ambiguity_config["peak_W"]),
+			rho_W=float(ambiguity_config["rho_W"]),
+			sigma_W=float(
+				rng.uniform(ambiguity_config["wind_sigma_min"], ambiguity_config["wind_sigma_max"])
+			),
+		)
+
 	@staticmethod
 	def _build_demand_shape(horizon: int) -> np.ndarray:
 		"""Create a positive mean-one daily demand multiplier profile."""
@@ -367,12 +546,12 @@ class ScenarioManager:
 		horizon = self.base_case["time_steps"]
 		demand_shape = self._build_demand_shape(horizon)
 		reference_demand = self.base_case["demand"]
-		# Demand is simulated in reference-demand units, so sigma_D is dimensionless
-		# like sigma_W, and the final demand profile is scaled back to MW.
+		# Demand is simulated in reference-demand units, so sigma_D is dimensionless like sigma_W,
+		# and the final demand profile is scaled back to MW.
 		demand_mean = reference_demand * regime.mu_D
 		wind_shape = self._build_wind_shape(horizon, regime.peak_W)
-		# The deterministic shape functions are mean-one multiplier profiles;
-		# intraday amplitude is embedded in the shapes, not in regime parameters.
+		# The deterministic shape functions are mean-one multiplier profiles.
+		# Intraday amplitude is embedded in the shapes, not in regime parameters.
 		demand_trend = regime.mu_D * demand_shape
 		wind_trend = regime.mu_W * wind_shape
 
@@ -477,16 +656,34 @@ class ScenarioManager:
 		demand_mean: float,
 		demand_profile: List[float],
 		generator_wind_profiles: Dict[str, List[float]],
+		regime_parameters: Optional[RegimeParameters] = None,
+		scenario_source: str = "regime",
+		ambiguity_set: Optional[str] = None,
 	) -> Dict[str, Any]:
 		horizon = self.base_case["time_steps"]
 
 		scenario_row: Dict[str, Any] = {
 			"scenario_id": scenario_id,
 			"regime": regime_name,
+			"scenario_source": scenario_source,
+			"ambiguity_set": ambiguity_set,
 			"demand": demand_mean,
 			"time_steps": horizon,
 			"demand_profile": demand_profile,
 		}
+
+		if regime_parameters is not None:
+			scenario_row.update(
+				{
+					"mu_D": float(regime_parameters.mu_D),
+					"rho_D": float(regime_parameters.rho_D),
+					"sigma_D": float(regime_parameters.sigma_D),
+					"mu_W": float(regime_parameters.mu_W),
+					"rho_W": float(regime_parameters.rho_W),
+					"sigma_W": float(regime_parameters.sigma_W),
+					"peak_W": float(regime_parameters.peak_W),
+				}
+			)
 
 		for block in self.blocks:
 			block_name = block["block_name"]
@@ -578,6 +775,8 @@ class ScenarioManager:
 
 		if show:
 			plt.show()
+
+		plt.close(fig)
 
 		return fig, axes
 
@@ -691,6 +890,8 @@ class ScenarioManager:
 
 		if show:
 			plt.show()
+
+		plt.close(fig)
 
 		return fig, ax
 
@@ -814,6 +1015,8 @@ class ScenarioManager:
 
 		if show:
 			plt.show()
+
+		plt.close(fig)
 
 		return fig, ax, regime_colors
 
@@ -957,6 +1160,8 @@ class ScenarioManager:
 		if show:
 			plt.show()
 
+		plt.close(fig)
+
 		return fig, axes, regime_colors
 
 	def create_scenario_set_from_regimes(
@@ -1010,6 +1215,9 @@ class ScenarioManager:
 						demand_mean=demand_mean,
 						demand_profile=demand_profile,
 						generator_wind_profiles=generator_wind_profiles,
+						regime_parameters=regime,
+						scenario_source="regime",
+						ambiguity_set=None,
 					)
 				)
 
@@ -1039,55 +1247,196 @@ class ScenarioManager:
 			"regime_config": config,
 		}
 
+	def create_scenario_set_from_ambiguity_set(
+		self,
+		ambiguity_config_path: Optional[str] = None,
+		ambiguity_set: Optional[str] = None,
+		n_scenarios: int = 100,
+		seed: Optional[int] = None,
+		enforce_dispatch_feasibility: Optional[bool] = None,
+		max_draw_attempts: Optional[int] = None,
+		n_minus_one_margin: Optional[float] = None,
+	) -> Dict[str, Any]:
+		"""Generate stochastic scenarios from uniformly drawn ambiguity-set parameters."""
+		if n_scenarios <= 0:
+			raise ValueError(f"n_scenarios must be positive, got {n_scenarios}")
+
+		config = self.load_ambiguity_set_configuration(
+			ambiguity_config_path=ambiguity_config_path,
+			ambiguity_set=ambiguity_set,
+		)
+
+		effective_seed = seed if seed is not None else config["seed"]
+		effective_enforce_feasibility = (
+			enforce_dispatch_feasibility
+			if enforce_dispatch_feasibility is not None
+			else config["enforce_dispatch_feasibility"]
+		)
+		effective_max_draw_attempts = (
+			int(max_draw_attempts)
+			if max_draw_attempts is not None
+			else int(config["max_draw_attempts"])
+		)
+		effective_n_minus_one_margin = (
+			float(n_minus_one_margin)
+			if n_minus_one_margin is not None
+			else float(config["n_minus_one_margin"])
+		)
+
+		if effective_max_draw_attempts <= 0:
+			raise ValueError("max_draw_attempts must be a positive integer")
+		if effective_n_minus_one_margin < 0:
+			raise ValueError("n_minus_one_margin must be non-negative")
+
+		rng = np.random.default_rng(effective_seed)
+		scenarios_table: List[Dict[str, Any]] = []
+		horizon = self.base_case["time_steps"]
+		accepted_scenario_count = 0
+
+		for scenario_index in range(1, n_scenarios + 1):
+			demand_profile: List[float] = []
+			generator_wind_profiles: Dict[str, List[float]] = {}
+			regime_parameters: Optional[RegimeParameters] = None
+			demand_mean = 0.0
+
+			for _ in range(effective_max_draw_attempts):
+				regime_parameters = self._draw_regime_parameters_from_ambiguity_set(
+					ambiguity_config=config,
+					rng=rng,
+					scenario_index=scenario_index,
+				)
+				demand_profile, generator_wind_profiles, demand_mean = self._simulate_single_scenario(
+					regime=regime_parameters,
+					rng=rng,
+				)
+
+				if not effective_enforce_feasibility:
+					break
+				if self._is_dispatch_feasible(
+					demand_profile,
+					generator_wind_profiles,
+					contingency_margin=effective_n_minus_one_margin,
+				):
+					break
+			else:
+				raise ValueError(
+					f"Failed to draw a feasible scenario from ambiguity set '{config['name']}' "
+					f"after {effective_max_draw_attempts} attempts. "
+					"The ambiguity-set bounds may be too wide or the feasibility filter may be too strict."
+				)
+
+			if regime_parameters is None:
+				raise ValueError(f"Failed to draw parameters from ambiguity set '{config['name']}'")
+
+			accepted_scenario_count += 1
+			scenario_id = len(scenarios_table) + 1
+			scenarios_table.append(
+				self._build_scenario_row(
+					scenario_id=scenario_id,
+					regime_name=config["name"],
+					demand_mean=demand_mean,
+					demand_profile=demand_profile,
+					generator_wind_profiles=generator_wind_profiles,
+					regime_parameters=regime_parameters,
+					scenario_source="ambiguity_set",
+					ambiguity_set=config["name"],
+				)
+			)
+
+		scenarios_df = pd.DataFrame(scenarios_table)
+		costs_df, ramps_df = self._build_costs_and_ramps()
+
+		description_text = (
+			"=== Scenario Set Summary (Ambiguity-set Stochastic Process) ===\n"
+			f"Reference Case: {self.base_case_reference}\n"
+			f"Ambiguity Set: {config['name']}\n"
+			f"Accepted Stochastic Scenarios: {accepted_scenario_count}\n"
+			f"Generated Scenario Rows: {len(scenarios_df)}\n"
+			f"Time Steps: {horizon}\n"
+			f"Physical Generators: {len(self.physical_generators)}\n"
+			f"Bidding Blocks: {len(self.blocks)}\n"
+			"N-1 Feasibility: generator-level feasibility filter only\n"
+			"Parameter draws: uniform over ambiguity-set bounds"
+		)
+
+		return {
+			"description_text": description_text,
+			"scenarios_df": scenarios_df,
+			"costs_df": costs_df,
+			"ramps_df": ramps_df,
+			"ambiguity_config": config,
+		}
+
 if __name__ == "__main__":
 	manager = ScenarioManager(base_case_reference="test_case_bidding_blocks")
-	default_yaml = ScenarioManager.DEFAULT_REGIME_CONFIG_PATH
-	
-	scenario_set = manager.create_scenario_set_from_regimes(str(default_yaml), regime_set="policy_training")
-	print(scenario_set["description_text"])
-	scenarios_df = scenario_set["scenarios_df"]
-	preview_columns = [
-		"scenario_id",
-		"regime",
-	]
+	regime_yaml = ScenarioManager.DEFAULT_REGIME_CONFIG_PATH
+	ambiguity_yaml = ScenarioManager.DEFAULT_AMBIGUITY_CONFIG_PATH
+	make_plots = True
 
-	scenarios_df 
-
-	stop = True
-
-	manager.plot_shape_functions_by_regime(
-		str(default_yaml),
-		# regime_set="policy_training",
-		title="Deterministic Shape Functions",
-		save_path="setup_viz/shape_functions_by_regime.png",
-		show=True,
+	regime_scenario_set = manager.create_scenario_set_from_regimes(
+		regime_config_path=str(regime_yaml),
+		regime_set="policy_training",
+		seed=42,
 	)
+	print(regime_scenario_set["description_text"])
 
-	manager.plot_demand_profiles_by_regime(
-		scenarios_df,
-		title="Sampled Demand Profiles by Regime",
-		max_profiles_per_regime=100,
-		alpha=0.05,
-		show_regime_mean=True,
-		save_path="setup_viz/demand_profiles_by_regime.png",
-		show=True,
+	ambiguity_scenario_set = manager.create_scenario_set_from_ambiguity_set(
+		ambiguity_config_path=str(ambiguity_yaml),
+		ambiguity_set="test_case_bidding_blocks_base",
+		n_scenarios=500,
+		seed=42,
 	)
+	print(ambiguity_scenario_set["description_text"])
 
-	manager.plot_wind_profiles_by_regime(
-		scenarios_df,
-		title="Sampled Wind Profiles by Regime",
-		max_profiles_per_regime=100,
-		alpha=0.05,
-		show_regime_mean=True,
-		save_path="setup_viz/wind_profiles_by_regime.png",
-		show=True,
-	)
-
-	manager.plot_generation_cost_curves(
-		title="Generation Cost Curves for Test Case with Bidding Blocks",
-		save_path="setup_viz/generation_cost_curves.png",
-		generator_type="conventional",
-		show=True,
-	)
-
-	stop = True
+	if make_plots:
+		scenarios_df = regime_scenario_set["scenarios_df"]
+		ambiguity_scenarios_df = ambiguity_scenario_set["scenarios_df"]
+		manager.plot_shape_functions_by_regime(
+			str(regime_yaml),
+			regime_set="policy_training",
+			title="Deterministic Shape Functions",
+			save_path="setup_viz/shape_functions_by_regime.png",
+			show=False,
+		)
+		manager.plot_demand_profiles_by_regime(
+			scenarios_df,
+			title="Sampled Demand Profiles by Regime",
+			max_profiles_per_regime=100,
+			alpha=0.05,
+			show_regime_mean=True,
+			save_path="setup_viz/demand_profiles_by_regime.png",
+			show=False,
+		)
+		manager.plot_wind_profiles_by_regime(
+			scenarios_df,
+			title="Sampled Wind Profiles by Regime",
+			max_profiles_per_regime=100,
+			alpha=0.05,
+			show_regime_mean=True,
+			save_path="setup_viz/wind_profiles_by_regime.png",
+			show=False,
+		)
+		manager.plot_demand_profiles_by_regime(
+			ambiguity_scenarios_df,
+			title="Demand Profiles from Ambiguity Set",
+			max_profiles_per_regime=None,
+			alpha=0.08,
+			show_regime_mean=True,
+			save_path="setup_viz/ambiguity_set_demand_profiles.png",
+			show=True,
+		)
+		manager.plot_wind_profiles_by_regime(
+			ambiguity_scenarios_df,
+			title="Wind Profiles from Ambiguity Set",
+			max_profiles_per_regime=None,
+			alpha=0.08,
+			show_regime_mean=True,
+			save_path="setup_viz/ambiguity_set_wind_profiles.png",
+			show=True,
+		)
+		manager.plot_generation_cost_curves(
+			title="Generation Cost Curves for Test Case with Bidding Blocks",
+			save_path="setup_viz/generation_cost_curves.png",
+			generator_type="conventional",
+			show=False,
+		)

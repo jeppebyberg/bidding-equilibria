@@ -215,7 +215,7 @@ def main() -> None:
         # Path("results/temporary_poa_results/poa_optimization_T8.json"),
         # Path("results/temporary_poa_results/poa_optimization_T8_ratio_piecewise_mccormick.json"),
     ]
-    results_dir = Path("results/temporary_poa_results")
+    results_dir = Path("results")
     plot_all_matching_results = True
     output_dir = DEFAULT_OUTPUT_DIR
     show = False

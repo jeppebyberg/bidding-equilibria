@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import json
 import yaml
+import copy
 from pathlib import Path
 import sys
 from typing import Any, Optional
@@ -31,9 +32,20 @@ class PoAOptimization:
     """
 
     normalization_epsilon = 1e-12
-    default_lambda_bound = 40.0
-    default_capacity_dual_bound = 40.02
-    default_ramp_dual_bound = 20.0
+    DEFAULT_LOOSE_RELU_BOUND = 1e4
+    DEFAULT_LOOSE_ALPHA_LOWER = 0.0
+    DEFAULT_LOOSE_ALPHA_UPPER = 1e4
+    DEFAULT_LOOSE_DUAL_BIG_M = 1e6
+    DEFAULT_LOOSE_LAMBDA_LOWER = -1e6
+    DEFAULT_LOOSE_LAMBDA_UPPER = 1e6
+    DEFAULT_LOOSE_AGGREGATE_DUAL_UPPER = 1e8
+    DEFAULT_LOOSE_C_OPT_LOWER = 1e-3
+    DEFAULT_LOOSE_C_OPT_UPPER = 1e8
+    # TODO(PoA cleanup): Remove these scalar aliases after all call sites use the
+    # explicit default_lambda_lower/default_lambda_upper/default_dual_big_m fields.
+    default_lambda_bound = DEFAULT_LOOSE_LAMBDA_UPPER
+    default_capacity_dual_bound = DEFAULT_LOOSE_DUAL_BIG_M
+    default_ramp_dual_bound = DEFAULT_LOOSE_DUAL_BIG_M
     allowed_objective_modes = {
         "difference",
         "ratio_mccormick",
@@ -55,6 +67,16 @@ class PoAOptimization:
         reference_case: str = "test_case_bidding_blocks",
         objective_mode: str = "difference",
         ratio_bounds: Optional[dict[str, tuple[float, float]]] = None,
+        use_default_bounds: bool = True,
+        default_relu_bound: float = DEFAULT_LOOSE_RELU_BOUND,
+        default_alpha_lower: float = DEFAULT_LOOSE_ALPHA_LOWER,
+        default_alpha_upper: float = DEFAULT_LOOSE_ALPHA_UPPER,
+        default_dual_big_m: float = DEFAULT_LOOSE_DUAL_BIG_M,
+        default_lambda_lower: float = DEFAULT_LOOSE_LAMBDA_LOWER,
+        default_lambda_upper: float = DEFAULT_LOOSE_LAMBDA_UPPER,
+        default_aggregate_dual_upper: float = DEFAULT_LOOSE_AGGREGATE_DUAL_UPPER,
+        default_c_opt_lower: float = DEFAULT_LOOSE_C_OPT_LOWER,
+        default_c_opt_upper: float = DEFAULT_LOOSE_C_OPT_UPPER,
     ):
         self.scenarios_df = scenarios_df.reset_index(drop=True)
         self.costs_df = costs_df
@@ -68,9 +90,29 @@ class PoAOptimization:
             else None
         )
         self.requested_nn_policy_generators = nn_policy_generators
-        self.lambda_bound = float(self.default_lambda_bound)
-        self.capacity_dual_bound = float(self.default_capacity_dual_bound)
-        self.ramp_dual_bound = float(self.default_ramp_dual_bound)
+        self.use_default_bounds = bool(use_default_bounds)
+        self.default_relu_bound = float(default_relu_bound)
+        self.default_alpha_lower = float(default_alpha_lower)
+        self.default_alpha_upper = float(default_alpha_upper)
+        self.default_dual_big_m = float(default_dual_big_m)
+        self.default_lambda_lower = float(default_lambda_lower)
+        self.default_lambda_upper = float(default_lambda_upper)
+        self.default_aggregate_dual_upper = float(default_aggregate_dual_upper)
+        self.default_c_opt_lower = float(default_c_opt_lower)
+        self.default_c_opt_upper = float(default_c_opt_upper)
+        if self.default_c_opt_lower <= 0.0:
+            raise ValueError("default_c_opt_lower must be strictly positive")
+        if self.default_c_opt_upper < self.default_c_opt_lower:
+            raise ValueError("default_c_opt_upper must be >= default_c_opt_lower")
+        if self.default_lambda_lower >= self.default_lambda_upper:
+            raise ValueError("default_lambda_lower must be < default_lambda_upper")
+        self.lambda_bound = max(
+            abs(float(self.default_lambda_lower)),
+            abs(float(self.default_lambda_upper)),
+        )
+        self.capacity_dual_bound = float(self.default_dual_big_m)
+        self.ramp_dual_bound = float(self.default_dual_big_m)
+        self.default_bounds_used: dict[str, Any] = self._empty_default_bounds_used()
 
         self.nn_relu_bounds_report: dict[str, Any] = {}
         self.nn_relu_bounds: dict[str, dict[tuple[int, int, int], dict[str, Any]]] = {}
@@ -80,8 +122,11 @@ class PoAOptimization:
         self.tight_big_m: dict[str, dict[str, Any]] = {}
         self.aggregate_dual_bounds: dict[str, Any] = {}
         self.lambda_bounds: dict[str, Any] = {}
+        self.optimal_cost_bounds: dict[str, Any] = {}
+        self.optimal_cost_bound_optimization_results: dict[str, Any] = {}
         self.reference_case = reference_case
         self.objective_mode = self._validate_objective_mode(objective_mode)
+        ratio_bounds = self._ratio_bounds_with_defaults(ratio_bounds)
         self.ratio_bounds = self._validate_ratio_bounds(ratio_bounds)
         self._initialize_loaded_bound_dictionaries()
 
@@ -116,6 +161,68 @@ class PoAOptimization:
                 f"objective_mode must be one of {{{allowed}}}; got {objective_mode!r}"
             )
         return normalized_mode
+
+    @staticmethod
+    def _empty_default_bounds_used() -> dict[str, Any]:
+        return {
+            "nn_relu_bounds_report": False,
+            "alpha_bounds": False,
+            "tight_big_m": False,
+            "lambda_bounds": False,
+            "aggregate_dual_bounds": False,
+            "optimal_cost_bounds": False,
+            "primal_big_m": False,
+            "notes": [],
+        }
+
+    def _mark_default_bound_used(self, component_name: str, note: str) -> None:
+        if not getattr(self, "default_bounds_used", None):
+            self.default_bounds_used = self._empty_default_bounds_used()
+        self.default_bounds_used[component_name] = True
+        notes = self.default_bounds_used.setdefault("notes", [])
+        if note not in notes:
+            notes.append(note)
+
+    def _default_ratio_bounds_payload(
+        self,
+        ratio_bounds: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
+        completed = dict(ratio_bounds or {})
+        completed.setdefault(
+            "phi",
+            (float(self.default_alpha_lower), float(self.default_alpha_upper)),
+        )
+        completed.setdefault(
+            "C_opt",
+            (float(self.default_c_opt_lower), float(self.default_c_opt_upper)),
+        )
+        if self.objective_mode == "ratio_piecewise_mccormick":
+            completed.setdefault("num_pieces", 10)
+        return completed
+
+    def _ratio_bounds_with_defaults(
+        self,
+        ratio_bounds: Optional[dict[str, Any]],
+    ) -> Optional[dict[str, Any]]:
+        if self.objective_mode == "difference":
+            return ratio_bounds
+        if ratio_bounds is None:
+            if not self.use_default_bounds:
+                return None
+            self._mark_default_bound_used(
+                "optimal_cost_bounds",
+                "Default loose ratio/C_opt bounds were used because ratio_bounds was missing.",
+            )
+            return self._default_ratio_bounds_payload()
+        if self.use_default_bounds and (
+            "C_opt" not in ratio_bounds or "phi" not in ratio_bounds
+        ):
+            self._mark_default_bound_used(
+                "optimal_cost_bounds",
+                "Default loose ratio/C_opt bounds filled missing ratio_bounds entries.",
+            )
+            return self._default_ratio_bounds_payload(ratio_bounds)
+        return ratio_bounds
 
     def _validate_ratio_bounds(
         self,
@@ -736,6 +843,9 @@ class PoAOptimization:
         self,
         report_path: str | Path = "results/poa_nn_relu_bounds_report.json",
     ) -> dict[str, Any]:
+        # TODO(PoA cleanup): Fold this legacy standalone ReLU loader into
+        # load_tightening_report(...)/ensure_default_bounds_available(...), so
+        # all pre-build bounds enter through one report API.
         path = Path(report_path)
         if not path.exists():
             raise FileNotFoundError(f"NN ReLU bounds report not found: {path}")
@@ -746,11 +856,405 @@ class PoAOptimization:
         self._set_nn_relu_bounds_from_report(report)
         return report
 
+    @staticmethod
+    def _loosen_lower_upper_bounds_recursively(
+        payload: Any,
+        lower: float,
+        upper: float,
+    ) -> Any:
+        if isinstance(payload, dict):
+            loosened: dict[Any, Any] = {}
+            for key, value in payload.items():
+                key_lower = str(key).lower()
+                if key_lower == "lower" and isinstance(value, (int, float)):
+                    loosened[key] = float(lower)
+                elif key_lower == "upper" and isinstance(value, (int, float)):
+                    loosened[key] = float(upper)
+                else:
+                    loosened[key] = PoAOptimization._loosen_lower_upper_bounds_recursively(
+                        value,
+                        lower,
+                        upper,
+                    )
+            return loosened
+        if isinstance(payload, list):
+            return [
+                PoAOptimization._loosen_lower_upper_bounds_recursively(
+                    item,
+                    lower,
+                    upper,
+                )
+                for item in payload
+            ]
+        return copy.deepcopy(payload)
+
+    @staticmethod
+    def _replace_numeric_bounds_recursively(
+        payload: Any,
+        bound_keys: set[str],
+        replacement_value: float,
+        replace_plain_numbers: bool = False,
+    ) -> Any:
+        if isinstance(payload, dict):
+            replaced: dict[Any, Any] = {}
+            for key, value in payload.items():
+                key_lower = str(key).lower()
+                if key_lower in bound_keys and isinstance(value, (int, float)):
+                    replaced[key] = float(replacement_value)
+                else:
+                    replaced[key] = PoAOptimization._replace_numeric_bounds_recursively(
+                        value,
+                        bound_keys,
+                        replacement_value,
+                        replace_plain_numbers,
+                    )
+            return replaced
+        if isinstance(payload, list):
+            return [
+                PoAOptimization._replace_numeric_bounds_recursively(
+                    item,
+                    bound_keys,
+                    replacement_value,
+                    replace_plain_numbers,
+                )
+                for item in payload
+            ]
+        if replace_plain_numbers and isinstance(payload, (int, float)):
+            return float(replacement_value)
+        return copy.deepcopy(payload)
+
+    @staticmethod
+    def _template_section(
+        template_report: Optional[dict[str, Any]],
+        section_name: str,
+    ) -> dict[str, Any]:
+        if not isinstance(template_report, dict) or not template_report:
+            return {}
+        section = template_report.get(section_name)
+        if isinstance(section, dict):
+            return copy.deepcopy(section)
+        known_report_sections = {
+            "metadata",
+            "primal_big_m",
+            "nn_relu_bounds_report",
+            "nn_relu_bounds",
+            "alpha_bounds",
+            "alpha_optimization_results",
+            "fixed_binaries",
+            "tight_big_m",
+            "lambda_bounds",
+            "aggregate_dual_bounds",
+            "optimal_cost_bounds",
+            "optimal_cost_bound_optimization_results",
+        }
+        if known_report_sections & set(template_report):
+            return {}
+        return copy.deepcopy(template_report)
+
+    def build_default_nn_relu_bounds_report(
+        self,
+        template_report: Optional[dict[str, Any]] = None,
+        margin: Optional[float] = None,
+    ) -> dict[str, Any]:
+        margin = float(self.default_relu_bound if margin is None else margin)
+        source = template_report or self.nn_relu_bounds_report
+        if not source:
+            if self.nn_policy_generator_ids:
+                if not self.nn_policies:
+                    self._load_nn_policies()
+                if not self.nn_stats:
+                    self._load_nn_normalization_stats()
+                report = {
+                    "metadata": {
+                        "reference_case": self.reference_case,
+                        "num_time_steps": self.num_time_steps,
+                        "nn_policy_generators": list(self.nn_policy_generator_names),
+                        "physical_generator_names": list(self.physical_generator_names),
+                        "nn_model_dir": str(self.nn_model_dir),
+                        "nn_normalization_stats_path": str(
+                            self.nn_normalization_stats_path
+                        ),
+                        "bound_methods": {
+                            "all_layers": "default_loose_bounds",
+                        },
+                    },
+                    "nn_feature_bounds": self.summarize_nn_feature_bounds(),
+                    "nn_relu_bounds": {},
+                    "summary": {},
+                    "warnings": [],
+                    "optimization_results": {},
+                    "source": "default_loose_bounds",
+                }
+                for physical_generator_idx in self.nn_policy_generator_ids:
+                    generator_name = self.physical_generator_names[
+                        int(physical_generator_idx)
+                    ]
+                    policy = self.nn_policies.get(generator_name)
+                    if not policy:
+                        continue
+                    linear_layers = [
+                        layer
+                        for layer in policy.get("layers", [])
+                        if str(layer.get("type", "")).lower() == "linear"
+                    ]
+                    hidden_layers = linear_layers[:-1]
+                    generator_entries: dict[str, Any] = {}
+                    for linear_idx, layer in enumerate(hidden_layers):
+                        for time_idx in range(self.num_time_steps):
+                            for node in range(len(layer.get("bias", []))):
+                                key = self._json_key(
+                                    (int(time_idx), int(linear_idx), int(node))
+                                )
+                                generator_entries[key] = {
+                                    "physical_generator_index": int(
+                                        physical_generator_idx
+                                    ),
+                                    "time_idx": int(time_idx),
+                                    "linear_idx": int(linear_idx),
+                                    "node": int(node),
+                                    "L": -margin,
+                                    "U": margin,
+                                    "h_lower": 0.0,
+                                    "h_upper": margin,
+                                    "status": "ambiguous",
+                                    "bound_method": "default_loose_bounds",
+                                }
+                    report["nn_relu_bounds"][generator_name] = generator_entries
+                return report
+            return {}
+
+        report = copy.deepcopy(source)
+        if "nn_relu_bounds_report" in report and isinstance(report["nn_relu_bounds_report"], dict):
+            report = copy.deepcopy(report["nn_relu_bounds_report"])
+        if "nn_relu_bounds" not in report:
+            return {}
+
+        for generator_name, entries in (report.get("nn_relu_bounds", {}) or {}).items():
+            for key, details in (entries or {}).items():
+                if not isinstance(details, dict):
+                    continue
+                details["L"] = -margin
+                details["U"] = margin
+                details["h_lower"] = 0.0
+                details["h_upper"] = margin
+                details["status"] = "ambiguous"
+                details["bound_method"] = "default_loose_bounds"
+        report.setdefault("summary", {})
+        report.setdefault("warnings", [])
+        report["source"] = "default_loose_bounds"
+        return report
+
+    def build_default_alpha_bounds_report(
+        self,
+        template_report: Optional[dict[str, Any]] = None,
+        lower: Optional[float] = None,
+        upper: Optional[float] = None,
+    ) -> dict[str, Any]:
+        lower = float(self.default_alpha_lower if lower is None else lower)
+        upper = float(self.default_alpha_upper if upper is None else upper)
+        template = self._template_section(template_report, "alpha_bounds")
+        if not template and getattr(self, "alpha_bounds", None):
+            template = {
+                self._json_key(index): dict(bounds)
+                for index, bounds in self.alpha_bounds.items()
+            }
+        if not template:
+            return {
+                self._json_key((int(i), int(b), int(t))): {
+                    "lower": lower,
+                    "upper": upper,
+                    "source": "default_loose_bounds",
+                }
+                for i, b in self.generator_block_pairs
+                for t in range(self.num_time_steps)
+            }
+        return self._loosen_lower_upper_bounds_recursively(template, lower, upper)
+
+    def build_default_tight_big_m_report(
+        self,
+        template_report: Optional[dict[str, Any]] = None,
+        default_big_m: Optional[float] = None,
+    ) -> dict[str, Any]:
+        default_big_m = float(
+            self.default_dual_big_m if default_big_m is None else default_big_m
+        )
+        template = self._template_section(template_report, "tight_big_m")
+        if not template and getattr(self, "tight_big_m", None):
+            template = copy.deepcopy(self.tight_big_m)
+        if not template:
+            report: dict[str, dict[str, Any]] = {}
+            for side in ("eq", "opt"):
+                for dual_name in (f"mu_upper_{side}", f"mu_lower_{side}"):
+                    for i, b in self.generator_block_pairs:
+                        for t in range(self.num_time_steps):
+                            report.setdefault(dual_name, {})[
+                                self._json_key((int(i), int(b), int(t)))
+                            ] = {
+                                "tight_big_m": default_big_m,
+                                "source": "default_loose_bounds",
+                            }
+                for dual_name in (f"mu_ramp_up_{side}", f"mu_ramp_down_{side}"):
+                    for i in range(self.num_physical_generators):
+                        for t in range(self.num_time_steps):
+                            report.setdefault(dual_name, {})[
+                                self._json_key((int(i), int(t)))
+                            ] = {
+                                "tight_big_m": default_big_m,
+                                "source": "default_loose_bounds",
+                            }
+            return report
+        return self._replace_numeric_bounds_recursively(
+            template,
+            {"tight_big_m", "big_m", "upper_bound", "ub", "bound", "value"},
+            default_big_m,
+            replace_plain_numbers=False,
+        )
+
+    def build_default_lambda_bounds_report(
+        self,
+        template_report: Optional[dict[str, Any]] = None,
+        lower: Optional[float] = None,
+        upper: Optional[float] = None,
+    ) -> dict[str, Any]:
+        lower = float(self.default_lambda_lower if lower is None else lower)
+        upper = float(self.default_lambda_upper if upper is None else upper)
+        template = self._template_section(template_report, "lambda_bounds")
+        if not template and getattr(self, "lambda_bounds", None):
+            template = copy.deepcopy(self.lambda_bounds)
+        if not template:
+            return {
+                lambda_name: {
+                    str(int(t)): {
+                        "lower": lower,
+                        "upper": upper,
+                        "source": "default_loose_bounds",
+                    }
+                    for t in range(self.num_time_steps)
+                }
+                for lambda_name in ("lambda_eq", "lambda_opt")
+            }
+        return self._loosen_lower_upper_bounds_recursively(template, lower, upper)
+
+    def build_default_aggregate_dual_bounds_report(
+        self,
+        template_report: Optional[dict[str, Any]] = None,
+        upper: Optional[float] = None,
+    ) -> dict[str, Any]:
+        upper = float(self.default_aggregate_dual_upper if upper is None else upper)
+        template = self._template_section(template_report, "aggregate_dual_bounds")
+        if not template and getattr(self, "aggregate_dual_bounds", None):
+            template = copy.deepcopy(self.aggregate_dual_bounds)
+        if not template:
+            return {
+                bound_key: {
+                    side: {
+                        str(int(t)): {
+                            "tight_big_m": upper,
+                            "side": side,
+                            "constraint_type": constraint_type,
+                            "source": "default_loose_bounds",
+                        }
+                        for t in range(self.num_time_steps)
+                    }
+                    for side in ("eq", "opt")
+                }
+                for constraint_type, bound_key in (
+                    ("upper", "mu_max_sum_ub"),
+                    ("lower", "mu_min_sum_ub"),
+                    ("ramp_up", "mu_ramp_up_sum_ub"),
+                    ("ramp_down", "mu_ramp_down_sum_ub"),
+                )
+            }
+        return self._replace_numeric_bounds_recursively(
+            template,
+            {"tight_big_m", "big_m", "upper", "upper_bound", "ub", "bound", "value"},
+            upper,
+            replace_plain_numbers=False,
+        )
+
+    def build_default_optimal_cost_bounds_report(
+        self,
+        template_report: Optional[dict[str, Any]] = None,
+        lower: Optional[float] = None,
+        upper: Optional[float] = None,
+    ) -> dict[str, Any]:
+        lower = float(self.default_c_opt_lower if lower is None else lower)
+        upper = float(self.default_c_opt_upper if upper is None else upper)
+        if lower <= 0.0:
+            raise ValueError("Default C_opt lower bound must be strictly positive")
+        template = self._template_section(template_report, "optimal_cost_bounds")
+        if not template and getattr(self, "optimal_cost_bounds", None):
+            template = copy.deepcopy(self.optimal_cost_bounds)
+        if not template:
+            if self.objective_mode in {"ratio_mccormick", "ratio_piecewise_mccormick"}:
+                return {
+                    "C_opt": {
+                        "lower": lower,
+                        "upper": upper,
+                        "source": "default_loose_bounds",
+                    }
+                }
+            return {}
+        return self._loosen_lower_upper_bounds_recursively(template, lower, upper)
+
+    @staticmethod
+    def _remove_aggregate_dual_bound_payload(
+        report: dict[str, Any],
+    ) -> dict[str, Any]:
+        filtered_report = copy.deepcopy(report)
+        filtered_report.pop("aggregate_dual_bounds", None)
+        aggregate_keys = {
+            "mu_max_sum_ub",
+            "mu_min_sum_ub",
+            "mu_ramp_up_sum_ub",
+            "mu_ramp_down_sum_ub",
+        }
+        tight_big_m = filtered_report.get("tight_big_m")
+        if isinstance(tight_big_m, dict):
+            for key in aggregate_keys:
+                tight_big_m.pop(key, None)
+        return filtered_report
+
+    @classmethod
+    def _filter_tightening_report_sections(
+        cls,
+        report: dict[str, Any],
+        use_alpha_bounds: bool = True,
+        use_fixed_binaries: bool = True,
+        use_tight_big_m: bool = True,
+        use_lambda_bounds: bool = True,
+        use_aggregate_dual_bounds: bool = True,
+        use_optimal_cost_bounds: bool = True,
+    ) -> dict[str, Any]:
+        # TODO(PoA cleanup): Replace these boolean section switches with a
+        # component-set API shared by diagnostics, production solves, and
+        # tightening replay.
+        filtered_report = copy.deepcopy(report)
+        if not use_alpha_bounds:
+            filtered_report.pop("alpha_bounds", None)
+            filtered_report.pop("alpha_optimization_results", None)
+        if not use_fixed_binaries:
+            filtered_report.pop("fixed_binaries", None)
+            filtered_report.pop("num_fixed_binaries", None)
+        if not use_tight_big_m:
+            filtered_report.pop("tight_big_m", None)
+        if not use_lambda_bounds:
+            filtered_report.pop("lambda_bounds", None)
+        if not use_aggregate_dual_bounds:
+            filtered_report = cls._remove_aggregate_dual_bound_payload(filtered_report)
+        if not use_optimal_cost_bounds:
+            filtered_report.pop("optimal_cost_bounds", None)
+            filtered_report.pop("optimal_cost_bound_optimization_results", None)
+        return filtered_report
+
     def _set_tightening_report_data(
         self,
         report: dict[str, Any],
         report_path: Optional[Path] = None,
     ) -> None:
+        # TODO(PoA cleanup): Make this private mutator the implementation detail
+        # of a public load/apply bounds API. Diagnostics currently call it
+        # directly, which makes report state transitions too easy to misuse.
         self.tightening_report = report
         if report_path is not None:
             self.tightening_report_path = Path(report_path)
@@ -774,18 +1278,30 @@ class PoAOptimization:
             }
             for key, value in (report.get("alpha_bounds", {}) or {}).items()
         }
+        self.optimal_cost_bounds = report.get("optimal_cost_bounds", {}) or {}
+        self.optimal_cost_bound_optimization_results = (
+            report.get("optimal_cost_bound_optimization_results", {}) or {}
+        )
         self._loaded_bounds_prepared = False
 
     def load_tightening_report(
         self,
         report_path: str | Path = "results/poa_tightening/final_tightening_report.json",
+        use_alpha_bounds: bool = True,
+        use_fixed_binaries: bool = True,
+        use_tight_big_m: bool = True,
+        use_lambda_bounds: bool = True,
+        use_aggregate_dual_bounds: bool = True,
+        use_optimal_cost_bounds: bool = True,
     ) -> dict[str, Any]:
         """
         Load a tightening report and prepare model constants.
 
         The raw JSON-friendly report remains available on the object, while all
         Big-M and lambda data used by Pyomo is parsed once into tuple-indexed
-        dictionaries before model construction.
+        dictionaries before model construction. Individual tightening sections
+        can be disabled to solve with default bounds while still loading the
+        primal Big-M and NN ReLU data required for model construction.
         """
         path = Path(report_path)
         if not path.exists():
@@ -793,9 +1309,132 @@ class PoAOptimization:
         with path.open("r", encoding="utf-8") as file_handle:
             report = json.load(file_handle)
 
+        report = self._filter_tightening_report_sections(
+            report,
+            use_alpha_bounds=use_alpha_bounds,
+            use_fixed_binaries=use_fixed_binaries,
+            use_tight_big_m=use_tight_big_m,
+            use_lambda_bounds=use_lambda_bounds,
+            use_aggregate_dual_bounds=use_aggregate_dual_bounds,
+            use_optimal_cost_bounds=use_optimal_cost_bounds,
+        )
         self._set_tightening_report_data(report, path)
         self._prepare_loaded_bounds()
         return report
+
+    def ensure_default_bounds_available(
+        self,
+        template_report: Optional[dict[str, Any]] = None,
+        include_nn_relu_bounds: Optional[bool] = None,
+        include_alpha_bounds: bool = False,
+        include_tight_big_m: bool = True,
+        include_lambda_bounds: bool = False,
+        include_aggregate_dual_bounds: bool = False,
+        include_optimal_cost_bounds: Optional[bool] = None,
+        overwrite_existing: bool = False,
+    ) -> dict[str, Any]:
+        from models.PoA.PoA_tightening.compute_primal_big_m import (
+            compute_primal_big_m_bounds,
+        )
+
+        include_nn_relu_bounds = (
+            bool(self.nn_policy_generator_ids)
+            if include_nn_relu_bounds is None
+            else bool(include_nn_relu_bounds)
+        )
+        include_optimal_cost_bounds = (
+            self.objective_mode in {"ratio_mccormick", "ratio_piecewise_mccormick"}
+            if include_optimal_cost_bounds is None
+            else bool(include_optimal_cost_bounds)
+        )
+
+        default_report = copy.deepcopy(getattr(self, "tightening_report", {}) or {})
+        template_report = template_report or default_report
+
+        if overwrite_existing or not default_report.get("primal_big_m"):
+            default_report["primal_big_m"] = compute_primal_big_m_bounds(self)
+            self._mark_default_bound_used(
+                "primal_big_m",
+                "Analytic primal Big-M defaults were used for model construction.",
+            )
+
+        if include_nn_relu_bounds and (
+            overwrite_existing or not (default_report.get("nn_relu_bounds_report") or self.nn_relu_bounds)
+        ):
+            relu_report = self.build_default_nn_relu_bounds_report(template_report)
+            if relu_report:
+                default_report["nn_relu_bounds_report"] = relu_report
+                default_report["nn_relu_bounds"] = relu_report.get("nn_relu_bounds", {})
+                self._mark_default_bound_used(
+                    "nn_relu_bounds_report",
+                    "Default loose NN ReLU bounds were used.",
+                )
+
+        if include_alpha_bounds and (
+            overwrite_existing or not default_report.get("alpha_bounds")
+        ):
+            alpha_report = self.build_default_alpha_bounds_report(template_report)
+            if alpha_report:
+                default_report["alpha_bounds"] = alpha_report
+                self._mark_default_bound_used(
+                    "alpha_bounds",
+                    "Default loose alpha bounds were used.",
+                )
+
+        if include_tight_big_m and (
+            overwrite_existing or not default_report.get("tight_big_m")
+        ):
+            tight_big_m_report = self.build_default_tight_big_m_report(template_report)
+            if tight_big_m_report:
+                default_report["tight_big_m"] = tight_big_m_report
+                self._mark_default_bound_used(
+                    "tight_big_m",
+                    "Default loose dual Big-M values were used.",
+                )
+
+        if include_lambda_bounds and (
+            overwrite_existing or not default_report.get("lambda_bounds")
+        ):
+            lambda_report = self.build_default_lambda_bounds_report(template_report)
+            if lambda_report:
+                default_report["lambda_bounds"] = lambda_report
+                self._mark_default_bound_used(
+                    "lambda_bounds",
+                    "Default loose lambda bounds were used.",
+                )
+
+        if include_aggregate_dual_bounds and (
+            overwrite_existing or not default_report.get("aggregate_dual_bounds")
+        ):
+            aggregate_report = self.build_default_aggregate_dual_bounds_report(
+                template_report
+            )
+            if aggregate_report:
+                default_report["aggregate_dual_bounds"] = aggregate_report
+                self._mark_default_bound_used(
+                    "aggregate_dual_bounds",
+                    "Default loose aggregate dual bounds were used.",
+                )
+
+        if include_optimal_cost_bounds and (
+            overwrite_existing or not default_report.get("optimal_cost_bounds")
+        ):
+            optimal_cost_report = self.build_default_optimal_cost_bounds_report(
+                template_report
+            )
+            if optimal_cost_report:
+                default_report["optimal_cost_bounds"] = optimal_cost_report
+                self._mark_default_bound_used(
+                    "optimal_cost_bounds",
+                    "Default loose optimal-cost bounds were used.",
+                )
+
+        self._set_tightening_report_data(
+            default_report,
+            getattr(self, "tightening_report_path", None),
+        )
+        self._prepare_loaded_bounds()
+        return default_report
 
     def _indexed_numeric_entries(
         self,
@@ -940,6 +1579,11 @@ class PoAOptimization:
     ) -> dict[tuple[int, ...], float]:
         entries = (getattr(self, "tight_big_m", {}) or {}).get(dual_name, {}) or {}
         if not entries:
+            if self.use_default_bounds:
+                self._mark_default_bound_used(
+                    "tight_big_m",
+                    "Default loose dual Big-M values were used where no tightened values were loaded.",
+                )
             return {index: float(default_bound) for index in expected_indices}
 
         parsed = self._indexed_numeric_entries(
@@ -965,8 +1609,16 @@ class PoAOptimization:
     ) -> dict[int, tuple[float, float]]:
         entries = (getattr(self, "lambda_bounds", {}) or {}).get(lambda_name, {}) or {}
         if not entries:
+            if self.use_default_bounds:
+                self._mark_default_bound_used(
+                    "lambda_bounds",
+                    "Default loose lambda bounds were used where no tightened values were loaded.",
+                )
             return {
-                int(t): (-float(self.lambda_bound), float(self.lambda_bound))
+                int(t): (
+                    float(self.default_lambda_lower),
+                    float(self.default_lambda_upper),
+                )
                 for t in range(self.num_time_steps)
             }
         if not isinstance(entries, dict):
@@ -990,8 +1642,8 @@ class PoAOptimization:
                     f"Invalid lambda bounds '{lambda_name}' for time {t}. "
                     "Expected finite 'lower' and 'upper' entries."
                 )
-            lower = max(-float(self.lambda_bound), float(lower))
-            upper = min(float(self.lambda_bound), float(upper))
+            lower = max(float(self.default_lambda_lower), float(lower))
+            upper = min(float(self.default_lambda_upper), float(upper))
             if lower > upper:
                 raise ValueError(
                     f"Invalid lambda bounds '{lambda_name}' for time {t}: "
@@ -1356,6 +2008,16 @@ class PoAOptimization:
     # ------------------------------------------------------------------
 
     def build_model(self) -> None:
+        if self.use_default_bounds:
+            self.ensure_default_bounds_available(
+                include_nn_relu_bounds=bool(self.nn_policy_generator_ids),
+                include_tight_big_m=True,
+                include_optimal_cost_bounds=(
+                    self.objective_mode
+                    in {"ratio_mccormick", "ratio_piecewise_mccormick"}
+                ),
+                overwrite_existing=False,
+            )
         self._ensure_loaded_bounds_prepared()
         self.model = ConcreteModel()
         
@@ -2717,6 +3379,9 @@ class PoAOptimization:
         apply_alpha_bounds: bool = True,
         apply_fixed_binaries: bool = True,
         apply_dual_bounds: bool = True,
+        apply_lambda_bounds: Optional[bool] = None,
+        apply_dual_big_m_bounds: Optional[bool] = None,
+        apply_aggregate_dual_bounds: Optional[bool] = None,
     ) -> dict[str, int]:
         """
         Apply a tightening report to the already-built PoA model.
@@ -2766,13 +3431,28 @@ class PoAOptimization:
                     stats["fixed_binaries"] += 1
 
         if apply_dual_bounds:
-            stats["lambda_bounds"] = self._apply_lambda_bounds_to_model()
-            stats["dual_upper_bounds"] = self._apply_dual_bounds_to_model()
-
-            self.aggregate_dual_bounds = report.get("aggregate_dual_bounds", {}) or {}
-            stats["aggregate_dual_bounds"] = (
-                self._refresh_aggregate_dual_bound_constraints()
+            apply_lambda = (
+                True if apply_lambda_bounds is None else bool(apply_lambda_bounds)
             )
+            apply_dual_big_m = (
+                True
+                if apply_dual_big_m_bounds is None
+                else bool(apply_dual_big_m_bounds)
+            )
+            apply_aggregate = (
+                True
+                if apply_aggregate_dual_bounds is None
+                else bool(apply_aggregate_dual_bounds)
+            )
+            if apply_lambda:
+                stats["lambda_bounds"] = self._apply_lambda_bounds_to_model()
+            if apply_dual_big_m:
+                stats["dual_upper_bounds"] = self._apply_dual_bounds_to_model()
+            if apply_aggregate:
+                self.aggregate_dual_bounds = report.get("aggregate_dual_bounds", {}) or {}
+                stats["aggregate_dual_bounds"] = (
+                    self._refresh_aggregate_dual_bound_constraints()
+                )
 
         if apply_alpha_bounds:
             alpha_entries = report.get("alpha_bounds", {}) or {}
@@ -3256,6 +3936,7 @@ class PoAOptimization:
             "nn_feature_bounds": self.summarize_nn_feature_bounds(),
             "nn_relu_bounds": self.summarize_nn_relu_bounds(),
             "nn_bound_warnings": list(self.nn_bound_warnings),
+            "default_bounds_used": getattr(self, "default_bounds_used", {}),
         }
 
     def save_results(self, output_path: str | Path) -> Path:
@@ -3275,8 +3956,9 @@ if __name__ == "__main__":
     regime_set = "PoA_analysis"
     seed = 1
     horizon = 4
-    nn_relu_report_path = "results/poa_nn_relu_bounds_report.json"
+    nn_relu_report_path = "results/poa_tightening/relu_bounds_report.json"
     tightening_report_path = "results/poa_tightening/final_tightening_report.json"
+    diagnostic_mode = False
 
     scenario_manager = ScenarioManager(case)
     scenarios = scenario_manager.create_scenario_set_from_regimes(
@@ -3293,22 +3975,24 @@ if __name__ == "__main__":
         config_name="test_case_bidding_blocks_base",
     )
 
-    optimizer = PoAOptimization(
-        scenarios_df=scenarios_df,
-        costs_df=costs_df,
-        ramps_df=ramps_df,
-        p_init=None,
-        num_time_steps=horizon,
-        ambiguity_set_config=ambiguity_set_config,
-        nn_model_dir="models/neural_network/training/trained_models",
-        nn_normalization_stats_path=(
+    optimizer_kwargs = {
+        "scenarios_df": scenarios_df,
+        "costs_df": costs_df,
+        "ramps_df": ramps_df,
+        "p_init": None,
+        "num_time_steps": horizon,
+        "ambiguity_set_config": ambiguity_set_config,
+        "nn_model_dir": "models/neural_network/training/trained_models",
+        "nn_normalization_stats_path": (
             "models/neural_network/features/generated/normalized/min_max_stats.json"
         ),
         # None means all generators with available NN files. Use [] for true
         # costs only, or e.g. ["G2", "W1"] / [1, 2] for a selected subset.
-        nn_policy_generators=[1, 2],
-        reference_case=case,
-    )
+        "nn_policy_generators": [1, 2],
+        "reference_case": case,
+    }
+
+    optimizer = PoAOptimization(**optimizer_kwargs)
 
     start = time.perf_counter()
     optimizer.load_nn_relu_bounds_report(nn_relu_report_path)

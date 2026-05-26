@@ -169,11 +169,17 @@ class PoATighteningMain:
             self.tightening_data["optimal_cost_bounds"] = (
                 report.get("optimal_cost_bounds", {}) or {}
             )
+            self.poa.optimal_cost_bounds = self.tightening_data[
+                "optimal_cost_bounds"
+            ]
 
         if "optimal_cost_bound_optimization_results" in report:
             self.tightening_data["optimal_cost_bound_optimization_results"] = (
                 report.get("optimal_cost_bound_optimization_results", {}) or {}
             )
+            self.poa.optimal_cost_bound_optimization_results = self.tightening_data[
+                "optimal_cost_bound_optimization_results"
+            ]
 
         return report
 
@@ -188,6 +194,171 @@ class PoATighteningMain:
         self.stage_reports[stage_name] = report
         self._merge_report(report)
         return report
+
+    def _default_stage_report(self, stage_name: str) -> dict[str, Any]:
+        """
+        Build a loose-but-valid placeholder for a skipped tightening stage.
+
+        These defaults keep downstream tightening diagnostics buildable when a
+        component is intentionally disabled. They are not tight preprocessing
+        results and should be interpreted as the loose baseline for that stage.
+        """
+        if stage_name == "primal_big_m":
+            from models.PoA.PoA_tightening.compute_primal_big_m import (
+                compute_primal_big_m_bounds,
+                summarize_primal_big_m,
+            )
+
+            primal_big_m = compute_primal_big_m_bounds(self.poa)
+            self.poa._mark_default_bound_used(
+                "primal_big_m",
+                "Analytic primal Big-M defaults were used by tightening_main.",
+            )
+            return {
+                "metadata": {
+                    "description": "Analytic primal Big-M defaults.",
+                    "source": "analytic_default_bounds",
+                    "reference_case": self.poa.reference_case,
+                    "num_time_steps": self.poa.num_time_steps,
+                    "summary": summarize_primal_big_m(primal_big_m),
+                },
+                "primal_big_m": primal_big_m,
+            }
+
+        if stage_name == "relu_bounds":
+            report = self.poa.build_default_nn_relu_bounds_report()
+            report.setdefault("metadata", {})["source"] = "default_loose_bounds"
+            report["relu_fixed_binaries"] = {}
+            self.poa._mark_default_bound_used(
+                "nn_relu_bounds_report",
+                "Default loose ReLU bounds were used by tightening_main.",
+            )
+            return report
+
+        if stage_name == "alpha_bounds":
+            alpha_bounds = self.poa.build_default_alpha_bounds_report()
+            self.poa._mark_default_bound_used(
+                "alpha_bounds",
+                "Default loose alpha bounds were used by tightening_main.",
+            )
+            return {
+                "metadata": {
+                    "description": "Default loose alpha bounds.",
+                    "source": "default_loose_bounds",
+                    "reference_case": self.poa.reference_case,
+                    "num_time_steps": self.poa.num_time_steps,
+                    "num_optimization_programs": 0,
+                },
+                "alpha_bounds": alpha_bounds,
+                "alpha_optimization_results": {},
+                "num_optimization_programs": 0,
+                "primal_big_m": self.tightening_data.get("primal_big_m", {}),
+            }
+
+        if stage_name == "slack_binary_fix":
+            return {
+                "metadata": {
+                    "description": "Default empty complementarity-binary fixing.",
+                    "source": "default_loose_bounds",
+                    "reference_case": self.poa.reference_case,
+                    "num_time_steps": self.poa.num_time_steps,
+                },
+                "slack_bounds": {},
+                "fixed_binaries": {},
+                "num_fixed_binaries": 0,
+                "primal_big_m": self.tightening_data.get("primal_big_m", {}),
+                "alpha_bounds": self.tightening_data.get("alpha_bounds", {}),
+                "alpha_optimization_results": self.tightening_data.get(
+                    "alpha_optimization_results",
+                    {},
+                ),
+            }
+
+        if stage_name == "dual_big_m":
+            lambda_bounds = self.poa.build_default_lambda_bounds_report()
+            tight_big_m = self.poa.build_default_tight_big_m_report()
+            aggregate_dual_bounds = (
+                self.poa.build_default_aggregate_dual_bounds_report()
+            )
+            self.poa._mark_default_bound_used(
+                "lambda_bounds",
+                "Default loose lambda bounds were used by tightening_main.",
+            )
+            self.poa._mark_default_bound_used(
+                "tight_big_m",
+                "Default loose dual Big-M values were used by tightening_main.",
+            )
+            self.poa._mark_default_bound_used(
+                "aggregate_dual_bounds",
+                "Default loose aggregate dual bounds were used by tightening_main.",
+            )
+            return {
+                "metadata": {
+                    "description": (
+                        "Default loose lambda, componentwise dual Big-M, and "
+                        "aggregate dual bounds."
+                    ),
+                    "source": "default_loose_bounds",
+                    "reference_case": self.poa.reference_case,
+                    "num_time_steps": self.poa.num_time_steps,
+                },
+                "lambda_bounds": lambda_bounds,
+                "tight_big_m": tight_big_m,
+                "aggregate_dual_bounds": aggregate_dual_bounds,
+                "primal_big_m": self.tightening_data.get("primal_big_m", {}),
+                "alpha_bounds": self.tightening_data.get("alpha_bounds", {}),
+                "alpha_optimization_results": self.tightening_data.get(
+                    "alpha_optimization_results",
+                    {},
+                ),
+                "slack_bounds": self.tightening_data.get("slack_bounds", {}),
+                "fixed_binaries": self.tightening_data.get("fixed_binaries", {}),
+            }
+
+        if stage_name == "optimal_cost_bounds":
+            optimal_cost_bounds = self.poa.build_default_optimal_cost_bounds_report()
+            if not optimal_cost_bounds:
+                optimal_cost_bounds = {
+                    "C_opt": {
+                        "lower": self.poa.default_c_opt_lower,
+                        "upper": self.poa.default_c_opt_upper,
+                        "source": "default_loose_bounds",
+                    }
+                }
+            self.poa._mark_default_bound_used(
+                "optimal_cost_bounds",
+                "Default loose optimal-cost bounds were used by tightening_main.",
+            )
+            return {
+                "metadata": {
+                    "description": "Default loose optimal-dispatch cost bounds.",
+                    "source": "default_loose_bounds",
+                    "reference_case": self.poa.reference_case,
+                    "num_time_steps": self.poa.num_time_steps,
+                    "num_optimization_programs": 0,
+                },
+                "optimal_cost_bounds": optimal_cost_bounds,
+                "optimal_cost_bound_optimization_results": {},
+                "num_optimization_programs": 0,
+                "primal_big_m": self.tightening_data.get("primal_big_m", {}),
+            }
+
+        raise ValueError(f"No default report builder is defined for stage '{stage_name}'")
+
+    def _load_default_stage(
+        self,
+        stage_name: str,
+        output_path: str | Path | None,
+    ) -> dict[str, Any]:
+        print(
+            f"Using default loose inputs for skipped tightening stage: {stage_name}",
+            flush=True,
+        )
+        return self._save_stage_report(
+            stage_name,
+            self._default_stage_report(stage_name),
+            output_path,
+        )
 
     def _save_stage_report(
         self,
@@ -208,9 +379,14 @@ class PoATighteningMain:
         run_callable: Callable[[str | Path | None], dict[str, Any]],
         previous_path: str | Path,
         output_path: str | Path | None,
+        use_default_if_missing: bool = True,
     ) -> dict[str, Any]:
         if run_flag:
             return run_callable(output_path)
+        if Path(previous_path).exists():
+            return self._load_previous_stage(stage_name, previous_path)
+        if use_default_if_missing:
+            return self._load_default_stage(stage_name, output_path)
         return self._load_previous_stage(stage_name, previous_path)
 
     def load_existing_tightening_report(self, path: str | Path) -> dict[str, Any]:
@@ -252,6 +428,7 @@ class PoATighteningMain:
                 if self.poa.nn_normalization_stats_path
                 else None
             ),
+            "default_bounds_used": getattr(self.poa, "default_bounds_used", {}),
         }
 
     def save_final_report(self, output_path: str | Path) -> Path:
@@ -321,6 +498,7 @@ class PoATighteningMain:
         slack_stop_tol: Optional[float] = None,
         parallel_workers: Optional[int] = 1,
         solver_threads: Optional[int] = None,
+        use_default_stage_inputs: bool = True,
     ) -> Path:
         from models.PoA.PoA_tightening.compute_alpha_bounds import AlphaBoundsComputer
         from models.PoA.PoA_tightening.compute_dual_big_m import DualBigMComputer
@@ -347,6 +525,7 @@ class PoATighteningMain:
             lambda output_path: primal_stage.run_primal_big_m(output_path=output_path),
             previous_paths["primal_big_m"],
             output_paths["primal_big_m"],
+            use_default_if_missing=use_default_stage_inputs,
         )
 
         self._load_or_run_stage(
@@ -361,6 +540,7 @@ class PoATighteningMain:
             ),
             previous_paths["relu_bounds"],
             output_paths["relu_bounds"],
+            use_default_if_missing=use_default_stage_inputs,
         )
 
         self._require_relu_before_alpha()
@@ -377,6 +557,7 @@ class PoATighteningMain:
             ),
             previous_paths["alpha_bounds"],
             output_paths["alpha_bounds"],
+            use_default_if_missing=use_default_stage_inputs,
         )
 
         self._require_alpha_bounds()
@@ -397,6 +578,7 @@ class PoATighteningMain:
             ),
             previous_paths["slack_binary_fix"],
             output_paths["slack_binary_fix"],
+            use_default_if_missing=use_default_stage_inputs,
         )
 
         self._require_dual_big_m_inputs()
@@ -413,6 +595,7 @@ class PoATighteningMain:
             ),
             previous_paths["dual_big_m"],
             output_paths["dual_big_m"],
+            use_default_if_missing=use_default_stage_inputs,
         )
 
         self._load_or_run_stage(
@@ -427,6 +610,7 @@ class PoATighteningMain:
             ),
             previous_paths["optimal_cost_bounds"],
             output_paths["optimal_cost_bounds"],
+            use_default_if_missing=use_default_stage_inputs,
         )
 
         return self.save_final_report(output_paths["final"])

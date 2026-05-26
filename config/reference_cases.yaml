@@ -1,6 +1,6 @@
 test_case_bidding_blocks:
   demand:
-    - 150.0
+    - 130.0
 
   time_steps:
     - 24
