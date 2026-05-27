@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import copy
 import json
 import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-
-import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -95,32 +92,12 @@ class FullPipelineConfig:
     # Case and random seeds.
     case: str = "test_case_bidding_blocks"
     synthetic_time_steps: int | None = 24
-    poa_time_steps: int | None = None
-    synthetic_regime_set: str = "policy_training_runtime"
-    poa_regime_set: str = "PoA_analysis_runtime"
-    source_synthetic_regime_set: str = "policy_training"
-    source_poa_regime_set: str = "PoA_analysis"
     synthetic_seed: int = 1
     poa_seed: int = 1
 
-    # Scenario counts. Set a regime name to the desired number of scenarios.
-    # Use {} to keep the counts from config/regime_definitions.yaml.
-    synthetic_scenarios_per_regime: dict[str, int] = field(
-        default_factory=lambda: {
-            "normal": 100,
-            "high_demand": 100,
-            "normal_peak_shift_wind": 100,
-            "high_demand_peak_shift_wind": 100,
-        }
-    )
-    poa_context_scenarios_per_regime: dict[str, int] = field(
-        default_factory=lambda: {
-            "normal": 2,
-            "high_demand": 2,
-            "normal_peak_shift_wind": 5,
-            "high_demand_peak_shift_wind": 5,
-        }
-    )
+    # Scenario counts for ambiguity-set draws.
+    synthetic_num_scenarios: int = 400
+    poa_context_num_scenarios: int = 1
 
     # Heuristic synthetic-label generation.
     bid_tolerance: float = 1e-2
@@ -150,20 +127,21 @@ class FullPipelineConfig:
     patience: int | None = 50
     min_delta: float = 1e-6
     device: str | None = None
+    nn_final_activation: str = "relu"
 
     # PoA parameters. The uncertainty set is induced by ambiguity_set_config_name
-    # in models/PoA/ambiguity_set_config.yaml. The generated PoA context
+    # in config/ambiguity_set_config.yaml. The generated PoA context
     # scenarios only provide model dimensions/static case data.
     horizon: int = 8
-    ambiguity_set_config_path: str = "models/PoA/ambiguity_set_config.yaml"
-    ambiguity_set_config_name: str = "test_case_bidding_blocks_base"
-    nn_policy_generators: list[int] = field(default_factory=lambda: [1, 2])
+    ambiguity_set_config_path: str = "config/ambiguity_set_config.yaml"
+    ambiguity_set_config_name: str = "base_test_case"
+    nn_policy_generators: list[int | str] = field(default_factory=lambda: ["G1", "W3"])
 
-    # Objective modes: "difference", "ratio_mccormick", or
-    # "ratio_piecewise_mccormick". Difference is the historical default.
+    # Objective modes: "difference", "mccormick", or
+    # "piecewise_mccormick". Difference is the historical default.
     poa_objective_mode: str = "difference"
-    # You may pass a complete PoAOptimization ratio_bounds dictionary directly.
-    # If omitted for ratio modes, set poa_ratio_phi_bounds and
+    # You may pass a complete PoAOptimization mccormick_bounds dictionary directly.
+    # If omitted for McCormick modes, set poa_ratio_phi_bounds and
     # poa_ratio_c_opt_bounds below.
     poa_ratio_bounds: dict[str, Any] | None = None
     poa_ratio_phi_bounds: tuple[float, float] | None = None
@@ -195,17 +173,9 @@ class FullPipelineConfig:
     tightening_output_paths: dict[str, str | Path] = field(
         default_factory=lambda: dict(TIGHTENING_OUTPUT_PATHS)
     )
-    # Legacy per-stage toggles retained for direct calls to the compatibility
-    # helper functions below. The main pipeline uses tightening_flags.
-    run_poa_nn_relu_bounds: bool = True
-    run_poa_alpha_bounds: bool = True
-    run_poa_slack_binary_fix: bool = True
-    run_poa_dual_big_m: bool = True
-    run_poa_optimal_cost_bounds: bool = True
     run_poa_optimization: bool = True
 
     # Outputs.
-    runtime_config_path: Path = Path("results/full_pipeline/runtime_regime_definitions.yaml")
     synthetic_scenario_dir: Path = Path("results/full_pipeline/synthetic_scenarios")
     poa_scenario_dir: Path = Path("results/full_pipeline/poa_scenarios")
     heuristic_results_path: Path = Path("results/merit_order_best_response_results.json")
@@ -262,13 +232,11 @@ class FullPipelineConfig:
 def main(config: FullPipelineConfig) -> None:
     print_pipeline_header(config)
 
-    write_runtime_regime_config(config)
-
     synthetic_manager = ScenarioManager(config.case)
     synthetic_scenarios = load_or_generate_scenarios(
         config=config,
         manager=synthetic_manager,
-        regime_set=config.synthetic_regime_set,
+        n_scenarios=config.synthetic_num_scenarios,
         seed=config.synthetic_seed,
         output_dir=config.synthetic_scenario_dir,
         should_generate=config.run_scenario_generation,
@@ -293,11 +261,11 @@ def main(config: FullPipelineConfig) -> None:
         load_or_generate_scenarios(
             config=config,
             manager=ScenarioManager(config.case),
-            regime_set=config.poa_regime_set,
+            n_scenarios=config.poa_context_num_scenarios,
             seed=config.poa_seed,
             output_dir=config.poa_scenario_dir,
             should_generate=True,
-            time_steps=config.poa_time_steps,
+            time_steps=config.horizon,
         )
 
     if config.run_tightening:
@@ -313,81 +281,33 @@ def print_pipeline_header(config: FullPipelineConfig) -> None:
         "\nFull pipeline configuration\n"
         f"  case={config.case}\n"
         f"  synthetic_time_steps={config.synthetic_time_steps or 'case default'}\n"
-        f"  poa_time_steps={config.poa_time_steps or 'case default'}, poa_horizon={config.horizon}\n"
+        f"  poa_horizon={config.horizon}\n"
         f"  poa_objective_mode={config.poa_objective_mode}\n"
-        f"  synthetic_regime_set={config.synthetic_regime_set}, seed={config.synthetic_seed}\n"
-        f"  poa_regime_set={config.poa_regime_set}, seed={config.poa_seed}\n"
+        f"  ambiguity_set={config.ambiguity_set_config_name}\n"
+        f"  synthetic_num_scenarios={config.synthetic_num_scenarios}, seed={config.synthetic_seed}\n"
+        f"  poa_context_num_scenarios={config.poa_context_num_scenarios}, seed={config.poa_seed}\n"
         f"  hidden_layers={config.hidden_layers}, epochs={config.num_epochs}, "
         f"batch_size={config.batch_size}\n"
         f"  solver={config.solver_name}, poa_parallel_workers={config.poa_parallel_workers}"
     )
 
 
-def write_runtime_regime_config(config: FullPipelineConfig) -> Path:
-    source_path = ScenarioManager.DEFAULT_REGIME_CONFIG_PATH
-    with source_path.open("r", encoding="utf-8") as file_handle:
-        raw_config = yaml.safe_load(file_handle) or {}
-
-    regime_sets = raw_config.get("regime_sets")
-    if not isinstance(regime_sets, dict):
-        raise ValueError(f"Expected 'regime_sets' in {source_path}")
-
-    synthetic_set = _copy_regime_set_with_counts(
-        regime_sets=regime_sets,
-        source_name=config.source_synthetic_regime_set,
-        scenario_counts=config.synthetic_scenarios_per_regime,
-    )
-    poa_set = _copy_regime_set_with_counts(
-        regime_sets=regime_sets,
-        source_name=config.source_poa_regime_set,
-        scenario_counts=config.poa_context_scenarios_per_regime,
-    )
-
-    runtime_config = copy.deepcopy(raw_config)
-    runtime_config["default_regime_set"] = config.synthetic_regime_set
-    runtime_config["regime_sets"] = {
-        config.synthetic_regime_set: synthetic_set,
-        config.poa_regime_set: poa_set,
-    }
-
-    config.runtime_config_path.parent.mkdir(parents=True, exist_ok=True)
-    with config.runtime_config_path.open("w", encoding="utf-8") as file_handle:
-        yaml.safe_dump(runtime_config, file_handle, sort_keys=False)
-    print(f"\nWrote runtime regime config: {config.runtime_config_path}")
-    return config.runtime_config_path
-
-
-def _copy_regime_set_with_counts(
-    regime_sets: dict[str, Any],
-    source_name: str,
-    scenario_counts: dict[str, int],
-) -> dict[str, Any]:
-    if source_name not in regime_sets:
-        available = ", ".join(sorted(regime_sets))
-        raise ValueError(f"Unknown source regime set '{source_name}'. Available: {available}")
-
-    regime_set = copy.deepcopy(regime_sets[source_name])
-    for regime in regime_set.get("regimes", []):
-        regime_name = str(regime.get("name"))
-        if regime_name in scenario_counts:
-            regime["n_scenarios"] = int(scenario_counts[regime_name])
-    return regime_set
-
 def load_or_generate_scenarios(
     config: FullPipelineConfig,
     manager: ScenarioManager,
-    regime_set: str,
+    n_scenarios: int,
     seed: int,
     output_dir: Path,
     should_generate: bool,
     time_steps: int | None,
 ) -> dict[str, Any]:
-    # The scenario generator is deterministic for a fixed runtime YAML + seed, so
+    # The scenario generator is deterministic for a fixed ambiguity set + seed, so
     # regenerating is usually safer than deserializing list-valued CSV columns.
     apply_time_steps_override(manager, time_steps)
-    scenarios = manager.create_scenario_set_from_regimes(
-        regime_config_path=str(config.runtime_config_path),
-        regime_set=regime_set,
+    scenarios = manager.create_scenario_set_from_ambiguity_set(
+        ambiguity_config_path=config.ambiguity_set_config_path,
+        ambiguity_set=config.ambiguity_set_config_name,
+        n_scenarios=n_scenarios,
         seed=seed,
     )
     if should_generate:
@@ -471,6 +391,7 @@ def train_policies(config: FullPipelineConfig) -> Path:
         patience=config.patience,
         min_delta=config.min_delta,
         device=config.device,
+        final_activation=config.nn_final_activation,
     )
 
     csv_paths = find_generator_feature_files(config.normalized_feature_dir)
@@ -514,19 +435,18 @@ def find_generator_feature_files(feature_dir: Path) -> list[Path]:
     )
 
 def load_poa_scenario_data(config: FullPipelineConfig) -> dict[str, Any]:
-    if not config.runtime_config_path.exists():
-        write_runtime_regime_config(config)
     scenario_manager = ScenarioManager(config.case)
-    apply_time_steps_override(scenario_manager, config.poa_time_steps)
-    return scenario_manager.create_scenario_set_from_regimes(
-        regime_config_path=str(config.runtime_config_path),
-        regime_set=config.poa_regime_set,
+    apply_time_steps_override(scenario_manager, config.horizon)
+    return scenario_manager.create_scenario_set_from_ambiguity_set(
+        ambiguity_config_path=config.ambiguity_set_config_path,
+        ambiguity_set=config.ambiguity_set_config_name,
+        n_scenarios=config.poa_context_num_scenarios,
         seed=config.poa_seed,
     )
 
 
 def load_ambiguity_set_config(config: FullPipelineConfig) -> dict[str, Any]:
-    return PoAOptimization.load_ambiguity_set_config(
+    return PoAOptimization.load_ambiguity_set(
         config_path=config.ambiguity_set_config_path,
         config_name=config.ambiguity_set_config_name,
     )
@@ -552,7 +472,7 @@ def build_poa_ratio_bounds(config: FullPipelineConfig) -> dict[str, Any] | None:
 
     if config.poa_ratio_phi_bounds is None or c_opt_bounds is None:
         raise ValueError(
-            "Ratio objective modes require ratio bounds. Set either "
+            "McCormick objective modes require bounds. Set either "
             "poa_ratio_bounds={'phi': (...), 'C_opt': (...), ...} or both "
             "poa_ratio_phi_bounds and poa_ratio_c_opt_bounds in FullPipelineConfig. "
             "Alternatively, run the optimal_cost_bounds tightening stage and provide "
@@ -563,7 +483,7 @@ def build_poa_ratio_bounds(config: FullPipelineConfig) -> dict[str, Any] | None:
         "phi": tuple(config.poa_ratio_phi_bounds),
         "C_opt": tuple(c_opt_bounds),
     }
-    if mode == "ratio_piecewise_mccormick":
+    if mode == "piecewise_mccormick":
         if config.poa_ratio_c_opt_breakpoints is not None:
             ratio_bounds["C_opt_breakpoints"] = list(
                 config.poa_ratio_c_opt_breakpoints
@@ -606,7 +526,7 @@ def build_poa_optimizer(
         nn_policy_generators=list(config.nn_policy_generators),
         reference_case=config.case,
         objective_mode=config.poa_objective_mode,
-        ratio_bounds=ratio_bounds,
+        mccormick_bounds=ratio_bounds,
     )
 
 
@@ -813,9 +733,7 @@ def run_primal_big_m(
         "primal_big_m": primal_big_m,
         "fixed_binaries": {},
         "slack_bounds": {},
-        "lambda_bounds": {},
         "tight_big_m": {},
-        "aggregate_dual_bounds": {},
     }
     output_path = write_json(config.primal_big_m_path, payload)
     elapsed = time.perf_counter() - start
@@ -938,7 +856,6 @@ def run_final_poa(config: FullPipelineConfig) -> Path:
     print(f"Applied fixed binaries: {applied_stats['fixed_binaries']}")
     print(f"Applied lambda bounds: {applied_stats['lambda_bounds']}")
     print(f"Applied dual upper bounds: {applied_stats['dual_upper_bounds']}")
-    print(f"Applied aggregate dual bounds: {applied_stats['aggregate_dual_bounds']}")
     print(f"Applied alpha bounds: {applied_stats['alpha_bounds']}")
     print(f"PoA optimization runtime: {elapsed:.2f} seconds")
     return output_path
@@ -977,27 +894,14 @@ def ensure_primal_big_m_in_report(path: Path, optimizer: PoAOptimization) -> boo
 if __name__ == "__main__":
     run_config = FullPipelineConfig(
         # Case and random seeds.
-        case="test_case_bidding_blocks",
+        case="base_test_case",
         synthetic_time_steps=24,
-        poa_time_steps=None,
-        synthetic_regime_set="policy_training_runtime",
-        poa_regime_set="PoA_analysis_runtime",
-        source_synthetic_regime_set="policy_training",
-        source_poa_regime_set="PoA_analysis",
         synthetic_seed=1,
         poa_seed=1,
 
-        # Scenario counts. Set a regime name to the desired number of scenarios.
-        # Use {} to keep the counts from config/regime_definitions.yaml.
-        synthetic_scenarios_per_regime={
-            "normal": 400,
-            "high_demand": 400,
-            "normal_peak_shift_wind": 400,
-            "high_demand_peak_shift_wind": 400,
-        },
-        poa_context_scenarios_per_regime={
-            "normal": 1,
-        },
+        # Scenario counts for ambiguity-set draws.
+        synthetic_num_scenarios=500,
+        poa_context_num_scenarios=1,
 
         # Heuristic synthetic-label generation.
         bid_tolerance=1e-2,
@@ -1006,16 +910,13 @@ if __name__ == "__main__":
         nn_feature_columns=[
             "demand",
             "total_wind_generation_capacity",
-            "total_generation_capacity",
             "residual_demand",
             "next_generation_capacity",
             "next_demand",
-            "own_generation_capacity",
-            "next_own_generation_capacity",
         ],
 
         per_generator_normalization=True,
-        hidden_layers=[11, 11],
+        hidden_layers=[4, 8],
         learning_rate=1e-3,
         batch_size=32,
         num_epochs=500,
@@ -1025,22 +926,23 @@ if __name__ == "__main__":
         patience=50,
         min_delta=1e-6,
         device=None,
+        nn_final_activation="relu",
 
         # PoA parameters.
         horizon=8,
-        ambiguity_set_config_path="models/PoA/ambiguity_set_config.yaml",
-        ambiguity_set_config_name="test_case_bidding_blocks_base",
-        nn_policy_generators=[1, 2],
+        ambiguity_set_config_path="config/ambiguity_set_config.yaml",
+        ambiguity_set_config_name="base_test_case",
+        nn_policy_generators=["G1", "W2", "W3"],
 
         # Toggle PoA objective here:
         #   "difference"
-        #   "ratio_mccormick"
-        #   "ratio_piecewise_mccormick"
+        #   "mccormick"
+        #   "piecewise_mccormick"
         # poa_objective_mode="difference",
-        poa_objective_mode="ratio_piecewise_mccormick",
+        poa_objective_mode="piecewise_mccormick",
         
         # Required for ratio modes. Example:
-        poa_ratio_phi_bounds=(1.0, 4.0),
+        poa_ratio_phi_bounds=(1.0, 10.0),
         # poa_ratio_c_opt_bounds=(3283.9068, 16958.9619),
         poa_ratio_num_pieces=25,
 
@@ -1063,20 +965,14 @@ if __name__ == "__main__":
             "alpha_bounds": False,
             "slack_binary_fix": False,
             "dual_big_m": False,
-            "optimal_cost_bounds": True,
+            "optimal_cost_bounds": False,
         },
         tightening_previous_paths=dict(TIGHTENING_PREVIOUS_PATHS),
         tightening_output_paths=dict(TIGHTENING_OUTPUT_PATHS),
-        
-        run_poa_nn_relu_bounds=False,
-        run_poa_alpha_bounds=False,
-        run_poa_slack_binary_fix=False,
-        run_poa_dual_big_m=False,
-        run_poa_optimal_cost_bounds=True,
+
         run_poa_optimization=True,
 
         # Outputs
-        runtime_config_path=Path("results/full_pipeline/runtime_regime_definitions.yaml"),
         synthetic_scenario_dir=Path("results/full_pipeline/synthetic_scenarios"),
         poa_scenario_dir=Path("results/full_pipeline/poa_scenarios"),
         heuristic_results_path=Path("results/merit_order_best_response_results.json"),

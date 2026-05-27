@@ -13,7 +13,7 @@ from models.PoA.PoA_optimization import PoAOptimization
 
 FEAS_TOL = 1e-5
 OBJ_TOL = 1e-4
-CASE = "test_case_bidding_blocks"
+CASE = "base_test_case"
 TEST_PROFILE = os.getenv("POA_OBJECTIVE_TEST_PROFILE", "full").strip().lower()
 if TEST_PROFILE == "full":
     HORIZON = int(os.getenv("POA_OBJECTIVE_TEST_HORIZON", "6"))
@@ -64,9 +64,9 @@ def _load_poa_inputs():
         regime_set="PoA_analysis",
         seed=1,
     )
-    ambiguity_set_config = PoAOptimization.load_ambiguity_set_config(
-        config_path="models/PoA/ambiguity_set_config.yaml",
-        config_name="test_case_bidding_blocks_base",
+    ambiguity_set_config = PoAOptimization.load_ambiguity_set(
+        config_path="config/ambiguity_set_config.yaml",
+        config_name="base_test_case",
     )
     return scenarios, ambiguity_set_config
 
@@ -362,7 +362,7 @@ def computed_ratio_bounds(poa_inputs):
 def ratio_solution(poa_inputs, computed_ratio_bounds):
     optimizer = _build_optimizer(
         poa_inputs,
-        objective_mode="ratio_mccormick",
+        objective_mode="mccormick",
         ratio_bounds={
             "phi": computed_ratio_bounds["phi"],
             "C_opt": computed_ratio_bounds["C_opt"],
@@ -375,7 +375,7 @@ def ratio_solution(poa_inputs, computed_ratio_bounds):
 def ratio_piecewise_solution(poa_inputs, computed_ratio_bounds):
     optimizer = _build_optimizer(
         poa_inputs,
-        objective_mode="ratio_piecewise_mccormick",
+        objective_mode="piecewise_mccormick",
         ratio_bounds={
             "phi": computed_ratio_bounds["phi"],
             "C_opt": computed_ratio_bounds["C_opt"],
@@ -441,11 +441,11 @@ def _comparison_payload(
             "metadata": computed_ratio_bounds["metadata"],
         },
         "difference_formulation": _compact_objective(difference_metrics),
-        "ratio_mccormick_formulation": _compact_objective(ratio_metrics),
+        "mccormick_formulation": _compact_objective(ratio_metrics),
         "differences": differences,
     }
     if piecewise_metrics is not None:
-        payload["ratio_piecewise_mccormick_formulation"] = _compact_objective(
+        payload["piecewise_mccormick_formulation"] = _compact_objective(
             piecewise_metrics
         )
         payload["piecewise_gap_reduction"] = abs(ratio_metrics["ratio_gap"]) - abs(
@@ -473,10 +473,10 @@ def _print_comparison_summary(
     print("formulation,C_eq,C_opt,difference_proxy,ex_post_ratio,objective_value")
     rows = [
         ("difference", difference_metrics),
-        ("ratio_mccormick", ratio_metrics),
+        ("mccormick", ratio_metrics),
     ]
     if piecewise_metrics is not None:
-        rows.append(("ratio_piecewise_mccormick", piecewise_metrics))
+        rows.append(("piecewise_mccormick", piecewise_metrics))
     for name, metrics in rows:
         print(
             f"{name},{metrics['C_eq']:.6f},{metrics['C_opt']:.6f},"
@@ -548,7 +548,7 @@ def test_difference_solution_c_opt_within_computed_bounds(
     assert C_opt_L - FEAS_TOL <= realized_C_opt <= C_opt_U + FEAS_TOL
 
 
-def test_ratio_mccormick_formulation_solves(ratio_solution, computed_ratio_bounds):
+def test_mccormick_formulation_solves(ratio_solution, computed_ratio_bounds):
     metrics = ratio_solution
     phi_L, phi_U = computed_ratio_bounds["phi"]
     C_opt_L, C_opt_U = computed_ratio_bounds["C_opt"]
@@ -564,7 +564,7 @@ def test_ratio_mccormick_formulation_solves(ratio_solution, computed_ratio_bound
             "ratio_gap",
         ],
     )
-    assert metrics["objective_mode"] == "ratio_mccormick"
+    assert metrics["objective_mode"] == "mccormick"
     assert metrics["C_opt"] > 0
     assert phi_L - FEAS_TOL <= metrics["phi"] <= phi_U + FEAS_TOL
     assert C_opt_L - FEAS_TOL <= metrics["C_opt"] <= C_opt_U + FEAS_TOL
@@ -579,7 +579,7 @@ def test_ratio_mccormick_formulation_solves(ratio_solution, computed_ratio_bound
     assert math.isfinite(metrics["ratio_gap"])
 
 
-def test_ratio_piecewise_mccormick_formulation_solves(
+def test_piecewise_mccormick_formulation_solves(
     ratio_piecewise_solution,
     computed_ratio_bounds,
 ):
@@ -612,7 +612,7 @@ def test_ratio_piecewise_mccormick_formulation_solves(
             *active_slack_keys,
         ],
     )
-    assert metrics["objective_mode"] == "ratio_piecewise_mccormick"
+    assert metrics["objective_mode"] == "piecewise_mccormick"
     assert metrics["C_opt"] > 0
     assert phi_L - FEAS_TOL <= metrics["phi"] <= phi_U + FEAS_TOL
     assert C_opt_L - FEAS_TOL <= metrics["C_opt"] <= C_opt_U + FEAS_TOL
@@ -635,7 +635,7 @@ def test_ratio_piecewise_mccormick_formulation_solves(
         assert metrics[key] >= -FEAS_TOL
 
 
-def test_compare_difference_and_ratio_mccormick_formulations(
+def test_compare_difference_and_mccormick_formulations(
     difference_solution,
     ratio_solution,
     ratio_piecewise_solution,
@@ -718,7 +718,7 @@ def test_invalid_ratio_bounds_raise_clear_value_error(poa_inputs, ratio_bounds, 
             nn_model_dir=None,
             nn_policy_generators=[],
             reference_case=CASE,
-            objective_mode="ratio_mccormick",
+            objective_mode="mccormick",
             ratio_bounds=ratio_bounds,
         )
 
@@ -787,7 +787,7 @@ def test_invalid_piecewise_ratio_bounds_raise_clear_value_error(
             nn_model_dir=None,
             nn_policy_generators=[],
             reference_case=CASE,
-            objective_mode="ratio_piecewise_mccormick",
+            objective_mode="piecewise_mccormick",
             ratio_bounds=ratio_bounds,
         )
 
@@ -825,7 +825,7 @@ def main():
 
     ratio_optimizer = _build_optimizer(
         poa_inputs,
-        objective_mode="ratio_mccormick",
+        objective_mode="mccormick",
         ratio_bounds={
             "phi": computed_ratio_bounds["phi"],
             "C_opt": computed_ratio_bounds["C_opt"],
@@ -835,7 +835,7 @@ def main():
 
     piecewise_optimizer = _build_optimizer(
         poa_inputs,
-        objective_mode="ratio_piecewise_mccormick",
+        objective_mode="piecewise_mccormick",
         ratio_bounds={
             "phi": computed_ratio_bounds["phi"],
             "C_opt": computed_ratio_bounds["C_opt"],

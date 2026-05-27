@@ -1,33 +1,30 @@
 {
   "generator_name": "G1",
-  "input_dim": 8,
+  "input_dim": 5,
   "output_dim": 2,
   "feature_columns": [
     "demand",
     "total_wind_generation_capacity",
-    "total_generation_capacity",
     "residual_demand",
     "next_generation_capacity",
-    "next_demand",
-    "own_generation_capacity",
-    "next_own_generation_capacity"
+    "next_demand"
   ],
   "target_columns": [
     "target_bid_G1_B1",
     "target_bid_G1_B2"
   ],
   "hidden_layers": [
-    11,
-    11
+    4,
+    8
   ],
   "activation": "relu",
-  "final_activation": "linear",
-  "train_size": 30720,
-  "test_size": 7680,
+  "final_activation": "relu",
+  "train_size": 9600,
+  "test_size": 2400,
   "test_fraction": 0.2,
-  "num_epochs_trained": 187,
-  "best_epoch": 137,
-  "best_test_loss": 10.618108206000155,
+  "num_epochs_trained": 445,
+  "best_epoch": 395,
+  "best_test_loss": 0.10138745146847214,
   "learning_rate": 0.001,
   "batch_size": 32,
   "weight_decay": 0.0,

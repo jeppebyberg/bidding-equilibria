@@ -393,8 +393,14 @@ class ReLUBoundsComputer(PoATighteningMain):
 
     @classmethod
     def _hidden_linear_layers(cls, policy: dict[str, Any]) -> list[dict[str, Any]]:
-        linear_layers = cls._linear_layers(policy)
-        return linear_layers[:-1]
+        layers = list(policy.get("layers", []))
+        return [
+            layer
+            for layer_pos, layer in enumerate(layers)
+            if str(layer.get("type", "")).lower() == "linear"
+            and layer_pos + 1 < len(layers)
+            and str(layers[layer_pos + 1].get("type", "")).lower() == "relu"
+        ]
 
     @staticmethod
     def _objective_sense(sense: str) -> Any:

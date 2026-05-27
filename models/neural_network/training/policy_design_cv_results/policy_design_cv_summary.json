@@ -1,0 +1,3737 @@
+[
+  {
+    "generator_name": "G1",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      4,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 8,
+    "fold_validation_losses": [
+      19.205678741851013,
+      18.41278489145214,
+      17.703346011150312
+    ],
+    "mean_validation_loss": 18.440603214817823,
+    "std_validation_loss": 0.613640124051991,
+    "mean_best_epoch": 445.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G1",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      8,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 16,
+    "fold_validation_losses": [
+      2.2055588854763086,
+      18.253494074006756,
+      1.6915668976833542
+    ],
+    "mean_validation_loss": 7.383539952388806,
+    "std_validation_loss": 7.689082038641463,
+    "mean_best_epoch": 493.6666666666667,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G1",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      11,
+      11
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 22,
+    "fold_validation_losses": [
+      2.623238424132922,
+      1.8543871480622096,
+      17.73037540481751
+    ],
+    "mean_validation_loss": 7.402666992337548,
+    "std_validation_loss": 7.309535044998232,
+    "mean_best_epoch": 383.6666666666667,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G1",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      8,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      3.1310487088567007,
+      50.86547403849527,
+      17.721020277245458
+    ],
+    "mean_validation_loss": 23.90584767486581,
+    "std_validation_loss": 19.9721958038582,
+    "mean_best_epoch": 477.3333333333333,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G1",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      4,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      18.990910828946355,
+      11.92108633227929,
+      1.8867011723748173
+    ],
+    "mean_validation_loss": 10.932899444533488,
+    "std_validation_loss": 7.017638823603625,
+    "mean_best_epoch": 436.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G1",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      4,
+      4,
+      4
+    ],
+    "num_hidden_layers": 3,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      2.2636572083908164,
+      18.271832804955885,
+      48.57439770372996
+    ],
+    "mean_validation_loss": 23.036629239025554,
+    "std_validation_loss": 19.204142523602442,
+    "mean_best_epoch": 389.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G1",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      4,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 8,
+    "fold_validation_losses": [
+      1.2312280130600501,
+      11.82303879027833,
+      48.66186292104453
+    ],
+    "mean_validation_loss": 20.57204324146097,
+    "std_validation_loss": 20.327732962773446,
+    "mean_best_epoch": 499.6666666666667,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G1",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      8,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 16,
+    "fold_validation_losses": [
+      1.215159827601648,
+      1.1730884813857887,
+      0.6037556893794412
+    ],
+    "mean_validation_loss": 0.9973346661222925,
+    "std_validation_loss": 0.2788318582270997,
+    "mean_best_epoch": 499.3333333333333,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G1",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      11,
+      11
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 22,
+    "fold_validation_losses": [
+      19.011885435519343,
+      0.8506055508188145,
+      1.0636218362581358
+    ],
+    "mean_validation_loss": 6.975370940865432,
+    "std_validation_loss": 8.511545291327376,
+    "mean_best_epoch": 416.6666666666667,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G1",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      8,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      1.70869221325644,
+      1.5633587534585875,
+      48.705000659069384
+    ],
+    "mean_validation_loss": 17.325683875261472,
+    "std_validation_loss": 22.18860701377415,
+    "mean_best_epoch": 499.6666666666667,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G1",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      4,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      0.9813441636260161,
+      0.9521540802068815,
+      0.9435622587979559
+    ],
+    "mean_validation_loss": 0.9590201675436179,
+    "std_validation_loss": 0.016170455561422662,
+    "mean_best_epoch": 499.6666666666667,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G1",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      4,
+      4,
+      4
+    ],
+    "num_hidden_layers": 3,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      0.4889660641521275,
+      50.84832553520888,
+      1.4660908835061104
+    ],
+    "mean_validation_loss": 17.60112749428904,
+    "std_validation_loss": 23.51270332405099,
+    "mean_best_epoch": 372.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G1",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      4,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 8,
+    "fold_validation_losses": [
+      19.1529378377035,
+      18.223041039384054,
+      48.57442531049491
+    ],
+    "mean_validation_loss": 28.650134729194153,
+    "std_validation_loss": 14.093714754929202,
+    "mean_best_epoch": 307.3333333333333,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G1",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      8,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 16,
+    "fold_validation_losses": [
+      18.91300646844738,
+      0.8475336972735599,
+      1.3522904888281682
+    ],
+    "mean_validation_loss": 7.037610218183036,
+    "std_validation_loss": 8.399701261761217,
+    "mean_best_epoch": 413.3333333333333,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G1",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      11,
+      11
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 22,
+    "fold_validation_losses": [
+      1.158807678672368,
+      18.223238254259684,
+      17.707014796245527
+    ],
+    "mean_validation_loss": 12.363020243059191,
+    "std_validation_loss": 7.925377217336881,
+    "mean_best_epoch": 332.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G1",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      8,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      18.92324823390938,
+      18.39378369496968,
+      17.727035020728668
+    ],
+    "mean_validation_loss": 18.348022316535907,
+    "std_validation_loss": 0.48942285102908045,
+    "mean_best_epoch": 434.6666666666667,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G1",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      4,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      18.92361378241442,
+      1.5424697403600829,
+      17.743484435790034
+    ],
+    "mean_validation_loss": 12.736522652854845,
+    "std_validation_loss": 7.930039586891118,
+    "mean_best_epoch": 413.6666666666667,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G1",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      4,
+      4,
+      4
+    ],
+    "num_hidden_layers": 3,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      0.8622443301235131,
+      1.4292935589979032,
+      48.688733326862135
+    ],
+    "mean_validation_loss": 16.993423738661182,
+    "std_validation_loss": 22.41316389425225,
+    "mean_best_epoch": 498.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G2",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      4,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 8,
+    "fold_validation_losses": [
+      8.636118192731816e-06,
+      1.5637768188833274e-05,
+      1.9416580959063664e-05
+    ],
+    "mean_validation_loss": 1.4563489113542919e-05,
+    "std_validation_loss": 4.4661803973695355e-06,
+    "mean_best_epoch": 498.6666666666667,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G2",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      8,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 16,
+    "fold_validation_losses": [
+      3.3315579007186003e-07,
+      3.7690186641674575e-07,
+      1.4922724381816456e-06
+    ],
+    "mean_validation_loss": 7.341100315567505e-07,
+    "std_validation_loss": 5.363991709621563e-07,
+    "mean_best_epoch": 296.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G2",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      11,
+      11
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 22,
+    "fold_validation_losses": [
+      7.023545397110256e-06,
+      1.8761042321454375e-06,
+      3.350273820695614e-06
+    ],
+    "mean_validation_loss": 4.083307816650436e-06,
+    "std_validation_loss": 2.1644155124979604e-06,
+    "mean_best_epoch": 367.6666666666667,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G2",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      8,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      5.715498665737838e-06,
+      51.50457268751072,
+      2.78776841619822e-06
+    ],
+    "mean_validation_loss": 17.16819373025927,
+    "std_validation_loss": 24.279486402063608,
+    "mean_best_epoch": 466.3333333333333,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G2",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      4,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      9.992575922445825e-07,
+      6.037960006663528e-07,
+      2.8914681199940866e-06
+    ],
+    "mean_validation_loss": 1.498173904301674e-06,
+    "std_validation_loss": 9.983483180449757e-07,
+    "mean_best_epoch": 418.3333333333333,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G2",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      4,
+      4,
+      4
+    ],
+    "num_hidden_layers": 3,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      9.400625178038141e-07,
+      1.0309482779680158e-06,
+      1.8269048747337746e-07
+    ],
+    "mean_validation_loss": 7.179004277484023e-07,
+    "std_validation_loss": 3.802650965463024e-07,
+    "mean_best_epoch": 223.66666666666666,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G2",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      4,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 8,
+    "fold_validation_losses": [
+      2.816594262324719e-08,
+      53.31557927540914,
+      47.532230377197266
+    ],
+    "mean_validation_loss": 33.615936560257445,
+    "std_validation_loss": 23.887028178725167,
+    "mean_best_epoch": 421.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G2",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      8,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 16,
+    "fold_validation_losses": [
+      7.883316365207098e-07,
+      7.880055912930779e-07,
+      3.0881972225143546e-07
+    ],
+    "mean_validation_loss": 6.283856500217411e-07,
+    "std_validation_loss": 2.259672737664236e-07,
+    "mean_best_epoch": 229.33333333333334,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G2",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      11,
+      11
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 22,
+    "fold_validation_losses": [
+      1.153689628996424e-06,
+      1.097399527151685e-06,
+      3.705937580157096e-05
+    ],
+    "mean_validation_loss": 1.310348831923969e-05,
+    "std_validation_loss": 1.693938607591744e-05,
+    "mean_best_epoch": 263.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G2",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      8,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      1.9720181552123153e-07,
+      1.1893167931826364e-06,
+      52.39870455944873
+    ],
+    "mean_validation_loss": 17.466235315322447,
+    "std_validation_loss": 24.70098588611221,
+    "mean_best_epoch": 361.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G2",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      4,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      9.804363430076934e-07,
+      1.5021233682822996e-06,
+      7.928995634380359e-07
+    ],
+    "mean_validation_loss": 1.0918197582426762e-06,
+    "std_validation_loss": 3.000603275248718e-07,
+    "mean_best_epoch": 244.33333333333334,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G2",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      4,
+      4,
+      4
+    ],
+    "num_hidden_layers": 3,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      1.2086628218835875e-07,
+      6.7866310750461e-07,
+      3.10031072560385e-05
+    ],
+    "mean_validation_loss": 1.0600878881910488e-05,
+    "std_validation_loss": 1.4428351171614372e-05,
+    "mean_best_epoch": 222.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G2",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      4,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 8,
+    "fold_validation_losses": [
+      8.265530004610263e-07,
+      2.0289770466564924e-06,
+      2.756272734298119e-07
+    ],
+    "mean_validation_loss": 1.04371910684911e-06,
+    "std_validation_loss": 7.32088198302788e-07,
+    "mean_best_epoch": 275.6666666666667,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G2",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      8,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 16,
+    "fold_validation_losses": [
+      4.914605855839125e-06,
+      1.7951619884478716e-06,
+      1.219372509705907e-06
+    ],
+    "mean_validation_loss": 2.643046784664301e-06,
+    "std_validation_loss": 1.6233440467822295e-06,
+    "mean_best_epoch": 292.3333333333333,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G2",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      11,
+      11
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 22,
+    "fold_validation_losses": [
+      2.0561188914521306e-06,
+      4.605303917366497e-06,
+      3.998049258911467e-06
+    ],
+    "mean_validation_loss": 3.5531573559100316e-06,
+    "std_validation_loss": 1.0872082530051257e-06,
+    "mean_best_epoch": 209.66666666666666,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G2",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      8,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      6.50950817556779e-07,
+      4.290360549137171e-07,
+      9.60571482261207e-07
+    ],
+    "mean_validation_loss": 6.801861182439011e-07,
+    "std_validation_loss": 2.1798089325453812e-07,
+    "mean_best_epoch": 285.3333333333333,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G2",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      4,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      8.95295505064289e-07,
+      1.1905211851877038e-07,
+      2.8327710048274987e-09
+    ],
+    "mean_validation_loss": 3.390601315292956e-07,
+    "std_validation_loss": 3.9616922079910233e-07,
+    "mean_best_epoch": 314.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "G2",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      4,
+      4,
+      4
+    ],
+    "num_hidden_layers": 3,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      9.383368669959365e-08,
+      8.995805319409737e-07,
+      51.15998840332031
+    ],
+    "mean_validation_loss": 17.05332979891151,
+    "std_validation_loss": 24.117049582791978,
+    "mean_best_epoch": 327.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W1",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      4,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 8,
+    "fold_validation_losses": [
+      5.944999287584282e-07,
+      9.333411411491847e-07,
+      1.243901354895621e-07
+    ],
+    "mean_validation_loss": 5.507437351323917e-07,
+    "std_validation_loss": 3.316990460743072e-07,
+    "mean_best_epoch": 59.333333333333336,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W1",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      8,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 16,
+    "fold_validation_losses": [
+      8.134450494427817e-07,
+      5.016465426811709e-07,
+      8.335140218475708e-07
+    ],
+    "mean_validation_loss": 7.162018713238412e-07,
+    "std_validation_loss": 1.5193459711351505e-07,
+    "mean_best_epoch": 31.666666666666668,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W1",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      11,
+      11
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 22,
+    "fold_validation_losses": [
+      2.411795321450426e-07,
+      9.955096383275227e-07,
+      1.785589610021469e-07
+    ],
+    "mean_validation_loss": 4.717493771582374e-07,
+    "std_validation_loss": 3.712357223900147e-07,
+    "mean_best_epoch": 21.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W1",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      8,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      8.673194523492306e-07,
+      4.782149456680812e-07,
+      1.0468316306294611e-06
+    ],
+    "mean_validation_loss": 7.974553428822576e-07,
+    "std_validation_loss": 2.373351764176944e-07,
+    "mean_best_epoch": 26.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W1",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      4,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      9.714823096907209e-07,
+      4.5713994739992427e-07,
+      4.726165438836848e-08
+    ],
+    "mean_validation_loss": 4.919613038263378e-07,
+    "std_validation_loss": 3.7811404811194987e-07,
+    "mean_best_epoch": 53.333333333333336,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W1",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      4,
+      4,
+      4
+    ],
+    "num_hidden_layers": 3,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      1.153798516725375e-07,
+      1.402913267701299e-06,
+      9.399530940078901e-07
+    ],
+    "mean_validation_loss": 8.194154044605756e-07,
+    "std_validation_loss": 5.324988734252412e-07,
+    "mean_best_epoch": 38.333333333333336,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W1",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      4,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 8,
+    "fold_validation_losses": [
+      7.865336198284229e-07,
+      2.8732852021182303e-07,
+      2.3880987755437235e-07
+    ],
+    "mean_validation_loss": 4.3755733919820607e-07,
+    "std_validation_loss": 2.475571960890455e-07,
+    "mean_best_epoch": 65.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W1",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      8,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 16,
+    "fold_validation_losses": [
+      2.7570211456211203e-07,
+      4.6879629602964464e-07,
+      9.445712972028074e-07
+    ],
+    "mean_validation_loss": 5.630232359315214e-07,
+    "std_validation_loss": 2.81075948246569e-07,
+    "mean_best_epoch": 46.666666666666664,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W1",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      11,
+      11
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 22,
+    "fold_validation_losses": [
+      2.98706825838861e-07,
+      5.186706115530101e-07,
+      4.11398931770733e-07
+    ],
+    "mean_validation_loss": 4.095921230542014e-07,
+    "std_validation_loss": 8.98089274505552e-08,
+    "mean_best_epoch": 41.333333333333336,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W1",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      8,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      5.508049324764321e-07,
+      2.2930419464127063e-07,
+      3.3008829557430255e-07
+    ],
+    "mean_validation_loss": 3.7006580756400177e-07,
+    "std_validation_loss": 1.34261764737901e-07,
+    "mean_best_epoch": 47.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W1",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      4,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      7.323244487965777e-07,
+      5.333033740073856e-07,
+      6.608989098318292e-07
+    ],
+    "mean_validation_loss": 6.421755775452641e-07,
+    "std_validation_loss": 8.232160280062637e-08,
+    "mean_best_epoch": 41.666666666666664,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W1",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      4,
+      4,
+      4
+    ],
+    "num_hidden_layers": 3,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      8.598097695450357e-07,
+      3.641137529503756e-07,
+      5.012814096846294e-07
+    ],
+    "mean_validation_loss": 5.750683107266803e-07,
+    "std_validation_loss": 2.089848723249212e-07,
+    "mean_best_epoch": 21.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W1",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      4,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 8,
+    "fold_validation_losses": [
+      1.262694618884246e-07,
+      1.7487345532341813e-07,
+      4.8990175738696e-07
+    ],
+    "mean_validation_loss": 2.636815581996009e-07,
+    "std_validation_loss": 1.6118782198568545e-07,
+    "mean_best_epoch": 66.66666666666667,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W1",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      8,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 16,
+    "fold_validation_losses": [
+      9.09631004576082e-07,
+      8.089136214922344e-07,
+      4.6166440160804376e-07
+    ],
+    "mean_validation_loss": 7.267363425587868e-07,
+    "std_validation_loss": 1.9189119872705688e-07,
+    "mean_best_epoch": 46.333333333333336,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W1",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      11,
+      11
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 22,
+    "fold_validation_losses": [
+      3.457180241866355e-07,
+      8.029407822931773e-07,
+      1.6999700287706364e-07
+    ],
+    "mean_validation_loss": 4.3955193645229217e-07,
+    "std_validation_loss": 2.667808829903893e-07,
+    "mean_best_epoch": 33.333333333333336,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W1",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      8,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      7.386885510619366e-07,
+      5.046560556854661e-07,
+      6.208532636538807e-07
+    ],
+    "mean_validation_loss": 6.213992901337611e-07,
+    "std_validation_loss": 9.55441462770726e-08,
+    "mean_best_epoch": 81.33333333333333,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W1",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      4,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      4.1640892280378023e-07,
+      5.680631685497579e-07,
+      1.761507763500089e-07
+    ],
+    "mean_validation_loss": 3.868742892345157e-07,
+    "std_validation_loss": 1.6135478863875409e-07,
+    "mean_best_epoch": 35.333333333333336,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W1",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      4,
+      4,
+      4
+    ],
+    "num_hidden_layers": 3,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      9.366668101863039e-08,
+      3.3782831510275635e-07,
+      4.4554697736140705e-07
+    ],
+    "mean_validation_loss": 2.923473244942646e-07,
+    "std_validation_loss": 1.4721033957938636e-07,
+    "mean_best_epoch": 7.333333333333333,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W2",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      4,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 8,
+    "fold_validation_losses": [
+      0.0003715059046844762,
+      0.00026270388243320266,
+      0.0001586251939541793
+    ],
+    "mean_validation_loss": 0.00026427832702395274,
+    "std_validation_loss": 8.691531666737877e-05,
+    "mean_best_epoch": 13.666666666666666,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W2",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      8,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 16,
+    "fold_validation_losses": [
+      0.00014943749283112355,
+      0.00011145317362869303,
+      7.235869101675625e-05
+    ],
+    "mean_validation_loss": 0.00011108311915885762,
+    "std_validation_loss": 3.1468377010554704e-05,
+    "mean_best_epoch": 63.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W2",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      11,
+      11
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 22,
+    "fold_validation_losses": [
+      0.0001480657884829038,
+      0.00011022257821738374,
+      7.513077091142216e-05
+    ],
+    "mean_validation_loss": 0.00011113971253723656,
+    "std_validation_loss": 2.9782657689317257e-05,
+    "mean_best_epoch": 143.33333333333334,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W2",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      8,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      0.0003702990343054388,
+      0.00010806515425127748,
+      8.861573087666425e-05
+    ],
+    "mean_validation_loss": 0.00018899330647779349,
+    "std_validation_loss": 0.0001284481613329813,
+    "mean_best_epoch": 120.33333333333333,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W2",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      4,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      0.00015022412553063365,
+      0.00010075315543883313,
+      8.575529687280562e-05
+    ],
+    "mean_validation_loss": 0.00011224419261409079,
+    "std_validation_loss": 2.7544998561753005e-05,
+    "mean_best_epoch": 237.33333333333334,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W2",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      4,
+      4,
+      4
+    ],
+    "num_hidden_layers": 3,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      0.0001319281142647657,
+      0.0002631547129807107,
+      7.278227378838458e-05
+    ],
+    "mean_validation_loss": 0.00015595503367795365,
+    "std_validation_loss": 7.955453493620943e-05,
+    "mean_best_epoch": 111.33333333333333,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W2",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      4,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 8,
+    "fold_validation_losses": [
+      0.00037212416582987066,
+      0.0002640086382605645,
+      7.209883488574078e-05
+    ],
+    "mean_validation_loss": 0.00023607721299205865,
+    "std_validation_loss": 0.0001240669797332104,
+    "mean_best_epoch": 132.33333333333334,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W2",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      8,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 16,
+    "fold_validation_losses": [
+      0.0001375302320810191,
+      9.97773490934979e-05,
+      7.406357082882881e-05
+    ],
+    "mean_validation_loss": 0.00010379038400111528,
+    "std_validation_loss": 2.6065080209639168e-05,
+    "mean_best_epoch": 119.33333333333333,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W2",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      11,
+      11
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 22,
+    "fold_validation_losses": [
+      0.00014805409416667118,
+      9.528671546513306e-05,
+      0.00015948505589645596
+    ],
+    "mean_validation_loss": 0.00013427528850942005,
+    "std_validation_loss": 2.7961262996500817e-05,
+    "mean_best_epoch": 90.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W2",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      8,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      0.00014297887609624165,
+      0.0002634887460225583,
+      7.334713186688226e-05
+    ],
+    "mean_validation_loss": 0.00015993825132856073,
+    "std_validation_loss": 7.854584081767982e-05,
+    "mean_best_epoch": 116.66666666666667,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W2",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      4,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      0.00014560342021478371,
+      0.00026349360466306886,
+      7.271157502975849e-05
+    ],
+    "mean_validation_loss": 0.00016060286663587036,
+    "std_validation_loss": 7.86052723102618e-05,
+    "mean_best_epoch": 136.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W2",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      4,
+      4,
+      4
+    ],
+    "num_hidden_layers": 3,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      0.0003800372701325632,
+      0.0002725581230206335,
+      7.213612779747494e-05
+    ],
+    "mean_validation_loss": 0.00024157717365022387,
+    "std_validation_loss": 0.00012759478249712246,
+    "mean_best_epoch": 59.666666666666664,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W2",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      4,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 8,
+    "fold_validation_losses": [
+      0.00010336357872843878,
+      0.00026285701840210885,
+      0.00015840974259183978
+    ],
+    "mean_validation_loss": 0.0001748767799074625,
+    "std_validation_loss": 6.614585808751364e-05,
+    "mean_best_epoch": 135.33333333333334,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W2",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      8,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 16,
+    "fold_validation_losses": [
+      0.00036798112075290217,
+      7.144426969849255e-05,
+      7.200450400055471e-05
+    ],
+    "mean_validation_loss": 0.00017047663148398316,
+    "std_validation_loss": 0.00013965695095877068,
+    "mean_best_epoch": 169.66666666666666,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W2",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      11,
+      11
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 22,
+    "fold_validation_losses": [
+      0.00011432680121006905,
+      6.531951127514246e-05,
+      6.77068324739274e-05
+    ],
+    "mean_validation_loss": 8.245104831971298e-05,
+    "std_validation_loss": 2.256062266238567e-05,
+    "mean_best_epoch": 220.33333333333334,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W2",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      8,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      0.00012213039943996743,
+      6.333486029281309e-05,
+      6.719810075681957e-05
+    ],
+    "mean_validation_loss": 8.422112016320003e-05,
+    "std_validation_loss": 2.685226555536353e-05,
+    "mean_best_epoch": 221.66666666666666,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W2",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      4,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      0.00014433119473882718,
+      7.604807329678847e-05,
+      0.0001585796013226439
+    ],
+    "mean_validation_loss": 0.00012631962311941984,
+    "std_validation_loss": 3.6020140789299345e-05,
+    "mean_best_epoch": 347.3333333333333,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W2",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      4,
+      4,
+      4
+    ],
+    "num_hidden_layers": 3,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      0.00011088983769591532,
+      8.161767462553087e-05,
+      6.75013370621044e-05
+    ],
+    "mean_validation_loss": 8.666961646118353e-05,
+    "std_validation_loss": 1.806990285983235e-05,
+    "mean_best_epoch": 165.66666666666666,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W3",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      4,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 8,
+    "fold_validation_losses": [
+      1.344175021374178,
+      0.6912048777673178,
+      0.6046454601259117
+    ],
+    "mean_validation_loss": 0.8800084530891358,
+    "std_validation_loss": 0.3301121885367048,
+    "mean_best_epoch": 498.6666666666667,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W3",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      8,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 16,
+    "fold_validation_losses": [
+      1.0590392545073808,
+      0.7390031909157416,
+      0.582087359401906
+    ],
+    "mean_validation_loss": 0.7933766016083429,
+    "std_validation_loss": 0.19847439533255612,
+    "mean_best_epoch": 495.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W3",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      11,
+      11
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 22,
+    "fold_validation_losses": [
+      1.09390032402948,
+      0.7628995067702082,
+      0.5938180218858412
+    ],
+    "mean_validation_loss": 0.8168726175618432,
+    "std_validation_loss": 0.20769432626773893,
+    "mean_best_epoch": 495.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W3",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      8,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      1.1982537032422904,
+      0.8055550332316858,
+      0.7138094510658678
+    ],
+    "mean_validation_loss": 0.905872729179948,
+    "std_validation_loss": 0.21010995289287518,
+    "mean_best_epoch": 495.6666666666667,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W3",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      4,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      6.1544506230991995,
+      0.9101363109971234,
+      0.7131312973400394
+    ],
+    "mean_validation_loss": 2.592572743812121,
+    "std_validation_loss": 2.5199118058730376,
+    "mean_best_epoch": 496.6666666666667,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W3",
+    "feature_set_name": "temporal_system_state",
+    "feature_columns": [
+      "demand",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 6,
+    "hidden_layers": [
+      4,
+      4,
+      4
+    ],
+    "num_hidden_layers": 3,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      1.001759703882678,
+      1.01540764047952,
+      0.7655854714098368
+    ],
+    "mean_validation_loss": 0.9275842719240116,
+    "std_validation_loss": 0.1146858755306901,
+    "mean_best_epoch": 494.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W3",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      4,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 8,
+    "fold_validation_losses": [
+      0.9461691234699504,
+      0.5693166787752848,
+      0.5483678769664848
+    ],
+    "mean_validation_loss": 0.6879512264039066,
+    "std_validation_loss": 0.182787809309435,
+    "mean_best_epoch": 496.3333333333333,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W3",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      8,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 16,
+    "fold_validation_losses": [
+      0.617365373294808,
+      5.208029374866904,
+      0.39153577602561
+    ],
+    "mean_validation_loss": 2.0723101747291075,
+    "std_validation_loss": 2.219204200959631,
+    "mean_best_epoch": 496.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W3",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      11,
+      11
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 22,
+    "fold_validation_losses": [
+      0.6603847334975611,
+      0.23737193006806506,
+      0.36859002451738015
+    ],
+    "mean_validation_loss": 0.4221155626943354,
+    "std_validation_loss": 0.1767930907288138,
+    "mean_best_epoch": 493.6666666666667,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W3",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      8,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      0.7802989523329896,
+      0.3085757880666834,
+      0.4202606290295314
+    ],
+    "mean_validation_loss": 0.5030451231430682,
+    "std_validation_loss": 0.20128030252292411,
+    "mean_best_epoch": 496.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W3",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      4,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      1.0276888621721916,
+      0.5003122282688489,
+      0.43060147145506306
+    ],
+    "mean_validation_loss": 0.6528675206320346,
+    "std_validation_loss": 0.2665622828525696,
+    "mean_best_epoch": 497.6666666666667,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W3",
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "num_features": 5,
+    "hidden_layers": [
+      4,
+      4,
+      4
+    ],
+    "num_hidden_layers": 3,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      0.6428452930013517,
+      0.22668040681305873,
+      0.2667927153639634
+    ],
+    "mean_validation_loss": 0.37877280505945793,
+    "std_validation_loss": 0.1874441401061251,
+    "mean_best_epoch": 498.6666666666667,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W3",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      4,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 8,
+    "fold_validation_losses": [
+      0.6876627382099212,
+      0.9784762139270405,
+      6.61555863575763
+    ],
+    "mean_validation_loss": 2.7605658626315304,
+    "std_validation_loss": 2.728475774745002,
+    "mean_best_epoch": 370.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W3",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      8,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 16,
+    "fold_validation_losses": [
+      0.42773549280923134,
+      0.2762016515531475,
+      0.3686761790070131
+    ],
+    "mean_validation_loss": 0.357537774456464,
+    "std_validation_loss": 0.06236277898129499,
+    "mean_best_epoch": 491.3333333333333,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W3",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      11,
+      11
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 22,
+    "fold_validation_losses": [
+      0.7031210714099769,
+      0.2862576730790996,
+      0.27481451155580433
+    ],
+    "mean_validation_loss": 0.42139775201496027,
+    "std_validation_loss": 0.19926323963478054,
+    "mean_best_epoch": 495.3333333333333,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W3",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      8,
+      4
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      1.259837495828579,
+      0.7194693097454345,
+      0.45864055116836683
+    ],
+    "mean_validation_loss": 0.8126491189141268,
+    "std_validation_loss": 0.33365750269875066,
+    "mean_best_epoch": 497.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W3",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      4,
+      8
+    ],
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      0.7033606432378292,
+      0.6501071767030124,
+      6.616954299819517
+    ],
+    "mean_validation_loss": 2.656807373253453,
+    "std_validation_loss": 2.8003311402900763,
+    "mean_best_epoch": 368.3333333333333,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  },
+  {
+    "generator_name": "W3",
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "num_features": 11,
+    "hidden_layers": [
+      4,
+      4,
+      4
+    ],
+    "num_hidden_layers": 3,
+    "total_hidden_neurons": 12,
+    "fold_validation_losses": [
+      18.993472478108966,
+      0.3540618914741132,
+      17.31848652966051
+    ],
+    "mean_validation_loss": 12.222006966414531,
+    "std_validation_loss": 8.41971831311186,
+    "mean_best_epoch": 199.0,
+    "k_folds": 3,
+    "status": "valid",
+    "warning": null,
+    "fold_train_sizes": [
+      7992,
+      7992,
+      8016
+    ],
+    "fold_validation_sizes": [
+      4008,
+      4008,
+      3984
+    ]
+  }
+]

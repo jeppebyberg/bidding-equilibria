@@ -41,9 +41,9 @@ class ScenarioManager:
 	"""Generate stochastic demand and wind scenarios from YAML-defined regimes."""
 
 	DEFAULT_REGIME_CONFIG_PATH = Path(__file__).resolve().parents[1] / "regime_definitions.yaml"
-	DEFAULT_AMBIGUITY_CONFIG_PATH = Path(__file__).resolve().parents[1] / "ambiguity_set_config.yaml"
+	AMBIGUITY_CONFIG_PATH = Path(__file__).resolve().parents[1] / "ambiguity_set_config.yaml"
 
-	def __init__(self, base_case_reference: str = "test_case_bidding_blocks") -> None:
+	def __init__(self, base_case_reference: str = "base_test_case") -> None:
 		self.base_case_reference = base_case_reference
 
 		(
@@ -316,7 +316,7 @@ class ScenarioManager:
 		config_path = (
 			Path(ambiguity_config_path)
 			if ambiguity_config_path is not None
-			else self.DEFAULT_AMBIGUITY_CONFIG_PATH
+			else self.AMBIGUITY_CONFIG_PATH
 		)
 		if not config_path.is_absolute() and not config_path.exists():
 			repo_relative = Path(__file__).resolve().parents[2] / config_path
@@ -1368,9 +1368,9 @@ class ScenarioManager:
 		}
 
 if __name__ == "__main__":
-	manager = ScenarioManager(base_case_reference="test_case_bidding_blocks")
+	manager = ScenarioManager(base_case_reference="base_test_case")
 	regime_yaml = ScenarioManager.DEFAULT_REGIME_CONFIG_PATH
-	ambiguity_yaml = ScenarioManager.DEFAULT_AMBIGUITY_CONFIG_PATH
+	ambiguity_yaml = ScenarioManager.AMBIGUITY_CONFIG_PATH
 	make_plots = True
 
 	regime_scenario_set = manager.create_scenario_set_from_regimes(
@@ -1382,7 +1382,7 @@ if __name__ == "__main__":
 
 	ambiguity_scenario_set = manager.create_scenario_set_from_ambiguity_set(
 		ambiguity_config_path=str(ambiguity_yaml),
-		ambiguity_set="test_case_bidding_blocks_base",
+		ambiguity_set="base_test_case",
 		n_scenarios=500,
 		seed=42,
 	)

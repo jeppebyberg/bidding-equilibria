@@ -627,9 +627,7 @@ class SlackBinaryFixComputer(PoATighteningMain):
                 "alpha_optimization_results",
                 {},
             ),
-            "lambda_bounds": self.tightening_data.get("lambda_bounds", {}),
             "tight_big_m": self.tightening_data.get("tight_big_m", {}),
-            "aggregate_dual_bounds": self.tightening_data.get("aggregate_dual_bounds", {}),
         }
         self.tightening_data["slack_bounds"] = report["slack_bounds"]
         self.tightening_data["fixed_binaries"] = report["fixed_binaries"]

@@ -1,6 +1,6 @@
-test_case_bidding_blocks:
+base_test_case:
   demand:
-    - 130.0
+    - 100.0
 
   time_steps:
     - 24
@@ -48,7 +48,7 @@ test_case_bidding_blocks:
         - block_id: 0
           name: "W3_B1"
           pmax: 50.0
-          cost: 5.5
+          cost: 0.5
         # - block_id: 1
         #   name: "W3_B2"
         #   pmax: 25.0
@@ -64,7 +64,7 @@ test_case_bidding_blocks:
         - block_id: 0
           name: "W2_B1"
           pmax: 50.0
-          cost: 5.0
+          cost: 0.25
         # - block_id: 1
         #   name: "W2_B2"
         #   pmax: 25.0
@@ -80,7 +80,7 @@ test_case_bidding_blocks:
         - block_id: 0
           name: "W1_B1"
           pmax: 50.0
-          cost: 4.5
+          cost: 0.01
         # - block_id: 1
         #   name: "W1_B2"
         #   pmax: 25.0

@@ -5,7 +5,6 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
 import torch
 from torch import nn
 
@@ -14,7 +13,6 @@ from models.neural_network.training.dataset import (
     load_generator_policy_data,
 )
 from models.neural_network.training.model import BiddingPolicyNetwork
-
 
 @dataclass(frozen=True)
 class BiddingPolicyTrainingConfig:
@@ -28,7 +26,7 @@ class BiddingPolicyTrainingConfig:
     patience: int | None
     min_delta: float
     device: str | None = None
-
+    final_activation: str = "relu"
 
 def train_generator_policy(
     csv_path: str | Path,
@@ -57,7 +55,15 @@ def train_generator_policy(
         input_dim=policy_data.input_dim,
         output_dim=policy_data.output_dim,
         hidden_layers=config.hidden_layers,
+        final_activation=config.final_activation,
     ).to(selected_device)
+    _initialize_final_relu_bias_from_targets(model, policy_data, selected_device)
+
+    print(
+        f"Training model for {policy_data.generator_name} on {selected_device} with "
+        f"hidden layers {config.hidden_layers}, learning rate {config.learning_rate}, "
+        f"batch size {config.batch_size}, and {config.num_epochs} epochs."
+    )
 
     history = _fit_model(model, policy_data, config, selected_device)
 
@@ -113,7 +119,6 @@ def train_generator_policy(
         "history": history,
     }
 
-
 def _fit_model(
     model: BiddingPolicyNetwork,
     policy_data: BiddingPolicyData,
@@ -135,6 +140,8 @@ def _fit_model(
     epochs_without_improvement = 0
 
     for epoch in range(1, config.num_epochs + 1):
+        if epoch % 10 == 0 or epoch == 1:
+            print(f"Epoch {epoch}/{config.num_epochs}...")
         train_loss = _run_epoch(
             model=model,
             data_loader=policy_data.train_loader,
@@ -175,6 +182,26 @@ def _fit_model(
         "best_epoch": best_epoch,
     }
 
+def _initialize_final_relu_bias_from_targets(
+    model: BiddingPolicyNetwork,
+    policy_data: BiddingPolicyData,
+    device: torch.device,
+) -> None:
+    if getattr(model, "final_activation", None) != "relu":
+        return
+
+    final_linear = None
+    for layer in reversed(model.network):
+        if isinstance(layer, nn.Linear):
+            final_linear = layer
+            break
+    if final_linear is None:
+        return
+
+    targets = policy_data.train_loader.dataset.tensors[1].to(device)
+    target_means = targets.mean(dim=0).clamp_min(1e-6)
+    with torch.no_grad():
+        final_linear.bias.copy_(target_means)
 
 def _run_epoch(
     model: BiddingPolicyNetwork,
@@ -201,7 +228,6 @@ def _run_epoch(
         total_samples += batch_size
     return total_loss / total_samples
 
-
 def _evaluate(
     model: BiddingPolicyNetwork,
     data_loader: torch.utils.data.DataLoader,
@@ -223,7 +249,6 @@ def _evaluate(
             total_samples += batch_size
     return total_loss / total_samples
 
-
 def _build_metadata(
     policy_data: BiddingPolicyData,
     config: BiddingPolicyTrainingConfig,
@@ -237,7 +262,7 @@ def _build_metadata(
         "target_columns": policy_data.target_columns,
         "hidden_layers": config.hidden_layers,
         "activation": "relu",
-        "final_activation": "linear",
+        "final_activation": config.final_activation,
         "train_size": policy_data.train_size,
         "test_size": policy_data.test_size,
         "test_fraction": config.test_size,
@@ -250,7 +275,6 @@ def _build_metadata(
         "random_state": config.random_state,
     }
 
-
 def _build_weight_export(
     model: BiddingPolicyNetwork,
     policy_data: BiddingPolicyData,
@@ -258,16 +282,15 @@ def _build_weight_export(
     return {
         "generator_name": policy_data.generator_name,
         "activation": "relu",
+        "final_activation": model.final_activation,
         "layers": model.export_layers_to_json(),
         "feature_columns": policy_data.feature_columns,
         "target_columns": policy_data.target_columns,
     }
 
-
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     with path.open("w", encoding="utf-8") as file_handle:
         json.dump(payload, file_handle, indent=2)
-
 
 def _default_device() -> str:
     return "cuda" if torch.cuda.is_available() else "cpu"

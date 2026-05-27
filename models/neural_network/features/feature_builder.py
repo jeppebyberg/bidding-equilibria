@@ -39,11 +39,7 @@ class NeuralNetworkFeatureBuilder:
         "previous_own_generation_capacity",
         "next_own_generation_capacity",
     ]
-    COST_FEATURE_COLUMNS = [
-        "average_true_cost",
-        "minimum_true_cost",
-        "maximum_true_cost",
-    ]
+
     SUPPORTED_FEATURE_COLUMNS = [
         "demand",
         "total_wind_generation_capacity",
@@ -56,10 +52,7 @@ class NeuralNetworkFeatureBuilder:
         "own_generation_capacity",
         "previous_own_generation_capacity",
         "next_own_generation_capacity",
-        "average_true_cost",
-        "minimum_true_cost",
-        "maximum_true_cost",
-    ]
+        ]
 
     def __init__(
         self,
@@ -155,7 +148,6 @@ class NeuralNetworkFeatureBuilder:
                     "next_own_generation_capacity": float(
                         own_capacity[scenario_id, next_time_id]
                     ),
-                    **self._compute_true_cost_features(block_indices),
                 }
                 for block_idx in block_indices:
                     block_name = self.block_names[block_idx]
@@ -393,17 +385,6 @@ class NeuralNetworkFeatureBuilder:
                 )
         return own_capacity
 
-    def _compute_true_cost_features(self, block_indices: list[int]) -> dict[str, float]:
-        costs = [
-            float(self.costs_df[f"{self.block_names[block_idx]}_cost"].iloc[0])
-            for block_idx in block_indices
-        ]
-        return {
-            "average_true_cost": float(np.mean(costs)),
-            "minimum_true_cost": float(np.min(costs)),
-            "maximum_true_cost": float(np.max(costs)),
-        }
-
     def available_capacity(
         self,
         scenario_id: int,
@@ -566,7 +547,10 @@ class NeuralNetworkFeatureBuilder:
             maximum = stats.feature_max[column]
             denominator = maximum - minimum
             if denominator == 0:
+                # If all values are the same, set normalized value to 0.0 to avoid division by zero
+                # This means the feature is constant over the dataset
                 normalized[column] = 0.0
+                print(f"Feature column '{column}' is constant over the dataset.")
             else:
                 normalized[column] = (dataframe[column] - minimum) / denominator
         return normalized

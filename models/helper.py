@@ -285,6 +285,12 @@ def ramp_vectors(
     return ramp_up, ramp_down
 
 
+def is_wind_generator_name(name: str) -> bool:
+    """Return true for wind generator names used by support-set logic."""
+    stripped = str(name).strip()
+    return stripped.upper().startswith("W") or "wind" in stripped.lower()
+
+
 def half_capacity_initial_dispatch(
     scenarios_df: pd.DataFrame,
     block_names: Sequence[str],

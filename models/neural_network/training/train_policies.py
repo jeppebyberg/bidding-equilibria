@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import sys
-from argparse import ArgumentParser
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -13,7 +12,6 @@ from models.neural_network.training.trainer import (
     BiddingPolicyTrainingConfig,
     train_generator_policy,
 )
-
 
 FEATURE_DIR = Path("models/neural_network/features/generated/normalized")
 MODEL_DIR = Path("models/neural_network/training/trained_models")
@@ -29,7 +27,7 @@ RANDOM_STATE = 42
 PATIENCE = 50
 MIN_DELTA = 1e-6
 DEVICE: str | None = None
-
+FINAL_ACTIVATION = "relu"
 
 def main(device: str | None = DEVICE) -> None:
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
@@ -46,6 +44,7 @@ def main(device: str | None = DEVICE) -> None:
         patience=PATIENCE,
         min_delta=MIN_DELTA,
         device=device,
+        final_activation=FINAL_ACTIVATION,
     )
 
     csv_paths = _find_generator_feature_files(FEATURE_DIR)
@@ -80,7 +79,6 @@ def main(device: str | None = DEVICE) -> None:
         json.dump(summary_entries, file_handle, indent=2)
     print(f"Saved training summary to {summary_path}")
 
-
 def _find_generator_feature_files(feature_dir: Path) -> list[Path]:
     if not feature_dir.exists():
         raise ValueError(f"Feature directory does not exist: {feature_dir}")
@@ -91,18 +89,5 @@ def _find_generator_feature_files(feature_dir: Path) -> list[Path]:
     )
 
 
-def _parse_args() -> str | None:
-    parser = ArgumentParser(
-        description="Train one ReLU bidding policy network per generator CSV."
-    )
-    parser.add_argument(
-        "--device",
-        default=DEVICE,
-        help="Optional torch device override, for example 'cpu', 'cuda', or 'cuda:0'.",
-    )
-    args = parser.parse_args()
-    return args.device
-
-
 if __name__ == "__main__":
-    main(device=_parse_args())
+    main(device=DEVICE)

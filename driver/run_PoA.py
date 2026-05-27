@@ -73,7 +73,7 @@ def load_scenario_data(config: PoARunConfig) -> dict:
 
 
 def load_ambiguity_set_config(config: PoARunConfig) -> dict:
-    return PoAOptimization.load_ambiguity_set_config(
+    return PoAOptimization.load_ambiguity_set(
         config_path=config.ambiguity_set_config_path,
         config_name=config.ambiguity_set_config_name,
     )

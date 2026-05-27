@@ -1,10 +1,7 @@
 from __future__ import annotations
-
 from typing import Any
-
 import torch
 from torch import nn
-
 
 class BiddingPolicyNetwork(nn.Module):
     """Feedforward ReLU policy network for one physical generator."""
@@ -14,6 +11,7 @@ class BiddingPolicyNetwork(nn.Module):
         input_dim: int,
         output_dim: int,
         hidden_layers: list[int],
+        final_activation: str = "relu",
     ) -> None:
         super().__init__()
         if input_dim <= 0:
@@ -22,6 +20,9 @@ class BiddingPolicyNetwork(nn.Module):
             raise ValueError("output_dim must be positive.")
         if any(width <= 0 for width in hidden_layers):
             raise ValueError("All hidden layer widths must be positive.")
+        final_activation = str(final_activation).strip().lower()
+        if final_activation not in {"linear", "relu"}:
+            raise ValueError("final_activation must be either 'linear' or 'relu'.")
 
         layers: list[nn.Module] = []
         previous_dim = input_dim
@@ -30,17 +31,20 @@ class BiddingPolicyNetwork(nn.Module):
             layers.append(nn.ReLU())
             previous_dim = hidden_dim
         layers.append(nn.Linear(previous_dim, output_dim))
+        if final_activation == "relu":
+            layers.append(nn.ReLU())
 
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.hidden_layers = list(hidden_layers)
+        self.final_activation = final_activation
         self.network = nn.Sequential(*layers)
 
     def forward(self, features: torch.Tensor) -> torch.Tensor:
         return self.network(features)
 
     def export_layers_to_json(self) -> list[dict[str, Any]]:
-        """Return Linear/ReLU layers in a Gurobi-friendly JSON structure."""
+        """Return Linear/ReLU layers in JSON structure."""
         exported_layers: list[dict[str, Any]] = []
         for layer in self.network:
             if isinstance(layer, nn.Linear):

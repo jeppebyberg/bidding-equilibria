@@ -6,9 +6,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-import matplotlib
-
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -213,7 +210,7 @@ def main() -> None:
     # Leave result_paths empty to use either the newest or all matching PoA results.
     result_paths = [
         # Path("results/temporary_poa_results/poa_optimization_T8.json"),
-        # Path("results/temporary_poa_results/poa_optimization_T8_ratio_piecewise_mccormick.json"),
+        Path("results/temporary_poa_results/poa_optimization_T8_piecewise_mccormick.json"),
     ]
     results_dir = Path("results")
     plot_all_matching_results = True

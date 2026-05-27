@@ -18,6 +18,21 @@ DEFAULT_TIGHTENING_OUTPUT_PATHS: dict[str, str] = {
 }
 
 
+def _contains_aggregate_dual_bounds(payload: Any, parent_key: str | None = None) -> bool:
+    if isinstance(payload, dict):
+        if parent_key == "default_bounds_used":
+            return False
+        if "aggregate_dual_bounds" in payload:
+            return True
+        return any(
+            _contains_aggregate_dual_bounds(value, str(key))
+            for key, value in payload.items()
+        )
+    if isinstance(payload, list):
+        return any(_contains_aggregate_dual_bounds(value, parent_key) for value in payload)
+    return False
+
+
 class PoATighteningMain:
     """Shared orchestrator for the staged PoA tightening workflow."""
 
@@ -106,6 +121,11 @@ class PoATighteningMain:
     def _merge_report(self, report: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(report, dict):
             raise ValueError("Tightening report payload must be a dictionary")
+        if _contains_aggregate_dual_bounds(report):
+            raise ValueError(
+                "Loaded tightening report contains deprecated aggregate_dual_bounds. "
+                "Recompute dual Big-M tightening with componentwise bounds only."
+            )
 
         self.tightening_data.setdefault("metadata", {}).update(report.get("metadata", {}) or {})
 
@@ -148,21 +168,9 @@ class PoATighteningMain:
             self.tightening_data["fixed_binaries"] = report.get("fixed_binaries", {}) or {}
             self.poa.fixed_binaries = self.tightening_data["fixed_binaries"]
 
-        if "lambda_bounds" in report:
-            self.tightening_data["lambda_bounds"] = report.get("lambda_bounds", {}) or {}
-            self.poa.lambda_bounds = self.tightening_data["lambda_bounds"]
-            self.poa._loaded_bounds_prepared = False
-
         if "tight_big_m" in report:
             self.tightening_data["tight_big_m"] = report.get("tight_big_m", {}) or {}
             self.poa.tight_big_m = self.tightening_data["tight_big_m"]
-            self.poa._loaded_bounds_prepared = False
-
-        if "aggregate_dual_bounds" in report:
-            self.tightening_data["aggregate_dual_bounds"] = (
-                report.get("aggregate_dual_bounds", {}) or {}
-            )
-            self.poa.aggregate_dual_bounds = self.tightening_data["aggregate_dual_bounds"]
             self.poa._loaded_bounds_prepared = False
 
         if "optimal_cost_bounds" in report:
@@ -275,36 +283,21 @@ class PoATighteningMain:
             }
 
         if stage_name == "dual_big_m":
-            lambda_bounds = self.poa.build_default_lambda_bounds_report()
             tight_big_m = self.poa.build_default_tight_big_m_report()
-            aggregate_dual_bounds = (
-                self.poa.build_default_aggregate_dual_bounds_report()
-            )
-            self.poa._mark_default_bound_used(
-                "lambda_bounds",
-                "Default loose lambda bounds were used by tightening_main.",
-            )
             self.poa._mark_default_bound_used(
                 "tight_big_m",
                 "Default loose dual Big-M values were used by tightening_main.",
             )
-            self.poa._mark_default_bound_used(
-                "aggregate_dual_bounds",
-                "Default loose aggregate dual bounds were used by tightening_main.",
-            )
             return {
                 "metadata": {
                     "description": (
-                        "Default loose lambda, componentwise dual Big-M, and "
-                        "aggregate dual bounds."
+                        "Default loose componentwise dual Big-M bounds."
                     ),
                     "source": "default_loose_bounds",
                     "reference_case": self.poa.reference_case,
                     "num_time_steps": self.poa.num_time_steps,
                 },
-                "lambda_bounds": lambda_bounds,
                 "tight_big_m": tight_big_m,
-                "aggregate_dual_bounds": aggregate_dual_bounds,
                 "primal_big_m": self.tightening_data.get("primal_big_m", {}),
                 "alpha_bounds": self.tightening_data.get("alpha_bounds", {}),
                 "alpha_optimization_results": self.tightening_data.get(
@@ -443,9 +436,7 @@ class PoATighteningMain:
             ),
             "slack_bounds": self.tightening_data.get("slack_bounds", {}),
             "fixed_binaries": self.tightening_data.get("fixed_binaries", {}),
-            "lambda_bounds": self.tightening_data.get("lambda_bounds", {}),
             "tight_big_m": self.tightening_data.get("tight_big_m", {}),
-            "aggregate_dual_bounds": self.tightening_data.get("aggregate_dual_bounds", {}),
             "optimal_cost_bounds": self.tightening_data.get("optimal_cost_bounds", {}),
             "optimal_cost_bound_optimization_results": self.tightening_data.get(
                 "optimal_cost_bound_optimization_results",
@@ -502,9 +493,7 @@ class PoATighteningMain:
     ) -> Path:
         from models.PoA.PoA_tightening.compute_alpha_bounds import AlphaBoundsComputer
         from models.PoA.PoA_tightening.compute_dual_big_m import DualBigMComputer
-        from models.PoA.PoA_tightening.compute_optimal_cost_bounds import (
-            OptimalCostBoundsComputer,
-        )
+        from models.PoA.PoA_tightening.compute_optimal_cost_bounds import OptimalCostBoundsComputer
         from models.PoA.PoA_tightening.compute_primal_big_m import PrimalBigMComputer
         from models.PoA.PoA_tightening.compute_relu_bounds import ReLUBoundsComputer
         from models.PoA.PoA_tightening.compute_slack_binary_fix import SlackBinaryFixComputer

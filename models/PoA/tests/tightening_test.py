@@ -701,7 +701,7 @@ def _apply_factorial_variant_data(
         include_nn_relu_bounds=bool(optimizer.nn_policy_generator_ids),
         include_tight_big_m=True,
         include_optimal_cost_bounds=(
-            optimizer.objective_mode == "ratio_piecewise_mccormick"
+            optimizer.objective_mode == "piecewise_mccormick"
         ),
         overwrite_existing=False,
     )
@@ -1861,7 +1861,7 @@ def run_full_factorial_tightening_design_diagnostic(
 
 if __name__ == "__main__":
    
-    case = "test_case_bidding_blocks"
+    case = "base_test_case"
     regime_set = "PoA_analysis"
     seed = 1
     horizon = 6
@@ -1889,7 +1889,7 @@ if __name__ == "__main__":
     use_lambda_bounds_in_diagnostics = True
     use_aggregate_dual_bounds_in_diagnostics = True
     diagnostic_mode = True
-    objective_mode = "ratio_piecewise_mccormick"
+    objective_mode = "piecewise_mccormick"
 
     scenario_manager = ScenarioManager(case)
     scenarios = scenario_manager.create_scenario_set_from_regimes(
@@ -1901,9 +1901,9 @@ if __name__ == "__main__":
     costs_df = scenarios["costs_df"]
     ramps_df = scenarios["ramps_df"]
 
-    ambiguity_set_config = PoAOptimization.load_ambiguity_set_config(
-        config_path="models/PoA/ambiguity_set_config.yaml",
-        config_name="test_case_bidding_blocks_base",
+    ambiguity_set_config = PoAOptimization.load_ambiguity_set(
+        config_path="config/ambiguity_set_config.yaml",
+        config_name="base_test_case",
     )
 
     required_tightening_paths = [tightening_report_path]

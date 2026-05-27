@@ -12,16 +12,19 @@ from models.neural_network.features import NeuralNetworkFeatureBuilder
 
 
 def main() -> None:
-    case = "test_case_bidding_blocks"
-    regime_set = "policy_training"
-    seed = 1
+    case = "base_test_case"
+    ambiguity_set = "base_test_case"
+    num_scenarios = 500
+    seed = 42
     results_path = "results/merit_order_best_response_results.json"
     raw_output_dir = "models/neural_network/features/generated/raw"
     normalized_output_dir = "models/neural_network/features/generated/normalized"
 
     scenario_manager = ScenarioManager(case)
-    scenarios = scenario_manager.create_scenario_set_from_regimes(
-        regime_set=regime_set,
+    scenarios = scenario_manager.create_scenario_set_from_ambiguity_set(
+        ambiguity_config_path=str(ScenarioManager.AMBIGUITY_CONFIG_PATH),
+        ambiguity_set=ambiguity_set,
+        n_scenarios=num_scenarios,
         seed=seed,
     )
 

@@ -2,7 +2,7 @@ from config.scenarios.scenario_generator import ScenarioManager
 
 
 def test_regime_and_ambiguity_scenario_generation_smoke() -> None:
-	manager = ScenarioManager(base_case_reference="test_case_bidding_blocks")
+	manager = ScenarioManager(base_case_reference="base_test_case")
 
 	fixed = manager.create_scenario_set_from_regimes(
 		regime_config_path="regime_definitions.yaml",
@@ -15,7 +15,7 @@ def test_regime_and_ambiguity_scenario_generation_smoke() -> None:
 	n_scenarios = 5
 	ambiguity = manager.create_scenario_set_from_ambiguity_set(
 		ambiguity_config_path="ambiguity_set_config.yaml",
-		ambiguity_set="test_case_bidding_blocks_base",
+		ambiguity_set="base_test_case",
 		n_scenarios=n_scenarios,
 		seed=42,
 	)
@@ -41,7 +41,7 @@ def test_regime_and_ambiguity_scenario_generation_smoke() -> None:
 	assert required_columns.issubset(scenarios_df.columns)
 
 	assert scenarios_df["scenario_source"].eq("ambiguity_set").all()
-	assert scenarios_df["ambiguity_set"].eq("test_case_bidding_blocks_base").all()
+	assert scenarios_df["ambiguity_set"].eq("base_test_case").all()
 	assert scenarios_df["mu_D"].between(
 		ambiguity_config["demand_mu_min"],
 		ambiguity_config["demand_mu_max"],

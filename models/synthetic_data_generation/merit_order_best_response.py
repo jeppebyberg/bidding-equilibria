@@ -614,17 +614,23 @@ class MeritOrderHeuristic:
         raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 if __name__ == "__main__":
-    case = "test_case_bidding_blocks"
-    regime_set = "policy_training"
-    seed = 1
+    case = "base_test_case"
+    seed = 42
     bid_tolerance = 1e-2
     output_path = "results/merit_order_best_response_results.json"
 
     scenario_manager = ScenarioManager(case)
-    scenarios = scenario_manager.create_scenario_set_from_regimes(
-        regime_set=regime_set,
-        seed=seed,
-    )
+    ambiguity_path = ScenarioManager.AMBIGUITY_CONFIG_PATH
+
+    scenarios = scenario_manager.create_scenario_set_from_ambiguity_set(
+		ambiguity_config_path=str(ambiguity_path),
+		ambiguity_set="base_test_case",
+		n_scenarios=500,
+		seed=seed,
+	)
+
+    print(scenarios["description_text"])
+
     scenarios_df = scenarios["scenarios_df"]
     costs_df = scenarios["costs_df"]
     ramps_df = scenarios["ramps_df"]

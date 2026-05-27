@@ -35,9 +35,7 @@ def _initialize_parallel_dual_computer(state: dict[str, Any]) -> None:
         "alpha_bounds",
         "fixed_binaries",
         "primal_big_m",
-        "lambda_bounds",
         "tight_big_m",
-        "aggregate_dual_bounds",
     ):
         if attr_name in state:
             setattr(poa, attr_name, state[attr_name])
@@ -55,41 +53,6 @@ def _get_parallel_dual_computer() -> "DualBigMComputer":
     if _PARALLEL_DUAL_COMPUTER is None:
         raise RuntimeError("Parallel dual Big-M worker was not initialized")
     return _PARALLEL_DUAL_COMPUTER
-
-def _bound_sense(bound_name: str) -> Any:
-    if bound_name == "lower":
-        return minimize
-    if bound_name == "upper":
-        return maximize
-    raise ValueError(f"Unknown bound name: {bound_name}")
-
-def _solve_parallel_lambda_bound(task: tuple[Any, ...]) -> dict[str, Any]:
-    side, time_idx, bound_name, solver_name, time_limit, tee, solver_options = task
-    computer = _get_parallel_dual_computer()
-    lambda_name = computer._lambda_name(side)
-    m = computer._build_side_kkt_model_for_dual_big_m(
-        side=side,
-        alpha_bounds=computer.alpha_bounds,
-        include_complementarity=True,
-        fixed_binaries=computer.fixed_binaries,
-    )
-    lambda_expr = getattr(m, lambda_name)[int(time_idx)]
-    m.tightening_objective = Objective(expr=lambda_expr, sense=_bound_sense(bound_name))
-    solved, results = computer._solve_tightening_model(
-        m,
-        solver_name=solver_name,
-        time_limit=time_limit,
-        tee=tee,
-        solver_options=solver_options,
-    )
-    return {
-        "side": side,
-        "time_idx": int(time_idx),
-        "lambda_name": lambda_name,
-        "bound_name": bound_name,
-        "value": computer._safe_value(lambda_expr) if solved else None,
-        "termination_condition": str(results.solver.termination_condition),
-    }
 
 def _solve_parallel_dual_big_m(task: tuple[Any, ...]) -> dict[str, Any]:
     side, constraint_type, index, solver_name, time_limit, tee, solver_options = task
@@ -110,46 +73,21 @@ def _solve_parallel_dual_big_m(task: tuple[Any, ...]) -> dict[str, Any]:
         tee=tee,
         solver_options=solver_options,
     )
+    dual_value = computer._safe_value(dual_expr) if solved else None
     return {
         "side": side,
         "constraint_type": constraint_type,
         "index": index,
         "dual_name": dual_name,
-        "tight_big_m": computer._safe_value(dual_expr) if solved else None,
+        "tight_big_m": dual_value,
         "termination_condition": str(results.solver.termination_condition),
-    }
-
-def _solve_parallel_aggregate_dual_bound(task: tuple[Any, ...]) -> dict[str, Any]:
-    side, constraint_type, time_idx, solver_name, time_limit, tee, solver_options = task
-    computer = _get_parallel_dual_computer()
-    bound_key = computer._aggregate_dual_bound_key(constraint_type)
-    m = computer._build_side_kkt_model_for_dual_big_m(
-        side=side,
-        alpha_bounds=computer.alpha_bounds,
-        include_complementarity=True,
-        fixed_binaries=computer.fixed_binaries,
-    )
-    aggregate_expr = computer._aggregate_dual_expression(
-        m,
-        side,
-        constraint_type,
-        time_idx,
-    )
-    m.tightening_objective = Objective(expr=aggregate_expr, sense=maximize)
-    solved, results = computer._solve_tightening_model(
-        m,
-        solver_name=solver_name,
-        time_limit=time_limit,
-        tee=tee,
-        solver_options=solver_options,
-    )
-    return {
-        "side": side,
-        "constraint_type": constraint_type,
-        "time_idx": int(time_idx),
-        "bound_key": bound_key,
-        "tight_big_m": computer._safe_value(aggregate_expr) if solved else None,
-        "termination_condition": str(results.solver.termination_condition),
+        **computer._dual_big_m_diagnostics(
+            m=m,
+            side=side,
+            constraint_type=constraint_type,
+            dual_value=dual_value,
+            solved=solved,
+        ),
     }
 class DualBigMComputer(PoATighteningMain):
     def _ensure_primal_big_m_for_tightening(self) -> None:
@@ -226,7 +164,7 @@ class DualBigMComputer(PoATighteningMain):
         fixed_binaries: Optional[dict[str, dict[str, Any]]] = None,
     ) -> ConcreteModel:
         """
-        Build one KKT side for lambda, componentwise dual, or aggregate dual bounds.
+        Build one KKT side for componentwise dual Big-M bounds.
         """
         self._ensure_primal_big_m_for_tightening()
         self.model = ConcreteModel()
@@ -251,6 +189,7 @@ class DualBigMComputer(PoATighteningMain):
                     if binary_var is not None:
                         for index in binary_var:
                             binary_var[index].fix(0)
+
         elif side == "opt":
             self._build_optimal_variables()
             self._build_complementarity_optimal_variables()
@@ -338,32 +277,6 @@ class DualBigMComputer(PoATighteningMain):
             "opt": "lambda_opt",
         }[side]
 
-    def _aggregate_dual_bound_key(self, constraint_type: str) -> str:
-        return {
-            "upper": "mu_max_sum_ub",
-            "lower": "mu_min_sum_ub",
-            "ramp_up": "mu_ramp_up_sum_ub",
-            "ramp_down": "mu_ramp_down_sum_ub",
-        }[constraint_type]
-
-    def _aggregate_dual_expression(
-        self,
-        m: ConcreteModel,
-        side: str,
-        constraint_type: str,
-        time_idx: int,
-    ) -> Any:
-        dual_var = getattr(m, self._dual_name(side, constraint_type))
-        if constraint_type in {"upper", "lower"}:
-            return sum(
-                dual_var[i, b, int(time_idx)]
-                for i, b in self.generator_block_pairs
-            )
-        return sum(
-            dual_var[i, int(time_idx)]
-            for i in range(self.num_physical_generators)
-        )
-
     def _solve_tightening_model(
         self,
         m: ConcreteModel,
@@ -387,127 +300,49 @@ class DualBigMComputer(PoATighteningMain):
         }
         return bool(ok), results
 
-    def run_lambda_bound_tightening(
+    def _dual_big_m_diagnostics(
         self,
-        alpha_bounds: Optional[dict[tuple[int, int, int], dict[str, float]]] = None,
-        fixed_binaries: Optional[dict[str, dict[str, Any]]] = None,
-        solver_name: str = "gurobi",
-        time_limit: Optional[float] = None,
-        tee: bool = False,
-        parallel_workers: Optional[int] = 1,
-        solver_threads: Optional[int] = None,
+        m: ConcreteModel,
+        side: str,
+        constraint_type: str,
+        dual_value: Optional[float],
+        solved: bool,
     ) -> dict[str, Any]:
-        """
-        Maximize and minimize each price dual before the dual Big-M programs.
-        """
-        alpha_bounds = alpha_bounds or getattr(self.poa, "alpha_bounds", None)
-        if alpha_bounds is None:
-            raise ValueError("Call compute_nn_certified_bid_bounds() before lambda tightening")
-        fixed_binaries = fixed_binaries or getattr(self.poa, "fixed_binaries", {})
+        reasons: list[str] = []
+        tolerance = max(1e-5, 1e-7 * float(self.default_dual_big_m))
+        if not solved or dual_value is None:
+            reasons.append("auxiliary dual Big-M problem did not return a usable solution")
+        elif dual_value >= float(self.default_dual_big_m) - tolerance:
+            reasons.append("dual value reached the default dual Big-M cap")
 
-        self.lambda_bounds = {}
-
-        lambda_bounds: dict[str, dict[str, Any]] = {}
-        tasks: list[tuple[str, int]] = [
-            (side, t)
-            for side in ("eq", "opt")
-            for t in range(self.num_time_steps)
-        ]
-        print(
-            f"\nLambda-bound optimization programs: {2 * len(tasks)}",
-            flush=True,
-        )
-        solver_options = self._solver_options_with_threads(solver_name, solver_threads)
-        total_programs = 2 * len(tasks)
-        workers = self._resolve_parallel_workers(parallel_workers, total_programs)
-        if workers > 1:
-            print(f"Running lambda-bound programs with {workers} worker processes", flush=True)
-            parallel_tasks = [
-                (side, time_idx, bound_name, solver_name, time_limit, tee, solver_options)
-                for side, time_idx in tasks
-                for bound_name in ("lower", "upper")
-            ]
-            result_by_task: dict[tuple[str, int, str], dict[str, Any]] = {}
-            with ProcessPoolExecutor(
-                max_workers=workers,
-                initializer=_initialize_parallel_dual_computer,
-                initargs=(
-                    self._parallel_optimizer_state_for_dual(
-                        alpha_bounds=alpha_bounds,
-                        fixed_binaries=fixed_binaries,
-                        lambda_bounds={},
-                    ),
-                ),
-            ) as executor:
-                future_to_task = {
-                    executor.submit(_solve_parallel_lambda_bound, task): task
-                    for task in parallel_tasks
-                }
-                for completed, future in enumerate(as_completed(future_to_task), start=1):
-                    result = future.result()
-                    key = (
-                        str(result["side"]),
-                        int(result["time_idx"]),
-                        str(result["bound_name"]),
+        lambda_var = getattr(m, self._lambda_name(side), None)
+        if lambda_var is not None:
+            lambda_tolerance = max(1e-5, 1e-7 * max(
+                abs(float(self.default_lambda_lower)),
+                abs(float(self.default_lambda_upper)),
+                1.0,
+            ))
+            for t in m.time_steps:
+                lambda_value = value(lambda_var[t], exception=False)
+                if lambda_value is None:
+                    continue
+                if lambda_value <= float(self.default_lambda_lower) + lambda_tolerance:
+                    reasons.append(
+                        f"{self._lambda_name(side)}[{int(t)}] reached the default lower lambda bound"
                     )
-                    result_by_task[key] = result
-                    action = "minimize" if result["bound_name"] == "lower" else "maximize"
-                    print(
-                        f"[Lambda done {completed}/{total_programs}] {action} "
-                        f"{result['lambda_name']}[{result['time_idx']}] -> "
-                        f"{result['value']} ({result['termination_condition']})",
-                        flush=True,
+                    break
+                if lambda_value >= float(self.default_lambda_upper) - lambda_tolerance:
+                    reasons.append(
+                        f"{self._lambda_name(side)}[{int(t)}] reached the default upper lambda bound"
                     )
+                    break
 
-            for side, time_idx in tasks:
-                lambda_name = self._lambda_name(side)
-                entry: dict[str, Any] = {}
-                for bound_name in ("lower", "upper"):
-                    result = result_by_task[(side, int(time_idx), bound_name)]
-                    entry[bound_name] = result["value"]
-                    entry[f"{bound_name}_termination_condition"] = result[
-                        "termination_condition"
-                    ]
-                lambda_bounds.setdefault(lambda_name, {})[str(int(time_idx))] = entry
-
-            self.lambda_bounds = lambda_bounds
-            return {"lambda_bounds": lambda_bounds}
-
-        for program_idx, (side, time_idx) in enumerate(tasks, start=1):
-            lambda_name = self._lambda_name(side)
-            entry: dict[str, Any] = {}
-            for bound_name, sense in (("lower", minimize), ("upper", maximize)):
-                print(
-                    f"[Lambda {2 * (program_idx - 1) + (1 if bound_name == 'lower' else 2)}/"
-                    f"{2 * len(tasks)}] "
-                    f"{'minimize' if bound_name == 'lower' else 'maximize'} "
-                    f"{lambda_name}[{time_idx}]",
-                    flush=True,
-                )
-                m = self._build_side_kkt_model_for_dual_big_m(
-                    side=side,
-                    alpha_bounds=alpha_bounds,
-                    include_complementarity=True,
-                    fixed_binaries=fixed_binaries,
-                )
-                lambda_expr = getattr(m, lambda_name)[int(time_idx)]
-                m.tightening_objective = Objective(expr=lambda_expr, sense=sense)
-                solved, results = self._solve_tightening_model(
-                    m,
-                    solver_name=solver_name,
-                    time_limit=time_limit,
-                    tee=tee,
-                    solver_options=solver_options,
-                )
-                entry[bound_name] = self._safe_value(lambda_expr) if solved else None
-                entry[f"{bound_name}_termination_condition"] = str(
-                    results.solver.termination_condition
-                )
-
-            lambda_bounds.setdefault(lambda_name, {})[str(int(time_idx))] = entry
-
-        self.lambda_bounds = lambda_bounds
-        return {"lambda_bounds": lambda_bounds}
+        cap_limited = bool(reasons)
+        return {
+            "certified": not cap_limited,
+            "cap_limited": cap_limited,
+            "cap_limit_reason": "; ".join(reasons) if reasons else None,
+        }
 
     def run_dual_big_m_tightening(
         self,
@@ -520,22 +355,13 @@ class DualBigMComputer(PoATighteningMain):
         solver_threads: Optional[int] = None,
     ) -> dict[str, Any]:
         """
-        Maximize each dual variable and aggregate dual sum after slack fixing.
+        Maximize each componentwise dual variable after slack fixing.
         """
         alpha_bounds = alpha_bounds or getattr(self.poa, "alpha_bounds", None)
         if alpha_bounds is None:
             raise ValueError("Call compute_nn_certified_bid_bounds() before Big-M tightening")
         fixed_binaries = fixed_binaries or getattr(self.poa, "fixed_binaries", {})
 
-        lambda_report = self.run_lambda_bound_tightening(
-            alpha_bounds=alpha_bounds,
-            fixed_binaries=fixed_binaries,
-            solver_name=solver_name,
-            time_limit=time_limit,
-            tee=tee,
-            parallel_workers=parallel_workers,
-            solver_threads=solver_threads,
-        )
         solver_options = self._solver_options_with_threads(solver_name, solver_threads)
 
         tight_big_m: dict[str, dict[str, Any]] = {}
@@ -580,6 +406,9 @@ class DualBigMComputer(PoATighteningMain):
                     "tight_big_m": 0.0,
                     "fixed_by_slack": True,
                     "termination_condition": "fixed_binary_zero",
+                    "certified": True,
+                    "cap_limited": False,
+                    "cap_limit_reason": None,
                 }
                 continue
             pending_dual_tasks.append((side, constraint_type, index))
@@ -599,7 +428,6 @@ class DualBigMComputer(PoATighteningMain):
                     self._parallel_optimizer_state_for_dual(
                         alpha_bounds=alpha_bounds,
                         fixed_binaries=fixed_binaries,
-                        lambda_bounds=self.lambda_bounds,
                         tight_big_m={},
                     ),
                 ),
@@ -631,6 +459,9 @@ class DualBigMComputer(PoATighteningMain):
                     "tight_big_m": result["tight_big_m"],
                     "fixed_by_slack": False,
                     "termination_condition": result["termination_condition"],
+                    "certified": result["certified"],
+                    "cap_limited": result["cap_limited"],
+                    "cap_limit_reason": result["cap_limit_reason"],
                 }
         else:
             for side, constraint_type, index in pending_dual_tasks:
@@ -660,136 +491,23 @@ class DualBigMComputer(PoATighteningMain):
                     solver_options=solver_options,
                 )
                 dual_bound = self._safe_value(dual_expr) if solved else None
+                diagnostics = self._dual_big_m_diagnostics(
+                    m=m,
+                    side=side,
+                    constraint_type=constraint_type,
+                    dual_value=dual_bound,
+                    solved=solved,
+                )
                 tight_big_m.setdefault(dual_name, {})[self._json_key(index)] = {
                     "tight_big_m": dual_bound,
                     "fixed_by_slack": False,
                     "termination_condition": str(results.solver.termination_condition),
+                    **diagnostics,
                 }
 
         self.tight_big_m = tight_big_m
-        aggregate_dual_bounds: dict[str, dict[str, dict[str, Any]]] = {}
-        aggregate_tasks: list[tuple[str, str, int]] = [
-            (side, constraint_type, t)
-            for side in ("eq", "opt")
-            for constraint_type in ("upper", "lower", "ramp_up", "ramp_down")
-            for t in range(self.num_time_steps)
-        ]
-        print(
-            f"\nAggregate dual-bound optimization programs: {len(aggregate_tasks)}",
-            flush=True,
-        )
-        aggregate_workers = self._resolve_parallel_workers(
-            parallel_workers,
-            len(aggregate_tasks),
-        )
-        if aggregate_workers > 1:
-            print(
-                f"Running aggregate dual-bound programs with {aggregate_workers} "
-                "worker processes",
-                flush=True,
-            )
-            parallel_tasks = [
-                (side, constraint_type, time_idx, solver_name, time_limit, tee, solver_options)
-                for side, constraint_type, time_idx in aggregate_tasks
-            ]
-            result_by_task: dict[tuple[str, str, int], dict[str, Any]] = {}
-            with ProcessPoolExecutor(
-                max_workers=aggregate_workers,
-                initializer=_initialize_parallel_dual_computer,
-                initargs=(
-                    self._parallel_optimizer_state_for_dual(
-                        alpha_bounds=alpha_bounds,
-                        fixed_binaries=fixed_binaries,
-                        lambda_bounds=self.lambda_bounds,
-                        tight_big_m=tight_big_m,
-                    ),
-                ),
-            ) as executor:
-                future_to_task = {
-                    executor.submit(_solve_parallel_aggregate_dual_bound, task): task
-                    for task in parallel_tasks
-                }
-                for completed, future in enumerate(as_completed(future_to_task), start=1):
-                    result = future.result()
-                    result_by_task[
-                        (
-                            str(result["side"]),
-                            str(result["constraint_type"]),
-                            int(result["time_idx"]),
-                        )
-                    ] = result
-                    print(
-                        f"[Aggregate dual bound done {completed}/{len(aggregate_tasks)}] "
-                        f"maximize {result['bound_key']}[{result['side']},"
-                        f"{result['time_idx']}] -> {result['tight_big_m']} "
-                        f"({result['termination_condition']})",
-                        flush=True,
-                    )
-
-            for side, constraint_type, time_idx in aggregate_tasks:
-                result = result_by_task[(side, constraint_type, int(time_idx))]
-                bound_key = self._aggregate_dual_bound_key(constraint_type)
-                details = {
-                    "tight_big_m": result["tight_big_m"],
-                    "side": side,
-                    "constraint_type": constraint_type,
-                    "termination_condition": result["termination_condition"],
-                }
-                aggregate_dual_bounds.setdefault(bound_key, {}).setdefault(side, {})[
-                    str(int(time_idx))
-                ] = details
-                tight_big_m.setdefault(bound_key, {})[f"{side},{int(time_idx)}"] = details
-        else:
-            for program_number, (side, constraint_type, time_idx) in enumerate(
-                aggregate_tasks,
-                start=1,
-            ):
-                bound_key = self._aggregate_dual_bound_key(constraint_type)
-                print(
-                    f"[Aggregate dual bound {program_number}/{len(aggregate_tasks)}] "
-                    f"maximize {bound_key}[{side},{time_idx}]",
-                    flush=True,
-                )
-                m = self._build_side_kkt_model_for_dual_big_m(
-                    side=side,
-                    alpha_bounds=alpha_bounds,
-                    include_complementarity=True,
-                    fixed_binaries=fixed_binaries,
-                )
-                aggregate_expr = self._aggregate_dual_expression(
-                    m,
-                    side,
-                    constraint_type,
-                    time_idx,
-                )
-                m.tightening_objective = Objective(expr=aggregate_expr, sense=maximize)
-                solved, results = self._solve_tightening_model(
-                    m,
-                    solver_name,
-                    time_limit,
-                    tee,
-                    solver_options=solver_options,
-                )
-                aggregate_bound = self._safe_value(aggregate_expr) if solved else None
-                details = {
-                    "tight_big_m": aggregate_bound,
-                    "side": side,
-                    "constraint_type": constraint_type,
-                    "termination_condition": str(results.solver.termination_condition),
-                }
-                aggregate_dual_bounds.setdefault(bound_key, {}).setdefault(side, {})[
-                    str(int(time_idx))
-                ] = details
-                tight_big_m.setdefault(bound_key, {})[
-                    f"{side},{int(time_idx)}"
-                ] = details
-
-        self.tight_big_m = tight_big_m
-        self.aggregate_dual_bounds = aggregate_dual_bounds
         return {
-            "lambda_bounds": lambda_report["lambda_bounds"],
             "tight_big_m": tight_big_m,
-            "aggregate_dual_bounds": aggregate_dual_bounds,
         }
 
     def run_dual_big_m(
@@ -828,17 +546,14 @@ class DualBigMComputer(PoATighteningMain):
         report = {
             "metadata": {
                 "description": (
-                    "Lambda bounds, componentwise dual Big-M values, and aggregate "
-                    "dual bounds for the final PoA KKT model."
+                    "Componentwise dual Big-M values for the final PoA KKT model."
                 ),
                 "reference_case": self.poa.reference_case,
                 "num_time_steps": self.poa.num_time_steps,
                 "ambiguity_set": self._ambiguity_metadata(),
                 "runtime_seconds": elapsed,
             },
-            "lambda_bounds": dual_report["lambda_bounds"],
             "tight_big_m": dual_report["tight_big_m"],
-            "aggregate_dual_bounds": dual_report["aggregate_dual_bounds"],
             "primal_big_m": self.tightening_data.get("primal_big_m", {}),
             "alpha_bounds": self.tightening_data.get("alpha_bounds", {}),
             "alpha_optimization_results": self.tightening_data.get(
@@ -848,10 +563,6 @@ class DualBigMComputer(PoATighteningMain):
             "slack_bounds": self.tightening_data.get("slack_bounds", {}),
             "fixed_binaries": self.tightening_data.get("fixed_binaries", {}),
         }
-        self.tightening_data["lambda_bounds"] = report["lambda_bounds"]
         self.tightening_data["tight_big_m"] = report["tight_big_m"]
-        self.tightening_data["aggregate_dual_bounds"] = report["aggregate_dual_bounds"]
-        self.poa.lambda_bounds = report["lambda_bounds"]
         self.poa.tight_big_m = report["tight_big_m"]
-        self.poa.aggregate_dual_bounds = report["aggregate_dual_bounds"]
         return self._save_stage_report("dual_big_m", report, output_path)

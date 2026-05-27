@@ -87,7 +87,6 @@ def load_generator_policy_data(
         num_rows=len(dataframe),
     )
 
-
 def identify_feature_columns(dataframe: pd.DataFrame) -> list[str]:
     target_columns = set(identify_target_columns(dataframe))
     excluded_columns = METADATA_COLUMNS | target_columns
@@ -98,14 +97,12 @@ def identify_feature_columns(dataframe: pd.DataFrame) -> list[str]:
         and not column.startswith(TARGET_COLUMN_PREFIX)
     ]
 
-
 def identify_target_columns(dataframe: pd.DataFrame) -> list[str]:
     return [
         column
         for column in dataframe.columns
         if column.startswith(TARGET_COLUMN_PREFIX)
     ]
-
 
 def _validate_dataframe(
     dataframe: pd.DataFrame,
@@ -156,7 +153,6 @@ def _validate_dataframe(
             f"Target columns contain NaN values in {path}: {nan_target_columns}"
         )
 
-
 def _to_tensor_dataset(
     dataframe: pd.DataFrame,
     feature_columns: list[str],
@@ -171,7 +167,6 @@ def _to_tensor_dataset(
         dtype=torch.float32,
     )
     return TensorDataset(features, targets)
-
 
 def _infer_generator_name(dataframe: pd.DataFrame, path: Path) -> str:
     if "generator_name" in dataframe.columns:
@@ -188,7 +183,6 @@ def _infer_generator_name(dataframe: pd.DataFrame, path: Path) -> str:
         if stem.endswith(suffix):
             return stem[: -len(suffix)]
     return stem
-
 
 def _sorted_unique(series: pd.Series) -> list[int | str]:
     values = series.dropna().unique().tolist()

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import sys
-from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +18,7 @@ if str(PROJECT_ROOT) not in sys.path:
 MODEL_DIR = Path("models/neural_network/training/trained_models")
 RESULT_DIR = Path("models/neural_network/training/training_results")
 PLOT_DIR = RESULT_DIR / "plots"
-
+LOG_SCALE = False
 
 def main(
     model_dir: Path = MODEL_DIR,
@@ -57,7 +56,6 @@ def main(
     summary_path = plot_dir / "model_summary.png"
     plot_model_summary(metadata, histories, summary_path)
     print(f"Saved {summary_path}")
-
 
 def plot_loss_curve(
     generator_name: str,
@@ -102,7 +100,6 @@ def plot_loss_curve(
     fig.savefig(output_path, dpi=150)
     plt.close(fig)
 
-
 def plot_all_loss_curves(
     histories: dict[str, dict[str, Any]],
     output_path: Path,
@@ -124,7 +121,6 @@ def plot_all_loss_curves(
     fig.tight_layout()
     fig.savefig(output_path, dpi=150)
     plt.close(fig)
-
 
 def plot_best_test_loss_by_generator(
     histories: dict[str, dict[str, Any]],
@@ -150,7 +146,6 @@ def plot_best_test_loss_by_generator(
     fig.tight_layout()
     fig.savefig(output_path, dpi=150)
     plt.close(fig)
-
 
 def plot_model_summary(
     metadata: dict[str, dict[str, Any]],
@@ -204,14 +199,12 @@ def plot_model_summary(
     fig.savefig(output_path, dpi=150)
     plt.close(fig)
 
-
 def _load_histories(result_dir: Path) -> dict[str, dict[str, Any]]:
     histories: dict[str, dict[str, Any]] = {}
     for path in sorted(result_dir.glob("*_training_history.json")):
         generator_name = path.name.removesuffix("_training_history.json")
         histories[generator_name] = _read_json(path)
     return histories
-
 
 def _load_metadata(model_dir: Path) -> dict[str, dict[str, Any]]:
     metadata: dict[str, dict[str, Any]] = {}
@@ -220,32 +213,14 @@ def _load_metadata(model_dir: Path) -> dict[str, dict[str, Any]]:
         metadata[generator_name] = _read_json(path)
     return metadata
 
-
 def _read_json(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as file_handle:
         return json.load(file_handle)
 
-
-def _parse_args() -> Namespace:
-    parser = ArgumentParser(
-        description="Visualize neural-network bidding policy training results."
-    )
-    parser.add_argument("--model-dir", type=Path, default=MODEL_DIR)
-    parser.add_argument("--result-dir", type=Path, default=RESULT_DIR)
-    parser.add_argument("--plot-dir", type=Path, default=PLOT_DIR)
-    parser.add_argument(
-        "--log-scale",
-        action="store_true",
-        help="Use a logarithmic y-axis for loss plots.",
-    )
-    return parser.parse_args()
-
-
 if __name__ == "__main__":
-    args = _parse_args()
     main(
-        model_dir=args.model_dir,
-        result_dir=args.result_dir,
-        plot_dir=args.plot_dir,
-        log_scale=args.log_scale,
+        model_dir=MODEL_DIR,
+        result_dir=RESULT_DIR,
+        plot_dir=PLOT_DIR,
+        log_scale=LOG_SCALE,
     )

@@ -1,0 +1,126 @@
+{
+  "G1": {
+    "feature_set_name": "compact",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "residual_demand",
+      "next_generation_capacity",
+      "next_demand"
+    ],
+    "hidden_layers": [
+      4,
+      8
+    ],
+    "num_features": 5,
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "mean_validation_loss": 0.9590201675436179,
+    "std_validation_loss": 0.016170455561422662,
+    "k_folds": 3
+  },
+  "G2": {
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "hidden_layers": [
+      4,
+      8
+    ],
+    "num_features": 11,
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 12,
+    "mean_validation_loss": 3.390601315292956e-07,
+    "std_validation_loss": 3.9616922079910233e-07,
+    "k_folds": 3
+  },
+  "W1": {
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "hidden_layers": [
+      4,
+      4
+    ],
+    "num_features": 11,
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 8,
+    "mean_validation_loss": 2.636815581996009e-07,
+    "std_validation_loss": 1.6118782198568545e-07,
+    "k_folds": 3
+  },
+  "W2": {
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "hidden_layers": [
+      11,
+      11
+    ],
+    "num_features": 11,
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 22,
+    "mean_validation_loss": 8.245104831971298e-05,
+    "std_validation_loss": 2.256062266238567e-05,
+    "k_folds": 3
+  },
+  "W3": {
+    "feature_set_name": "full_supported",
+    "feature_columns": [
+      "demand",
+      "total_wind_generation_capacity",
+      "total_generation_capacity",
+      "residual_demand",
+      "previous_generation_capacity",
+      "previous_demand",
+      "next_generation_capacity",
+      "next_demand",
+      "own_generation_capacity",
+      "previous_own_generation_capacity",
+      "next_own_generation_capacity"
+    ],
+    "hidden_layers": [
+      8,
+      8
+    ],
+    "num_features": 11,
+    "num_hidden_layers": 2,
+    "total_hidden_neurons": 16,
+    "mean_validation_loss": 0.357537774456464,
+    "std_validation_loss": 0.06236277898129499,
+    "k_folds": 3
+  }
+}
