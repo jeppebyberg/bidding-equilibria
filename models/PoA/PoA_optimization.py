@@ -17,7 +17,6 @@ from config.scenarios.scenario_generator import ScenarioManager
 from models.helper import (
     block_cost_vector,
     block_structure_from_dataframes,
-    ensure_profile,
     infer_num_time_steps,
     is_wind_generator_name,
     ramp_vectors,
@@ -51,8 +50,8 @@ class PoAOptimization(
     DEFAULT_LOOSE_AGGREGATE_DUAL_UPPER = 1e8
     DEFAULT_LOOSE_C_OPT_LOWER = 1e-3
     DEFAULT_LOOSE_C_OPT_UPPER = 1e8
-    DEFAULT_PHI_LOWER = 1.0
-    DEFAULT_PHI_UPPER = 10.0
+    DEFAULT_PoA_LOWER = 1.0
+    DEFAULT_PoA_UPPER = 10.0
 
     allowed_objective_modes = {
         "difference",
@@ -74,7 +73,8 @@ class PoAOptimization(
         nn_policy_generators: Optional[list[int | str]] = None,
         reference_case: str = "base_test_case",
         objective_mode: str = "difference",
-        mccormick_bounds: Optional[dict[str, tuple[float, float]]] = None,
+        mccormick_bounds: Optional[dict[str, Any]] = None,
+        ratio_bounds: Optional[dict[str, Any]] = None,
         use_default_bounds: bool = False,
         default_relu_bound: float = DEFAULT_LOOSE_RELU_BOUND,
         default_alpha_lower: float = DEFAULT_LOOSE_ALPHA_LOWER,
@@ -85,8 +85,8 @@ class PoAOptimization(
         default_aggregate_dual_upper: float = DEFAULT_LOOSE_AGGREGATE_DUAL_UPPER,
         default_c_opt_lower: float = DEFAULT_LOOSE_C_OPT_LOWER,
         default_c_opt_upper: float = DEFAULT_LOOSE_C_OPT_UPPER,
-        default_phi_lower: float = DEFAULT_PHI_LOWER,
-        default_phi_upper: float = DEFAULT_PHI_UPPER,
+        default_PoA_lower: float = DEFAULT_PoA_LOWER,
+        default_PoA_upper: float = DEFAULT_PoA_UPPER,
     ):
         self.scenarios_df = scenarios_df.reset_index(drop=True)
         self.costs_df = costs_df
@@ -110,8 +110,8 @@ class PoAOptimization(
         self.default_aggregate_dual_upper = float(default_aggregate_dual_upper)
         self.default_c_opt_lower = float(default_c_opt_lower)
         self.default_c_opt_upper = float(default_c_opt_upper)
-        self.default_phi_lower = float(default_phi_lower)
-        self.default_phi_upper = float(default_phi_upper)
+        self.default_PoA_lower = float(default_PoA_lower)
+        self.default_PoA_upper = float(default_PoA_upper)
         if self.default_c_opt_lower <= 0.0:
             raise ValueError("default_c_opt_lower must be strictly positive")
         if self.default_c_opt_upper < self.default_c_opt_lower:
@@ -138,11 +138,15 @@ class PoAOptimization(
         self.optimal_cost_bound_optimization_results: dict[str, Any] = {}
         self.reference_case = reference_case
         self.objective_mode = self._validate_objective_mode(objective_mode)
+        mccormick_bounds = self._normalize_mccormick_bounds_alias(
+            mccormick_bounds,
+            ratio_bounds,
+        )
         mccormick_bounds = self._mccormick_bounds_with_defaults(mccormick_bounds)
         self.mccormick_bounds = self._validate_mccormick_bounds(mccormick_bounds)
         self._initialize_loaded_bound_dictionaries()
 
-        self._initialize_block_structure_from_ed()
+        self._initialize_block_structure()
         self.num_time_steps = int(num_time_steps or infer_num_time_steps(self.scenarios_df))
         if self.num_time_steps <= 0:
             raise ValueError("num_time_steps must be positive")
@@ -174,14 +178,30 @@ class PoAOptimization(
             )
         return normalized_mode
 
+    def _normalize_mccormick_bounds_alias(
+        self,
+        mccormick_bounds: Optional[dict[str, Any]],
+        ratio_bounds: Optional[dict[str, Any]],
+    ) -> Optional[dict[str, Any]]:
+        if mccormick_bounds is not None:
+            raw_bounds = mccormick_bounds
+        else:
+            raw_bounds = ratio_bounds
+        if raw_bounds is None or not isinstance(raw_bounds, dict):
+            return raw_bounds
+        normalized = dict(raw_bounds)
+        if "PoA" not in normalized and "phi" in normalized:
+            normalized["PoA"] = normalized["phi"]
+        return normalized
+
     def _default_mccormick_bounds_payload(
         self,
         mccormick_bounds: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         completed = dict(mccormick_bounds or {})
         completed.setdefault(
-            "phi",
-            (float(self.default_phi_lower), float(self.default_phi_upper)),
+            "PoA",
+            (float(self.default_PoA_lower), float(self.default_PoA_upper)),
         )
         completed.setdefault(
             "C_opt",
@@ -206,7 +226,7 @@ class PoAOptimization(
             )
             return self._default_mccormick_bounds_payload()
         if self.use_default_bounds and (
-            "C_opt" not in mccormick_bounds or "phi" not in mccormick_bounds
+            "C_opt" not in mccormick_bounds or "PoA" not in mccormick_bounds
         ):
             self._mark_default_bound_used(
                 "optimal_cost_bounds",
@@ -224,11 +244,12 @@ class PoAOptimization(
 
         if mccormick_bounds is None:
             raise ValueError(
-                f"mccormick_bounds is required when objective_mode='{self.objective_mode}'"
+                "mccormick_bounds or ratio_bounds is required when "
+                f"objective_mode='{self.objective_mode}'"
             )
         if not isinstance(mccormick_bounds, dict):
             raise ValueError("mccormick_bounds must be a dictionary")
-        missing = [key for key in ("phi", "C_opt") if key not in mccormick_bounds]
+        missing = [key for key in ("PoA", "C_opt") if key not in mccormick_bounds]
         if missing:
             raise ValueError(
                 "mccormick_bounds must contain bounds for: " + ", ".join(missing)
@@ -244,7 +265,7 @@ class PoAOptimization(
                 raise ValueError(f"mccormick_bounds['{key}'] entries must be finite")
             return lower, upper
 
-        phi_L, phi_U = parse_bounds("phi")
+        PoA_L, PoA_U = parse_bounds("PoA")
         C_opt_L, C_opt_U = parse_bounds("C_opt")
 
         if C_opt_L <= 0.0:
@@ -254,15 +275,15 @@ class PoAOptimization(
                 "mccormick_bounds['C_opt'][1] must be greater than or equal to "
                 "mccormick_bounds['C_opt'][0]"
             )
-        if phi_L < 0.0:
-            raise ValueError("mccormick_bounds['phi'][0] must be nonnegative")
-        if phi_U <= phi_L:
+        if PoA_L < 0.0:
+            raise ValueError("mccormick_bounds['PoA'][0] must be nonnegative")
+        if PoA_U <= PoA_L:
             raise ValueError(
-                "mccormick_bounds['phi'][1] must be greater than mccormick_bounds['phi'][0]"
+                "mccormick_bounds['PoA'][1] must be greater than mccormick_bounds['PoA'][0]"
             )
 
         validated_bounds: dict[str, Any] = {
-            "phi": (phi_L, phi_U),
+            "PoA": (PoA_L, PoA_U),
             "C_opt": (C_opt_L, C_opt_U),
         }
         if self.objective_mode == "piecewise_mccormick":
@@ -333,7 +354,7 @@ class PoAOptimization(
     # Data and configuration
     # ------------------------------------------------------------------
 
-    def _initialize_block_structure_from_ed(self) -> None:
+    def _initialize_block_structure(self) -> None:
         block_structure = block_structure_from_dataframes(self.scenarios_df, self.ramps_df)
 
         self.block_names = list(block_structure.block_names)
@@ -486,25 +507,17 @@ class PoAOptimization(
         if self.demand_D_ref <= 0 or not np.isfinite(self.demand_D_ref):
             raise ValueError("Reference-case scalar demand must be positive and finite")
 
-        reference_horizon = int(scenario_manager.base_case["time_steps"])
-        raw_demand_shape = scenario_manager._build_demand_shape(reference_horizon)
-        raw_wind_shape = scenario_manager._build_wind_shape(
-            reference_horizon,
-            self.wind_tau_fixed,
-        )
-
-        self.demand_shape = ensure_profile(
-            raw_demand_shape,
-            self.num_time_steps,
-            "demand_shape",
-            allow_truncate=True,
-        )
-        self.wind_shape = ensure_profile(
-            raw_wind_shape,
-            self.num_time_steps,
-            "wind_shape",
-            allow_truncate=True,
-        )
+        self.demand_shape = [
+            float(value)
+            for value in scenario_manager._build_demand_shape(self.num_time_steps)
+        ]
+        self.wind_shape = [
+            float(value)
+            for value in scenario_manager._build_wind_shape(
+                self.num_time_steps,
+                self.wind_tau_fixed,
+            )
+        ]
 
         for name, shape in (
             ("demand_shape", self.demand_shape),
@@ -612,9 +625,10 @@ class PoAOptimization(
             else (None, None)
         )
         self.model.C_opt = Var(domain=Reals, bounds=c_opt_bounds)
-        self.model.PoA = Var(domain=Reals)
         if self.objective_mode in {"mccormick", "piecewise_mccormick"}:
             self._build_mccormick_variables()
+        else:
+            self.model.PoA = Var(domain=Reals)
         if self.objective_mode == "piecewise_mccormick":
             self._build_piecewise_mccormick_variables()
 
@@ -623,12 +637,12 @@ class PoAOptimization(
             raise ValueError(
                 f"mccormick_bounds is required when objective_mode='{self.objective_mode}'"
             )
-        phi_L, phi_U = self.mccormick_bounds["phi"]
+        PoA_L, PoA_U = self.mccormick_bounds["PoA"]
         C_opt_L, C_opt_U = self.mccormick_bounds["C_opt"]
-        self.model.phi = Var(bounds=(phi_L, phi_U))
+        self.model.PoA = Var(bounds=(PoA_L, PoA_U))
         self.model.z_mccormick_product = Var(
             domain=Reals,
-            bounds=(phi_L * C_opt_L, phi_U * C_opt_U),
+            bounds=(PoA_L * C_opt_L, PoA_U * C_opt_U),
         )
 
     def _build_piecewise_mccormick_variables(self) -> None:
@@ -638,7 +652,7 @@ class PoAOptimization(
                 "objective_mode='piecewise_mccormick'"
             )
         breakpoints = list(self.mccormick_bounds["C_opt_breakpoints"])
-        phi_L, phi_U = self.mccormick_bounds["phi"]
+        PoA_L, PoA_U = self.mccormick_bounds["PoA"]
         self.model.mccormick_piece_index = Set(initialize=range(len(breakpoints) - 1))
         self.model.mccormick_piece_active = Var(self.model.mccormick_piece_index, domain=Binary)
         self.model.C_opt_piece = Var(
@@ -646,15 +660,15 @@ class PoAOptimization(
             domain=NonNegativeReals,
             bounds=lambda m, k: (0.0, breakpoints[int(k) + 1]),
         )
-        self.model.phi_piece = Var(
+        self.model.PoA_piece = Var(
             self.model.mccormick_piece_index,
             domain=NonNegativeReals,
-            bounds=(0.0, phi_U),
+            bounds=(0.0, PoA_U),
         )
         self.model.z_mccormick_piece = Var(
             self.model.mccormick_piece_index,
             domain=NonNegativeReals,
-            bounds=lambda m, k: (0.0, phi_U * breakpoints[int(k) + 1]),
+            bounds=lambda m, k: (0.0, PoA_U * breakpoints[int(k) + 1]),
         )
 
     def _build_ambiguity_set_variables(self) -> None:
@@ -793,13 +807,13 @@ class PoAOptimization(
         self.model.objective = Objective(expr=self.model.PoA, sense=maximize)
 
     def _build_mccormick_objective(self) -> None:
-        # McCormick objective: maximize phi, with C_eq = phi * C_opt relaxed below.
-        self.model.objective = Objective(expr=self.model.phi, sense=maximize)
+        # McCormick objective: maximize PoA, with C_eq = PoA * C_opt relaxed below.
+        self.model.objective = Objective(expr=self.model.PoA, sense=maximize)
 
     def _build_piecewise_mccormick_objective(self) -> None:
-        # Piecewise mccormick objective: maximize phi, using disaggregated McCormick
+        # Piecewise mccormick objective: maximize PoA, using disaggregated McCormick
         # envelopes over the C_opt denominator intervals.
-        self.model.objective = Objective(expr=self.model.phi, sense=maximize)
+        self.model.objective = Objective(expr=self.model.PoA, sense=maximize)
 
     def _build_constraints(self) -> None:
         self._build_support_set()
@@ -1247,12 +1261,13 @@ class PoAOptimization(
         def cost_opt_rule(m):
             return m.C_opt == self._get_optimal_cost_expression(m)
         
-        def PoA_rule(m):
-            return m.C_eq - m.C_opt == m.PoA 
-
         self.model.cost_definition_eq = Constraint(rule=cost_eq_rule)
         self.model.cost_definition_opt = Constraint(rule=cost_opt_rule)
-        self.model.poa_definition = Constraint(rule=PoA_rule)
+        if self.objective_mode == "difference":
+            def PoA_rule(m):
+                return m.C_eq - m.C_opt == m.PoA
+
+            self.model.poa_definition = Constraint(rule=PoA_rule)
         if self.objective_mode == "mccormick":
             self._build_mccormick_constraints()
         if self.objective_mode == "piecewise_mccormick":
@@ -1264,27 +1279,27 @@ class PoAOptimization(
                 "mccormick_bounds is required when objective_mode='mccormick'"
             )
         m = self.model
-        phi_L, phi_U = self.mccormick_bounds["phi"]
+        PoA_L, PoA_U = self.mccormick_bounds["PoA"]
         C_opt_L, C_opt_U = self.mccormick_bounds["C_opt"]
 
-        # McCormick relaxation of C_eq = phi * C_opt. Because this is a
+        # McCormick relaxation of C_eq = PoA * C_opt. Because this is a
         # relaxation, the realized mccormick C_eq / C_opt should be checked ex post.
         m.mccormick_link_eq_cost = Constraint(expr=m.z_mccormick_product == m.C_eq)
         m.mccormick_lower_1 = Constraint(
             expr=m.z_mccormick_product
-            >= phi_L * m.C_opt + C_opt_L * m.phi - phi_L * C_opt_L
+            >= PoA_L * m.C_opt + C_opt_L * m.PoA - PoA_L * C_opt_L
         )
         m.mccormick_lower_2 = Constraint(
             expr=m.z_mccormick_product
-            >= phi_U * m.C_opt + C_opt_U * m.phi - phi_U * C_opt_U
+            >= PoA_U * m.C_opt + C_opt_U * m.PoA - PoA_U * C_opt_U
         )
         m.mccormick_upper_1 = Constraint(
             expr=m.z_mccormick_product
-            <= phi_U * m.C_opt + C_opt_L * m.phi - phi_U * C_opt_L
+            <= PoA_U * m.C_opt + C_opt_L * m.PoA - PoA_U * C_opt_L
         )
         m.mccormick_upper_2 = Constraint(
             expr=m.z_mccormick_product
-            <= phi_L * m.C_opt + C_opt_U * m.phi - phi_L * C_opt_U
+            <= PoA_L * m.C_opt + C_opt_U * m.PoA - PoA_L * C_opt_U
         )
 
     def _build_piecewise_mccormick_constraints(self) -> None:
@@ -1294,7 +1309,7 @@ class PoAOptimization(
                 "objective_mode='piecewise_mccormick'"
             )
         m = self.model
-        phi_L, phi_U = self.mccormick_bounds["phi"]
+        PoA_L, PoA_U = self.mccormick_bounds["PoA"]
         breakpoints = list(self.mccormick_bounds["C_opt_breakpoints"])
 
         m.mccormick_piece_select_one = Constraint(
@@ -1303,8 +1318,8 @@ class PoAOptimization(
         m.mccormick_piece_C_opt_link = Constraint(
             expr=m.C_opt == sum(m.C_opt_piece[k] for k in m.mccormick_piece_index)
         )
-        m.mccormick_piece_phi_link = Constraint(
-            expr=m.phi == sum(m.phi_piece[k] for k in m.mccormick_piece_index)
+        m.mccormick_piece_PoA_link = Constraint(
+            expr=m.PoA == sum(m.PoA_piece[k] for k in m.mccormick_piece_index)
         )
         m.mccormick_piece_z_link = Constraint(
             expr=m.z_mccormick_product
@@ -1324,20 +1339,20 @@ class PoAOptimization(
                 <= breakpoints[int(k) + 1] * m.mccormick_piece_active[k]
             )
 
-        def phi_piece_lower_rule(m, k):
-            return phi_L * m.mccormick_piece_active[k] <= m.phi_piece[k]
+        def PoA_piece_lower_rule(m, k):
+            return PoA_L * m.mccormick_piece_active[k] <= m.PoA_piece[k]
 
-        def phi_piece_upper_rule(m, k):
-            return m.phi_piece[k] <= phi_U * m.mccormick_piece_active[k]
+        def PoA_piece_upper_rule(m, k):
+            return m.PoA_piece[k] <= PoA_U * m.mccormick_piece_active[k]
 
         def lower_1_rule(m, k):
             k_int = int(k)
             y_L = breakpoints[k_int]
             return (
                 m.z_mccormick_piece[k]
-                >= phi_L * m.C_opt_piece[k]
-                + y_L * m.phi_piece[k]
-                - phi_L * y_L * m.mccormick_piece_active[k]
+                >= PoA_L * m.C_opt_piece[k]
+                + y_L * m.PoA_piece[k]
+                - PoA_L * y_L * m.mccormick_piece_active[k]
             )
 
         def lower_2_rule(m, k):
@@ -1345,9 +1360,9 @@ class PoAOptimization(
             y_U = breakpoints[k_int + 1]
             return (
                 m.z_mccormick_piece[k]
-                >= phi_U * m.C_opt_piece[k]
-                + y_U * m.phi_piece[k]
-                - phi_U * y_U * m.mccormick_piece_active[k]
+                >= PoA_U * m.C_opt_piece[k]
+                + y_U * m.PoA_piece[k]
+                - PoA_U * y_U * m.mccormick_piece_active[k]
             )
 
         def upper_1_rule(m, k):
@@ -1355,9 +1370,9 @@ class PoAOptimization(
             y_L = breakpoints[k_int]
             return (
                 m.z_mccormick_piece[k]
-                <= phi_U * m.C_opt_piece[k]
-                + y_L * m.phi_piece[k]
-                - phi_U * y_L * m.mccormick_piece_active[k]
+                <= PoA_U * m.C_opt_piece[k]
+                + y_L * m.PoA_piece[k]
+                - PoA_U * y_L * m.mccormick_piece_active[k]
             )
 
         def upper_2_rule(m, k):
@@ -1365,9 +1380,9 @@ class PoAOptimization(
             y_U = breakpoints[k_int + 1]
             return (
                 m.z_mccormick_piece[k]
-                <= phi_L * m.C_opt_piece[k]
-                + y_U * m.phi_piece[k]
-                - phi_L * y_U * m.mccormick_piece_active[k]
+                <= PoA_L * m.C_opt_piece[k]
+                + y_U * m.PoA_piece[k]
+                - PoA_L * y_U * m.mccormick_piece_active[k]
             )
 
         m.mccormick_piece_C_opt_lower = Constraint(
@@ -1378,13 +1393,13 @@ class PoAOptimization(
             m.mccormick_piece_index,
             rule=C_opt_piece_upper_rule,
         )
-        m.mccormick_piece_phi_lower = Constraint(
+        m.mccormick_piece_PoA_lower = Constraint(
             m.mccormick_piece_index,
-            rule=phi_piece_lower_rule,
+            rule=PoA_piece_lower_rule,
         )
-        m.mccormick_piece_phi_upper = Constraint(
+        m.mccormick_piece_PoA_upper = Constraint(
             m.mccormick_piece_index,
-            rule=phi_piece_upper_rule,
+            rule=PoA_piece_upper_rule,
         )
         m.mccormick_piece_mccormick_lower_1 = Constraint(
             m.mccormick_piece_index,

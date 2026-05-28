@@ -17,15 +17,15 @@
     8
   ],
   "activation": "relu",
-  "final_activation": "relu",
+  "final_activation": "linear",
   "train_size": 9600,
   "test_size": 2400,
   "test_fraction": 0.2,
-  "num_epochs_trained": 456,
-  "best_epoch": 406,
-  "best_test_loss": 0.41506990339607003,
+  "num_epochs_trained": 500,
+  "best_epoch": 481,
+  "best_test_loss": 0.24539110291815935,
   "learning_rate": 0.001,
-  "batch_size": 32,
+  "batch_size": 64,
   "weight_decay": 0.0,
   "random_state": 42
 }

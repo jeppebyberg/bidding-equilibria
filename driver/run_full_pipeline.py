@@ -86,11 +86,10 @@ TIGHTENING_STAGE_LABELS = {
     "optimal_cost_bounds": "C_opt bounds",
 }
 
-
 @dataclass
 class FullPipelineConfig:
     # Case and random seeds.
-    case: str = "test_case_bidding_blocks"
+    case: str = "base_test_case"
     synthetic_time_steps: int | None = 24
     synthetic_seed: int = 1
     poa_seed: int = 1
@@ -103,8 +102,7 @@ class FullPipelineConfig:
     bid_tolerance: float = 1e-2
 
     # Neural-network feature and training parameters.
-    # These names must be supported by both NeuralNetworkFeatureBuilder and
-    # PoAOptimizationBiddingBlocks._raw_nn_feature_expression.
+    # These names must be supported by both NeuralNetworkFeatureBuilder and PoAOptimization._raw_nn_feature_expression.
     nn_feature_columns: list[str] = field(
         default_factory=lambda: [
             "demand",
@@ -127,7 +125,7 @@ class FullPipelineConfig:
     patience: int | None = 50
     min_delta: float = 1e-6
     device: str | None = None
-    nn_final_activation: str = "relu"
+    nn_final_activation: str = "linear"
 
     # PoA parameters. The uncertainty set is induced by ambiguity_set_config_name
     # in config/ambiguity_set_config.yaml. The generated PoA context
@@ -139,15 +137,15 @@ class FullPipelineConfig:
 
     # Objective modes: "difference", "mccormick", or
     # "piecewise_mccormick". Difference is the historical default.
-    poa_objective_mode: str = "difference"
+    poa_objective_mode: str = "piecewise_mccormick"
     # You may pass a complete PoAOptimization mccormick_bounds dictionary directly.
-    # If omitted for McCormick modes, set poa_ratio_phi_bounds and
-    # poa_ratio_c_opt_bounds below.
-    poa_ratio_bounds: dict[str, Any] | None = None
-    poa_ratio_phi_bounds: tuple[float, float] | None = None
-    poa_ratio_c_opt_bounds: tuple[float, float] | None = None
-    poa_ratio_num_pieces: int = 4
-    poa_ratio_c_opt_breakpoints: list[float] | None = None
+    # If omitted for McCormick modes, set poa_mccormick_PoA_bounds and
+    # poa_mccormick_c_opt_bounds below.
+    poa_mccormick_bounds: dict[str, Any] | None = None
+    poa_mccormick_PoA_bounds: tuple[float, float] | None = None
+    poa_mccormick_c_opt_bounds: tuple[float, float] | None = None
+    poa_mccormick_num_pieces: int = 4
+    poa_mccormick_c_opt_breakpoints: list[float] | None = None
 
     solver_name: str = "gurobi"
     preprocessing_time_limit: int = 200
@@ -452,7 +450,7 @@ def load_ambiguity_set_config(config: FullPipelineConfig) -> dict[str, Any]:
     )
 
 
-def build_poa_ratio_bounds(config: FullPipelineConfig) -> dict[str, Any] | None:
+def build_poa_mccormick_bounds(config: FullPipelineConfig) -> dict[str, Any] | None:
     mode = str(config.poa_objective_mode).strip().lower()
     if mode not in PoAOptimization.allowed_objective_modes:
         allowed = ", ".join(sorted(PoAOptimization.allowed_objective_modes))
@@ -463,35 +461,58 @@ def build_poa_ratio_bounds(config: FullPipelineConfig) -> dict[str, Any] | None:
     if mode == "difference":
         return None
 
-    if config.poa_ratio_bounds is not None:
-        return dict(config.poa_ratio_bounds)
+    if config.poa_mccormick_bounds is not None:
+        return dict(config.poa_mccormick_bounds)
 
-    c_opt_bounds = config.poa_ratio_c_opt_bounds
+    c_opt_bounds = config.poa_mccormick_c_opt_bounds
     if c_opt_bounds is None:
         c_opt_bounds = load_poa_optimal_cost_bounds(config)
 
-    if config.poa_ratio_phi_bounds is None or c_opt_bounds is None:
+    if config.poa_mccormick_PoA_bounds is None or c_opt_bounds is None:
         raise ValueError(
             "McCormick objective modes require bounds. Set either "
-            "poa_ratio_bounds={'phi': (...), 'C_opt': (...), ...} or both "
-            "poa_ratio_phi_bounds and poa_ratio_c_opt_bounds in FullPipelineConfig. "
+            "poa_mccormick_bounds={'PoA': (...), 'C_opt': (...), ...} or both "
+            "poa_mccormick_PoA_bounds and poa_mccormick_c_opt_bounds in FullPipelineConfig. "
             "Alternatively, run the optimal_cost_bounds tightening stage and provide "
-            "poa_ratio_phi_bounds."
+            "poa_mccormick_PoA_bounds."
         )
 
-    ratio_bounds: dict[str, Any] = {
-        "phi": tuple(config.poa_ratio_phi_bounds),
+    mccormick_bounds: dict[str, Any] = {
+        "PoA": tuple(config.poa_mccormick_PoA_bounds),
         "C_opt": tuple(c_opt_bounds),
     }
     if mode == "piecewise_mccormick":
-        if config.poa_ratio_c_opt_breakpoints is not None:
-            ratio_bounds["C_opt_breakpoints"] = list(
-                config.poa_ratio_c_opt_breakpoints
+        if config.poa_mccormick_c_opt_breakpoints is not None:
+            mccormick_bounds["C_opt_breakpoints"] = list(
+                config.poa_mccormick_c_opt_breakpoints
             )
         else:
-            ratio_bounds["num_pieces"] = int(config.poa_ratio_num_pieces)
-    return ratio_bounds
+            mccormick_bounds["num_pieces"] = int(config.poa_mccormick_num_pieces)
+    return mccormick_bounds
 
+def default_poa_mccormick_c_opt_bounds() -> tuple[float, float]:
+    return (
+        float(PoAOptimization.DEFAULT_LOOSE_C_OPT_LOWER),
+        float(PoAOptimization.DEFAULT_LOOSE_C_OPT_UPPER),
+    )
+
+def build_poa_tightening_mccormick_bounds(
+    config: FullPipelineConfig,
+) -> dict[str, Any] | None:
+    mode = str(config.poa_objective_mode).strip().lower()
+    if mode == "difference":
+        return None
+    if config.poa_mccormick_bounds is not None:
+        return dict(config.poa_mccormick_bounds)
+
+    mccormick_bounds: dict[str, Any] = {
+        "C_opt": default_poa_mccormick_c_opt_bounds(),
+    }
+    if config.poa_mccormick_PoA_bounds is not None:
+        mccormick_bounds["PoA"] = tuple(config.poa_mccormick_PoA_bounds)
+    if mode == "piecewise_mccormick":
+        mccormick_bounds["num_pieces"] = int(config.poa_mccormick_num_pieces)
+    return mccormick_bounds
 
 def load_poa_optimal_cost_bounds(config: FullPipelineConfig) -> tuple[float, float] | None:
     for path in (config.tightening_report_path, config.optimal_cost_bounds_path):
@@ -500,12 +521,13 @@ def load_poa_optimal_cost_bounds(config: FullPipelineConfig) -> tuple[float, flo
         with Path(path).open("r", encoding="utf-8") as file_handle:
             report = json.load(file_handle)
         bounds = report.get("optimal_cost_bounds", {}) or {}
+        if "C_opt" in bounds and isinstance(bounds.get("C_opt"), dict):
+            bounds = bounds.get("C_opt", {}) or {}
         lower = bounds.get("lower")
         upper = bounds.get("upper")
         if lower is not None and upper is not None:
             return (float(lower), float(upper))
     return None
-
 
 def build_poa_optimizer(
     config: FullPipelineConfig,
@@ -513,7 +535,7 @@ def build_poa_optimizer(
 ) -> PoAOptimization:
     scenarios = load_poa_scenario_data(config)
     ambiguity_set_config = load_ambiguity_set_config(config)
-    ratio_bounds = build_poa_ratio_bounds(config)
+    mccormick_bounds = build_poa_mccormick_bounds(config)
     return optimizer_cls(
         scenarios_df=scenarios["scenarios_df"],
         costs_df=scenarios["costs_df"],
@@ -526,9 +548,8 @@ def build_poa_optimizer(
         nn_policy_generators=list(config.nn_policy_generators),
         reference_case=config.case,
         objective_mode=config.poa_objective_mode,
-        mccormick_bounds=ratio_bounds,
+        mccormick_bounds=mccormick_bounds,
     )
-
 
 def build_poa_tightening(
     config: FullPipelineConfig,
@@ -536,6 +557,7 @@ def build_poa_tightening(
 ) -> PoATighteningMain:
     scenarios = load_poa_scenario_data(config)
     ambiguity_set_config = load_ambiguity_set_config(config)
+    objective_mode = str(config.poa_objective_mode).strip().lower()
     return tightening_cls(
         scenarios_df=scenarios["scenarios_df"],
         costs_df=scenarios["costs_df"],
@@ -547,8 +569,10 @@ def build_poa_tightening(
         nn_normalization_stats_path=str(config.nn_normalization_stats_path),
         nn_policy_generators=list(config.nn_policy_generators),
         reference_case=config.case,
+        objective_mode=objective_mode,
+        mccormick_bounds=build_poa_tightening_mccormick_bounds(config),
+        use_default_bounds=(objective_mode != "difference"),
     )
-
 
 def run_tightening_pipeline(config: FullPipelineConfig) -> Path:
     flags = {**TIGHTENING_FLAGS, **dict(config.tightening_flags)}
@@ -586,7 +610,6 @@ def run_tightening_pipeline(config: FullPipelineConfig) -> Path:
     print(f"Tightening runtime: {elapsed:.2f} seconds")
     return final_report_path
 
-
 def print_tightening_plan(
     config: FullPipelineConfig,
     flags: dict[str, bool],
@@ -619,7 +642,6 @@ def print_tightening_plan(
         path = output_paths[stage_name] if should_run else previous_paths[stage_name]
         print(f"    {label:<17} {action:<5} {path_label}: {path}")
     print(f"  Final report: {output_paths['final']}")
-
 
 def run_nn_relu_bounds(config: FullPipelineConfig) -> Path:
     print("\nStarting PoA NN ReLU bound tightening")
@@ -678,7 +700,6 @@ def run_nn_relu_bounds(config: FullPipelineConfig) -> Path:
     print(f"Total fixed NN ReLU binaries: {total_fixed}")
     return output_path
 
-
 def run_alpha_bounds(config: FullPipelineConfig) -> Path:
     stage = build_poa_tightening(config, AlphaBoundsComputer)
     if config.primal_big_m_path.exists():
@@ -705,7 +726,6 @@ def run_alpha_bounds(config: FullPipelineConfig) -> Path:
     print(f"Alpha entries: {len(report.get('alpha_bounds', {}))}")
     print(f"Alpha-bound runtime: {elapsed:.2f} seconds")
     return output_path
-
 
 def run_primal_big_m(
     config: FullPipelineConfig,
@@ -748,7 +768,6 @@ def run_primal_big_m(
     print(f"Primal Big-M runtime: {elapsed:.2f} seconds")
     return primal_big_m
 
-
 def run_slack_binary_fix(config: FullPipelineConfig) -> Path:
     stage = build_poa_tightening(config, SlackBinaryFixComputer)
     stage._load_previous_stage("primal_big_m", config.primal_big_m_path)
@@ -772,7 +791,6 @@ def run_slack_binary_fix(config: FullPipelineConfig) -> Path:
     print(f"Slack/binary runtime: {elapsed:.2f} seconds")
     return output_path
 
-
 def run_dual_big_m(config: FullPipelineConfig) -> Path:
     stage = build_poa_tightening(config, DualBigMComputer)
     stage._load_previous_stage("primal_big_m", config.primal_big_m_path)
@@ -794,7 +812,6 @@ def run_dual_big_m(config: FullPipelineConfig) -> Path:
     print(f"\nDual Big-M tightening complete: {output_path}")
     print(f"Dual Big-M runtime: {elapsed:.2f} seconds")
     return output_path
-
 
 def run_optimal_cost_bounds(config: FullPipelineConfig) -> Path:
     stage = build_poa_tightening(config, OptimalCostBoundsComputer)
@@ -823,7 +840,6 @@ def run_optimal_cost_bounds(config: FullPipelineConfig) -> Path:
     print(f"C_opt bound runtime: {elapsed:.2f} seconds")
     return output_path
 
-
 def run_final_poa(config: FullPipelineConfig) -> Path:
     optimizer = build_poa_optimizer(config, PoAOptimization)
     start = time.perf_counter()
@@ -846,7 +862,7 @@ def run_final_poa(config: FullPipelineConfig) -> Path:
     print(f"PoA objective mode: {optimizer.objective_mode}")
     if optimizer.objective_mode != "difference":
         objective_metrics = optimizer.extract_objective_metrics()
-        print(f"  phi: {objective_metrics.get('phi')}")
+        print(f"  PoA: {objective_metrics.get('PoA')}")
         print(f"  ex-post ratio: {objective_metrics.get('ex_post_ratio')}")
         print(f"  ratio gap: {objective_metrics.get('ratio_gap')}")
         print(f"  McCormick product gap: {objective_metrics.get('mccormick_product_gap')}")
@@ -860,13 +876,11 @@ def run_final_poa(config: FullPipelineConfig) -> Path:
     print(f"PoA optimization runtime: {elapsed:.2f} seconds")
     return output_path
 
-
 def write_json(path: Path, payload: Any) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as file_handle:
         json.dump(payload, file_handle, indent=2)
     return path
-
 
 def ensure_primal_big_m_in_report(path: Path, optimizer: PoAOptimization) -> bool:
     if not path.exists():
@@ -889,7 +903,6 @@ def ensure_primal_big_m_in_report(path: Path, optimizer: PoAOptimization) -> boo
             f"min={details['min_big_m']}, max={details['max_big_m']}"
         )
     return True
-
 
 if __name__ == "__main__":
     run_config = FullPipelineConfig(
@@ -926,7 +939,7 @@ if __name__ == "__main__":
         patience=50,
         min_delta=1e-6,
         device=None,
-        nn_final_activation="relu",
+        nn_final_activation="linear",
 
         # PoA parameters.
         horizon=8,
@@ -941,10 +954,10 @@ if __name__ == "__main__":
         # poa_objective_mode="difference",
         poa_objective_mode="piecewise_mccormick",
         
-        # Required for ratio modes. Example:
-        poa_ratio_phi_bounds=(1.0, 10.0),
-        # poa_ratio_c_opt_bounds=(3283.9068, 16958.9619),
-        poa_ratio_num_pieces=25,
+        # Required for mccormick modes. Example:
+        poa_mccormick_PoA_bounds=(1.0, 10.0),
+        # poa_mccormick_c_opt_bounds=(0.01, 20000.0),
+        poa_mccormick_num_pieces=50,
 
         solver_name="gurobi",
         preprocessing_time_limit=200,
@@ -960,12 +973,12 @@ if __name__ == "__main__":
         run_nn_training=False,
         run_tightening=True,
         tightening_flags={
-            "primal_big_m": False,
-            "relu_bounds": False,
-            "alpha_bounds": False,
-            "slack_binary_fix": False,
-            "dual_big_m": False,
-            "optimal_cost_bounds": False,
+            "primal_big_m": True,
+            "relu_bounds": True,
+            "alpha_bounds": True,
+            "slack_binary_fix": True,
+            "dual_big_m": True,
+            "optimal_cost_bounds": True,
         },
         tightening_previous_paths=dict(TIGHTENING_PREVIOUS_PATHS),
         tightening_output_paths=dict(TIGHTENING_OUTPUT_PATHS),

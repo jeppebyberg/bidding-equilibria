@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 import numpy as np
+import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -18,11 +19,9 @@ from config.scenarios.scenario_generator import ScenarioManager
 from driver.run_full_pipeline import (
     apply_time_steps_override,
     build_features,
-    load_or_generate_scenarios,
     run_heuristic,
     train_policies,
     write_json,
-    write_runtime_regime_config,
 )
 from models.DRO_PoA.DRO_PoA_optimization import DRO_PoAOptimization
 from models.DRO_PoA.DRO_PoA_tightening.tightening_main import (
@@ -62,30 +61,23 @@ DRO_TIGHTENING_STAGE_LABELS = {
 @dataclass
 class DROFullPipelineConfig:
     # Case and random seeds.
-    case: str = "test_case_bidding_blocks"
+    case: str = "base_test_case"
     synthetic_time_steps: int | None = 24
-    dro_time_steps: int | None = None
-    synthetic_regime_set: str = "policy_training_runtime"
     poa_regime_set: str = "PoA_analysis_runtime"
-    source_synthetic_regime_set: str = "policy_training"
     source_poa_regime_set: str = "PoA_analysis"
     synthetic_seed: int = 1
     poa_seed: int = 1
 
-    # Scenario counts. The poa_* names are retained so the shared PoA driver
-    # helpers can write a runtime regime file; here they define DRO regimes.
-    synthetic_scenarios_per_regime: dict[str, int] = field(
-        default_factory=lambda: {
-            "normal": 100,
-            "high_demand": 100,
-            "normal_peak_shift_wind": 100,
-            "high_demand_peak_shift_wind": 100,
-        }
-    )
+    # Scenario counts for ambiguity-set draws.
+    synthetic_num_scenarios: int = 400
+    ambiguity_set_config_path: str = "config/ambiguity_set_config.yaml"
+    ambiguity_set_config_name: str = "base_test_case"
+
+    # DRO regime scenario counts.
     poa_context_scenarios_per_regime: dict[str, int] = field(
         default_factory=lambda: {
-            "normal": 2,
-            "high_demand": 2,
+            "normal": 5,
+            "high_demand": 5,
             "normal_peak_shift_wind": 5,
             "high_demand_peak_shift_wind": 5,
         }
@@ -118,27 +110,28 @@ class DROFullPipelineConfig:
     patience: int | None = 50
     min_delta: float = 1e-6
     device: str | None = None
+    nn_final_activation: str = "linear"
 
     # DRO parameters.
     horizon: int = 8
     etas: list[float] = field(default_factory=lambda: [0.0, 0.25, 0.5, 1.0])
     dro_wasserstein_epsilon: float = 0.0
+    ambiguity_kappa: float = 0.3
     # Tightening is regime-wide and support-driven, so it is run once per regime.
     # The value is kept in tightening metadata but the report is reused for all eta.
     dro_tightening_eta: float = 0.0
     nn_policy_generators: list[int] = field(default_factory=lambda: [1, 2])
 
-    # Objective modes: "difference", "ratio_mccormick", or
-    # "ratio_piecewise_mccormick". Difference is the historical default.
-    dro_objective_mode: str = "difference"
-    # You may pass a complete DRO_PoAOptimization ratio_bounds dictionary directly.
-    # If omitted for ratio modes, set dro_ratio_phi_bounds and either
-    # dro_ratio_c_opt_bounds or run/load the optimal_cost_bounds stage.
-    dro_ratio_bounds: dict[str, Any] | None = None
-    dro_ratio_phi_bounds: tuple[float, float] | None = None
-    dro_ratio_c_opt_bounds: tuple[float, float] | None = None
-    dro_ratio_num_pieces: int = 4
-    dro_ratio_c_opt_breakpoints: list[float] | None = None
+    # Objective modes: "difference", "mccormick", or "piecewise_mccormick".
+    dro_objective_mode: str = "piecewise_mccormick"
+    # You may pass a complete DRO_PoAOptimization mccormick_bounds dictionary
+    # directly. If omitted for mccormick modes, set dro_mccormick_PoA_bounds
+    # and either dro_mccormick_c_opt_bounds or run/load optimal_cost_bounds.
+    dro_mccormick_bounds: dict[str, Any] | None = None
+    dro_mccormick_PoA_bounds: tuple[float, float] | None = None
+    dro_mccormick_c_opt_bounds: tuple[float, float] | None = None
+    dro_mccormick_num_pieces: int = 4
+    dro_mccormick_c_opt_breakpoints: list[float] | None = None
 
     solver_name: str = "gurobi"
     preprocessing_time_limit: int | None = 200
@@ -190,8 +183,6 @@ def main(config: DROFullPipelineConfig) -> None:
     synthetic_scenarios = load_or_generate_scenarios(
         config=config,
         manager=synthetic_manager,
-        regime_set=config.synthetic_regime_set,
-        seed=config.synthetic_seed,
         output_dir=config.synthetic_scenario_dir,
         should_generate=config.run_scenario_generation,
         time_steps=config.synthetic_time_steps,
@@ -234,8 +225,8 @@ def print_pipeline_header(config: DROFullPipelineConfig) -> None:
         "\nDRO full pipeline configuration\n"
         f"  case={config.case}\n"
         f"  synthetic_time_steps={config.synthetic_time_steps or 'case default'}\n"
-        f"  dro_time_steps={config.dro_time_steps or 'case default'}, dro_horizon={config.horizon}\n"
-        f"  synthetic_regime_set={config.synthetic_regime_set}, seed={config.synthetic_seed}\n"
+        f"  dro_horizon={config.horizon}\n"
+        f"  synthetic_source=ambiguity_set:{config.ambiguity_set_config_name}, n={config.synthetic_num_scenarios}, seed={config.synthetic_seed}\n"
         f"  dro_regime_set={config.poa_regime_set}, seed={config.poa_seed}\n"
         f"  regimes={config.dro_regime_names or 'all generated DRO regimes'}\n"
         f"  dro_objective_mode={config.dro_objective_mode}\n"
@@ -243,12 +234,67 @@ def print_pipeline_header(config: DROFullPipelineConfig) -> None:
         f"  solver={config.solver_name}, parallel_workers={config.poa_parallel_workers}"
     )
 
+def write_runtime_regime_config(config: DROFullPipelineConfig) -> Path:
+    source_path = Path("config/regime_definitions.yaml")
+    with source_path.open("r", encoding="utf-8") as file_handle:
+        raw_config = yaml.safe_load(file_handle) or {}
+    regime_sets = raw_config.get("regime_sets", {}) or {}
+    runtime_sets: dict[str, Any] = {}
+
+    def runtime_set(source_name: str, target_name: str, counts: dict[str, int]) -> None:
+        if source_name not in regime_sets:
+            available = ", ".join(str(name) for name in regime_sets)
+            raise ValueError(
+                f"Unknown source regime set '{source_name}'. Available: {available}"
+            )
+        copied = dict(regime_sets[source_name] or {})
+        copied_regimes = []
+        for regime in copied.get("regimes", []) or []:
+            regime_copy = dict(regime)
+            name = str(regime_copy.get("name"))
+            if name in counts:
+                regime_copy["n_scenarios"] = int(counts[name])
+            copied_regimes.append(regime_copy)
+        copied["regimes"] = copied_regimes
+        runtime_sets[target_name] = copied
+
+    runtime_set(
+        config.source_poa_regime_set,
+        config.poa_regime_set,
+        config.poa_context_scenarios_per_regime,
+    )
+
+    return write_json(config.runtime_config_path, {"regime_sets": runtime_sets})
+
+
+def load_or_generate_scenarios(
+    config: DROFullPipelineConfig,
+    manager: ScenarioManager,
+    output_dir: Path,
+    should_generate: bool,
+    time_steps: int | None,
+) -> dict[str, Any]:
+    apply_time_steps_override(manager, time_steps)
+    scenarios = manager.create_scenario_set_from_ambiguity_set(
+        ambiguity_config_path=config.ambiguity_set_config_path,
+        ambiguity_set=config.ambiguity_set_config_name,
+        n_scenarios=config.synthetic_num_scenarios,
+        seed=config.synthetic_seed,
+    )
+    if should_generate:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        scenarios["scenarios_df"].to_csv(output_dir / "scenarios.csv", index=False)
+        scenarios["costs_df"].to_csv(output_dir / "costs.csv", index=False)
+        scenarios["ramps_df"].to_csv(output_dir / "ramps.csv", index=False)
+    print(scenarios["description_text"])
+    return scenarios
+
 
 def load_dro_scenario_data(config: DROFullPipelineConfig) -> dict[str, Any]:
     if not config.runtime_config_path.exists():
         write_runtime_regime_config(config)
     scenario_manager = ScenarioManager(config.case)
-    apply_time_steps_override(scenario_manager, config.dro_time_steps)
+    apply_time_steps_override(scenario_manager, config.horizon)
     scenarios = scenario_manager.create_scenario_set_from_regimes(
         regime_config_path=str(config.runtime_config_path),
         regime_set=config.poa_regime_set,
@@ -285,6 +331,7 @@ def build_dro_tightening(
     scenarios: dict[str, Any],
     regime_name: str,
 ) -> DROPoATighteningMain:
+    objective_mode = str(config.dro_objective_mode).strip().lower()
     return DROPoATighteningMain(
         scenarios_df=scenarios["scenarios_df"],
         costs_df=scenarios["costs_df"],
@@ -304,6 +351,10 @@ def build_dro_tightening(
         ),
         nn_policy_generators=list(config.nn_policy_generators),
         reference_case=config.case,
+        objective_mode=objective_mode,
+        mccormick_bounds=build_dro_tightening_mccormick_bounds(config),
+        ambiguity_kappa=config.ambiguity_kappa,
+        use_default_bounds=(objective_mode != "difference"),
     )
 
 
@@ -463,17 +514,16 @@ def run_final_dro_for_eta(
     if optimizer.objective_mode != "difference":
         summary = optimizer.solution_summary()
         print(f"  Average ex-post ratio: {summary.get('average_poa_ratio')}")
-        print(f"  Average relaxed phi: {summary.get('average_relaxed_phi')}")
+        print(f"  Average relaxed PoA: {summary.get('average_relaxed_PoA')}")
     print(f"  Reused tightening report: {tightening_report_path}")
     print(f"  Applied alpha bounds: {applied_stats['alpha_bounds']}")
     print(f"  Applied fixed binaries: {applied_stats['fixed_binaries']}")
     print(f"  Applied dual upper bounds: {applied_stats['dual_upper_bounds']}")
-    print(f"  Applied aggregate dual bounds: {applied_stats['aggregate_dual_bounds']}")
     print(f"  Runtime: {elapsed:.2f} seconds")
     return output_path
 
 
-def build_dro_ratio_bounds(
+def build_dro_mccormick_bounds(
     config: DROFullPipelineConfig,
     regime_name: str,
 ) -> dict[str, Any] | None:
@@ -487,34 +537,60 @@ def build_dro_ratio_bounds(
     if mode == "difference":
         return None
 
-    if config.dro_ratio_bounds is not None:
-        return dict(config.dro_ratio_bounds)
+    if config.dro_mccormick_bounds is not None:
+        return dict(config.dro_mccormick_bounds)
 
-    c_opt_bounds = config.dro_ratio_c_opt_bounds
+    c_opt_bounds = config.dro_mccormick_c_opt_bounds
     if c_opt_bounds is None:
         c_opt_bounds = load_dro_optimal_cost_bounds(config, regime_name)
 
-    if config.dro_ratio_phi_bounds is None or c_opt_bounds is None:
+    if config.dro_mccormick_PoA_bounds is None or c_opt_bounds is None:
         raise ValueError(
-            "DRO ratio objective modes require ratio bounds. Set either "
-            "dro_ratio_bounds={'phi': (...), 'C_opt': (...), ...} or both "
-            "dro_ratio_phi_bounds and dro_ratio_c_opt_bounds in "
-            "DROFullPipelineConfig. Alternatively, run the optimal_cost_bounds "
-            "tightening stage and provide dro_ratio_phi_bounds."
+            "DRO mccormick objective modes require mccormick bounds. Set either "
+            "dro_mccormick_bounds={'PoA': (...), 'C_opt': (...), ...} or both "
+            "dro_mccormick_PoA_bounds and dro_mccormick_c_opt_bounds in "
+            "DROFullPipelineConfig. Alternatively, run/load the optimal_cost_bounds "
+            "tightening stage and provide dro_mccormick_PoA_bounds."
         )
 
-    ratio_bounds: dict[str, Any] = {
-        "phi": tuple(config.dro_ratio_phi_bounds),
+    mccormick_bounds: dict[str, Any] = {
+        "PoA": tuple(config.dro_mccormick_PoA_bounds),
         "C_opt": tuple(c_opt_bounds),
     }
-    if mode == "ratio_piecewise_mccormick":
-        if config.dro_ratio_c_opt_breakpoints is not None:
-            ratio_bounds["C_opt_breakpoints"] = list(
-                config.dro_ratio_c_opt_breakpoints
+    if mode == "piecewise_mccormick":
+        if config.dro_mccormick_c_opt_breakpoints is not None:
+            mccormick_bounds["C_opt_breakpoints"] = list(
+                config.dro_mccormick_c_opt_breakpoints
             )
         else:
-            ratio_bounds["num_pieces"] = int(config.dro_ratio_num_pieces)
-    return ratio_bounds
+            mccormick_bounds["num_pieces"] = int(config.dro_mccormick_num_pieces)
+    return mccormick_bounds
+
+
+def default_dro_mccormick_c_opt_bounds() -> tuple[float, float]:
+    return (
+        float(DRO_PoAOptimization.DEFAULT_LOOSE_C_OPT_LOWER),
+        float(DRO_PoAOptimization.DEFAULT_LOOSE_C_OPT_UPPER),
+    )
+
+
+def build_dro_tightening_mccormick_bounds(
+    config: DROFullPipelineConfig,
+) -> dict[str, Any] | None:
+    mode = str(config.dro_objective_mode).strip().lower()
+    if mode == "difference":
+        return None
+    if config.dro_mccormick_bounds is not None:
+        return dict(config.dro_mccormick_bounds)
+
+    mccormick_bounds: dict[str, Any] = {
+        "C_opt": default_dro_mccormick_c_opt_bounds(),
+    }
+    if config.dro_mccormick_PoA_bounds is not None:
+        mccormick_bounds["PoA"] = tuple(config.dro_mccormick_PoA_bounds)
+    if mode == "piecewise_mccormick":
+        mccormick_bounds["num_pieces"] = int(config.dro_mccormick_num_pieces)
+    return mccormick_bounds
 
 
 def load_dro_optimal_cost_bounds(
@@ -555,7 +631,7 @@ def build_dro_optimizer(
     regime_name: str,
     eta: float,
 ) -> DRO_PoAOptimization:
-    ratio_bounds = build_dro_ratio_bounds(config, regime_name)
+    mccormick_bounds = build_dro_mccormick_bounds(config, regime_name)
     return DRO_PoAOptimization(
         scenarios_df=scenarios["scenarios_df"],
         costs_df=scenarios["costs_df"],
@@ -576,7 +652,8 @@ def build_dro_optimizer(
         nn_policy_generators=list(config.nn_policy_generators),
         reference_case=config.case,
         objective_mode=config.dro_objective_mode,
-        ratio_bounds=ratio_bounds,
+        mccormick_bounds=mccormick_bounds,
+        ambiguity_kappa=config.ambiguity_kappa,
     )
 
 
@@ -629,6 +706,7 @@ def load_result_summary(result_path: Path) -> dict[str, Any]:
         "objective_mode": result.get("objective_mode"),
         "average_poa_difference": result.get("average_poa_difference"),
         "average_poa_ratio": result.get("average_poa_ratio", average_poa_ratio(result)),
+        "average_relaxed_PoA": result.get("average_relaxed_PoA"),
         "average_relaxed_phi": result.get("average_relaxed_phi"),
         "average_wasserstein_distance": result.get("average_wasserstein_distance"),
         "solver": result.get("solver", {}),
@@ -660,67 +738,82 @@ def average_poa_ratio(result: dict[str, Any]) -> float | None:
 if __name__ == "__main__":
     run_config = DROFullPipelineConfig(
         # Case and random seeds.
-        case="test_case_bidding_blocks",
+        case="base_test_case",
         synthetic_time_steps=24,
-        dro_time_steps=None,
         synthetic_seed=1,
         poa_seed=1,
-        horizon=6,
 
-        synthetic_scenarios_per_regime={
-        "normal": 100,
-        "high_demand": 100,
-        "normal_peak_shift_wind": 100,
-        "high_demand_peak_shift_wind": 100,
-        },
-        
+        # Scenario counts for ambiguity-set draws.
+        synthetic_num_scenarios=500,
+        ambiguity_set_config_path="config/ambiguity_set_config.yaml",
+        ambiguity_set_config_name="base_test_case",
+
+        # DRO regime scenario counts.
         poa_context_scenarios_per_regime={
-        "normal": 6,
-        "high_demand": 10,
-        "normal_peak_shift_wind": 10,
-        "high_demand_peak_shift_wind": 10,
+            "normal": 3,
+            "high_demand": 5,
+            "normal_peak_shift_wind": 5,
+            "high_demand_peak_shift_wind": 5,
         },
 
-        # Set to None to solve all generated regimes, or list regime names here.
-        dro_regime_names=["normal"],
-        # dro_regime_names=['normal'],
-        # Eta grid for the final DRO sweep. Tightening is still run once per regime.
-        etas=np.linspace(0, 0.5, 20).tolist(),
-        dro_wasserstein_epsilon=0.1,
+        # Heuristic synthetic-label generation.
+        bid_tolerance=1e-2,
 
-        # Objective modes:
-        #   "difference"
-        #   "ratio_mccormick"
-        #   "ratio_piecewise_mccormick"
-        # For ratio modes, set dro_ratio_phi_bounds. If dro_ratio_c_opt_bounds
-        # is omitted, the pipeline reads C_opt bounds from the DRO
-        # optimal_cost_bounds tightening stage.
-        dro_objective_mode="ratio_piecewise_mccormick",
-        dro_ratio_phi_bounds=(1.0, 5.0),
-        dro_ratio_num_pieces=50,
-
-        # Neural policy controls.
-        nn_policy_generators=[1, 2],
-        hidden_layers=[7, 7],
+        # Neural-network feature and training parameters.
+        nn_feature_columns=[
+            "demand",
+            "total_wind_generation_capacity",
+            "residual_demand",
+            "next_generation_capacity",
+            "next_demand",
+        ],
+        per_generator_normalization=True,
+        hidden_layers=[4, 8],
+        learning_rate=1e-3,
+        batch_size=64,
         num_epochs=500,
+        weight_decay=0.0,
+        test_size=0.2,
+        random_state=42,
+        patience=50,
+        min_delta=1e-6,
+        device=None,
+        nn_final_activation="linear",
 
-        # Solver controls.
+        # DRO parameters.
+        horizon=8,
+        nn_policy_generators=["G1", "W2", "W3"],
+
+        dro_regime_names=None,        
+        # dro_regime_names=["normal"],
+
+        etas=np.linspace(0, 0.5, 10).tolist(),
+        # etas=[0.0, 1, 100.0, 10000.0],
+        dro_wasserstein_epsilon=0.1,
+        ambiguity_kappa=0.3,
+        dro_tightening_eta=0.0,
+
+        # Toggle DRO objective here:
+        #   "difference"
+        #   "mccormick"
+        #   "piecewise_mccormick"
+        dro_objective_mode="piecewise_mccormick",
+        dro_mccormick_PoA_bounds=(1.0, 10.0),
+        # dro_mccormick_c_opt_bounds=(0.01, 20000.0),
+        dro_mccormick_num_pieces=25,
+
         solver_name="gurobi",
-
         preprocessing_time_limit=200,
         dro_time_limit=None,
         poa_parallel_workers=6,
         poa_solver_threads_per_worker=None,
 
-        archive_existing_dro_results = True,
-
-        # Expensive upstream stages can be turned on when regenerating artifacts.
-        run_scenario_generation=True,
+        # Step toggles. Turn expensive stages off when reusing previous outputs.
+        run_scenario_generation=False,
         run_heuristic_labels=False,
         run_feature_building=False,
         run_nn_training=False,
         run_dro_tightening=True,
-        run_dro_optimization=True,
         tightening_flags={
             "primal_big_m": True,
             "relu_bounds": True,
@@ -729,5 +822,21 @@ if __name__ == "__main__":
             "dual_big_m": True,
             "optimal_cost_bounds": True,
         },
+        tightening_previous_paths=dict(DEFAULT_DRO_TIGHTENING_OUTPUT_PATHS),
+        tightening_output_paths=dict(DEFAULT_DRO_TIGHTENING_OUTPUT_PATHS),
+        run_dro_optimization=True,
+        archive_existing_dro_results=True,
+
+        # Outputs.
+        runtime_config_path=Path("results/full_pipeline_DRO/runtime_regime_definitions.yaml"),
+        synthetic_scenario_dir=Path("results/full_pipeline_DRO/synthetic_scenarios"),
+        poa_scenario_dir=Path("results/full_pipeline_DRO/dro_scenarios"),
+        heuristic_results_path=Path("results/dro_merit_order_best_response_results.json"),
+        raw_feature_dir=Path("models/neural_network/features/generated/raw"),
+        normalized_feature_dir=Path("models/neural_network/features/generated/normalized"),
+        model_dir=Path("models/neural_network/training/trained_models"),
+        training_result_dir=Path("models/neural_network/training/training_results"),
+        dro_result_dir=Path("results/dro_poa"),
+        dro_result_archive_dir=Path("results/dro_poa/old_results"),
     )
     main(run_config)

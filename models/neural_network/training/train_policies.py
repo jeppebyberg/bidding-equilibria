@@ -27,7 +27,7 @@ RANDOM_STATE = 42
 PATIENCE = 50
 MIN_DELTA = 1e-6
 DEVICE: str | None = None
-FINAL_ACTIVATION = "relu"
+FINAL_ACTIVATION = "linear"
 
 def main(device: str | None = DEVICE) -> None:
     MODEL_DIR.mkdir(parents=True, exist_ok=True)

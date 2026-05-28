@@ -11,7 +11,7 @@ class BiddingPolicyNetwork(nn.Module):
         input_dim: int,
         output_dim: int,
         hidden_layers: list[int],
-        final_activation: str = "relu",
+        final_activation: str = "linear",
     ) -> None:
         super().__init__()
         if input_dim <= 0:

@@ -4,14 +4,14 @@
     5.0
   ],
   "C_opt": [
-    291.2343831413901,
-    13531.919865323716
+    251.06595088892377,
+    13485.405004257125
   ],
   "metadata": {
-    "raw_C_opt_lower": 291.23467537606547,
-    "raw_C_opt_upper": 13531.906332417384,
-    "safe_C_opt_lower": 291.2343831413901,
-    "safe_C_opt_upper": 13531.919865323716,
+    "raw_C_opt_lower": 251.06620295512673,
+    "raw_C_opt_upper": 13485.391517865606,
+    "safe_C_opt_lower": 251.06595088892377,
+    "safe_C_opt_upper": 13485.405004257125,
     "method": "poa_optimal_dispatch_kkt_bounds",
     "support_set_source": "regime_ambiguity_set",
     "test_profile": "full",
@@ -22,8 +22,8 @@
     ],
     "active_constraints_min": 715,
     "active_constraints_max": 715,
-    "num_variables_min": 1719,
-    "num_variables_max": 1719,
+    "num_variables_min": 1377,
+    "num_variables_max": 1377,
     "num_constraints_min": 715,
     "num_constraints_max": 715,
     "constraint_extraction_min": {
@@ -70,10 +70,6 @@
         "wind_total_upper_bound"
       ],
       "deactivated_constraint_components": [
-        "aggregate_mu_max_bound",
-        "aggregate_mu_min_bound",
-        "aggregate_mu_ramp_down_bound",
-        "aggregate_mu_ramp_up_bound",
         "cost_definition_eq",
         "final_ramp_down_dual_eq",
         "final_ramp_up_dual_eq",
@@ -100,7 +96,7 @@
         "upper_bound_complementarity_eq"
       ],
       "kept_constraint_component_count": 40,
-      "deactivated_constraint_component_count": 28
+      "deactivated_constraint_component_count": 24
     },
     "constraint_extraction_max": {
       "kept_constraint_components": [
@@ -146,10 +142,6 @@
         "wind_total_upper_bound"
       ],
       "deactivated_constraint_components": [
-        "aggregate_mu_max_bound",
-        "aggregate_mu_min_bound",
-        "aggregate_mu_ramp_down_bound",
-        "aggregate_mu_ramp_up_bound",
         "cost_definition_eq",
         "final_ramp_down_dual_eq",
         "final_ramp_up_dual_eq",
@@ -176,7 +168,7 @@
         "upper_bound_complementarity_eq"
       ],
       "kept_constraint_component_count": 40,
-      "deactivated_constraint_component_count": 28
+      "deactivated_constraint_component_count": 24
     },
     "solver_status_min": "ok",
     "termination_condition_min": "optimal",

@@ -11,41 +11,41 @@ regime_sets:
       - name: normal
         n_scenarios: 100
         mu_D: 0.73
-        rho_D: 0.85
+        rho_D: 0.75
         sigma_D: 0.012
         mu_W: 0.70
         peak_W: 14.0
-        rho_W: 0.80
+        rho_W: 0.75
         sigma_W: 0.05
 
       - name: high_demand
         n_scenarios: 100
         mu_D: 0.87
-        rho_D: 0.85
+        rho_D: 0.75
         sigma_D: 0.012
         mu_W: 0.70
         peak_W: 14.0
-        rho_W: 0.80
+        rho_W: 0.75
         sigma_W: 0.05
 
       - name: normal_peak_shift_wind
         n_scenarios: 100
         mu_D: 0.73
-        rho_D: 0.85
+        rho_D: 0.75
         sigma_D: 0.012
         mu_W: 0.70
         peak_W: 2.0
-        rho_W: 0.80
+        rho_W: 0.75
         sigma_W: 0.05
 
       - name: high_demand_peak_shift_wind
         n_scenarios: 100
         mu_D: 0.87
-        rho_D: 0.85
+        rho_D: 0.75
         sigma_D: 0.012
         mu_W: 0.70
         peak_W: 2.0
-        rho_W: 0.80
+        rho_W: 0.75
         sigma_W: 0.05
 
   PoA_analysis:

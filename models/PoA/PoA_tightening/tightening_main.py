@@ -62,6 +62,9 @@ class PoATighteningMain:
         nn_normalization_stats_path: Optional[str | Path] = None,
         nn_policy_generators: Optional[list[int | str]] = None,
         reference_case: str = "test_case_bidding_blocks",
+        objective_mode: str = "difference",
+        mccormick_bounds: Optional[dict[str, Any]] = None,
+        use_default_bounds: bool = False,
     ) -> None:
         self.poa = PoAOptimization(
             scenarios_df=scenarios_df,
@@ -74,6 +77,9 @@ class PoATighteningMain:
             nn_normalization_stats_path=nn_normalization_stats_path,
             nn_policy_generators=nn_policy_generators,
             reference_case=reference_case,
+            objective_mode=objective_mode,
+            mccormick_bounds=mccormick_bounds,
+            use_default_bounds=use_default_bounds,
         )
         self.tightening_data: dict[str, Any] = {}
         self.stage_reports: dict[str, dict[str, Any]] = {}
@@ -180,6 +186,17 @@ class PoATighteningMain:
             self.poa.optimal_cost_bounds = self.tightening_data[
                 "optimal_cost_bounds"
             ]
+            c_opt_bounds = self._extract_c_opt_bounds(self.poa.optimal_cost_bounds)
+            if c_opt_bounds is not None and self.poa.mccormick_bounds is not None:
+                self.poa.mccormick_bounds["C_opt"] = c_opt_bounds
+                if self.poa.objective_mode == "piecewise_mccormick":
+                    num_pieces = int(self.poa.mccormick_bounds.get("num_pieces", 0))
+                    if num_pieces >= 2:
+                        lower, upper = c_opt_bounds
+                        step = (upper - lower) / num_pieces
+                        self.poa.mccormick_bounds["C_opt_breakpoints"] = [
+                            lower + step * idx for idx in range(num_pieces + 1)
+                        ]
 
         if "optimal_cost_bound_optimization_results" in report:
             self.tightening_data["optimal_cost_bound_optimization_results"] = (
@@ -190,6 +207,19 @@ class PoATighteningMain:
             ]
 
         return report
+
+    @staticmethod
+    def _extract_c_opt_bounds(
+        optimal_cost_bounds: dict[str, Any],
+    ) -> tuple[float, float] | None:
+        bounds = optimal_cost_bounds or {}
+        if "C_opt" in bounds and isinstance(bounds.get("C_opt"), dict):
+            bounds = bounds.get("C_opt", {}) or {}
+        lower = bounds.get("lower")
+        upper = bounds.get("upper")
+        if lower is None or upper is None:
+            return None
+        return (float(lower), float(upper))
 
     def _load_previous_stage(self, stage_name: str, path: str | Path) -> dict[str, Any]:
         previous_path = Path(path)
@@ -310,14 +340,6 @@ class PoATighteningMain:
 
         if stage_name == "optimal_cost_bounds":
             optimal_cost_bounds = self.poa.build_default_optimal_cost_bounds_report()
-            if not optimal_cost_bounds:
-                optimal_cost_bounds = {
-                    "C_opt": {
-                        "lower": self.poa.default_c_opt_lower,
-                        "upper": self.poa.default_c_opt_upper,
-                        "source": "default_loose_bounds",
-                    }
-                }
             self.poa._mark_default_bound_used(
                 "optimal_cost_bounds",
                 "Default loose optimal-cost bounds were used by tightening_main.",

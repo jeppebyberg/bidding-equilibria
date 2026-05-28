@@ -331,7 +331,7 @@ def clean_output_dir(output_dir: Path) -> None:
 def main() -> None:
     # Edit these paths/settings directly when running this script.
     results_dir = DEFAULT_RESULTS_DIR
-    regime = "normal"
+    regime = "normal_peak_shift_wind"
     output_root = DEFAULT_OUTPUT_ROOT
     include_archives = True
     show = False

@@ -31,6 +31,9 @@ def _initialize_parallel_slack_computer(state: dict[str, Any]) -> None:
         nn_normalization_stats_path=state["nn_normalization_stats_path"],
         nn_policy_generators=state["nn_policy_generators"],
         reference_case=state["reference_case"],
+        objective_mode=state.get("objective_mode", "difference"),
+        mccormick_bounds=state.get("mccormick_bounds"),
+        use_default_bounds=bool(state.get("use_default_bounds", False)),
     )
     for attr_name in ("alpha_bounds", "fixed_binaries", "primal_big_m"):
         if attr_name in state:
@@ -158,6 +161,9 @@ class SlackBinaryFixComputer(PoATighteningMain):
             ),
             "nn_policy_generators": list(self.poa.nn_policy_generator_ids),
             "reference_case": self.poa.reference_case,
+            "objective_mode": self.poa.objective_mode,
+            "mccormick_bounds": self.poa.mccormick_bounds,
+            "use_default_bounds": self.poa.use_default_bounds,
             "nn_relu_bounds_report": getattr(self.poa, "nn_relu_bounds_report", {}) or {},
             "primal_big_m": getattr(self.poa, "primal_big_m", {}) or {},
         }

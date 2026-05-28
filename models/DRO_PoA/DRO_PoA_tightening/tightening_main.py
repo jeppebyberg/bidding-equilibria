@@ -51,7 +51,11 @@ class DROPoATighteningMain:
         nn_model_dir: Optional[str | Path] = None,
         nn_normalization_stats_path: Optional[str | Path] = None,
         nn_policy_generators: Optional[list[int | str]] = None,
-        reference_case: str = "test_case_bidding_blocks",
+        reference_case: str = "base_test_case",
+        objective_mode: str = "difference",
+        mccormick_bounds: Optional[dict[str, Any]] = None,
+        ambiguity_kappa: float = 0.3,
+        use_default_bounds: bool = False,
     ) -> None:
         self.poa = DRO_PoAOptimization(
             scenarios_df=scenarios_df,
@@ -68,6 +72,10 @@ class DROPoATighteningMain:
             nn_normalization_stats_path=nn_normalization_stats_path,
             nn_policy_generators=nn_policy_generators,
             reference_case=reference_case,
+            objective_mode=objective_mode,
+            mccormick_bounds=mccormick_bounds,
+            ambiguity_kappa=ambiguity_kappa,
+            use_default_bounds=use_default_bounds,
         )
         self.dro = self.poa
         self.dro_poa = self.poa
@@ -169,7 +177,6 @@ class DROPoATighteningMain:
             "primal_big_m",
             "alpha_optimization_results",
             "slack_bounds",
-            "aggregate_dual_bounds",
         ):
             if key in report:
                 self.tightening_data[key] = report.get(key, {}) or {}
@@ -178,7 +185,6 @@ class DROPoATighteningMain:
         scenario_preferred_fields = {
             "alpha_bounds": "scenario_alpha_bounds",
             "fixed_binaries": "scenario_fixed_binaries",
-            "lambda_bounds": "scenario_lambda_bounds",
             "tight_big_m": "scenario_tight_big_m",
         }
         for main_key, scenario_key in scenario_preferred_fields.items():
@@ -310,6 +316,9 @@ class DROPoATighteningMain:
                 "nn_normalization_stats_path": self.poa.nn_normalization_stats_path,
                 "nn_policy_generators": self.poa.requested_nn_policy_generators,
                 "reference_case": self.poa.reference_case,
+                "objective_mode": self.poa.objective_mode,
+                "mccormick_bounds": self.poa.mccormick_bounds,
+                "use_default_bounds": self.poa.use_default_bounds,
             },
             "tightening_data": dict(self.tightening_data),
         }
@@ -424,6 +433,8 @@ class DROPoATighteningMain:
             "regime_name": self.poa.regime_name,
             "eta": float(self.poa.eta),
             "epsilon": float(self.poa.epsilon),
+            "objective_mode": self.poa.objective_mode,
+            "mccormick_bounds": getattr(self.poa, "mccormick_bounds", None),
             "num_time_steps": int(self.poa.num_time_steps),
             "num_empirical_scenarios": int(self.poa.num_empirical_scenarios),
             "physical_generator_names": list(self.poa.physical_generator_names),
@@ -593,13 +604,9 @@ class DROPoATighteningMain:
             "scenario_fixed_binaries": self.tightening_data.get("scenario_fixed_binaries", {}),
             "regime_fixed_binaries": self.tightening_data.get("regime_fixed_binaries", {}),
             "fixed_binaries": self.tightening_data.get("fixed_binaries", {}),
-            "scenario_lambda_bounds": self.tightening_data.get("scenario_lambda_bounds", {}),
-            "regime_lambda_bounds": self.tightening_data.get("regime_lambda_bounds", {}),
-            "lambda_bounds": self.tightening_data.get("lambda_bounds", {}),
             "scenario_tight_big_m": self.tightening_data.get("scenario_tight_big_m", {}),
             "regime_tight_big_m": self.tightening_data.get("regime_tight_big_m", {}),
             "tight_big_m": self.tightening_data.get("tight_big_m", {}),
-            "aggregate_dual_bounds": self.tightening_data.get("aggregate_dual_bounds", {}),
             "optimal_cost_bounds": self.tightening_data.get("optimal_cost_bounds", {}),
             "scenario_optimal_cost_bounds": self.tightening_data.get(
                 "scenario_optimal_cost_bounds",

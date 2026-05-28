@@ -36,7 +36,7 @@ class PoAResults:
             "objective_mode": self.objective_mode,
             "model_objective_value": objective_value,
             "objective_value": objective_value,
-            "PoA_difference": self._safe_value(m.PoA),
+            "PoA_difference": difference_proxy,
             "PoA_ratio": ex_post_ratio,
             "C_eq": C_eq,
             "C_opt": C_opt,
@@ -48,24 +48,27 @@ class PoAResults:
             "mccormick",
             "piecewise_mccormick",
         }:
-            phi = self._safe_value(m.phi)
+            relaxed_poa = self._safe_value(m.PoA)
             z_mccormick_product = self._safe_value(m.z_mccormick_product)
             product_gap = None
             mccormick_gap = None
             if (
-                phi is not None
+                relaxed_poa is not None
                 and C_opt is not None
                 and z_mccormick_product is not None
             ):
-                product_gap = z_mccormick_product - phi * C_opt
-            if phi is not None and ex_post_ratio is not None:
-                mccormick_gap = phi - ex_post_ratio
+                product_gap = z_mccormick_product - relaxed_poa * C_opt
+            if relaxed_poa is not None and ex_post_ratio is not None:
+                mccormick_gap = relaxed_poa - ex_post_ratio
             metrics.update(
                 {
-                    "phi": phi,
+                    "PoA": relaxed_poa,
+                    "phi": relaxed_poa,
                     "z_mccormick_product": z_mccormick_product,
+                    "z_ratio_product": z_mccormick_product,
                     "mccormick_product_gap": product_gap,
                     "mccormick_gap": mccormick_gap,
+                    "ratio_gap": mccormick_gap,
                 }
             )
             if self.objective_mode == "piecewise_mccormick":
@@ -75,7 +78,7 @@ class PoAResults:
     def _extract_piecewise_mccormick_metrics(self) -> dict[str, Any]:
         m = self.model
         breakpoints = list((self.mccormick_bounds or {}).get("C_opt_breakpoints", []))
-        phi_L, phi_U = (self.mccormick_bounds or {}).get("phi", (None, None))
+        PoA_L, PoA_U = (self.mccormick_bounds or {}).get("PoA", (None, None))
         piece_indices = [int(k) for k in m.mccormick_piece_index]
         delta_values = {
             k: self._safe_value(m.mccormick_piece_active[k])
@@ -93,7 +96,7 @@ class PoAResults:
         active_delta = delta_values[active_piece]
         active_lower = breakpoints[active_piece]
         active_upper = breakpoints[active_piece + 1]
-        active_phi_piece = self._safe_value(m.phi_piece[active_piece])
+        active_PoA_piece = self._safe_value(m.PoA_piece[active_piece])
         active_C_opt_piece = self._safe_value(m.C_opt_piece[active_piece])
         active_z_piece = self._safe_value(m.z_mccormick_piece[active_piece])
 
@@ -104,32 +107,32 @@ class PoAResults:
             "active_mccormick_slack_upper_2": None,
         }
         if (
-            phi_L is not None
-            and phi_U is not None
+            PoA_L is not None
+            and PoA_U is not None
             and active_delta is not None
-            and active_phi_piece is not None
+            and active_PoA_piece is not None
             and active_C_opt_piece is not None
             and active_z_piece is not None
         ):
             lower_1_rhs = (
-                phi_L * active_C_opt_piece
-                + active_lower * active_phi_piece
-                - phi_L * active_lower * active_delta
+                PoA_L * active_C_opt_piece
+                + active_lower * active_PoA_piece
+                - PoA_L * active_lower * active_delta
             )
             lower_2_rhs = (
-                phi_U * active_C_opt_piece
-                + active_upper * active_phi_piece
-                - phi_U * active_upper * active_delta
+                PoA_U * active_C_opt_piece
+                + active_upper * active_PoA_piece
+                - PoA_U * active_upper * active_delta
             )
             upper_1_rhs = (
-                phi_U * active_C_opt_piece
-                + active_lower * active_phi_piece
-                - phi_U * active_lower * active_delta
+                PoA_U * active_C_opt_piece
+                + active_lower * active_PoA_piece
+                - PoA_U * active_lower * active_delta
             )
             upper_2_rhs = (
-                phi_L * active_C_opt_piece
-                + active_upper * active_phi_piece
-                - phi_L * active_upper * active_delta
+                PoA_L * active_C_opt_piece
+                + active_upper * active_PoA_piece
+                - PoA_L * active_upper * active_delta
             )
             slacks = {
                 "active_mccormick_slack_lower_1": active_z_piece - lower_1_rhs,
@@ -138,15 +141,15 @@ class PoAResults:
                 "active_mccormick_slack_upper_2": upper_2_rhs - active_z_piece,
             }
 
-        phi = self._safe_value(m.phi)
+        relaxed_poa = self._safe_value(m.PoA)
         C_opt = self._safe_value(m.C_opt)
         sum_z_piece = sum(
             self._safe_value(m.z_mccormick_piece[k]) or 0.0
             for k in piece_indices
         )
         piecewise_product_gap = None
-        if phi is not None and C_opt is not None:
-            piecewise_product_gap = sum_z_piece - phi * C_opt
+        if relaxed_poa is not None and C_opt is not None:
+            piecewise_product_gap = sum_z_piece - relaxed_poa * C_opt
 
         return {
             "active_piece": int(active_piece),

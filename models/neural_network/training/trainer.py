@@ -26,7 +26,7 @@ class BiddingPolicyTrainingConfig:
     patience: int | None
     min_delta: float
     device: str | None = None
-    final_activation: str = "relu"
+    final_activation: str = "linear"
 
 def train_generator_policy(
     csv_path: str | Path,

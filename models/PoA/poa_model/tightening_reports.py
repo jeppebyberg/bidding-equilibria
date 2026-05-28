@@ -391,15 +391,11 @@ class PoATighteningReports:
         if not template and getattr(self, "optimal_cost_bounds", None):
             template = copy.deepcopy(self.optimal_cost_bounds)
         if not template:
-            if self.objective_mode in {"mccormick", "piecewise_mccormick"}:
-                return {
-                    "C_opt": {
-                        "lower": lower,
-                        "upper": upper,
-                        "source": "default_loose_bounds",
-                    }
-                }
-            return {}
+            return {
+                "lower": lower,
+                "upper": upper,
+                "source": "default_loose_bounds",
+            }
         return self._loosen_lower_upper_bounds_recursively(template, lower, upper)
 
     @staticmethod
