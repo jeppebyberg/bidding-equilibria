@@ -86,7 +86,12 @@ class DROAlphaBoundsComputer(DROPoATighteningMain):
             domain=Reals,
         )
         self._build_support_set()
+        # Optimise over the full support set so bounds are regime-wide and valid
+        # for every empirical scenario k, not just the neighbourhood of k=0.
+        # epsilon=1e15 makes wasserstein_ball trivially satisfied.
+        _saved_epsilon, self.epsilon = self.epsilon, 1e15
         self._build_transport_constraints()
+        self.epsilon = _saved_epsilon
         self._build_policy_constraints()
         return self.model
 

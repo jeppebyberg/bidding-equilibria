@@ -1,6 +1,6 @@
 \ Model unknown_copy
 \ LP format - for model browsing. Use MPS format to capture full model detail.
-\ Signature: 0x3d937a1f528d23e0
+\ Signature: 0x66b98862be12bf9f
 Maximize
  
 Subject To
@@ -80,6 +80,8 @@ Subject To
    = 1.243438482284546
  nn_constraints(6822): nn_h(1_2_4_1_5) - nn_z(1_2_4_1_5) = 0
  nn_constraints(6824): nn_h(1_2_4_1_6) = 0
+ nn_constraints(6829): - 0.0210576554633925 nn_delta(1_2_4_1_7)
+   + nn_h(1_2_4_1_7) <= 0
  nn_constraints(6830): - 1.158638596534729 nn_h(1_2_4_1_0)
    + 5.164978504180908 nn_h(1_2_4_1_1) + 9.338432312011719 nn_h(1_2_4_1_2)
    + 8.783534049987793 nn_h(1_2_4_1_3) - 0.7196441292762756 nn_h(1_2_4_1_4)
@@ -90,22 +92,19 @@ Subject To
  nn_constraints(9453): alpha(1_2_0_4) - nn_output(1_2_4_0) = 0
  pmax_phys_transport_abs_neg(1_2_4): - P_max_block(1_2_0_4)
    - P_max_phys_transport_abs_deviation(1_2_4) <= -40.89254346170733
- pmax_phys_transport_abs_neg(1_2_5): - P_max_block(1_2_0_5)
-   - P_max_phys_transport_abs_deviation(1_2_5) <= -37.71892572202611
  pmax_phys_transport_abs_neg(1_3_4): - P_max_block(1_3_0_4)
    - P_max_phys_transport_abs_deviation(1_3_4) <= -37.67727350285783
- pmax_phys_transport_abs_neg(1_3_5): - P_max_block(1_3_0_5)
-   - P_max_phys_transport_abs_deviation(1_3_5) <= -40.55066798279665
  pmax_phys_transport_abs_neg(1_4_4): - P_max_block(1_4_0_4)
    - P_max_phys_transport_abs_deviation(1_4_4) <= -42.15941699354894
- stationarity_eq(1_1_1_4): alpha(1_1_1_4) - lambda_eq(1_4)
-   - mu_lower_eq(1_1_1_4) - mu_ramp_down_eq(1_1_4) + mu_ramp_down_eq(1_1_5)
-   + mu_ramp_up_eq(1_1_4) - mu_ramp_up_eq(1_1_5) + mu_upper_eq(1_1_1_4)
+ stationarity_eq(1_0_0_4): alpha(1_0_0_4) - lambda_eq(1_4)
+   - mu_lower_eq(1_0_0_4) - mu_ramp_down_eq(1_0_4) + mu_ramp_down_eq(1_0_5)
+   + mu_ramp_up_eq(1_0_4) - mu_ramp_up_eq(1_0_5) + mu_upper_eq(1_0_0_4)
    = 0
  stationarity_eq(1_2_0_4): alpha(1_2_0_4) - lambda_eq(1_4)
    - mu_lower_eq(1_2_0_4) - mu_ramp_down_eq(1_2_4) + mu_ramp_down_eq(1_2_5)
    + mu_ramp_up_eq(1_2_4) - mu_ramp_up_eq(1_2_5) + mu_upper_eq(1_2_0_4)
    = 0
+ true_cost_alpha(1_0_0_4): alpha(1_0_0_4) = 30
  wasserstein_ball(1): wasserstein_distance(1) <= 0.1
  wasserstein_distance_definition(1): - D_transport_abs_deviation(1_0)
    - D_transport_abs_deviation(1_1) - D_transport_abs_deviation(1_2)
@@ -162,17 +161,15 @@ Bounds
  P_max_block(1_1_0_5) free
  P_max_block(1_1_1_5) free
  P_max_block(1_2_0_4) free
- P_max_block(1_2_0_5) free
  P_max_block(1_3_0_4) free
- P_max_block(1_3_0_5) free
  P_max_block(1_4_0_4) free
- alpha(1_1_1_4) >= 19.68196184364915
+ alpha(1_0_0_4) free
  alpha(1_2_0_4) free
  lambda_eq(1_4) free
- -infinity <= mu_lower_eq(1_1_1_4) <= 9.756846572798199
- -infinity <= mu_ramp_down_eq(1_1_4) <= 0
+ -infinity <= mu_lower_eq(1_0_0_4) <= 21.07862896543428
+ -infinity <= mu_ramp_down_eq(1_0_4) <= 0
  -infinity <= mu_ramp_down_eq(1_2_5) <= 0
- -infinity <= mu_ramp_up_eq(1_1_5) <= 0
+ -infinity <= mu_ramp_up_eq(1_0_5) <= 0
  -infinity <= mu_ramp_up_eq(1_2_4) <= 0
  -infinity <= mu_upper_eq(1_2_0_4) <= 0
  nn_h(1_2_4_0_0) free
@@ -186,7 +183,7 @@ Bounds
  nn_h(1_2_4_1_4) free
  nn_h(1_2_4_1_5) free
  nn_h(1_2_4_1_6) free
- -infinity <= nn_h(1_2_4_1_7) <= 0.0210576554633925
+ nn_h(1_2_4_1_7) free
  nn_input(1_2_4_0) free
  nn_input(1_2_4_1) free
  nn_input(1_2_4_2) free
@@ -201,4 +198,6 @@ Bounds
  nn_z(1_2_4_1_4) free
  nn_z(1_2_4_1_5) free
  wasserstein_distance(1) free
+Binaries
+ nn_delta(1_2_4_1_7)
 End

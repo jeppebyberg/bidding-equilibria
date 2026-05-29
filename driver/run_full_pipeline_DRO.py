@@ -828,7 +828,7 @@ if __name__ == "__main__":
 
         # etas=[0.0] + np.logspace(-3, 0.1, 10).tolist(),
         etas=[10000.0],
-        dro_wasserstein_epsilon=0.1,
+        dro_wasserstein_epsilon=2000,
         ambiguity_kappa=0.3,
         dro_tightening_eta=0.0,
 
@@ -836,7 +836,7 @@ if __name__ == "__main__":
         #   "difference"
         #   "mccormick"
         #   "piecewise_mccormick"
-        dro_objective_mode="difference",
+        dro_objective_mode="piecewise_mccormick",
         dro_mccormick_PoA_bounds=(1.0, 10.0),
         # dro_mccormick_c_opt_bounds=(0.01, 20000.0),
         dro_mccormick_num_pieces=100,
@@ -852,7 +852,7 @@ if __name__ == "__main__":
         run_heuristic_labels=False,
         run_feature_building=False,
         run_nn_training=False,
-        run_dro_tightening=False,
+        run_dro_tightening=True,
         tightening_flags={
             "primal_big_m": True,
             "relu_bounds": True,

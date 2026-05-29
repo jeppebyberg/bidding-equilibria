@@ -1202,6 +1202,76 @@ class DRO_PoAOptimization(
     # Support set
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _min_wasserstein_to_support_1d(
+        x_emp: "np.ndarray",
+        lb: "np.ndarray",
+        ub: "np.ndarray",
+        ar1_ref: "np.ndarray",
+        innov_margin: float,
+        rho: float,
+    ) -> float:
+        """Min L1 distance from x_emp to the support set defined by pointwise
+        box bounds and AR1 innovation bounds, solved as a small LP.
+
+        ar1_ref[s] is the reference innovation for step s+1 (length T-1).
+        innov_margin is the scalar tolerance (same for all steps).
+        """
+        import numpy as np
+        from scipy.optimize import linprog
+
+        T = len(x_emp)
+        # Variables: [x[0..T-1], u[0..T-1]] where u[t] >= |x_emp[t] - x[t]|
+        c = np.zeros(2 * T)
+        c[T:] = 1.0
+
+        bounds = (
+            [(float(lb[t]), float(ub[t])) for t in range(T)]
+            + [(0.0, None)] * T
+        )
+
+        rows: list = []
+        rhs: list = []
+
+        # AR1 up:   x[t] - rho*x[t-1] <=  ar1_ref[t-1] + innov_margin
+        # AR1 down: x[t] - rho*x[t-1] >= ar1_ref[t-1] - innov_margin
+        #           <=> -x[t] + rho*x[t-1] <= innov_margin - ar1_ref[t-1]
+        for t in range(1, T):
+            row_up = np.zeros(2 * T)
+            row_up[t] = 1.0
+            row_up[t - 1] = -rho
+            rows.append(row_up)
+            rhs.append(ar1_ref[t - 1] + innov_margin)
+
+            row_dn = np.zeros(2 * T)
+            row_dn[t] = -1.0
+            row_dn[t - 1] = rho
+            rows.append(row_dn)
+            rhs.append(innov_margin - ar1_ref[t - 1])
+
+        # u[t] >= x_emp[t] - x[t]: -x[t] - u[t] <= -x_emp[t]
+        # u[t] >= x[t] - x_emp[t]:  x[t] - u[t] <=  x_emp[t]
+        for t in range(T):
+            row1 = np.zeros(2 * T)
+            row1[t] = -1.0
+            row1[T + t] = -1.0
+            rows.append(row1)
+            rhs.append(-x_emp[t])
+
+            row2 = np.zeros(2 * T)
+            row2[t] = 1.0
+            row2[T + t] = -1.0
+            rows.append(row2)
+            rhs.append(x_emp[t])
+
+        A_ub = np.vstack(rows)
+        b_ub = np.array(rhs)
+
+        result = linprog(c, A_ub=A_ub, b_ub=b_ub, bounds=bounds, method="highs")
+        if result.status == 0:
+            return float(result.fun)
+        return float("inf")
+
     def diagnose_empirical_support_set_violations(self) -> list[dict]:
         """For each empirical scenario, compute the minimum achievable Wasserstein
         distance and flag which support-set constraint families are violated.
@@ -1209,6 +1279,9 @@ class DRO_PoAOptimization(
         This reveals the W-floor that high-eta runs cannot cross: if empirical_D[k]
         or empirical_Pmax_phys[k] lies outside the support set, the optimizer cannot
         set D[k,t] = empirical_D[k][t] and W[k] > 0 is unavoidable.
+
+        min_W_total is computed via LP to account for both pointwise and AR1
+        constraints jointly (pointwise-only projection would miss AR1 violations).
 
         Returns a list of dicts, one per scenario.
         """
@@ -1233,8 +1306,6 @@ class DRO_PoAOptimization(
 
             lb_D = np.maximum(D_ref_vec - margin_D, 0.0)
             ub_D = D_ref_vec + margin_D
-            D_proj = np.clip(D_emp, lb_D, ub_D)
-            min_W_demand = float(np.sum(np.abs(D_emp - D_proj)))
 
             innov_margin_D = kappa_ar1 * D_ref * self.sigma_D_fixed
             ar1_ref_D = D_ref * self.mu_D_fixed * (
@@ -1242,6 +1313,10 @@ class DRO_PoAOptimization(
             )
             innov_D = D_emp[1:] - self.demand_rho_fixed * D_emp[:-1]
             ar1_violations_D = int(np.sum(np.abs(innov_D - ar1_ref_D) > innov_margin_D + 1e-9))
+
+            min_W_demand = self._min_wasserstein_to_support_1d(
+                D_emp, lb_D, ub_D, ar1_ref_D, innov_margin_D, self.demand_rho_fixed
+            )
 
             min_W_wind = 0.0
             wind_ar1_violations = 0
@@ -1255,8 +1330,6 @@ class DRO_PoAOptimization(
                 margin_W = kappa * cap * stationary_std_W
                 lb_W = np.maximum(P_ref_vec - margin_W, 0.0)
                 ub_W = np.minimum(P_ref_vec + margin_W, cap)
-                P_proj = np.clip(P_emp, lb_W, ub_W)
-                min_W_wind += float(np.sum(np.abs(P_emp - P_proj)))
 
                 ar1_ref_W = cap * self.mu_W_fixed * (
                     wind_shape[1:] - self.wind_rho_fixed * wind_shape[:-1]
@@ -1264,6 +1337,10 @@ class DRO_PoAOptimization(
                 innov_W = P_emp[1:] - self.wind_rho_fixed * P_emp[:-1]
                 wind_ar1_violations += int(
                     np.sum(np.abs(innov_W - ar1_ref_W) > innov_margin_W * cap + 1e-9)
+                )
+
+                min_W_wind += self._min_wasserstein_to_support_1d(
+                    P_emp, lb_W, ub_W, ar1_ref_W, innov_margin_W * cap, self.wind_rho_fixed
                 )
 
             results.append({

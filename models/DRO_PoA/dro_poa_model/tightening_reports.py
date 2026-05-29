@@ -393,6 +393,12 @@ class DROPoATighteningReports:
                 )
         return prepared
 
+    # Safety margin applied to tightened dual Big-M values to guard against
+    # near-infeasibility when the OBBT optimum is tight relative to the full
+    # model's feasible range (e.g., due to correlated NN outputs or solver
+    # tolerance).  5 % keeps tightening benefits while avoiding edge failures.
+    _DUAL_BIG_M_SAFETY_FACTOR: float = 1.05
+
     def _prepare_dual_big_m(
         self,
         dual_name: str,
@@ -423,7 +429,10 @@ class DROPoATighteningReports:
                         )
                     prepared[scenario_index] = max(
                         0.0,
-                        min(float(default_bound), float(parsed[scenario_index])),
+                        min(
+                            float(default_bound),
+                            float(parsed[scenario_index]) * self._DUAL_BIG_M_SAFETY_FACTOR,
+                        ),
                     )
                 continue
             if regime_index not in parsed:
@@ -434,7 +443,10 @@ class DROPoATighteningReports:
                 )
             prepared[regime_index] = max(
                 0.0,
-                min(float(default_bound), float(parsed[regime_index])),
+                min(
+                    float(default_bound),
+                    float(parsed[regime_index]) * self._DUAL_BIG_M_SAFETY_FACTOR,
+                ),
             )
         return prepared
 

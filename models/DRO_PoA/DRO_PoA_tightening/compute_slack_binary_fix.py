@@ -142,6 +142,9 @@ class DROSlackBinaryFixComputer(DROPoATighteningMain):
         self.model.conventional_blocks = Set(dimen=2, initialize=self.conventional_block_pairs)
         self._build_PoA_variables()
 
+        # Use large epsilon so binaries/bounds are regime-wide (full support set),
+        # not anchored to the Wasserstein neighbourhood of empirical scenario k=0.
+        _saved_epsilon, self.epsilon = self.epsilon, 1e15
         if side == "eq":
             if alpha_bounds is None:
                 raise ValueError("Equilibrium KKT slack fixing requires alpha_bounds")
@@ -167,7 +170,9 @@ class DROSlackBinaryFixComputer(DROPoATighteningMain):
                 self._build_KKT_complementarity_optimal_constraints()
                 self._apply_fixed_binaries(self.model, fixed_binaries)
         else:
+            self.epsilon = _saved_epsilon
             raise ValueError(f"Unknown KKT tightening side: {side}")
+        self.epsilon = _saved_epsilon
         return self.model
 
     def _apply_alpha_bounds(
