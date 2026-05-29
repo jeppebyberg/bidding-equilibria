@@ -96,9 +96,6 @@ class DROPoASupportSet:
                 <= m.demand_budget_expr
             )
 
-        def demand_feasibility_rule(m, t):
-            return m.demand_lower[t] >= 0
-
         m.demand_lower_bound_constraints = Constraint(
             m.scenarios, m.time_steps, rule=demand_lower_rule
         )
@@ -117,10 +114,7 @@ class DROPoASupportSet:
         m.demand_abs_deviation_neg_constraints = Constraint(
             m.scenarios, m.time_steps, rule=demand_abs_deviation_neg_rule
         )
-        m.demand_budget_constraint = Constraint(m.scenarios, rule=demand_budget_rule)
-        m.demand_lower_feasibility = Constraint(
-            m.time_steps, rule=demand_feasibility_rule
-        )
+        # m.demand_budget_constraint = Constraint(m.scenarios, rule=demand_budget_rule)
 
     def _build_support_set_wind(self) -> None:
         m = self.model
@@ -218,12 +212,6 @@ class DROPoASupportSet:
                 <= m.wind_budget_expr[i]
             )
 
-        def wind_capacity_factor_lower_feasibility_rule(m, i, t):
-            return m.wind_reference[i, t] >= 0
-
-        def wind_capacity_factor_upper_feasibility_rule(m, i, t):
-            return m.wind_reference[i, t] <= self.static_physical_capacity[int(i)]
-
         def dispatch_capacity_feasibility_rule(m, k, t):
             return m.D[k, t] <= sum(
                 m.P_max_block[k, i, b, t] for i, b in m.generator_blocks
@@ -253,17 +241,9 @@ class DROPoASupportSet:
         m.wind_abs_deviation_neg = Constraint(
             m.scenarios, m.wind_physical_generators, m.time_steps, rule=wind_abs_deviation_neg_rule
         )
-        m.wind_budget_constraint = Constraint(
-            m.scenarios, m.wind_physical_generators, rule=wind_budget_rule
-        )
-        m.wind_capacity_factor_lower_feasibility = Constraint(
-            m.wind_physical_generators, m.time_steps,
-            rule=wind_capacity_factor_lower_feasibility_rule,
-        )
-        m.wind_capacity_factor_upper_feasibility = Constraint(
-            m.wind_physical_generators, m.time_steps,
-            rule=wind_capacity_factor_upper_feasibility_rule,
-        )
+        # m.wind_budget_constraint = Constraint(
+        #     m.scenarios, m.wind_physical_generators, rule=wind_budget_rule
+        # )
         m.dispatch_capacity_feasibility = Constraint(
             m.scenarios, m.time_steps, rule=dispatch_capacity_feasibility_rule
         )

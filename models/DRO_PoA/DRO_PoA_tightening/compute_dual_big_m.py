@@ -117,7 +117,7 @@ class DRODualBigMComputer(DROPoATighteningMain):
         self.model = ConcreteModel()
         from pyomo.environ import Set
 
-        self.model.scenarios = Set(initialize=range(self.num_empirical_scenarios))
+        self.model.scenarios = Set(initialize=[0])  # single regime scenario
         self.model.time_steps = Set(initialize=range(self.num_time_steps))
         self.model.time_steps_minus_1 = Set(initialize=range(1, self.num_time_steps))
         self.model.time_steps_plus_1 = Set(initialize=range(self.num_time_steps + 1))
@@ -279,15 +279,14 @@ class DRODualBigMComputer(DROPoATighteningMain):
         scenario_tight_big_m: dict[str, dict[str, Any]] = {}
         tasks: list[tuple[str, str, tuple[int, ...], tuple[int, ...]]] = []
         for side in ("eq", "opt"):
-            for k in range(self.num_empirical_scenarios):
-                for i, b in self.generator_block_pairs:
-                    for t in range(self.num_time_steps):
-                        tasks.append((side, "upper", (int(k), int(i), int(b), int(t)), (int(i), int(b), int(t))))
-                        tasks.append((side, "lower", (int(k), int(i), int(b), int(t)), (int(i), int(b), int(t))))
-                for i in range(self.num_physical_generators):
-                    for t in range(self.num_time_steps):
-                        tasks.append((side, "ramp_up", (int(k), int(i), int(t)), (int(i), int(t))))
-                        tasks.append((side, "ramp_down", (int(k), int(i), int(t)), (int(i), int(t))))
+            for i, b in self.generator_block_pairs:
+                for t in range(self.num_time_steps):
+                    tasks.append((side, "upper", (0, int(i), int(b), int(t)), (int(i), int(b), int(t))))
+                    tasks.append((side, "lower", (0, int(i), int(b), int(t)), (int(i), int(b), int(t))))
+            for i in range(self.num_physical_generators):
+                for t in range(self.num_time_steps):
+                    tasks.append((side, "ramp_up", (0, int(i), int(t)), (int(i), int(t))))
+                    tasks.append((side, "ramp_down", (0, int(i), int(t)), (int(i), int(t))))
 
         dual_parallel_tasks = [
             (
@@ -339,23 +338,13 @@ class DRODualBigMComputer(DROPoATighteningMain):
         for result in dual_results:
             dual_name = str(result["dual_name"])
             regime_key = str(result["regime_key"])
-            scenario_key = str(result["scenario_key"])
             details = {
                 "tight_big_m": result["tight_big_m"],
                 "fixed_by_slack": bool(result["fixed_by_slack"]),
                 "termination_condition": result["termination_condition"],
             }
-            scenario_tight_big_m.setdefault(dual_name, {})[scenario_key] = details
-            current = tight_big_m.setdefault(dual_name, {}).get(regime_key)
-            candidate_value = details["tight_big_m"]
-            if current is None or (
-                candidate_value is not None
-                and float(candidate_value) > float(current.get("tight_big_m") or 0.0)
-            ):
-                tight_big_m.setdefault(dual_name, {})[regime_key] = {
-                    **details,
-                    "aggregation": "max over empirical scenarios k",
-                }
+            tight_big_m.setdefault(dual_name, {})[regime_key] = details
+            scenario_tight_big_m.setdefault(dual_name, {})[regime_key] = details
 
         self.tight_big_m = tight_big_m
         return {
@@ -399,10 +388,10 @@ class DRODualBigMComputer(DROPoATighteningMain):
             "metadata": {
                 **self._metadata(),
                 "description": (
-                    "Scenario-indexed componentwise dual Big-M bounds for the "
-                    "DRO PoA KKT model."
+                    "Regime-wide componentwise dual Big-M bounds for the DRO PoA "
+                    "KKT model, optimised over the full support set. Keys are i,b,t or i,t."
                 ),
-                "tightening_scope": "scenario_wise",
+                "tightening_scope": "regime_wide",
                 "runtime_seconds": elapsed,
             },
             "scenario_tight_big_m": dual_report["scenario_tight_big_m"],

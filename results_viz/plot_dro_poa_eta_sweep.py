@@ -103,6 +103,20 @@ def _summary_record(path: Path, result: dict[str, Any]) -> dict[str, Any]:
     return record
 
 
+def discover_regime_names(results_dir: Path) -> list[str]:
+    """Return all regime names that have at least one eta-sweep JSON file."""
+    if not results_dir.exists():
+        return []
+    skip = {"old_results"}
+    names = []
+    for subdir in sorted(results_dir.iterdir()):
+        if not subdir.is_dir() or subdir.name in skip:
+            continue
+        if any(subdir.glob("dro_poa_eta_*_T*.json")):
+            names.append(subdir.name)
+    return names
+
+
 def _candidate_result_paths(
     results_dir: Path,
     regime_name: str,
@@ -319,6 +333,88 @@ def plot_poa_eta_sweep(
     return output_path
 
 
+def plot_poa_epsilon_frontier(
+    records: list[dict[str, Any]],
+    output_dir: Path,
+    regime_name: str,
+    poa_metric: str = "inner_objective",
+    show: bool = False,
+) -> Path:
+    """Plot worst-case PoA vs achieved Wasserstein distance, tangent slope = eta at each point.
+
+    Each (eta, epsilon_cap) pair in the sweep traces one point on the PoA–epsilon
+    efficient frontier.  The envelope theorem guarantees that dv/d(epsilon) = eta at
+    the optimum, so the tangent line drawn at every point has slope exactly eta.
+    Large eta pins the solution near epsilon=0 (steep tangent); eta->0 reaches the
+    robust plateau (flat tangent).
+    """
+    grouped = _records_by_epsilon(records)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    fig, ax = plt.subplots(figsize=(8.5, 5.5))
+
+    for color_idx, (eps_cap, eps_records) in enumerate(grouped.items()):
+        color = colors[color_idx % len(colors)]
+        points: list[tuple[float, float, float]] = []
+        for r in eps_records:
+            x = _as_optional_float(r.get("average_wasserstein_distance"))
+            y = _as_optional_float(r.get(poa_metric))
+            eta = _as_optional_float(r.get("eta"))
+            if x is not None and y is not None and eta is not None:
+                points.append((x, y, eta))
+
+        if not points:
+            continue
+
+        points.sort(key=lambda p: p[0])
+        xs = [p[0] for p in points]
+        ys = [p[1] for p in points]
+        etas = [p[2] for p in points]
+
+        label = f"ε_cap={eps_cap:.4g}" if eps_cap != 0.0 else "ε_cap=0"
+        ax.plot(xs, ys, "o-", color=color, linewidth=2.0, markersize=6, label=label, zorder=3)
+
+        x_span = max(xs) - min(xs) if len(xs) > 1 else (xs[0] if xs[0] > 0 else 1.0)
+        half_len = x_span * 0.10
+
+        for x0, y0, eta in zip(xs, ys, etas):
+            ax.plot(
+                [x0 - half_len, x0 + half_len],
+                [y0 - eta * half_len, y0 + eta * half_len],
+                color=color,
+                linewidth=1.0,
+                alpha=0.55,
+                zorder=2,
+            )
+            ax.annotate(
+                f"η={eta:.3g}",
+                xy=(x0, y0),
+                xytext=(5, 4),
+                textcoords="offset points",
+                fontsize=7,
+                color=color,
+            )
+
+    ax.set_xlabel("Achieved Wasserstein distance (ε)")
+    ax.set_ylabel(METRIC_LABELS.get(poa_metric, poa_metric))
+    ax.set_title(
+        f"PoA–ε frontier: {regime_name}\n"
+        "tangent slope = η at each point  (envelope theorem)"
+    )
+    ax.legend(loc="best", frameon=True)
+    ax.ticklabel_format(axis="both", style="plain", useOffset=False)
+    ax.grid(True, alpha=0.25)
+    fig.tight_layout()
+
+    output_path = output_dir / f"{regime_name}_poa_epsilon_frontier.png"
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    if show:
+        plt.show()
+    plt.close(fig)
+    return output_path
+
+
 def clean_output_dir(output_dir: Path) -> None:
     if not output_dir.exists():
         return
@@ -331,27 +427,45 @@ def clean_output_dir(output_dir: Path) -> None:
 def main() -> None:
     # Edit these paths/settings directly when running this script.
     results_dir = DEFAULT_RESULTS_DIR
-    regime = "normal_peak_shift_wind"
+    regime: str | None = None  # set to a regime name to plot only that one, or None for all
     output_root = DEFAULT_OUTPUT_ROOT
     include_archives = True
     show = False
 
-    records = load_eta_sweep_records(
-        results_dir,
-        regime,
-        include_archives=include_archives,
-    )
-    output_dir = output_root / regime
-    clean_output_dir(output_dir)
-    csv_path = write_summary_csv(records, output_dir / "eta_sweep_summary.csv")
-    figure_path = plot_poa_eta_sweep(
-        records=records,
-        output_dir=output_dir,
-        regime_name=regime,
-        show=show,
-    )
-    print(f"Saved DRO PoA eta-sweep figure: {figure_path}")
-    print(f"Saved DRO PoA eta-sweep summary: {csv_path}")
+    regimes = discover_regime_names(results_dir) if regime is None else [regime]
+    if not regimes:
+        print(f"No eta-sweep results found under {results_dir}")
+        return
+
+    for regime_name in regimes:
+        try:
+            records = load_eta_sweep_records(
+                results_dir,
+                regime_name,
+                include_archives=include_archives,
+            )
+        except FileNotFoundError as exc:
+            print(f"Skipping '{regime_name}': {exc}")
+            continue
+        output_dir = output_root / regime_name
+        clean_output_dir(output_dir)
+        csv_path = write_summary_csv(records, output_dir / "eta_sweep_summary.csv")
+        figure_path = plot_poa_eta_sweep(
+            records=records,
+            output_dir=output_dir,
+            regime_name=regime_name,
+            show=show,
+        )
+        frontier_path = plot_poa_epsilon_frontier(
+            records=records,
+            output_dir=output_dir,
+            regime_name=regime_name,
+            poa_metric="inner_objective",
+            show=show,
+        )
+        print(f"Saved DRO PoA eta-sweep figure:   {figure_path}")
+        print(f"Saved DRO PoA ε-frontier figure:  {frontier_path}")
+        print(f"Saved DRO PoA eta-sweep summary:  {csv_path}")
 
 
 if __name__ == "__main__":

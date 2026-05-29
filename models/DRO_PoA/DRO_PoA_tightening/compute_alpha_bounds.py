@@ -62,7 +62,7 @@ def _solve_parallel_alpha_bound(task: tuple[Any, ...]) -> dict[str, Any]:
 
 class DROAlphaBoundsComputer(DROPoATighteningMain):
     def _build_tightening_sets(self) -> None:
-        self.model.scenarios = Set(initialize=range(self.num_empirical_scenarios))
+        self.model.scenarios = Set(initialize=[0])  # single regime scenario
         self.model.time_steps = Set(initialize=range(self.num_time_steps))
         self.model.time_steps_minus_1 = Set(initialize=range(1, self.num_time_steps))
         self.model.time_steps_plus_1 = Set(initialize=range(self.num_time_steps + 1))
@@ -120,31 +120,26 @@ class DROAlphaBoundsComputer(DROPoATighteningMain):
         return None if raw_value is None else float(raw_value)
 
     def _true_cost_alpha_bounds(self) -> dict[str, Any]:
-        scenario_bounds: dict[tuple[int, int, int, int], dict[str, float]] = {}
+        regime_bounds: dict[tuple[int, int, int], dict[str, float]] = {}
         optimization_results: dict[str, dict[str, Any]] = {}
-        for k in range(self.num_empirical_scenarios):
-            for i, b in self.generator_block_pairs:
-                i = int(i)
-                b = int(b)
-                global_block = self.local_to_global_block[(i, b)]
-                bid_value = float(self.block_cost_vector[global_block])
-                for t in range(self.num_time_steps):
-                    scenario_index = (int(k), i, b, int(t))
-                    scenario_bounds[scenario_index] = {
-                        "lower": bid_value,
-                        "upper": bid_value,
-                    }
-                    optimization_results[f"{self._json_key(scenario_index)}:analytic"] = {
-                        "value": bid_value,
-                        "termination_condition": "true_cost_policy_fixed",
-                    }
+        for i, b in self.generator_block_pairs:
+            i = int(i)
+            b = int(b)
+            global_block = self.local_to_global_block[(i, b)]
+            bid_value = float(self.block_cost_vector[global_block])
+            for t in range(self.num_time_steps):
+                regime_index = (i, b, int(t))
+                regime_bounds[regime_index] = {"lower": bid_value, "upper": bid_value}
+                optimization_results[f"{self._json_key(regime_index)}:analytic"] = {
+                    "value": bid_value,
+                    "termination_condition": "true_cost_policy_fixed",
+                }
 
-        scenario_alpha_bounds = self._jsonify_indexed_dict(scenario_bounds)
-        regime_alpha_bounds = self.aggregate_lower_upper_bounds_over_k(scenario_bounds)
+        regime_json = self._jsonify_indexed_dict(regime_bounds)
         return {
-            "alpha_bounds": scenario_alpha_bounds,
-            "scenario_alpha_bounds": scenario_alpha_bounds,
-            "regime_alpha_bounds": regime_alpha_bounds,
+            "alpha_bounds": regime_json,
+            "scenario_alpha_bounds": regime_json,
+            "regime_alpha_bounds": regime_json,
             "optimization_results": optimization_results,
             "num_optimization_programs": 0,
         }
@@ -167,11 +162,10 @@ class DROAlphaBoundsComputer(DROPoATighteningMain):
                 self.poa._load_nn_policies()
                 self.poa._load_nn_normalization_stats()
 
-            scenario_alpha_bounds: dict[tuple[int, int, int, int], dict[str, float]] = {}
+            regime_alpha_bounds: dict[tuple[int, int, int], dict[str, float]] = {}
             optimization_results: dict[str, dict[str, Any]] = {}
             targets = [
-                (int(k), int(i), int(b), int(t))
-                for k in range(self.num_empirical_scenarios)
+                (0, int(i), int(b), int(t))
                 for i, b in self.generator_block_pairs
                 for t in range(self.num_time_steps)
             ]
@@ -216,13 +210,14 @@ class DROAlphaBoundsComputer(DROPoATighteningMain):
                     upper = result_by_task[(index, "upper")]["value"]
                     if lower is None or upper is None:
                         raise RuntimeError(f"Could not compute alpha bounds for index {index}")
-                    scenario_alpha_bounds[index] = {
+                    regime_index = index[1:]  # strip k=0 → (i, b, t)
+                    regime_alpha_bounds[regime_index] = {
                         "lower": float(lower),
                         "upper": float(upper),
                     }
                     for bound_name in ("lower", "upper"):
                         result = result_by_task[(index, bound_name)]
-                        optimization_results[f"{self._json_key(index)}:{bound_name}"] = {
+                        optimization_results[f"{self._json_key(regime_index)}:{bound_name}"] = {
                             "value": result["value"],
                             "termination_condition": result["termination_condition"],
                         }
@@ -249,23 +244,24 @@ class DROAlphaBoundsComputer(DROPoATighteningMain):
                         )
                         bound_value = self._safe_value(alpha_expr) if solved else None
                         lower_upper[bound_name] = bound_value
-                        optimization_results[f"{self._json_key(index)}:{bound_name}"] = {
+                        regime_index = index[1:]  # strip k=0 → (i, b, t)
+                        optimization_results[f"{self._json_key(regime_index)}:{bound_name}"] = {
                             "value": bound_value,
                             "termination_condition": str(results.solver.termination_condition),
                         }
                     if lower_upper["lower"] is None or lower_upper["upper"] is None:
                         raise RuntimeError(f"Could not compute alpha bounds for index {index}")
-                    scenario_alpha_bounds[index] = {
+                    regime_index = index[1:]  # strip k=0 → (i, b, t)
+                    regime_alpha_bounds[regime_index] = {
                         "lower": float(lower_upper["lower"]),
                         "upper": float(lower_upper["upper"]),
                     }
 
-            scenario_json_bounds = self._jsonify_indexed_dict(scenario_alpha_bounds)
-            regime_alpha_bounds = self.aggregate_lower_upper_bounds_over_k(scenario_alpha_bounds)
+            regime_json = self._jsonify_indexed_dict(regime_alpha_bounds)
             return {
-                "alpha_bounds": scenario_json_bounds,
-                "scenario_alpha_bounds": scenario_json_bounds,
-                "regime_alpha_bounds": regime_alpha_bounds,
+                "alpha_bounds": regime_json,
+                "scenario_alpha_bounds": regime_json,
+                "regime_alpha_bounds": regime_json,
                 "optimization_results": optimization_results,
                 "num_optimization_programs": total_programs,
             }
@@ -307,10 +303,10 @@ class DROAlphaBoundsComputer(DROPoATighteningMain):
             "metadata": {
                 **self._metadata(),
                 "description": (
-                    "Certified scenario-wise alpha bounds for DRO PoA. Regime-wide "
-                    "aggregations are saved only as diagnostics/fallbacks."
+                    "Regime-wide certified alpha bounds for DRO PoA, optimised over "
+                    "the full support set. Keys are i,b,t (3-tuple)."
                 ),
-                "tightening_scope": "scenario_wise",
+                "tightening_scope": "regime_wide",
                 "num_optimization_programs": alpha_report["num_optimization_programs"],
                 "primal_big_m_summary": summarize_primal_big_m(
                     self.tightening_data.get("primal_big_m", {})

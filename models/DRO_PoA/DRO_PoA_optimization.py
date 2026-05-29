@@ -17,6 +17,7 @@ from pyomo.environ import (
     Reals,
     Set,
     SolverFactory,
+    TerminationCondition,
     Var,
     maximize,
 )
@@ -1201,6 +1202,83 @@ class DRO_PoAOptimization(
     # Support set
     # ------------------------------------------------------------------
 
+    def diagnose_empirical_support_set_violations(self) -> list[dict]:
+        """For each empirical scenario, compute the minimum achievable Wasserstein
+        distance and flag which support-set constraint families are violated.
+
+        This reveals the W-floor that high-eta runs cannot cross: if empirical_D[k]
+        or empirical_Pmax_phys[k] lies outside the support set, the optimizer cannot
+        set D[k,t] = empirical_D[k][t] and W[k] > 0 is unavoidable.
+
+        Returns a list of dicts, one per scenario.
+        """
+        import numpy as np
+        from scipy.stats import norm as _norm
+
+        T = self.num_time_steps
+        D_ref = float(self.demand_D_ref)
+        kappa = 1.96
+        kappa_ar1 = float(_norm.ppf((1.0 + 0.95 ** (1.0 / T)) / 2.0))
+
+        from config.scenarios.scenario_generator import ScenarioManager
+        demand_shape = ScenarioManager._build_demand_shape(T)
+        wind_shape = ScenarioManager._build_wind_shape(T, self.peak_W_fixed)
+
+        results = []
+        for k in range(self.num_empirical_scenarios):
+            D_emp = np.asarray(self.empirical_D[k], dtype=float)
+            D_ref_vec = D_ref * self.mu_D_fixed * demand_shape
+            stationary_std_D = self.sigma_D_fixed / np.sqrt(1.0 - self.demand_rho_fixed ** 2)
+            margin_D = kappa * D_ref * stationary_std_D
+
+            lb_D = np.maximum(D_ref_vec - margin_D, 0.0)
+            ub_D = D_ref_vec + margin_D
+            D_proj = np.clip(D_emp, lb_D, ub_D)
+            min_W_demand = float(np.sum(np.abs(D_emp - D_proj)))
+
+            innov_margin_D = kappa_ar1 * D_ref * self.sigma_D_fixed
+            ar1_ref_D = D_ref * self.mu_D_fixed * (
+                demand_shape[1:] - self.demand_rho_fixed * demand_shape[:-1]
+            )
+            innov_D = D_emp[1:] - self.demand_rho_fixed * D_emp[:-1]
+            ar1_violations_D = int(np.sum(np.abs(innov_D - ar1_ref_D) > innov_margin_D + 1e-9))
+
+            min_W_wind = 0.0
+            wind_ar1_violations = 0
+            stationary_std_W = self.sigma_W_fixed / np.sqrt(1.0 - self.wind_rho_fixed ** 2)
+            innov_margin_W = kappa_ar1 * self.sigma_W_fixed
+
+            for i in self.wind_physical_generator_ids:
+                cap = float(self.static_physical_capacity[int(i)])
+                P_emp = np.asarray(self.empirical_Pmax_phys[k][int(i)], dtype=float)
+                P_ref_vec = cap * self.mu_W_fixed * wind_shape
+                margin_W = kappa * cap * stationary_std_W
+                lb_W = np.maximum(P_ref_vec - margin_W, 0.0)
+                ub_W = np.minimum(P_ref_vec + margin_W, cap)
+                P_proj = np.clip(P_emp, lb_W, ub_W)
+                min_W_wind += float(np.sum(np.abs(P_emp - P_proj)))
+
+                ar1_ref_W = cap * self.mu_W_fixed * (
+                    wind_shape[1:] - self.wind_rho_fixed * wind_shape[:-1]
+                )
+                innov_W = P_emp[1:] - self.wind_rho_fixed * P_emp[:-1]
+                wind_ar1_violations += int(
+                    np.sum(np.abs(innov_W - ar1_ref_W) > innov_margin_W * cap + 1e-9)
+                )
+
+            results.append({
+                "scenario_k": k,
+                "min_W_demand": min_W_demand,
+                "min_W_wind": min_W_wind,
+                "min_W_total": min_W_demand + min_W_wind,
+                "demand_pointwise_violations": int(
+                    np.sum(D_emp < lb_D - 1e-9) + np.sum(D_emp > ub_D + 1e-9)
+                ),
+                "demand_ar1_violations": ar1_violations_D,
+                "wind_ar1_violations": wind_ar1_violations,
+            })
+        return results
+
     def _build_transport_constraints(self) -> None:
         m = self.model
 
@@ -1266,6 +1344,16 @@ class DRO_PoAOptimization(
             m.scenarios,
             rule=wasserstein_distance_rule,
         )
+
+        # Hard Wasserstein ball constraint: W[k] <= epsilon for every scenario.
+        # Without this, only the Lagrangian penalty (eta * W) is active, which
+        # cannot drive W to zero when the PoA landscape has discontinuities
+        # (bid-stack switches create arbitrarily steep gradients at finite eta).
+        # At epsilon = 0 this forces W = 0, recovering the nominal PoA.
+        def wasserstein_ball_rule(m, k):
+            return m.wasserstein_distance[k] <= self.epsilon
+
+        m.wasserstein_ball = Constraint(m.scenarios, rule=wasserstein_ball_rule)
 
     # ------------------------------------------------------------------
     # Lower level equilibrium and optimality constraints
@@ -2021,11 +2109,20 @@ class DRO_PoAOptimization(
     def solve(self, time_limit: Optional[float] = None) -> Any:
         if not hasattr(self, "model"):
             raise ValueError("Model is not built. Call build_model() first.")
-        solver = SolverFactory("gurobi")
+        solver = SolverFactory("gurobi_persistent")
+        solver.set_instance(self.model)
         solver.options["IntFeasTol"] = 1e-8
         if time_limit is not None:
             solver.options["TimeLimit"] = float(time_limit)
-        self.solver_results = solver.solve(self.model, tee=True)
+        self.solver_results = solver.solve(tee=True, load_solutions=False)
+        termination = self.solver_results.solver.termination_condition
+        if termination == TerminationCondition.infeasible:
+            from pyomo.contrib.iis import write_iis
+            iis_path = "infeasible.ilp"
+            write_iis(self.model, iis_path, solver="gurobi")
+            print(f"IIS written to {iis_path}")
+        elif len(self.solver_results.solution) > 0:
+            self.model.solutions.load_from(self.solver_results)
         return self.solver_results
 
 def load_regime_scenarios(

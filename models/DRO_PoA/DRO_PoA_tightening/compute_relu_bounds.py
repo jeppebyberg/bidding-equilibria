@@ -260,7 +260,7 @@ class DROReLUBoundsComputer(DROPoATighteningMain):
             self.poa._load_nn_normalization_stats()
 
     def _build_tightening_sets(self) -> None:
-        self.model.scenarios = Set(initialize=range(self.num_empirical_scenarios))
+        self.model.scenarios = Set(initialize=[0])  # single regime scenario
         self.model.time_steps = Set(initialize=range(self.num_time_steps))
         self.model.time_steps_minus_1 = Set(initialize=range(1, self.num_time_steps))
         self.model.time_steps_plus_1 = Set(initialize=range(self.num_time_steps + 1))
@@ -417,12 +417,7 @@ class DROReLUBoundsComputer(DROPoATighteningMain):
             generator_name = self.physical_generator_names[int(physical_generator_idx)]
             policy = self.nn_policies[generator_name]
             for layer in self._hidden_linear_layers(policy):
-                total_programs += (
-                    2
-                    * self.num_empirical_scenarios
-                    * self.num_time_steps
-                    * len(layer["bias"])
-                )
+                total_programs += 2 * self.num_time_steps * len(layer["bias"])
         return int(total_programs)
 
     def _log_relu_bound_result(
@@ -497,12 +492,12 @@ class DROReLUBoundsComputer(DROPoATighteningMain):
                 bounds[generator_name] = {}
                 continue
             first_layer_width = len(hidden_layers[0]["bias"])
-            generator_bounds: dict[tuple[int, int, int, int], dict[str, Any]] = {}
+            generator_bounds: dict[tuple[int, int, int], dict[str, Any]] = {}
             tasks = [
                 (
                     generator_name,
                     i,
-                    int(k),
+                    0,
                     int(time_idx),
                     int(neuron_idx),
                     solver_name,
@@ -511,7 +506,6 @@ class DROReLUBoundsComputer(DROPoATighteningMain):
                     solver_options,
                     tolerance,
                 )
-                for k in range(self.num_empirical_scenarios)
                 for time_idx in range(self.num_time_steps)
                 for neuron_idx in range(first_layer_width)
             ]
@@ -533,9 +527,9 @@ class DROReLUBoundsComputer(DROPoATighteningMain):
                     }
                     for future in as_completed(future_to_task):
                         result = future.result()
-                        key = tuple(result["key"])
+                        regime_key = tuple(result["key"])[1:]  # strip k → (t, 0, node)
                         details = result["details"]
-                        generator_bounds[key] = details
+                        generator_bounds[regime_key] = details
                         self._log_relu_bound_result(
                             "lower",
                             generator_name,
@@ -561,9 +555,9 @@ class DROReLUBoundsComputer(DROPoATighteningMain):
                 _PARALLEL_RELU_COMPUTER = self
                 for task in tasks:
                     result = _solve_parallel_first_layer_relu_bound(task)
-                    key = tuple(result["key"])
+                    regime_key = tuple(result["key"])[1:]  # strip k → (t, 0, node)
                     details = result["details"]
-                    generator_bounds[key] = details
+                    generator_bounds[regime_key] = details
                     self._log_relu_bound_result(
                         "lower",
                         generator_name,
@@ -589,13 +583,13 @@ class DROReLUBoundsComputer(DROPoATighteningMain):
 
     def compute_later_layer_preactivation_bounds(
         self,
-        existing_scenario_bounds: dict[str, dict[tuple[int, int, int, int], dict[str, Any]]],
+        existing_scenario_bounds: dict[str, dict[tuple[int, int, int], dict[str, Any]]],
         solver_name: str = "gurobi",
         time_limit: Optional[float] = None,
         tee: bool = False,
         parallel_workers: int = 1,
         solver_threads: Optional[int] = None,
-    ) -> dict[str, dict[tuple[int, int, int, int], dict[str, Any]]]:
+    ) -> dict[str, dict[tuple[int, int, int], dict[str, Any]]]:
         self._ensure_nn_inputs_loaded()
         tolerance = float(getattr(self, "relu_bound_tolerance", 1e-9))
         solver_options = self._solver_options_with_threads(solver_name, solver_threads)
@@ -610,40 +604,39 @@ class DROReLUBoundsComputer(DROPoATighteningMain):
                 layer_width = len(hidden_layers[linear_idx]["bias"])
                 previous_width = len(hidden_layers[linear_idx - 1]["bias"])
                 tasks: list[tuple[Any, ...]] = []
-                for k in range(self.num_empirical_scenarios):
-                    for time_idx in range(self.num_time_steps):
-                        previous_activation_bounds = {
-                            int(prev_node): {
-                                "h_lower": float(
-                                    generator_bounds[
-                                        (int(k), int(time_idx), linear_idx - 1, prev_node)
-                                    ]["h_lower"]
-                                ),
-                                "h_upper": float(
-                                    generator_bounds[
-                                        (int(k), int(time_idx), linear_idx - 1, prev_node)
-                                    ]["h_upper"]
-                                ),
-                            }
-                            for prev_node in range(previous_width)
+                for time_idx in range(self.num_time_steps):
+                    previous_activation_bounds = {
+                        int(prev_node): {
+                            "h_lower": float(
+                                generator_bounds[
+                                    (int(time_idx), linear_idx - 1, prev_node)
+                                ]["h_lower"]
+                            ),
+                            "h_upper": float(
+                                generator_bounds[
+                                    (int(time_idx), linear_idx - 1, prev_node)
+                                ]["h_upper"]
+                            ),
                         }
-                        for neuron_idx in range(layer_width):
-                            tasks.append(
-                                (
-                                    generator_name,
-                                    i,
-                                    int(k),
-                                    int(time_idx),
-                                    int(linear_idx),
-                                    int(neuron_idx),
-                                    previous_activation_bounds,
-                                    solver_name,
-                                    time_limit,
-                                    tee,
-                                    solver_options,
-                                    tolerance,
-                                )
+                        for prev_node in range(previous_width)
+                    }
+                    for neuron_idx in range(layer_width):
+                        tasks.append(
+                            (
+                                generator_name,
+                                i,
+                                0,
+                                int(time_idx),
+                                int(linear_idx),
+                                int(neuron_idx),
+                                previous_activation_bounds,
+                                solver_name,
+                                time_limit,
+                                tee,
+                                solver_options,
+                                tolerance,
                             )
+                        )
 
                 workers = self._resolve_parallel_workers(parallel_workers, len(tasks))
                 if workers > 1:
@@ -670,9 +663,9 @@ class DROReLUBoundsComputer(DROPoATighteningMain):
                     ]
 
                 for result in result_iterable:
-                    key = tuple(result["key"])
+                    regime_key = tuple(result["key"])[1:]  # strip k → (t, layer, node)
                     details = result["details"]
-                    generator_bounds[key] = details
+                    generator_bounds[regime_key] = details
                     self._log_relu_bound_result(
                         "lower",
                         generator_name,
@@ -882,7 +875,7 @@ class DROReLUBoundsComputer(DROPoATighteningMain):
             parallel_workers=parallel_workers,
             solver_threads=solver_threads,
         )
-        scenario_bounds = self.compute_later_layer_preactivation_bounds(
+        regime_bounds = self.compute_later_layer_preactivation_bounds(
             first_layer_bounds,
             solver_name=solver_name,
             time_limit=time_limit,
@@ -890,43 +883,38 @@ class DROReLUBoundsComputer(DROPoATighteningMain):
             parallel_workers=parallel_workers,
             solver_threads=solver_threads,
         )
-        regime_bounds = self.aggregate_scenario_relu_bounds_to_regime(
-            scenario_bounds,
-            tolerance=tolerance,
-        )
-        scenario_json_bounds = self._jsonify_scenario_relu_bounds(scenario_bounds)
+        # Bounds are already regime-level (t, layer, node) — no per-k aggregation needed.
         regime_json_bounds = self._jsonify_relu_bounds(regime_bounds)
         nn_feature_bounds = self.summarize_nn_feature_bounds()
-        summary = self._summarize_relu_bounds(scenario_bounds)
+        summary = self._summarize_relu_bounds(regime_bounds)
         report = {
             "metadata": {
                 **self._metadata(),
                 "description": (
-                    "Exact scenario-indexed DRO ReLU preactivation bounds. "
-                    "Regime-wide aggregations are saved only as diagnostics/fallbacks."
+                    "Regime-wide DRO ReLU preactivation bounds optimised over the "
+                    "full support set. Keys are t,linear_idx,node (3-tuple)."
                 ),
-                "tightening_scope": "scenario_wise",
+                "tightening_scope": "regime_wide",
                 "bound_methods": {
-                    "first_layer": "scenario_indexed_dro_support_optimization",
+                    "first_layer": "regime_support_optimization",
                     "later_layers": "activation_bound_optimization",
-                    "aggregation": "diagnostic regime_* fields use min L over k, max U over k",
                 },
                 "tolerance": float(tolerance),
             },
             "nn_feature_bounds": nn_feature_bounds,
-            "scenario_nn_relu_bounds": scenario_json_bounds,
+            "scenario_nn_relu_bounds": {},
             "regime_nn_relu_bounds": regime_json_bounds,
-            "nn_relu_bounds": scenario_json_bounds,
+            "nn_relu_bounds": regime_json_bounds,
             "summary": summary,
             "warnings": list(getattr(self, "nn_bound_warnings", [])),
             "optimization_results": {
                 generator_name: {
                     self._json_key(index): {
-                        "lower_termination_condition_summary": details.get(
-                            "lower_termination_condition_summary"
+                        "lower_termination_condition": details.get(
+                            "lower_termination_condition"
                         ),
-                        "upper_termination_condition_summary": details.get(
-                            "upper_termination_condition_summary"
+                        "upper_termination_condition": details.get(
+                            "upper_termination_condition"
                         ),
                         "bound_method": details.get("bound_method"),
                     }
@@ -986,7 +974,7 @@ class DROReLUBoundsComputer(DROPoATighteningMain):
                     "Scenario-wise DRO ReLU preactivation bounds. Main keys are "
                     "generator_name -> k,t,linear_idx,node; regime_* keys are diagnostics."
                 ),
-                "tightening_scope": "scenario_wise",
+                "tightening_scope": "regime_wide",
                 "relu_tolerance": float(tolerance),
                 "runtime_seconds": time.perf_counter() - start,
             }

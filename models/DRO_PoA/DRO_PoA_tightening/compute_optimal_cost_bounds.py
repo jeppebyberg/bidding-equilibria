@@ -39,7 +39,7 @@ class DROOptimalCostBoundsComputer(DROPoATighteningMain):
     def _build_index_sets(self) -> None:
         dro = self.poa
         m = self.model
-        m.scenarios = Set(initialize=range(dro.num_empirical_scenarios))
+        m.scenarios = Set(initialize=[0])  # single regime scenario
         m.time_steps = Set(initialize=range(dro.num_time_steps))
         m.time_steps_minus_1 = Set(initialize=range(1, dro.num_time_steps))
         m.time_steps_plus_1 = Set(initialize=range(dro.num_time_steps + 1))
@@ -165,49 +165,33 @@ class DROOptimalCostBoundsComputer(DROPoATighteningMain):
         tee: bool = False,
         solver_threads: Optional[int] = None,
     ) -> dict[str, Any]:
-        scenario_bounds: dict[str, Any] = {}
-        optimization_results: dict[str, Any] = {}
-        raw_lowers: list[float] = []
-        raw_uppers: list[float] = []
+        lower_result = self._solve_bound(
+            "lower",
+            scenario_idx=0,
+            solver_name=solver_name,
+            time_limit=time_limit,
+            tee=tee,
+            solver_threads=solver_threads,
+        )
+        upper_result = self._solve_bound(
+            "upper",
+            scenario_idx=0,
+            solver_name=solver_name,
+            time_limit=time_limit,
+            tee=tee,
+            solver_threads=solver_threads,
+        )
+        if lower_result["value"] is None or upper_result["value"] is None:
+            raise RuntimeError("Could not compute C_opt bounds over the support set")
 
-        for k in range(self.poa.num_empirical_scenarios):
-            lower_result = self._solve_bound(
-                "lower",
-                scenario_idx=k,
-                solver_name=solver_name,
-                time_limit=time_limit,
-                tee=tee,
-                solver_threads=solver_threads,
-            )
-            upper_result = self._solve_bound(
-                "upper",
-                scenario_idx=k,
-                solver_name=solver_name,
-                time_limit=time_limit,
-                tee=tee,
-                solver_threads=solver_threads,
-            )
-            if lower_result["value"] is None or upper_result["value"] is None:
-                raise RuntimeError(f"Could not compute both C_opt bounds for scenario {k}")
-
-            raw_lower = float(lower_result["value"])
-            raw_upper = float(upper_result["value"])
-            scenario_bounds[str(k)] = self._safe_bounds(raw_lower, raw_upper)
-            optimization_results[str(k)] = {
-                "lower": lower_result,
-                "upper": upper_result,
-            }
-            raw_lowers.append(raw_lower)
-            raw_uppers.append(raw_upper)
-
-        global_raw_lower = min(raw_lowers)
-        global_raw_upper = max(raw_uppers)
-        global_bounds = self._safe_bounds(global_raw_lower, global_raw_upper)
+        raw_lower = float(lower_result["value"])
+        raw_upper = float(upper_result["value"])
+        global_bounds = self._safe_bounds(raw_lower, raw_upper)
         return {
             "C_opt": global_bounds,
-            "scenario_C_opt": scenario_bounds,
-            "optimization_results": optimization_results,
-            "num_optimization_programs": 2 * int(self.poa.num_empirical_scenarios),
+            "scenario_C_opt": {"0": global_bounds},
+            "optimization_results": {"0": {"lower": lower_result, "upper": upper_result}},
+            "num_optimization_programs": 2,
         }
 
     def run_optimal_cost_bounds(
@@ -234,13 +218,13 @@ class DROOptimalCostBoundsComputer(DROPoATighteningMain):
         report = {
             "metadata": {
                 "description": (
-                    "DRO optimal dispatch cost bounds computed using the "
-                    "scenario-indexed true-cost optimal KKT block."
+                    "DRO optimal dispatch cost bounds computed over the full support "
+                    "set using a single-scenario regime-wide model."
                 ),
                 "method": "dro_optimal_dispatch_kkt_bounds",
                 "model_type": "DRO_PoA",
                 "tightening_type": "regime_wide",
-                "tightening_scope": "scenario_wise",
+                "tightening_scope": "regime_wide",
                 "reference_case": self.poa.reference_case,
                 "regime_set": self.poa.regime_set,
                 "regime_name": self.poa.regime_name,

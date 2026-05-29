@@ -128,7 +128,7 @@ class DROSlackBinaryFixComputer(DROPoATighteningMain):
         self.model = ConcreteModel()
         from pyomo.environ import Set
 
-        self.model.scenarios = Set(initialize=range(self.num_empirical_scenarios))
+        self.model.scenarios = Set(initialize=[0])  # single regime scenario
         self.model.time_steps = Set(initialize=range(self.num_time_steps))
         self.model.time_steps_minus_1 = Set(initialize=range(1, self.num_time_steps))
         self.model.time_steps_plus_1 = Set(initialize=range(self.num_time_steps + 1))
@@ -320,16 +320,15 @@ class DROSlackBinaryFixComputer(DROPoATighteningMain):
             solver_options["BestObjStop"] = zero_slack_tol
 
         tasks: list[tuple[str, str, tuple[int, ...]]] = []
-        for k in range(self.num_empirical_scenarios):
-            for side in ("eq", "opt"):
-                for i, b in self.generator_block_pairs:
-                    for t in range(self.num_time_steps):
-                        tasks.append((side, "upper", (int(k), int(i), int(b), int(t))))
-                        tasks.append((side, "lower", (int(k), int(i), int(b), int(t))))
-                for i in range(self.num_physical_generators):
-                    for t in range(self.num_time_steps):
-                        tasks.append((side, "ramp_up", (int(k), int(i), int(t))))
-                        tasks.append((side, "ramp_down", (int(k), int(i), int(t))))
+        for side in ("eq", "opt"):
+            for i, b in self.generator_block_pairs:
+                for t in range(self.num_time_steps):
+                    tasks.append((side, "upper", (0, int(i), int(b), int(t))))
+                    tasks.append((side, "lower", (0, int(i), int(b), int(t))))
+            for i in range(self.num_physical_generators):
+                for t in range(self.num_time_steps):
+                    tasks.append((side, "ramp_up", (0, int(i), int(t))))
+                    tasks.append((side, "ramp_down", (0, int(i), int(t))))
 
         slack_bounds: dict[str, Any] = {}
         scenario_fixed_binaries: dict[str, dict[str, Any]] = {}
@@ -404,13 +403,15 @@ class DROSlackBinaryFixComputer(DROPoATighteningMain):
                     )
                 )
 
+        regime_fixed_binaries: dict[str, dict[str, Any]] = {}
         for result in result_iterable:
             side = str(result["side"])
             constraint_type = str(result["constraint_type"])
-            index = tuple(result["index"])
+            full_index = tuple(result["index"])
+            regime_index = full_index[1:]  # strip k=0 → (i,b,t) or (i,t)
             minimum_slack = result["minimum_slack"]
             is_inactive = bool(result["robustly_inactive"])
-            record_key = f"{side}:{constraint_type}:{self._json_key(index)}"
+            record_key = f"{side}:{constraint_type}:{self._json_key(regime_index)}"
             slack_bounds[record_key] = {
                 "minimum_slack": result["minimum_slack"],
                 "incumbent_slack_objective": result["incumbent_slack_objective"],
@@ -420,7 +421,7 @@ class DROSlackBinaryFixComputer(DROPoATighteningMain):
             }
             if is_inactive:
                 var_name = self._binary_name(side, constraint_type)
-                scenario_fixed_binaries.setdefault(var_name, {})[self._json_key(index)] = {
+                regime_fixed_binaries.setdefault(var_name, {})[self._json_key(regime_index)] = {
                     "fixed_value": 0,
                     "minimum_slack": float(minimum_slack),
                     "side": side,
@@ -428,17 +429,16 @@ class DROSlackBinaryFixComputer(DROPoATighteningMain):
                     "result_classification": result["result_classification"],
                 }
 
-        regime_fixed_binaries = self.aggregate_fixed_binaries_over_k(scenario_fixed_binaries)
         return {
             "epsilon": float(epsilon),
             "stop_at_zero_slack": bool(stop_at_zero_slack),
             "slack_stop_tolerance": zero_slack_tol,
             "slack_bounds": slack_bounds,
-            "scenario_fixed_binaries": scenario_fixed_binaries,
+            "scenario_fixed_binaries": regime_fixed_binaries,
             "regime_fixed_binaries": regime_fixed_binaries,
-            "fixed_binaries": scenario_fixed_binaries,
+            "fixed_binaries": regime_fixed_binaries,
             "num_fixed_binaries": int(
-                sum(len(entries) for entries in scenario_fixed_binaries.values())
+                sum(len(entries) for entries in regime_fixed_binaries.values())
             ),
             "num_regime_fixed_binaries": int(
                 sum(len(entries) for entries in regime_fixed_binaries.values())
@@ -480,10 +480,10 @@ class DROSlackBinaryFixComputer(DROPoATighteningMain):
             "metadata": {
                 **self._metadata(),
                 "description": (
-                    "Scenario-indexed slack minimization certificates. Regime-wide "
-                    "binary fixes are saved only as diagnostics/fallbacks."
+                    "Regime-wide slack minimization certificates optimised over the "
+                    "full support set. Keys are i,b,t or i,t (no scenario index)."
                 ),
-                "tightening_scope": "scenario_wise",
+                "tightening_scope": "regime_wide",
                 "runtime_seconds": elapsed,
             },
             **slack_report,

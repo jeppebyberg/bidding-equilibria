@@ -280,6 +280,7 @@ def load_or_generate_scenarios(
         ambiguity_set=config.ambiguity_set_config_name,
         n_scenarios=config.synthetic_num_scenarios,
         seed=config.synthetic_seed,
+        enforce_support_set=True,
     )
     if should_generate:
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -299,6 +300,7 @@ def load_dro_scenario_data(config: DROFullPipelineConfig) -> dict[str, Any]:
         regime_config_path=str(config.runtime_config_path),
         regime_set=config.poa_regime_set,
         seed=config.poa_seed,
+        enforce_support_set=True,
     )
     if config.run_scenario_generation:
         config.poa_scenario_dir.mkdir(parents=True, exist_ok=True)
@@ -430,6 +432,42 @@ def print_tightening_plan(
     print("  Note: this support-tightening report is reused for every eta in the regime.")
 
 
+def _print_wasserstein_floor_diagnostic(
+    config: DROFullPipelineConfig,
+    scenarios: dict[str, Any],
+    regime_name: str,
+) -> None:
+    """Print the minimum achievable Wasserstein distance for each empirical scenario.
+
+    If all values are 0, the support set is properly enforced and W→0 is feasible
+    at sufficiently high eta.  Non-zero values mean the empirical scenario lies
+    outside the support set and W cannot reach 0 regardless of eta.
+    """
+    optimizer = build_dro_optimizer(config, scenarios, regime_name, eta=0.0)
+    rows = optimizer.diagnose_empirical_support_set_violations()
+    any_violation = any(row["min_W_total"] > 1e-9 for row in rows)
+    print(f"\n  Wasserstein floor diagnostic (regime '{regime_name}'):")
+    for row in rows:
+        flag = " <-- VIOLATION" if row["min_W_total"] > 1e-9 else ""
+        print(
+            f"    k={row['scenario_k']:2d}  min_W={row['min_W_total']:.4f}"
+            f"  (demand: pw={row['demand_pointwise_violations']}"
+            f" ar1={row['demand_ar1_violations']}"
+            f"  wind ar1={row['wind_ar1_violations']}){flag}"
+        )
+    if any_violation:
+        print(
+            "  WARNING: some empirical scenarios are outside the support set. "
+            "W cannot reach 0 at any eta.  Re-generate scenarios with "
+            "enforce_support_set=True."
+        )
+    else:
+        print(
+            "  All empirical scenarios are within the support set. "
+            "W=0 is feasible; increase eta if W is still large at solve time."
+        )
+
+
 def run_dro_eta_sweep(
     config: DROFullPipelineConfig,
     scenarios: dict[str, Any],
@@ -444,6 +482,7 @@ def run_dro_eta_sweep(
                 "Expected DRO regime-wide tightening report not found for "
                 f"regime '{regime_name}': {tightening_report_path}"
             )
+        _print_wasserstein_floor_diagnostic(config, scenarios, regime_name)
         for eta in config.etas:
             result_path = run_final_dro_for_eta(
                 config=config,
@@ -750,10 +789,10 @@ if __name__ == "__main__":
 
         # DRO regime scenario counts.
         poa_context_scenarios_per_regime={
-            "normal": 3,
-            "high_demand": 5,
-            "normal_peak_shift_wind": 5,
-            "high_demand_peak_shift_wind": 5,
+            "normal": 10,
+            # "high_demand": 10,
+            # "normal_peak_shift_wind": 10,
+            # "high_demand_peak_shift_wind": 10,
         },
 
         # Heuristic synthetic-label generation.
@@ -784,11 +823,11 @@ if __name__ == "__main__":
         horizon=8,
         nn_policy_generators=["G1", "W2", "W3"],
 
-        dro_regime_names=None,        
-        # dro_regime_names=["normal"],
+        # dro_regime_names=None,        
+        dro_regime_names=["normal"],
 
-        etas=np.linspace(0, 0.5, 10).tolist(),
-        # etas=[0.0, 1, 100.0, 10000.0],
+        # etas=[0.0] + np.logspace(-3, 0.1, 10).tolist(),
+        etas=[10000.0],
         dro_wasserstein_epsilon=0.1,
         ambiguity_kappa=0.3,
         dro_tightening_eta=0.0,
@@ -797,10 +836,10 @@ if __name__ == "__main__":
         #   "difference"
         #   "mccormick"
         #   "piecewise_mccormick"
-        dro_objective_mode="piecewise_mccormick",
+        dro_objective_mode="difference",
         dro_mccormick_PoA_bounds=(1.0, 10.0),
         # dro_mccormick_c_opt_bounds=(0.01, 20000.0),
-        dro_mccormick_num_pieces=25,
+        dro_mccormick_num_pieces=100,
 
         solver_name="gurobi",
         preprocessing_time_limit=200,
@@ -813,7 +852,7 @@ if __name__ == "__main__":
         run_heuristic_labels=False,
         run_feature_building=False,
         run_nn_training=False,
-        run_dro_tightening=True,
+        run_dro_tightening=False,
         tightening_flags={
             "primal_big_m": True,
             "relu_bounds": True,
@@ -839,4 +878,6 @@ if __name__ == "__main__":
         dro_result_dir=Path("results/dro_poa"),
         dro_result_archive_dir=Path("results/dro_poa/old_results"),
     )
+
+    stop = True
     main(run_config)

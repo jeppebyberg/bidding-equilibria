@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 import numpy as np
 import pandas as pd
 import yaml
+from scipy.stats import norm as _norm
 
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
@@ -636,6 +637,59 @@ class ScenarioManager:
 
 		return True
 
+	def _is_within_support_set(
+		self,
+		regime: RegimeParameters,
+		demand_profile: List[float],
+		generator_wind_profiles: Dict[str, List[float]],
+	) -> bool:
+		"""Return True iff the scenario satisfies all DRO support set constraints.
+
+		Mirrors support_set.py: point-wise level bounds (kappa=1.96) and AR(1)
+		innovation bounds (joint 95% coverage across T steps).
+		"""
+		kappa = 1.96
+		T = len(demand_profile)
+		kappa_ar1 = float(_norm.ppf((1.0 + 0.95 ** (1.0 / T)) / 2.0))
+		tol = 1e-9
+
+		D_ref = float(self.base_case["demand"])
+		demand_shape = self._build_demand_shape(T)
+		wind_shape = self._build_wind_shape(T, regime.peak_W)
+
+		D = np.asarray(demand_profile, dtype=float)
+		D_reference = D_ref * regime.mu_D * demand_shape
+		stationary_std_D = regime.sigma_D / np.sqrt(1.0 - regime.rho_D ** 2)
+		margin_D = kappa * D_ref * stationary_std_D
+
+		if np.any(D < np.maximum(D_reference - margin_D, 0.0) - tol):
+			return False
+		if np.any(D > D_reference + margin_D + tol):
+			return False
+		if T > 1:
+			ar1_ref_D = D_ref * regime.mu_D * (demand_shape[1:] - regime.rho_D * demand_shape[:-1])
+			if np.any(np.abs(D[1:] - regime.rho_D * D[:-1] - ar1_ref_D) > kappa_ar1 * D_ref * regime.sigma_D + tol):
+				return False
+
+		for gen_idx in self.wind_generator_indices:
+			gen = self.physical_generators[gen_idx]
+			capacity = float(gen["pmax"])
+			P = np.asarray(generator_wind_profiles[gen["physical_name"]], dtype=float)
+			P_reference = capacity * regime.mu_W * wind_shape
+			stationary_std_W = regime.sigma_W / np.sqrt(1.0 - regime.rho_W ** 2)
+			margin_W = kappa * capacity * stationary_std_W
+
+			if np.any(P < np.maximum(P_reference - margin_W, 0.0) - tol):
+				return False
+			if np.any(P > np.minimum(P_reference + margin_W, capacity) + tol):
+				return False
+			if T > 1:
+				ar1_ref_W = capacity * regime.mu_W * (wind_shape[1:] - regime.rho_W * wind_shape[:-1])
+				if np.any(np.abs(P[1:] - regime.rho_W * P[:-1] - ar1_ref_W) > kappa_ar1 * capacity * regime.sigma_W + tol):
+					return False
+
+		return True
+
 	def _build_costs_and_ramps(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
 		cost_data: Dict[str, float] = {}
 		ramp_data: Dict[str, float] = {}
@@ -1169,8 +1223,13 @@ class ScenarioManager:
 		regime_config_path: Optional[str] = None,
 		regime_set: Optional[str] = None,
 		seed: Optional[int] = None,
+		enforce_support_set: bool = False,
 	) -> Dict[str, Any]:
-		"""Generate stochastic scenarios from a YAML-defined list of regimes."""
+		"""Generate stochastic scenarios from a YAML-defined list of regimes.
+
+		Set enforce_support_set=True (DRO poa scenarios) to reject draws that
+		violate the support set point-wise level bounds or AR(1) innovation bounds.
+		"""
 		config = self.load_regime_configuration(regime_config_path=regime_config_path, regime_set=regime_set)
 
 		effective_seed = seed if seed is not None else config["seed"]
@@ -1197,6 +1256,13 @@ class ScenarioManager:
 						demand_profile,
 						generator_wind_profiles,
 						contingency_margin=config["n_minus_one_margin"],
+					) and (
+						not enforce_support_set
+						or self._is_within_support_set(
+							regime,
+							demand_profile,
+							generator_wind_profiles,
+						)
 					):
 						break
 				else:
@@ -1256,8 +1322,13 @@ class ScenarioManager:
 		enforce_dispatch_feasibility: Optional[bool] = None,
 		max_draw_attempts: Optional[int] = None,
 		n_minus_one_margin: Optional[float] = None,
+		enforce_support_set: bool = False,
 	) -> Dict[str, Any]:
-		"""Generate stochastic scenarios from uniformly drawn ambiguity-set parameters."""
+		"""Generate stochastic scenarios from uniformly drawn ambiguity-set parameters.
+
+		Set enforce_support_set=True (DRO pipeline only) to reject samples that violate
+		the support set constraints: point-wise level bounds and AR(1) innovation bounds.
+		"""
 		if n_scenarios <= 0:
 			raise ValueError(f"n_scenarios must be positive, got {n_scenarios}")
 
@@ -1316,6 +1387,13 @@ class ScenarioManager:
 					demand_profile,
 					generator_wind_profiles,
 					contingency_margin=effective_n_minus_one_margin,
+				) and (
+					not enforce_support_set
+					or self._is_within_support_set(
+						regime_parameters,
+						demand_profile,
+						generator_wind_profiles,
+					)
 				):
 					break
 			else:

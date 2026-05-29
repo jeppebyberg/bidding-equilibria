@@ -1,0 +1,204 @@
+\ Model unknown_copy
+\ LP format - for model browsing. Use MPS format to capture full model detail.
+\ Signature: 0x3d937a1f528d23e0
+Maximize
+ 
+Subject To
+ conventional_capacity(1_0_0_5): P_max_block(1_0_0_5) = 25
+ conventional_capacity(1_0_1_5): P_max_block(1_0_1_5) = 25
+ conventional_capacity(1_1_0_5): P_max_block(1_1_0_5) = 25
+ conventional_capacity(1_1_1_5): P_max_block(1_1_1_5) = 25
+ demand_transport_abs_pos(1_4): D(1_4) - D_transport_abs_deviation(1_4)
+   <= 80.90639855677676
+ demand_transport_abs_pos(1_5): D(1_5) - D_transport_abs_deviation(1_5)
+   <= 79.96891179317535
+ nn_constraints(6795): - 0.0103785293652277 D(1_4) + nn_input(1_2_4_0)
+   = -0.5729866138426326
+ nn_constraints(6796): - 0.00919683156208033 P_max_block(1_2_0_4)
+   - 0.00919683156208033 P_max_block(1_3_0_4)
+   - 0.00919683156208033 P_max_block(1_4_0_4) + nn_input(1_2_4_1)
+   = -0.2844731991801643
+ nn_constraints(6797): - 0.00975534202168834 D(1_4)
+   + 0.00975534202168834 P_max_block(1_2_0_4)
+   + 0.00975534202168834 P_max_block(1_3_0_4)
+   + 0.00975534202168834 P_max_block(1_4_0_4) + nn_input(1_2_4_2)
+   = 0.5126287237061358
+ nn_constraints(6798): - 0.00919683156208033 P_max_block(1_0_0_5)
+   - 0.00919683156208033 P_max_block(1_0_1_5)
+   - 0.00919683156208033 P_max_block(1_1_0_5)
+   - 0.00919683156208033 P_max_block(1_1_1_5)
+   - 0.00919683156208033 P_max_block(1_2_0_5)
+   - 0.00919683156208033 P_max_block(1_3_0_5)
+   - 0.00919683156208033 P_max_block(1_4_0_5) + nn_input(1_2_4_3)
+   = -1.204156355388197
+ nn_constraints(6799): - 0.0103785293652277 D(1_5) + nn_input(1_2_4_4)
+   = -0.5729866138426326
+ nn_constraints(6800): 1.393219470977783 nn_input(1_2_4_0)
+   - 1.5234454870224 nn_input(1_2_4_1) + 1.83643901348114 nn_input(1_2_4_2)
+   - 0.0696192160248756 nn_input(1_2_4_3)
+   + 0.0143413925543427 nn_input(1_2_4_4) + nn_z(1_2_4_0_0)
+   = 0.5968225598335266
+ nn_constraints(6801): nn_h(1_2_4_0_0) - nn_z(1_2_4_0_0) = 0
+ nn_constraints(6803): nn_h(1_2_4_0_1) = 0
+ nn_constraints(6804): 1.351762294769287 nn_input(1_2_4_0)
+   - 1.564356684684753 nn_input(1_2_4_1)
+   + 1.87396502494812 nn_input(1_2_4_2)
+   + 0.00792835094034672 nn_input(1_2_4_3)
+   + 0.0244193524122238 nn_input(1_2_4_4) + nn_z(1_2_4_0_2)
+   = 0.6247196793556213
+ nn_constraints(6805): nn_h(1_2_4_0_2) - nn_z(1_2_4_0_2) = 0
+ nn_constraints(6806): - 0.3319619596004486 nn_input(1_2_4_0)
+   - 0.1592353284358978 nn_input(1_2_4_1)
+   - 2.436065435409546 nn_input(1_2_4_2)
+   - 0.0430573299527168 nn_input(1_2_4_3)
+   - 0.5131934881210327 nn_input(1_2_4_4) + nn_z(1_2_4_0_3)
+   = 1.060539960861206
+ nn_constraints(6807): nn_h(1_2_4_0_3) - nn_z(1_2_4_0_3) = 0
+ nn_constraints(6808): - 0.1464469134807587 nn_h(1_2_4_0_0)
+   - 0.4865100383758545 nn_h(1_2_4_0_1)
+   - 0.0393274389207363 nn_h(1_2_4_0_2)
+   - 0.7014690041542053 nn_h(1_2_4_0_3) + nn_z(1_2_4_1_0)
+   = 1.030465722084045
+ nn_constraints(6809): nn_h(1_2_4_1_0) - nn_z(1_2_4_1_0) = 0
+ nn_constraints(6810): - 1.653447151184082 nn_h(1_2_4_0_0)
+   - 0.3410652279853821 nn_h(1_2_4_0_1) - 1.904456615447998 nn_h(1_2_4_0_2)
+   + 1.372813582420349 nn_h(1_2_4_0_3) + nn_z(1_2_4_1_1)
+   = -1.248437404632568
+ nn_constraints(6811): - nn_h(1_2_4_1_1) + nn_z(1_2_4_1_1) <= 0
+ nn_constraints(6816): nn_h(1_2_4_1_2) = 0
+ nn_constraints(6818): nn_h(1_2_4_1_3) = 0
+ nn_constraints(6819): - 0.3019075393676758 nn_h(1_2_4_0_0)
+   + 0.1173794865608215 nn_h(1_2_4_0_1)
+   - 0.7630589604377747 nn_h(1_2_4_0_2)
+   - 0.8251081109046936 nn_h(1_2_4_0_3) + nn_z(1_2_4_1_4)
+   = 0.5531659722328186
+ nn_constraints(6820): nn_h(1_2_4_1_4) - nn_z(1_2_4_1_4) = 0
+ nn_constraints(6821): - 0.4146866202354431 nn_h(1_2_4_0_0)
+   + 0.3216730356216431 nn_h(1_2_4_0_1)
+   - 0.4842099547386169 nn_h(1_2_4_0_2)
+   - 0.8767856955528259 nn_h(1_2_4_0_3) + nn_z(1_2_4_1_5)
+   = 1.243438482284546
+ nn_constraints(6822): nn_h(1_2_4_1_5) - nn_z(1_2_4_1_5) = 0
+ nn_constraints(6824): nn_h(1_2_4_1_6) = 0
+ nn_constraints(6830): - 1.158638596534729 nn_h(1_2_4_1_0)
+   + 5.164978504180908 nn_h(1_2_4_1_1) + 9.338432312011719 nn_h(1_2_4_1_2)
+   + 8.783534049987793 nn_h(1_2_4_1_3) - 0.7196441292762756 nn_h(1_2_4_1_4)
+   - 0.8747192621231079 nn_h(1_2_4_1_5)
+   - 0.2507025301456451 nn_h(1_2_4_1_6)
+   - 0.0503386259078979 nn_h(1_2_4_1_7) + nn_output(1_2_4_0)
+   = 1.2142653465271
+ nn_constraints(9453): alpha(1_2_0_4) - nn_output(1_2_4_0) = 0
+ pmax_phys_transport_abs_neg(1_2_4): - P_max_block(1_2_0_4)
+   - P_max_phys_transport_abs_deviation(1_2_4) <= -40.89254346170733
+ pmax_phys_transport_abs_neg(1_2_5): - P_max_block(1_2_0_5)
+   - P_max_phys_transport_abs_deviation(1_2_5) <= -37.71892572202611
+ pmax_phys_transport_abs_neg(1_3_4): - P_max_block(1_3_0_4)
+   - P_max_phys_transport_abs_deviation(1_3_4) <= -37.67727350285783
+ pmax_phys_transport_abs_neg(1_3_5): - P_max_block(1_3_0_5)
+   - P_max_phys_transport_abs_deviation(1_3_5) <= -40.55066798279665
+ pmax_phys_transport_abs_neg(1_4_4): - P_max_block(1_4_0_4)
+   - P_max_phys_transport_abs_deviation(1_4_4) <= -42.15941699354894
+ stationarity_eq(1_1_1_4): alpha(1_1_1_4) - lambda_eq(1_4)
+   - mu_lower_eq(1_1_1_4) - mu_ramp_down_eq(1_1_4) + mu_ramp_down_eq(1_1_5)
+   + mu_ramp_up_eq(1_1_4) - mu_ramp_up_eq(1_1_5) + mu_upper_eq(1_1_1_4)
+   = 0
+ stationarity_eq(1_2_0_4): alpha(1_2_0_4) - lambda_eq(1_4)
+   - mu_lower_eq(1_2_0_4) - mu_ramp_down_eq(1_2_4) + mu_ramp_down_eq(1_2_5)
+   + mu_ramp_up_eq(1_2_4) - mu_ramp_up_eq(1_2_5) + mu_upper_eq(1_2_0_4)
+   = 0
+ wasserstein_ball(1): wasserstein_distance(1) <= 0.1
+ wasserstein_distance_definition(1): - D_transport_abs_deviation(1_0)
+   - D_transport_abs_deviation(1_1) - D_transport_abs_deviation(1_2)
+   - D_transport_abs_deviation(1_3) - D_transport_abs_deviation(1_4)
+   - D_transport_abs_deviation(1_5) - D_transport_abs_deviation(1_6)
+   - D_transport_abs_deviation(1_7)
+   - P_max_phys_transport_abs_deviation(1_0_0)
+   - P_max_phys_transport_abs_deviation(1_0_1)
+   - P_max_phys_transport_abs_deviation(1_0_2)
+   - P_max_phys_transport_abs_deviation(1_0_3)
+   - P_max_phys_transport_abs_deviation(1_0_4)
+   - P_max_phys_transport_abs_deviation(1_0_5)
+   - P_max_phys_transport_abs_deviation(1_0_6)
+   - P_max_phys_transport_abs_deviation(1_0_7)
+   - P_max_phys_transport_abs_deviation(1_1_0)
+   - P_max_phys_transport_abs_deviation(1_1_1)
+   - P_max_phys_transport_abs_deviation(1_1_2)
+   - P_max_phys_transport_abs_deviation(1_1_3)
+   - P_max_phys_transport_abs_deviation(1_1_4)
+   - P_max_phys_transport_abs_deviation(1_1_5)
+   - P_max_phys_transport_abs_deviation(1_1_6)
+   - P_max_phys_transport_abs_deviation(1_1_7)
+   - P_max_phys_transport_abs_deviation(1_2_0)
+   - P_max_phys_transport_abs_deviation(1_2_1)
+   - P_max_phys_transport_abs_deviation(1_2_2)
+   - P_max_phys_transport_abs_deviation(1_2_3)
+   - P_max_phys_transport_abs_deviation(1_2_4)
+   - P_max_phys_transport_abs_deviation(1_2_5)
+   - P_max_phys_transport_abs_deviation(1_2_6)
+   - P_max_phys_transport_abs_deviation(1_2_7)
+   - P_max_phys_transport_abs_deviation(1_3_0)
+   - P_max_phys_transport_abs_deviation(1_3_1)
+   - P_max_phys_transport_abs_deviation(1_3_2)
+   - P_max_phys_transport_abs_deviation(1_3_3)
+   - P_max_phys_transport_abs_deviation(1_3_4)
+   - P_max_phys_transport_abs_deviation(1_3_5)
+   - P_max_phys_transport_abs_deviation(1_3_6)
+   - P_max_phys_transport_abs_deviation(1_3_7)
+   - P_max_phys_transport_abs_deviation(1_4_0)
+   - P_max_phys_transport_abs_deviation(1_4_1)
+   - P_max_phys_transport_abs_deviation(1_4_2)
+   - P_max_phys_transport_abs_deviation(1_4_3)
+   - P_max_phys_transport_abs_deviation(1_4_4)
+   - P_max_phys_transport_abs_deviation(1_4_5)
+   - P_max_phys_transport_abs_deviation(1_4_6)
+   - P_max_phys_transport_abs_deviation(1_4_7) + wasserstein_distance(1)
+   = 0
+Bounds
+ D(1_4) free
+ D(1_5) free
+ D_transport_abs_deviation(1_4) free
+ P_max_block(1_0_0_5) free
+ P_max_block(1_0_1_5) free
+ P_max_block(1_1_0_5) free
+ P_max_block(1_1_1_5) free
+ P_max_block(1_2_0_4) free
+ P_max_block(1_2_0_5) free
+ P_max_block(1_3_0_4) free
+ P_max_block(1_3_0_5) free
+ P_max_block(1_4_0_4) free
+ alpha(1_1_1_4) >= 19.68196184364915
+ alpha(1_2_0_4) free
+ lambda_eq(1_4) free
+ -infinity <= mu_lower_eq(1_1_1_4) <= 9.756846572798199
+ -infinity <= mu_ramp_down_eq(1_1_4) <= 0
+ -infinity <= mu_ramp_down_eq(1_2_5) <= 0
+ -infinity <= mu_ramp_up_eq(1_1_5) <= 0
+ -infinity <= mu_ramp_up_eq(1_2_4) <= 0
+ -infinity <= mu_upper_eq(1_2_0_4) <= 0
+ nn_h(1_2_4_0_0) free
+ nn_h(1_2_4_0_1) free
+ nn_h(1_2_4_0_2) free
+ nn_h(1_2_4_0_3) free
+ nn_h(1_2_4_1_0) free
+ nn_h(1_2_4_1_1) free
+ nn_h(1_2_4_1_2) free
+ nn_h(1_2_4_1_3) free
+ nn_h(1_2_4_1_4) free
+ nn_h(1_2_4_1_5) free
+ nn_h(1_2_4_1_6) free
+ -infinity <= nn_h(1_2_4_1_7) <= 0.0210576554633925
+ nn_input(1_2_4_0) free
+ nn_input(1_2_4_1) free
+ nn_input(1_2_4_2) free
+ nn_input(1_2_4_3) free
+ nn_input(1_2_4_4) free
+ nn_output(1_2_4_0) free
+ nn_z(1_2_4_0_0) free
+ nn_z(1_2_4_0_2) free
+ nn_z(1_2_4_0_3) free
+ nn_z(1_2_4_1_0) free
+ nn_z(1_2_4_1_1) free
+ nn_z(1_2_4_1_4) free
+ nn_z(1_2_4_1_5) free
+ wasserstein_distance(1) free
+End

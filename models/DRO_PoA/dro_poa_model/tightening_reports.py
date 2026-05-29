@@ -440,7 +440,7 @@ class DROPoATighteningReports:
 
     def _prepare_lambda_bounds(self, lambda_name: str) -> dict[Any, tuple[float, float]]:
         return {
-            int(t): (-float(self.lambda_bound), float(self.lambda_bound))
+            int(t): (float(self.default_lambda_lower), float(self.default_lambda_upper))
             for t in range(self.num_time_steps)
         }
 

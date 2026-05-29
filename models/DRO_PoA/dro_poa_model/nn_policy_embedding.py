@@ -360,7 +360,7 @@ class DROPoAPolicyEmbedding:
                     f"{generator_name}."
                 )
             policy = self.nn_policies[generator_name]
-            for k in range(self.num_empirical_scenarios):
+            for k in m.scenarios:
                 for t in range(self.num_time_steps):
                     for f_idx, _ in enumerate(policy["feature_columns"]):
                         nn_input_indices.append((int(k), int(i), int(t), int(f_idx)))
@@ -372,7 +372,7 @@ class DROPoAPolicyEmbedding:
                     continue
                 output_dim = len(layer["bias"])
                 is_final_linear = layer_pos == len(layers) - 1
-                for k in range(self.num_empirical_scenarios):
+                for k in m.scenarios:
                     for t in range(self.num_time_steps):
                         for node in range(output_dim):
                             if is_final_linear:
@@ -443,7 +443,7 @@ class DROPoAPolicyEmbedding:
             policy = self.nn_policies[generator_name]
             relu_bounds = self.nn_relu_bounds[generator_name]
             feature_columns = policy["feature_columns"]
-            for k in range(self.num_empirical_scenarios):
+            for k in m.scenarios:
                 for t in range(self.num_time_steps):
                     for f_idx, feature_name in enumerate(feature_columns):
                         m.nn_constraints.add(

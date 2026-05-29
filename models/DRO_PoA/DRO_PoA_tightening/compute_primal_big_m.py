@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from math import sqrt
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,8 @@ from models.DRO_PoA.DRO_PoA_tightening.tightening_main import (
     DROPoATighteningMain,
 )
 
+_SUPPORT_SET_KAPPA = 1.96  # matches kappa in support_set.py _build_support_set_wind
+
 
 def _wind_physical_capacity_ub(optimizer: Any, physical_generator_idx: int, time_idx: int) -> float:
     i = int(physical_generator_idx)
@@ -16,9 +19,11 @@ def _wind_physical_capacity_ub(optimizer: Any, physical_generator_idx: int, time
     installed_capacity = float(optimizer.static_physical_capacity[i])
     if installed_capacity <= 0.0:
         return 0.0
+    rho_W = float(optimizer.wind_rho_fixed)
+    stationary_std_dev_W = float(optimizer.sigma_W_fixed) / sqrt(max(1e-12, 1.0 - rho_W ** 2))
     profile_upper = installed_capacity * (
         float(optimizer.mu_W_fixed) * float(optimizer.wind_shape[t])
-        + float(optimizer.sigma_W_fixed)
+        + _SUPPORT_SET_KAPPA * stationary_std_dev_W
     )
     return float(min(installed_capacity, max(0.0, profile_upper)))
 
