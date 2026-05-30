@@ -56,6 +56,8 @@ class DROPoATighteningMain:
         mccormick_bounds: Optional[dict[str, Any]] = None,
         ambiguity_kappa: float = 0.3,
         use_default_bounds: bool = False,
+        use_wasserstein_support_set: bool = False,
+        ar1_coverage: Optional[float] = None,
     ) -> None:
         self.poa = DRO_PoAOptimization(
             scenarios_df=scenarios_df,
@@ -76,6 +78,8 @@ class DROPoATighteningMain:
             mccormick_bounds=mccormick_bounds,
             ambiguity_kappa=ambiguity_kappa,
             use_default_bounds=use_default_bounds,
+            use_wasserstein_support_set=use_wasserstein_support_set,
+            ar1_coverage=ar1_coverage,
         )
         self.dro = self.poa
         self.dro_poa = self.poa
@@ -319,6 +323,8 @@ class DROPoATighteningMain:
                 "objective_mode": self.poa.objective_mode,
                 "mccormick_bounds": self.poa.mccormick_bounds,
                 "use_default_bounds": self.poa.use_default_bounds,
+                "use_wasserstein_support_set": self.poa.use_wasserstein_support_set,
+                "ar1_coverage": getattr(self.poa, "ar1_coverage", None),
             },
             "tightening_data": dict(self.tightening_data),
         }

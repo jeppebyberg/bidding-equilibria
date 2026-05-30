@@ -34,7 +34,7 @@ from models.helper import (
 )
 from models.DRO_PoA.dro_poa_model.nn_policy_embedding import DROPoAPolicyEmbedding
 from models.DRO_PoA.dro_poa_model.results import DROPoAResults
-from models.DRO_PoA.dro_poa_model.support_set import DROPoASupportSet
+from models.DRO_PoA.dro_poa_model.support_set import DROPoASupportSet, DROWassersteinSupportSet
 from models.DRO_PoA.dro_poa_model.tightening_reports import DROPoATighteningReports
 from models.synthetic_data_generation.economic_dispatch import EconomicDispatchModel
 
@@ -112,6 +112,8 @@ class DRO_PoAOptimization(
         default_PoA_upper: float = DEFAULT_PoA_UPPER,
         default_phi_lower: Optional[float] = None,
         default_phi_upper: Optional[float] = None,
+        use_wasserstein_support_set: bool = False,
+        ar1_coverage: Optional[float] = None,
     ):
         if float(eta) < 0.0:
             raise ValueError("eta must be nonnegative")
@@ -134,6 +136,13 @@ class DRO_PoAOptimization(
         self.epsilon = float(epsilon)
         self.ambiguity_kappa = float(ambiguity_kappa)
         self.reference_case = reference_case
+        self.use_wasserstein_support_set = bool(use_wasserstein_support_set)
+        if self.use_wasserstein_support_set:
+            self.ar1_coverage = float(
+                ar1_coverage
+                if ar1_coverage is not None
+                else DROWassersteinSupportSet.AR1_JOINT_COVERAGE
+            )
         self.use_default_bounds = bool(use_default_bounds)
         self.default_relu_bound = float(default_relu_bound)
         self.default_alpha_lower = float(default_alpha_lower)
@@ -746,6 +755,63 @@ class DRO_PoAOptimization(
             f"{self.num_physical_generators} physical-generator values or "
             f"{self.num_blocks} block values"
         )
+
+    def _build_support_set(self) -> None:
+        """Dispatch to the correct support-set mixin based on use_wasserstein_support_set."""
+        if getattr(self, "use_wasserstein_support_set", False):
+            DROWassersteinSupportSet._build_support_set(self)
+        else:
+            DROPoASupportSet._build_support_set(self)
+
+    def compute_deterministic_p_init(self) -> list[list[float]]:
+        """Compute p_init from the optimal single-step dispatch at the regime's
+        deterministic (mu_D, mu_W) operating point (no stochastic innovations).
+
+        This avoids the artificial ramp infeasibility that arises when p_init=50%
+        forces a minimum conventional dispatch that conflicts with the KKT
+        stationarity conditions under high wind availability.
+
+        Returns the same row for every scenario (the deterministic point is
+        regime-wide), shaped [num_empirical_scenarios][num_physical_generators].
+        """
+        T = self.num_time_steps
+        demand_shape = ScenarioManager._build_demand_shape(T)
+        wind_shape = ScenarioManager._build_wind_shape(T, self.peak_W_fixed)
+
+        # Deterministic values at t=0 (no residual innovations)
+        D0 = float(self.demand_D_ref * self.mu_D_fixed * demand_shape[0])
+        wind_ids = set(int(i) for i in self.wind_physical_generator_ids)
+
+        # Build (cost, available_capacity, physical_id) per block at t=0
+        blocks: list[tuple[float, float, int]] = []
+        for i, b in self.generator_block_pairs:
+            global_b = self.local_to_global_block[(int(i), int(b))]
+            cost = self.block_cost_vector[global_b]
+            if int(i) in wind_ids:
+                phys_cap_0 = (
+                    self.static_physical_capacity[int(i)]
+                    * self.mu_W_fixed
+                    * wind_shape[0]
+                )
+                n_blocks = len(self.local_blocks_by_generator[int(i)])
+                block_cap = phys_cap_0 / n_blocks
+            else:
+                block_cap = float(self.static_block_capacity[global_b])
+            blocks.append((cost, block_cap, int(i)))
+
+        # Merit-order dispatch: cheapest blocks first
+        blocks.sort(key=lambda x: x[0])
+        p_dispatch = {i: 0.0 for i in range(self.num_physical_generators)}
+        remaining = D0
+        for cost, cap, i in blocks:
+            dispatched = min(cap, remaining)
+            p_dispatch[i] += dispatched
+            remaining -= dispatched
+            if remaining <= 1e-9:
+                break
+
+        p_init_row = [p_dispatch[i] for i in range(self.num_physical_generators)]
+        return [list(p_init_row) for _ in range(self.num_empirical_scenarios)]
 
     def _initialize_big_m_placeholders(self) -> None:
         cap_indices = [
@@ -1428,9 +1494,9 @@ class DRO_PoAOptimization(
         # (bid-stack switches create arbitrarily steep gradients at finite eta).
         # At epsilon = 0 this forces W = 0, recovering the nominal PoA.
         def wasserstein_ball_rule(m, k):
-            return m.wasserstein_distance[k] <= self.epsilon
+            return m.wasserstein_distance[k] <= 0.0
 
-        m.wasserstein_ball = Constraint(m.scenarios, rule=wasserstein_ball_rule)
+        # m.wasserstein_ball = Constraint(m.scenarios, rule=wasserstein_ball_rule)
 
     # ------------------------------------------------------------------
     # Lower level equilibrium and optimality constraints

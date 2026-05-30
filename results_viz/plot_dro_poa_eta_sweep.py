@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import csv
 import json
+import warnings
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import matplotlib
 
@@ -338,6 +339,7 @@ def plot_poa_epsilon_frontier(
     output_dir: Path,
     regime_name: str,
     poa_metric: str = "inner_objective",
+    oos_mean_poa: float | None = None,
     show: bool = False,
 ) -> Path:
     """Plot worst-case PoA vs achieved Wasserstein distance, tangent slope = eta at each point.
@@ -347,6 +349,10 @@ def plot_poa_epsilon_frontier(
     the optimum, so the tangent line drawn at every point has slope exactly eta.
     Large eta pins the solution near epsilon=0 (steep tangent); eta->0 reaches the
     robust plateau (flat tangent).
+
+    If oos_mean_poa is provided (mean realized PoA from fresh out-of-sample draws),
+    a horizontal dashed line is added at that level and the calibrated ε* crossing
+    is marked with a star and a vertical dotted line.
     """
     grouped = _records_by_epsilon(records)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -396,6 +402,41 @@ def plot_poa_epsilon_frontier(
                 color=color,
             )
 
+    # OOS overlay
+    if oos_mean_poa is not None and np.isfinite(oos_mean_poa):
+        oos_color = "tab:orange"
+        ax.axhline(
+            oos_mean_poa,
+            color=oos_color,
+            linestyle="--",
+            linewidth=1.5,
+            zorder=4,
+            label=f"OOS mean PoA = {oos_mean_poa:.4g}",
+        )
+        try:
+            ce = calibrated_epsilon(records, oos_mean_poa, poa_metric)
+            if ce["in_range"] and ce["eps_star"] is not None:
+                eps_star = float(ce["eps_star"])
+                ax.axvline(
+                    eps_star,
+                    color=oos_color,
+                    linestyle=":",
+                    linewidth=1.5,
+                    zorder=4,
+                )
+                ax.plot(
+                    eps_star,
+                    oos_mean_poa,
+                    marker="*",
+                    markersize=13,
+                    color=oos_color,
+                    zorder=5,
+                    label=f"ε* = {eps_star:.4g}",
+                    linestyle="none",
+                )
+        except (ValueError, StopIteration):
+            pass  # frontier too sparse for calibration — overlay line still shown
+
     ax.set_xlabel("Achieved Wasserstein distance (ε)")
     ax.set_ylabel(METRIC_LABELS.get(poa_metric, poa_metric))
     ax.set_title(
@@ -415,6 +456,234 @@ def plot_poa_epsilon_frontier(
     return output_path
 
 
+class _FrontierPoint(NamedTuple):
+    eps: float  # average_wasserstein_distance — achieved Wasserstein radius ε(η)
+    poa: float  # worst-case expected PoA at this η
+    eta: float  # Lagrangian multiplier; by the envelope theorem η = dPoA/dε exactly
+
+
+def _extract_frontier(
+    records: list[dict[str, Any]],
+    poa_metric: str,
+) -> list[_FrontierPoint]:
+    """Return valid (eps, poa, eta) triples sorted by achieved ε ascending."""
+    points = []
+    for r in records:
+        eps = _as_optional_float(r.get("average_wasserstein_distance"))
+        poa = _as_optional_float(r.get(poa_metric))
+        eta = _as_optional_float(r.get("eta"))
+        if eps is not None and poa is not None and eta is not None:
+            points.append(_FrontierPoint(eps=eps, poa=poa, eta=eta))
+    return sorted(points, key=lambda p: p.eps)
+
+
+def _check_frontier_shape(points: list[_FrontierPoint], poa_metric: str) -> None:
+    """Warn if the frontier violates non-decreasing PoA or non-increasing η in ε.
+
+    The PoA-ε frontier should be non-decreasing (more robustness → higher worst-case PoA)
+    and concave (slopes η non-increasing as ε grows). Violations indicate a coarse or
+    non-monotone η grid. The data is not corrected — only a warning is emitted.
+    """
+    for i in range(1, len(points)):
+        prev, curr = points[i - 1], points[i]
+        if curr.poa < prev.poa - 1e-9:
+            warnings.warn(
+                f"Frontier non-monotone at ε={curr.eps:.6g}: {poa_metric} fell from "
+                f"{prev.poa:.6g} to {curr.poa:.6g}. Re-gridding η may resolve this.",
+                stacklevel=3,
+            )
+        if curr.eta > prev.eta + 1e-9:
+            warnings.warn(
+                f"Frontier non-concave at ε={curr.eps:.6g}: η rose from "
+                f"{prev.eta:.6g} to {curr.eta:.6g}. Re-gridding η may resolve this.",
+                stacklevel=3,
+            )
+
+
+def query_frontier(
+    records: list[dict[str, Any]],
+    eps_query: float,
+    poa_metric: str = "inner_objective",
+) -> dict[str, Any]:
+    """Query the PoA-ε frontier at a requested Wasserstein trust radius.
+
+    Treats the sweep output as a lookup table and linearly interpolates between
+    the two bracketing sweep points in ε. Emits warnings if the frontier violates
+    the expected monotonicity or concavity before interpolating.
+
+    Args:
+        records:    Sweep records as returned by load_eta_sweep_records().
+        eps_query:  Requested achieved Wasserstein radius ε to query.
+        poa_metric: PoA metric to use as the y-axis (key in METRIC_LABELS);
+                    defaults to "inner_objective".
+
+    Returns:
+        dict with keys:
+            eps_query  – the queried ε.
+            poa        – interpolated worst-case expected PoA, or None if out of range.
+            eta        – interpolated marginal cost dPoA/dε at eps_query, or None.
+            in_range   – True iff eps_query lies within [min ε, max ε] of the sweep.
+            message    – one-line interpretation string.
+    """
+    points = _extract_frontier(records, poa_metric)
+    if len(points) < 2:
+        raise ValueError(
+            f"Need at least 2 valid frontier points for '{poa_metric}'; got {len(points)}."
+        )
+    _check_frontier_shape(points, poa_metric)
+
+    eps_arr = np.array([p.eps for p in points])
+    poa_arr = np.array([p.poa for p in points])
+    # Source: stored η from sweep records. The envelope theorem guarantees η = dPoA/dε
+    # exactly at each optimally solved point, so we read η directly rather than
+    # finite-differencing the PoA values.
+    eta_arr = np.array([p.eta for p in points])
+
+    eps_min, eps_max = float(eps_arr[0]), float(eps_arr[-1])
+
+    if eps_query < eps_min:
+        return {
+            "eps_query": eps_query,
+            "poa": None,
+            "eta": None,
+            "in_range": False,
+            "message": (
+                f"ε={eps_query:.6g} is below the swept range [{eps_min:.6g}, {eps_max:.6g}] "
+                "(below the SAA point). Extrapolation is not supported."
+            ),
+        }
+    if eps_query > eps_max:
+        return {
+            "eps_query": eps_query,
+            "poa": None,
+            "eta": None,
+            "in_range": False,
+            "message": (
+                f"ε={eps_query:.6g} is above the swept range [{eps_min:.6g}, {eps_max:.6g}] "
+                "(beyond the robust plateau). Extrapolation is not supported."
+            ),
+        }
+
+    poa_interp = float(np.interp(eps_query, eps_arr, poa_arr))
+    eta_interp = float(np.interp(eps_query, eps_arr, eta_arr))
+
+    message = (
+        f"ε={eps_query:.6g} → plan for worst-case PoA {poa_interp:.4g}; "
+        f"marginal cost of robustness η={eta_interp:.4g} (PoA per unit ε)."
+    )
+    return {
+        "eps_query": eps_query,
+        "poa": poa_interp,
+        "eta": eta_interp,
+        "in_range": True,
+        "message": message,
+    }
+
+
+def calibrated_epsilon(
+    records: list[dict[str, Any]],
+    oos_mean_poa: float,
+    poa_metric: str = "inner_objective",
+) -> dict[str, Any]:
+    """Return the smallest ε* on the frontier whose worst-case PoA meets or exceeds oos_mean_poa.
+
+    Locates the calibration crossing: the smallest Wasserstein trust radius at
+    which the worst-case plan is at least as conservative as the realized OOS PoA.
+    Interpolates linearly between the two bracketing frontier points.
+
+    Use driver/run_oos_poa_evaluation.py to compute oos_mean_poa from fresh
+    scenarios before calling this function.
+
+    Args:
+        records:      Sweep records from load_eta_sweep_records().
+        oos_mean_poa: Mean OOS realized PoA ratio from fresh unconstrained draws.
+        poa_metric:   PoA metric key (same as query_frontier).
+
+    Returns:
+        dict with keys:
+            eps_star        – calibrated ε* (or None if OOS PoA exceeds frontier).
+            poa_at_eps_star – oos_mean_poa (the crossing value), or None.
+            in_range        – True if a valid crossing exists within the sweep.
+            message         – one-line interpretation string.
+    """
+    points = _extract_frontier(records, poa_metric)
+    if len(points) < 2:
+        raise ValueError(
+            f"Need at least 2 valid frontier points for '{poa_metric}'; got {len(points)}."
+        )
+    _check_frontier_shape(points, poa_metric)
+
+    poa_min = points[0].poa
+    poa_max = points[-1].poa
+    eps_min = points[0].eps
+    eps_max = points[-1].eps
+
+    # Even the tightest (SAA) point already covers oos_mean_poa
+    if oos_mean_poa <= poa_min:
+        return {
+            "eps_star": eps_min,
+            "poa_at_eps_star": poa_min,
+            "in_range": True,
+            "message": (
+                f"ε*={eps_min:.6g}: even the SAA point (ε={eps_min:.6g}, "
+                f"worst-case PoA={poa_min:.4g}) covers OOS PoA {oos_mean_poa:.4g}. "
+                "No additional robustness required."
+            ),
+        }
+
+    # OOS PoA exceeds the most robust frontier point — sweep range is insufficient
+    if oos_mean_poa > poa_max:
+        return {
+            "eps_star": None,
+            "poa_at_eps_star": None,
+            "in_range": False,
+            "message": (
+                f"OOS PoA {oos_mean_poa:.4g} exceeds the maximum frontier PoA "
+                f"{poa_max:.4g} at ε={eps_max:.6g}. "
+                "Extend the η sweep to larger ε to find a covering plan."
+            ),
+        }
+
+    # Find first frontier point whose PoA >= oos_mean_poa
+    cross_idx = next(i for i, p in enumerate(points) if p.poa >= oos_mean_poa)
+    lo, hi = points[cross_idx - 1], points[cross_idx]
+
+    # Linear interpolation in PoA space to find ε*
+    t = (oos_mean_poa - lo.poa) / (hi.poa - lo.poa)
+    eps_star = lo.eps + t * (hi.eps - lo.eps)
+
+    return {
+        "eps_star": eps_star,
+        "poa_at_eps_star": oos_mean_poa,
+        "in_range": True,
+        "message": (
+            f"ε*={eps_star:.6g}: smallest trust radius whose worst-case PoA "
+            f"covers the OOS realized PoA of {oos_mean_poa:.4g}."
+        ),
+    }
+
+
+def _demo_query_frontier(records: list[dict[str, Any]], regime_name: str) -> None:
+    """Print query_frontier results at the 25th, 50th, and 75th percentile of swept ε."""
+    eps_values = np.asarray(
+        [r["average_wasserstein_distance"] for r in records
+         if r.get("average_wasserstein_distance") is not None],
+        dtype=float,
+    )
+    if len(eps_values) < 2:
+        return
+    eps_min, eps_max = float(eps_values.min()), float(eps_values.max())
+    queries = [
+        eps_min + 0.25 * (eps_max - eps_min),
+        eps_min + 0.50 * (eps_max - eps_min),
+        eps_min + 0.75 * (eps_max - eps_min),
+    ]
+    print(f"\nFrontier queries for regime '{regime_name}' (inner_objective):")
+    for eps_q in queries:
+        result = query_frontier(records, eps_q)
+        print(f"  {result['message']}")
+
+
 def clean_output_dir(output_dir: Path) -> None:
     if not output_dir.exists():
         return
@@ -424,6 +693,28 @@ def clean_output_dir(output_dir: Path) -> None:
                 path.unlink()
 
 
+def _load_oos_poa_by_regime(
+    oos_results_path: Path,
+) -> dict[str, float]:
+    """Load oos_poa_results.json and return {regime_name: oos_mean_poa_ratio}."""
+    if not oos_results_path.exists():
+        return {}
+    with oos_results_path.open("r", encoding="utf-8") as f:
+        entries = json.load(f)
+    result: dict[str, float] = {}
+    for entry in entries if isinstance(entries, list) else []:
+        reg = entry.get("regime_name")
+        val = entry.get("oos_mean_poa_ratio")
+        if reg and val is not None:
+            try:
+                fval = float(val)
+            except (TypeError, ValueError):
+                continue
+            if np.isfinite(fval):
+                result[str(reg)] = fval
+    return result
+
+
 def main() -> None:
     # Edit these paths/settings directly when running this script.
     results_dir = DEFAULT_RESULTS_DIR
@@ -431,6 +722,13 @@ def main() -> None:
     output_root = DEFAULT_OUTPUT_ROOT
     include_archives = True
     show = False
+    # Path to OOS evaluation results (produced by driver/run_oos_poa_evaluation.py).
+    # Set to None to skip the OOS overlay entirely.
+    oos_results_path: Path | None = Path("results/oos_poa/oos_poa_results.json")
+
+    oos_poa_by_regime = _load_oos_poa_by_regime(oos_results_path) if oos_results_path else {}
+    if oos_poa_by_regime:
+        print(f"Loaded OOS PoA for regimes: {sorted(oos_poa_by_regime)}")
 
     regimes = discover_regime_names(results_dir) if regime is None else [regime]
     if not regimes:
@@ -461,11 +759,13 @@ def main() -> None:
             output_dir=output_dir,
             regime_name=regime_name,
             poa_metric="inner_objective",
+            oos_mean_poa=oos_poa_by_regime.get(regime_name),
             show=show,
         )
         print(f"Saved DRO PoA eta-sweep figure:   {figure_path}")
         print(f"Saved DRO PoA ε-frontier figure:  {frontier_path}")
         print(f"Saved DRO PoA eta-sweep summary:  {csv_path}")
+        _demo_query_frontier(records, regime_name)
 
 
 if __name__ == "__main__":

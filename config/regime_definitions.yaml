@@ -58,7 +58,7 @@ regime_sets:
 
     regimes:
       - name: normal
-        n_scenarios: 5
+        n_scenarios: 2000
         mu_D: 0.73
         rho_D: 0.85
         sigma_D: 0.012

@@ -140,6 +140,13 @@ class DROFullPipelineConfig:
     poa_parallel_workers: int = 1
     poa_solver_threads_per_worker: int | None = None
 
+    # Support-set selection.
+    # When True, DROWassersteinSupportSet replaces DROPoASupportSet in both the
+    # tightening and the final optimization.  Empirical scenarios are checked
+    # against the AR(1) tube and any violating trajectories are dropped with a
+    # warning before they enter the model.
+    use_wasserstein_support_set: bool = False
+
     # Step toggles.
     run_scenario_generation: bool = True
     run_heuristic_labels: bool = True
@@ -291,17 +298,142 @@ def load_or_generate_scenarios(
     return scenarios
 
 
+def validate_scenarios_within_wasserstein_support(
+    scenarios: dict[str, Any],
+    manager: ScenarioManager,
+    horizon: int,
+    ar1_coverage: float,
+) -> dict[str, Any]:
+    """Check each empirical scenario against the Wasserstein AR(1) tube.
+
+    Scenarios that violate the tube at any time step are dropped.  A warning is
+    emitted listing the rejected scenario indices and the fraction removed.
+    Returns a new scenarios dict with the filtered scenarios_df (costs and ramps
+    are unchanged — they are scenario-independent).
+
+    The tube bounds are:
+      |D[t] - rho_D*D[t-1] - D_ref*mu_D*(shape[t]-rho_D*shape[t-1])| <= kappa * D_ref * sigma_D
+    at t >= 1, and |D[0] - D_ref*mu_D*shape[0]| <= kappa * D_ref * sigma_D at t=0.
+    Analogue for each wind generator's total capacity.
+    """
+    import ast
+    import warnings as _warnings
+    from models.DRO_PoA.dro_poa_model.support_set import _ar1_kappa
+
+    kappa = _ar1_kappa(horizon, ar1_coverage)
+    scenarios_df = scenarios["scenarios_df"].copy().reset_index(drop=True)
+    D_ref = float(manager.base_case["demand"])
+    wind_generators = [g for g in manager.physical_generators if bool(g["is_wind"])]
+
+    def _parse(v: Any) -> list[float]:
+        if isinstance(v, (list, np.ndarray)):
+            return [float(x) for x in v]
+        return [float(x) for x in ast.literal_eval(str(v))]
+
+    rejected: list[int] = []
+    for s in range(len(scenarios_df)):
+        row = scenarios_df.iloc[s]
+        mu_D = float(row["mu_D"])
+        sigma_D = float(row["sigma_D"])
+        rho_D = float(row["rho_D"])
+        mu_W = float(row["mu_W"])
+        sigma_W = float(row["sigma_W"])
+        rho_W = float(row["rho_W"])
+        peak_W = float(row["peak_W"])
+        demand_shape = ScenarioManager._build_demand_shape(horizon)
+        wind_shape = ScenarioManager._build_wind_shape(horizon, peak_W)
+        thr_D = kappa * D_ref * sigma_D
+
+        D = np.array(_parse(row["demand_profile"]))
+        # t=0 band (non-stationary cold start)
+        if abs(D[0] - D_ref * mu_D * demand_shape[0]) > thr_D:
+            rejected.append(s)
+            continue
+        # t>=1 AR(1) tube
+        if horizon > 1:
+            ar1_ref = D_ref * mu_D * (demand_shape[1:] - rho_D * demand_shape[:-1])
+            innov_D = D[1:] - rho_D * D[:-1] - ar1_ref
+            if np.any(np.abs(innov_D) > thr_D):
+                rejected.append(s)
+                continue
+
+        # Wind generators
+        violated = False
+        for g in wind_generators:
+            name = g["physical_name"]
+            P_W_max = float(g["pmax"])
+            thr_W = kappa * P_W_max * sigma_W
+            blocks = [b for b in manager.blocks if b["physical_name"] == name and bool(b["is_wind"])]
+            P = np.zeros(horizon, dtype=float)
+            for b in blocks:
+                col = f"{b['block_name']}_profile"
+                if col in scenarios_df.columns:
+                    P += np.array(_parse(row[col]))
+            # t=0
+            if abs(P[0] - P_W_max * mu_W * wind_shape[0]) > thr_W:
+                violated = True
+                break
+            # t>=1
+            if horizon > 1:
+                ar1_ref_W = P_W_max * mu_W * (wind_shape[1:] - rho_W * wind_shape[:-1])
+                innov_W = P[1:] - rho_W * P[:-1] - ar1_ref_W
+                if np.any(np.abs(innov_W) > thr_W):
+                    violated = True
+                    break
+        if violated:
+            rejected.append(s)
+
+    if rejected:
+        total = len(scenarios_df)
+        pct = 100.0 * len(rejected) / total
+        _warnings.warn(
+            f"Wasserstein support set: {len(rejected)}/{total} empirical scenarios "
+            f"({pct:.1f}%) violate the AR(1) tube (coverage={ar1_coverage}, "
+            f"kappa={kappa:.4f}) and have been dropped.  Regime distribution may "
+            f"be wider than the tube — consider raising ar1_coverage or inspecting "
+            f"the rejected indices: {rejected}.",
+            stacklevel=2,
+        )
+        valid_idx = [i for i in range(total) if i not in set(rejected)]
+        if not valid_idx:
+            raise RuntimeError(
+                "All empirical scenarios were rejected by the Wasserstein AR(1) tube. "
+                "The support set is too tight for the generated scenarios.  "
+                "Increase ar1_coverage or disable use_wasserstein_support_set."
+            )
+        filtered_df = scenarios_df.iloc[valid_idx].reset_index(drop=True)
+    else:
+        filtered_df = scenarios_df
+
+    return {**scenarios, "scenarios_df": filtered_df}
+
+
 def load_dro_scenario_data(config: DROFullPipelineConfig) -> dict[str, Any]:
     if not config.runtime_config_path.exists():
         write_runtime_regime_config(config)
     scenario_manager = ScenarioManager(config.case)
     apply_time_steps_override(scenario_manager, config.horizon)
+    # When using the Wasserstein support set the tube is enforced by the
+    # optimizer constraints, not by rejection during generation, so we generate
+    # unconstrained AR(1) draws and then filter here.
+    enforce_support_set = not config.use_wasserstein_support_set
     scenarios = scenario_manager.create_scenario_set_from_regimes(
         regime_config_path=str(config.runtime_config_path),
         regime_set=config.poa_regime_set,
         seed=config.poa_seed,
-        enforce_support_set=True,
+        enforce_support_set=enforce_support_set,
     )
+    if config.use_wasserstein_support_set:
+        from models.DRO_PoA.dro_poa_model.support_set import DROWassersteinSupportSet
+        ar1_coverage = float(
+            getattr(config, "ar1_coverage", DROWassersteinSupportSet.AR1_JOINT_COVERAGE)
+        )
+        scenarios = validate_scenarios_within_wasserstein_support(
+            scenarios=scenarios,
+            manager=scenario_manager,
+            horizon=config.horizon,
+            ar1_coverage=ar1_coverage,
+        )
     if config.run_scenario_generation:
         config.poa_scenario_dir.mkdir(parents=True, exist_ok=True)
         scenarios["scenarios_df"].to_csv(
@@ -328,17 +460,51 @@ def resolve_dro_regime_names(
     return sorted(scenarios_df["regime"].dropna().astype(str).unique().tolist())
 
 
+def compute_regime_p_init(
+    config: DROFullPipelineConfig,
+    scenarios: dict[str, Any],
+    regime_name: str,
+) -> list[list[float]]:
+    """Solve the single-step optimal dispatch at the regime's deterministic
+    operating point and return it as p_init for every empirical scenario.
+
+    Creating a minimal (no-NN, difference-mode) optimizer is the simplest way
+    to reuse the block-structure and regime-parameter setup already in
+    DRO_PoAOptimization without duplicating that logic here.
+    """
+    _tmp = DRO_PoAOptimization(
+        scenarios_df=scenarios["scenarios_df"],
+        costs_df=scenarios["costs_df"],
+        ramps_df=scenarios["ramps_df"],
+        p_init=None,
+        num_time_steps=config.horizon,
+        regime_config_path=str(config.runtime_config_path),
+        regime_set=config.poa_regime_set,
+        regime_name=regime_name,
+        eta=0.0,
+        epsilon=0.0,
+        nn_model_dir=None,
+        nn_normalization_stats_path=None,
+        nn_policy_generators=[],
+        reference_case=config.case,
+        objective_mode="difference",
+        ambiguity_kappa=config.ambiguity_kappa,
+    )
+    return _tmp.compute_deterministic_p_init()
+
+
 def build_dro_tightening(
     config: DROFullPipelineConfig,
     scenarios: dict[str, Any],
     regime_name: str,
+    p_init: list[list[float]] | None = None,
 ) -> DROPoATighteningMain:
     objective_mode = str(config.dro_objective_mode).strip().lower()
     return DROPoATighteningMain(
         scenarios_df=scenarios["scenarios_df"],
         costs_df=scenarios["costs_df"],
         ramps_df=scenarios["ramps_df"],
-        p_init=None,
+        p_init=p_init,
         num_time_steps=config.horizon,
         regime_config_path=str(config.runtime_config_path),
         regime_set=config.poa_regime_set,
@@ -357,8 +523,8 @@ def build_dro_tightening(
         mccormick_bounds=build_dro_tightening_mccormick_bounds(config),
         ambiguity_kappa=config.ambiguity_kappa,
         use_default_bounds=(objective_mode != "difference"),
+        use_wasserstein_support_set=config.use_wasserstein_support_set,
     )
-
 
 def run_dro_tightening_for_regime(
     config: DROFullPipelineConfig,
@@ -372,7 +538,8 @@ def run_dro_tightening_for_regime(
     print_tightening_plan(config, regime_name, flags, previous_paths, output_paths)
 
     start = time.perf_counter()
-    tightening = build_dro_tightening(config, scenarios, regime_name)
+    p_init = compute_regime_p_init(config, scenarios, regime_name)
+    tightening = build_dro_tightening(config, scenarios, regime_name, p_init=p_init)
     final_report_path = tightening.run_all(
         run_primal_big_m=bool(flags["primal_big_m"]),
         run_relu_bounds=bool(flags["relu_bounds"]),
@@ -394,7 +561,6 @@ def run_dro_tightening_for_regime(
     print(f"  Regime: {regime_name}")
     print(f"  Runtime: {elapsed:.2f} seconds")
     return final_report_path
-
 
 def print_tightening_plan(
     config: DROFullPipelineConfig,
@@ -430,7 +596,6 @@ def print_tightening_plan(
         print(f"    {label:<17} {action:<5} {path_label}: {path}")
     print(f"  Final report: {output_paths['final']}")
     print("  Note: this support-tightening report is reused for every eta in the regime.")
-
 
 def _print_wasserstein_floor_diagnostic(
     config: DROFullPipelineConfig,
@@ -483,6 +648,7 @@ def run_dro_eta_sweep(
                 f"regime '{regime_name}': {tightening_report_path}"
             )
         _print_wasserstein_floor_diagnostic(config, scenarios, regime_name)
+        p_init = compute_regime_p_init(config, scenarios, regime_name)
         for eta in config.etas:
             result_path = run_final_dro_for_eta(
                 config=config,
@@ -490,6 +656,7 @@ def run_dro_eta_sweep(
                 regime_name=regime_name,
                 eta=float(eta),
                 tightening_report_path=tightening_report_path,
+                p_init=p_init,
             )
             summaries.append(load_result_summary(result_path))
     return summaries
@@ -516,7 +683,6 @@ def archive_existing_dro_result_folders(
         print(f"\nArchived existing DRO results for regime '{regime_name}': {archive_dir}")
     return archived_paths
 
-
 def _available_archive_path(path: Path) -> Path:
     if not path.exists():
         return path
@@ -527,15 +693,15 @@ def _available_archive_path(path: Path) -> Path:
             return candidate
         suffix += 1
 
-
 def run_final_dro_for_eta(
     config: DROFullPipelineConfig,
     scenarios: dict[str, Any],
     regime_name: str,
     eta: float,
     tightening_report_path: Path,
+    p_init: list[list[float]] | None = None,
 ) -> Path:
-    optimizer = build_dro_optimizer(config, scenarios, regime_name, eta)
+    optimizer = build_dro_optimizer(config, scenarios, regime_name, eta, p_init=p_init)
     result_path = dro_result_path(config, regime_name, eta)
 
     start = time.perf_counter()
@@ -560,7 +726,6 @@ def run_final_dro_for_eta(
     print(f"  Applied dual upper bounds: {applied_stats['dual_upper_bounds']}")
     print(f"  Runtime: {elapsed:.2f} seconds")
     return output_path
-
 
 def build_dro_mccormick_bounds(
     config: DROFullPipelineConfig,
@@ -605,13 +770,11 @@ def build_dro_mccormick_bounds(
             mccormick_bounds["num_pieces"] = int(config.dro_mccormick_num_pieces)
     return mccormick_bounds
 
-
 def default_dro_mccormick_c_opt_bounds() -> tuple[float, float]:
     return (
         float(DRO_PoAOptimization.DEFAULT_LOOSE_C_OPT_LOWER),
         float(DRO_PoAOptimization.DEFAULT_LOOSE_C_OPT_UPPER),
     )
-
 
 def build_dro_tightening_mccormick_bounds(
     config: DROFullPipelineConfig,
@@ -630,7 +793,6 @@ def build_dro_tightening_mccormick_bounds(
     if mode == "piecewise_mccormick":
         mccormick_bounds["num_pieces"] = int(config.dro_mccormick_num_pieces)
     return mccormick_bounds
-
 
 def load_dro_optimal_cost_bounds(
     config: DROFullPipelineConfig,
@@ -663,19 +825,19 @@ def load_dro_optimal_cost_bounds(
             return (float(lower), float(upper))
     return None
 
-
 def build_dro_optimizer(
     config: DROFullPipelineConfig,
     scenarios: dict[str, Any],
     regime_name: str,
     eta: float,
+    p_init: list[list[float]] | None = None,
 ) -> DRO_PoAOptimization:
     mccormick_bounds = build_dro_mccormick_bounds(config, regime_name)
-    return DRO_PoAOptimization(
+    optimizer = DRO_PoAOptimization(
         scenarios_df=scenarios["scenarios_df"],
         costs_df=scenarios["costs_df"],
         ramps_df=scenarios["ramps_df"],
-        p_init=None,
+        p_init=p_init,
         num_time_steps=config.horizon,
         regime_config_path=str(config.runtime_config_path),
         regime_set=config.poa_regime_set,
@@ -693,7 +855,9 @@ def build_dro_optimizer(
         objective_mode=config.dro_objective_mode,
         mccormick_bounds=mccormick_bounds,
         ambiguity_kappa=config.ambiguity_kappa,
+        use_wasserstein_support_set=config.use_wasserstein_support_set,
     )
+    return optimizer
 
 
 def resolved_stage_paths(
@@ -823,23 +987,24 @@ if __name__ == "__main__":
         horizon=8,
         nn_policy_generators=["G1", "W2", "W3"],
 
-        # dro_regime_names=None,        
-        dro_regime_names=["normal"],
+        dro_regime_names=None,        
+        # dro_regime_names=["normal"],
 
-        # etas=[0.0] + np.logspace(-3, 0.1, 10).tolist(),
-        etas=[10000.0],
+        etas=[0.0] + np.logspace(-3, 0.5, 25).tolist(),
+        # etas=[10000.0],
         dro_wasserstein_epsilon=2000,
         ambiguity_kappa=0.3,
         dro_tightening_eta=0.0,
+        use_wasserstein_support_set = True,
 
         # Toggle DRO objective here:
         #   "difference"
         #   "mccormick"
         #   "piecewise_mccormick"
         dro_objective_mode="piecewise_mccormick",
-        dro_mccormick_PoA_bounds=(1.0, 10.0),
+        dro_mccormick_PoA_bounds=(1.0, 15.0),
         # dro_mccormick_c_opt_bounds=(0.01, 20000.0),
-        dro_mccormick_num_pieces=100,
+        dro_mccormick_num_pieces=50,
 
         solver_name="gurobi",
         preprocessing_time_limit=200,
@@ -848,11 +1013,11 @@ if __name__ == "__main__":
         poa_solver_threads_per_worker=None,
 
         # Step toggles. Turn expensive stages off when reusing previous outputs.
-        run_scenario_generation=False,
+        run_scenario_generation=True,
         run_heuristic_labels=False,
         run_feature_building=False,
         run_nn_training=False,
-        run_dro_tightening=True,
+        run_dro_tightening=False,
         tightening_flags={
             "primal_big_m": True,
             "relu_bounds": True,
