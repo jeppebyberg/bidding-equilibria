@@ -50,7 +50,7 @@
         0.9455483839677397
       ]
     },
-    "runtime_seconds": 29.702730099998007
+    "runtime_seconds": 33.60511420000694
   },
   "tight_big_m": {
     "mu_lower_eq": {
@@ -63,14 +63,6 @@
         "cap_limit_reason": null
       },
       "4,0,0": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "4,0,1": {
         "tight_big_m": 0.0,
         "fixed_by_slack": true,
         "termination_condition": "fixed_binary_zero",
@@ -119,7 +111,7 @@
         "cap_limit_reason": null
       },
       "0,0,1": {
-        "tight_big_m": 29.99000000022352,
+        "tight_big_m": 29.99,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -127,7 +119,7 @@
         "cap_limit_reason": null
       },
       "0,0,2": {
-        "tight_big_m": 29.7491035759449,
+        "tight_big_m": 29.749103582478767,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -140,10 +132,10 @@
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_eq[1] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_eq[2] reached the default upper lambda bound"
       },
       "0,0,4": {
-        "tight_big_m": 29.990000000223517,
+        "tight_big_m": 29.990000000223514,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -159,15 +151,15 @@
         "cap_limit_reason": null
       },
       "0,0,6": {
-        "tight_big_m": 29.990000000017528,
+        "tight_big_m": 30.0,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
+        "certified": false,
+        "cap_limited": true,
+        "cap_limit_reason": "lambda_eq[6] reached the default lower lambda bound"
       },
       "0,0,7": {
-        "tight_big_m": 29.990000000160823,
+        "tight_big_m": 29.990000000223517,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -183,7 +175,7 @@
         "cap_limit_reason": null
       },
       "0,1,1": {
-        "tight_big_m": 39.990000000223525,
+        "tight_big_m": 39.99,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -191,7 +183,7 @@
         "cap_limit_reason": null
       },
       "0,1,2": {
-        "tight_big_m": 39.749103575944915,
+        "tight_big_m": 39.99000000022352,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -199,7 +191,7 @@
         "cap_limit_reason": null
       },
       "0,1,3": {
-        "tight_big_m": 39.99000000394882,
+        "tight_big_m": 39.99000000022352,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -223,7 +215,7 @@
         "cap_limit_reason": null
       },
       "0,1,6": {
-        "tight_big_m": 39.99000000325964,
+        "tight_big_m": 39.99,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -231,7 +223,7 @@
         "cap_limit_reason": null
       },
       "0,1,7": {
-        "tight_big_m": 39.989992775893725,
+        "tight_big_m": 39.99000000022352,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -239,7 +231,7 @@
         "cap_limit_reason": null
       },
       "1,0,0": {
-        "tight_big_m": 42.06868041660357,
+        "tight_big_m": 42.06789404242416,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -247,7 +239,7 @@
         "cap_limit_reason": null
       },
       "1,0,1": {
-        "tight_big_m": 62.668600393380586,
+        "tight_big_m": 62.6786002175541,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -255,7 +247,7 @@
         "cap_limit_reason": null
       },
       "1,0,2": {
-        "tight_big_m": 67.92396184716485,
+        "tight_big_m": 67.92396184716483,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -263,7 +255,7 @@
         "cap_limit_reason": null
       },
       "1,0,3": {
-        "tight_big_m": 64.06164855166332,
+        "tight_big_m": 64.06164851533082,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -271,7 +263,7 @@
         "cap_limit_reason": null
       },
       "1,0,4": {
-        "tight_big_m": 67.58047130915358,
+        "tight_big_m": 67.5804733071127,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -279,7 +271,7 @@
         "cap_limit_reason": null
       },
       "1,0,5": {
-        "tight_big_m": 65.62070044083417,
+        "tight_big_m": 65.62070044397842,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -287,12 +279,12 @@
         "cap_limit_reason": null
       },
       "1,0,6": {
-        "tight_big_m": 59.17817310367819,
+        "tight_big_m": 59.18817310369083,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
+        "certified": false,
+        "cap_limited": true,
+        "cap_limit_reason": "lambda_eq[6] reached the default lower lambda bound"
       },
       "1,0,7": {
         "tight_big_m": 58.4418758277452,
@@ -303,7 +295,7 @@
         "cap_limit_reason": null
       },
       "1,1,0": {
-        "tight_big_m": 37.438956143034474,
+        "tight_big_m": 37.437983492802886,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -311,12 +303,12 @@
         "cap_limit_reason": null
       },
       "1,1,1": {
-        "tight_big_m": 45.93434253053955,
+        "tight_big_m": 45.944344327358245,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
+        "certified": false,
+        "cap_limited": true,
+        "cap_limit_reason": "lambda_eq[1] reached the default lower lambda bound"
       },
       "1,1,2": {
         "tight_big_m": 48.75047023895809,
@@ -327,7 +319,7 @@
         "cap_limit_reason": null
       },
       "1,1,3": {
-        "tight_big_m": 46.707523324469946,
+        "tight_big_m": 46.70752209390885,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -335,7 +327,7 @@
         "cap_limit_reason": null
       },
       "1,1,4": {
-        "tight_big_m": 48.609289013172734,
+        "tight_big_m": 48.60928975231946,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -343,7 +335,7 @@
         "cap_limit_reason": null
       },
       "1,1,5": {
-        "tight_big_m": 47.800631798771946,
+        "tight_big_m": 47.80063249723128,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -351,7 +343,7 @@
         "cap_limit_reason": null
       },
       "1,1,6": {
-        "tight_big_m": 44.428242203146034,
+        "tight_big_m": 44.42824220262458,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -359,7 +351,7 @@
         "cap_limit_reason": null
       },
       "1,1,7": {
-        "tight_big_m": 44.01513897734943,
+        "tight_big_m": 44.01513897738485,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -367,7 +359,7 @@
         "cap_limit_reason": null
       },
       "2,0,0": {
-        "tight_big_m": 10.24564974976764,
+        "tight_big_m": 10.485315900295973,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -375,15 +367,15 @@
         "cap_limit_reason": null
       },
       "2,0,1": {
-        "tight_big_m": 10.383122044884882,
+        "tight_big_m": 10.381891770940664,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
+        "certified": false,
+        "cap_limited": true,
+        "cap_limit_reason": "lambda_eq[0] reached the default upper lambda bound"
       },
       "2,0,2": {
-        "tight_big_m": 10.18040587737273,
+        "tight_big_m": 10.179177209402747,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -391,23 +383,23 @@
         "cap_limit_reason": null
       },
       "2,0,3": {
-        "tight_big_m": 10.6453293412063,
-        "fixed_by_slack": false,
-        "termination_condition": "optimal",
-        "certified": false,
-        "cap_limited": true,
-        "cap_limit_reason": "lambda_eq[4] reached the default upper lambda bound"
-      },
-      "2,0,4": {
-        "tight_big_m": 10.752701732793392,
+        "tight_big_m": 10.884995491825975,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
         "cap_limited": false,
         "cap_limit_reason": null
       },
+      "2,0,4": {
+        "tight_big_m": 10.751471458849112,
+        "fixed_by_slack": false,
+        "termination_condition": "optimal",
+        "certified": false,
+        "cap_limited": true,
+        "cap_limit_reason": "lambda_eq[3] reached the default upper lambda bound"
+      },
       "2,0,5": {
-        "tight_big_m": 10.566352796770628,
+        "tight_big_m": 10.56635279677054,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -415,12 +407,12 @@
         "cap_limit_reason": null
       },
       "2,0,6": {
-        "tight_big_m": 10.358590404208607,
+        "tight_big_m": 10.358590404208574,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
-        "certified": false,
-        "cap_limited": true,
-        "cap_limit_reason": "lambda_eq[5] reached the default upper lambda bound"
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
       },
       "2,0,7": {
         "tight_big_m": 10.472647545626387,
@@ -431,7 +423,7 @@
         "cap_limit_reason": null
       },
       "3,0,0": {
-        "tight_big_m": 0.5220735059119761,
+        "tight_big_m": 0.5220735056960663,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -439,7 +431,7 @@
         "cap_limit_reason": null
       },
       "3,0,1": {
-        "tight_big_m": 0.4989807144846221,
+        "tight_big_m": 0.49898071426110885,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -447,7 +439,7 @@
         "cap_limit_reason": null
       },
       "3,0,2": {
-        "tight_big_m": 0.020377020727355144,
+        "tight_big_m": 0.49036290938965976,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -471,7 +463,7 @@
         "cap_limit_reason": null
       },
       "3,0,5": {
-        "tight_big_m": 0.5477096706608344,
+        "tight_big_m": 0.547709670660834,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -482,25 +474,33 @@
         "tight_big_m": 0.5653984639793634,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "3,0,7": {
+        "tight_big_m": 0.5378075469052419,
+        "fixed_by_slack": false,
+        "termination_condition": "optimal",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "4,0,1": {
+        "tight_big_m": 0.01000000024214387,
+        "fixed_by_slack": false,
+        "termination_condition": "optimal",
+        "certified": false,
+        "cap_limited": true,
+        "cap_limit_reason": "lambda_eq[1] reached the default lower lambda bound"
+      },
+      "4,0,6": {
+        "tight_big_m": 0.01000000024214387,
+        "fixed_by_slack": false,
+        "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
         "cap_limit_reason": "lambda_eq[6] reached the default lower lambda bound"
-      },
-      "3,0,7": {
-        "tight_big_m": 0.5378075466396153,
-        "fixed_by_slack": false,
-        "termination_condition": "optimal",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "4,0,6": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": false,
-        "termination_condition": "optimal",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
       }
     },
     "mu_upper_eq": {
@@ -529,7 +529,7 @@
         "cap_limit_reason": "lambda_eq[1] reached the default upper lambda bound"
       },
       "0,0,2": {
-        "tight_big_m": 20.0,
+        "tight_big_m": 20.00000000372529,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -545,7 +545,7 @@
         "cap_limit_reason": "lambda_eq[3] reached the default upper lambda bound"
       },
       "0,0,4": {
-        "tight_big_m": 20.000000003725294,
+        "tight_big_m": 20.00000000372529,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -558,7 +558,7 @@
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_eq[5] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_eq[1] reached the default upper lambda bound"
       },
       "0,0,6": {
         "tight_big_m": 20.000000003725294,
@@ -574,10 +574,10 @@
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_eq[7] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_eq[3] reached the default upper lambda bound"
       },
       "0,1,1": {
-        "tight_big_m": 10.0,
+        "tight_big_m": 10.000000006519262,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -598,10 +598,10 @@
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_eq[3] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_eq[2] reached the default upper lambda bound"
       },
       "0,1,4": {
-        "tight_big_m": 10.000000002095534,
+        "tight_big_m": 10.00000000209552,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -609,7 +609,7 @@
         "cap_limit_reason": "lambda_eq[4] reached the default upper lambda bound"
       },
       "0,1,5": {
-        "tight_big_m": 10.000000004423796,
+        "tight_big_m": 10.000000003259693,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -617,7 +617,7 @@
         "cap_limit_reason": "lambda_eq[5] reached the default upper lambda bound"
       },
       "0,1,6": {
-        "tight_big_m": 10.0,
+        "tight_big_m": 10.00000000477303,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -625,7 +625,7 @@
         "cap_limit_reason": "lambda_eq[6] reached the default upper lambda bound"
       },
       "0,1,7": {
-        "tight_big_m": 10.00000000209548,
+        "tight_big_m": 10.0,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -633,15 +633,15 @@
         "cap_limit_reason": "lambda_eq[7] reached the default upper lambda bound"
       },
       "1,0,0": {
-        "tight_big_m": 37.438956148489005,
+        "tight_big_m": 37.43798350379804,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_eq[1] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_eq[2] reached the default upper lambda bound"
       },
       "1,0,1": {
-        "tight_big_m": 42.52605364257112,
+        "tight_big_m": 42.525080992247126,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -649,7 +649,7 @@
         "cap_limit_reason": "lambda_eq[1] reached the default upper lambda bound"
       },
       "1,0,2": {
-        "tight_big_m": 41.43824573408347,
+        "tight_big_m": 41.43727308465169,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -657,23 +657,23 @@
         "cap_limit_reason": "lambda_eq[2] reached the default upper lambda bound"
       },
       "1,0,3": {
-        "tight_big_m": 43.482002428383566,
+        "tight_big_m": 43.4809969521973,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_eq[3] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_eq[2] reached the default upper lambda bound"
       },
       "1,0,4": {
-        "tight_big_m": 43.8543126611036,
+        "tight_big_m": 43.85332620517077,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
-        "certified": false,
-        "cap_limited": true,
-        "cap_limit_reason": "lambda_eq[4] reached the default upper lambda bound"
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
       },
       "1,0,5": {
-        "tight_big_m": 44.20994322578228,
+        "tight_big_m": 44.20897057442927,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -681,7 +681,7 @@
         "cap_limit_reason": "lambda_eq[5] reached the default upper lambda bound"
       },
       "1,0,6": {
-        "tight_big_m": 44.54675056538715,
+        "tight_big_m": 44.545777915627696,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -689,7 +689,7 @@
         "cap_limit_reason": "lambda_eq[6] reached the default upper lambda bound"
       },
       "1,0,7": {
-        "tight_big_m": 43.66561376047636,
+        "tight_big_m": 43.66561376047031,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -697,39 +697,39 @@
         "cap_limit_reason": "lambda_eq[7] reached the default upper lambda bound"
       },
       "1,1,0": {
-        "tight_big_m": 42.06868041660357,
-        "fixed_by_slack": false,
-        "termination_condition": "optimal",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "1,1,1": {
-        "tight_big_m": 44.992253016214825,
+        "tight_big_m": 42.0678940425264,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
         "cap_limit_reason": "lambda_eq[1] reached the default upper lambda bound"
       },
-      "1,1,2": {
-        "tight_big_m": 49.60286049677409,
+      "1,1,1": {
+        "tight_big_m": 44.99146664512262,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
         "cap_limited": false,
         "cap_limit_reason": null
+      },
+      "1,1,2": {
+        "tight_big_m": 49.60207412275486,
+        "fixed_by_slack": false,
+        "termination_condition": "optimal",
+        "certified": false,
+        "cap_limited": true,
+        "cap_limit_reason": "lambda_eq[2] reached the default upper lambda bound"
       },
       "1,1,3": {
-        "tight_big_m": 47.16269332799129,
+        "tight_big_m": 47.16190695389895,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
+        "certified": false,
+        "cap_limited": true,
+        "cap_limit_reason": "lambda_eq[3] reached the default upper lambda bound"
       },
       "1,1,4": {
-        "tight_big_m": 50.98441762094271,
+        "tight_big_m": 50.98363124686554,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -737,7 +737,7 @@
         "cap_limit_reason": null
       },
       "1,1,5": {
-        "tight_big_m": 49.31501140119508,
+        "tight_big_m": 49.314225027143976,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -745,15 +745,15 @@
         "cap_limit_reason": null
       },
       "1,1,6": {
-        "tight_big_m": 43.14734126572394,
+        "tight_big_m": 43.14655489571249,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_eq[6] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_eq[7] reached the default upper lambda bound"
       },
       "1,1,7": {
-        "tight_big_m": 41.69369273364828,
+        "tight_big_m": 41.69369273852409,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -769,7 +769,7 @@
         "cap_limit_reason": "lambda_eq[0] reached the default upper lambda bound"
       },
       "2,0,1": {
-        "tight_big_m": 52.496076399554624,
+        "tight_big_m": 52.496076399554546,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -777,7 +777,7 @@
         "cap_limit_reason": "lambda_eq[1] reached the default upper lambda bound"
       },
       "2,0,2": {
-        "tight_big_m": 49.52001410724253,
+        "tight_big_m": 49.520013603897496,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -798,7 +798,7 @@
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_eq[4] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_eq[2] reached the default upper lambda bound"
       },
       "2,0,5": {
         "tight_big_m": 65.05088574565853,
@@ -886,7 +886,7 @@
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_eq[7] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_eq[4] reached the default upper lambda bound"
       },
       "4,0,0": {
         "tight_big_m": 49.99,
@@ -926,7 +926,7 @@
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_eq[4] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_eq[0] reached the default upper lambda bound"
       },
       "4,0,5": {
         "tight_big_m": 49.99,
@@ -1155,15 +1155,15 @@
         "cap_limit_reason": "lambda_eq[0] reached the default upper lambda bound"
       },
       "0,1": {
-        "tight_big_m": 29.99000000061175,
+        "tight_big_m": 29.74910357594492,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
+        "certified": false,
+        "cap_limited": true,
+        "cap_limit_reason": "lambda_eq[2] reached the default upper lambda bound"
       },
       "0,2": {
-        "tight_big_m": 29.99000000350521,
+        "tight_big_m": 29.749103575945025,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -1171,31 +1171,31 @@
         "cap_limit_reason": "lambda_eq[3] reached the default upper lambda bound"
       },
       "0,3": {
-        "tight_big_m": 25.336813075667663,
-        "fixed_by_slack": false,
-        "termination_condition": "optimal",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "0,4": {
-        "tight_big_m": 29.749103575944915,
+        "tight_big_m": 29.520013603897567,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
         "cap_limit_reason": "lambda_eq[1] reached the default upper lambda bound"
       },
-      "0,5": {
-        "tight_big_m": 24.438242203206748,
+      "0,4": {
+        "tight_big_m": 29.990000000223514,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_eq[5] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_eq[4] reached the default upper lambda bound"
+      },
+      "0,5": {
+        "tight_big_m": 29.749103575944915,
+        "fixed_by_slack": false,
+        "termination_condition": "optimal",
+        "certified": false,
+        "cap_limited": true,
+        "cap_limit_reason": "lambda_eq[2] reached the default upper lambda bound"
       },
       "0,6": {
-        "tight_big_m": 20.0,
+        "tight_big_m": 20.00000000825404,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -1203,7 +1203,7 @@
         "cap_limit_reason": "lambda_eq[6] reached the default upper lambda bound"
       },
       "0,7": {
-        "tight_big_m": 20.0,
+        "tight_big_m": 20.000000002677552,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -1211,7 +1211,7 @@
         "cap_limit_reason": "lambda_eq[7] reached the default upper lambda bound"
       },
       "1,0": {
-        "tight_big_m": 32.72965464834124,
+        "tight_big_m": 32.72886827448383,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -1227,7 +1227,7 @@
         "cap_limit_reason": null
       },
       "1,2": {
-        "tight_big_m": 31.428002228800324,
+        "tight_big_m": 31.427215854724636,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -1235,7 +1235,7 @@
         "cap_limit_reason": "lambda_eq[2] reached the default upper lambda bound"
       },
       "1,3": {
-        "tight_big_m": 33.091044812868816,
+        "tight_big_m": 33.09025843879165,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -1243,7 +1243,7 @@
         "cap_limit_reason": "lambda_eq[3] reached the default upper lambda bound"
       },
       "1,4": {
-        "tight_big_m": 37.53862362747919,
+        "tight_big_m": 37.53686461190228,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -1251,28 +1251,28 @@
         "cap_limit_reason": null
       },
       "1,5": {
-        "tight_big_m": 33.68431096061049,
+        "tight_big_m": 33.68352458541291,
+        "fixed_by_slack": false,
+        "termination_condition": "optimal",
+        "certified": false,
+        "cap_limited": true,
+        "cap_limit_reason": "lambda_eq[1] reached the default upper lambda bound"
+      },
+      "1,6": {
+        "tight_big_m": 37.78759482147447,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
         "cap_limit_reason": "lambda_eq[3] reached the default upper lambda bound"
       },
-      "1,6": {
-        "tight_big_m": 37.78856747179846,
-        "fixed_by_slack": false,
-        "termination_condition": "optimal",
-        "certified": false,
-        "cap_limited": true,
-        "cap_limit_reason": "lambda_eq[4] reached the default upper lambda bound"
-      },
       "1,7": {
-        "tight_big_m": 24.438242205185713,
+        "tight_big_m": 33.66561376047834,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_eq[5] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_eq[1] reached the default upper lambda bound"
       }
     },
     "mu_ramp_down_eq": {
@@ -1485,52 +1485,52 @@
         "cap_limit_reason": "lambda_eq[0] reached the default upper lambda bound"
       },
       "0,2": {
-        "tight_big_m": 20.347027448178224,
+        "tight_big_m": 29.520013603897567,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_eq[3] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_eq[0] reached the default upper lambda bound"
       },
       "0,3": {
-        "tight_big_m": 29.749103575944915,
+        "tight_big_m": 29.990000000223517,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_eq[1] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_eq[2] reached the default upper lambda bound"
       },
       "0,4": {
-        "tight_big_m": 27.0782552746712,
+        "tight_big_m": 30.0,
+        "fixed_by_slack": false,
+        "termination_condition": "optimal",
+        "certified": false,
+        "cap_limited": true,
+        "cap_limit_reason": "lambda_eq[2] reached the default upper lambda bound"
+      },
+      "0,5": {
+        "tight_big_m": 25.336813088279527,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
         "cap_limited": false,
         "cap_limit_reason": null
       },
-      "0,5": {
-        "tight_big_m": 29.74910357594491,
+      "0,6": {
+        "tight_big_m": 30.0,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
         "cap_limit_reason": "lambda_eq[3] reached the default upper lambda bound"
-      },
-      "0,6": {
-        "tight_big_m": 29.749103575945025,
-        "fixed_by_slack": false,
-        "termination_condition": "optimal",
-        "certified": false,
-        "cap_limited": true,
-        "cap_limit_reason": "lambda_eq[4] reached the default upper lambda bound"
       },
       "0,7": {
-        "tight_big_m": 29.7491035759449,
+        "tight_big_m": 29.990000000223528,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_eq[3] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_eq[6] reached the default upper lambda bound"
       },
       "1,0": {
         "tight_big_m": 44.39268312137574,
@@ -1541,15 +1541,15 @@
         "cap_limit_reason": null
       },
       "1,1": {
-        "tight_big_m": 32.729654647900645,
+        "tight_big_m": 23.035300371890504,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_eq[0] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_eq[2] reached the default upper lambda bound"
       },
       "1,2": {
-        "tight_big_m": 32.313652623085574,
+        "tight_big_m": 32.31286624900841,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -1557,23 +1557,23 @@
         "cap_limit_reason": "lambda_eq[1] reached the default upper lambda bound"
       },
       "1,3": {
-        "tight_big_m": 41.43824573293832,
+        "tight_big_m": 46.46662690019134,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_eq[2] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_eq[4] reached the default upper lambda bound"
       },
       "1,4": {
-        "tight_big_m": 34.91000466633221,
+        "tight_big_m": 38.619289751421235,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
+        "certified": false,
+        "cap_limited": true,
+        "cap_limit_reason": "lambda_eq[5] reached the default upper lambda bound"
       },
       "1,5": {
-        "tight_big_m": 36.945357478107326,
+        "tight_big_m": 46.94359844985573,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -1581,7 +1581,7 @@
         "cap_limit_reason": null
       },
       "1,6": {
-        "tight_big_m": 37.603887540550204,
+        "tight_big_m": 37.60212851801771,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -1589,12 +1589,12 @@
         "cap_limit_reason": null
       },
       "1,7": {
-        "tight_big_m": 33.959168162030295,
+        "tight_big_m": 28.451875827521683,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
-        "certified": false,
-        "cap_limited": true,
-        "cap_limit_reason": "lambda_eq[6] reached the default upper lambda bound"
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
       }
     },
     "mu_lower_opt": {
@@ -1614,7 +1614,7 @@
         "cap_limited": false,
         "cap_limit_reason": null
       },
-      "3,0,1": {
+      "3,0,0": {
         "tight_big_m": 0.0,
         "fixed_by_slack": true,
         "termination_condition": "fixed_binary_zero",
@@ -1647,6 +1647,14 @@
         "cap_limit_reason": null
       },
       "3,0,5": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": true,
+        "termination_condition": "fixed_binary_zero",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "3,0,6": {
         "tight_big_m": 0.0,
         "fixed_by_slack": true,
         "termination_condition": "fixed_binary_zero",
@@ -1727,7 +1735,7 @@
         "cap_limit_reason": null
       },
       "0,0,1": {
-        "tight_big_m": 29.75,
+        "tight_big_m": 29.990000000786058,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -1759,7 +1767,7 @@
         "cap_limit_reason": null
       },
       "0,0,5": {
-        "tight_big_m": 29.75,
+        "tight_big_m": 29.750000006635688,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -1791,7 +1799,7 @@
         "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
       },
       "0,1,1": {
-        "tight_big_m": 39.75,
+        "tight_big_m": 39.75000002557972,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -1823,7 +1831,7 @@
         "cap_limit_reason": null
       },
       "0,1,5": {
-        "tight_big_m": 39.75000000067851,
+        "tight_big_m": 39.75,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -1927,7 +1935,7 @@
         "cap_limit_reason": null
       },
       "1,1,3": {
-        "tight_big_m": 19.75,
+        "tight_big_m": 19.750000000560394,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -1959,7 +1967,7 @@
         "cap_limit_reason": null
       },
       "1,1,7": {
-        "tight_big_m": 19.75,
+        "tight_big_m": 19.75000000006675,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -2015,7 +2023,7 @@
         "cap_limit_reason": null
       },
       "2,0,6": {
-        "tight_big_m": 0.4900000006891787,
+        "tight_big_m": 0.25,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -2030,15 +2038,7 @@
         "cap_limited": false,
         "cap_limit_reason": null
       },
-      "3,0,0": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": false,
-        "termination_condition": "optimal",
-        "certified": false,
-        "cap_limited": true,
-        "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
-      },
-      "3,0,6": {
+      "3,0,1": {
         "tight_big_m": 0.0,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
@@ -2089,7 +2089,7 @@
         "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
       },
       "0,0,1": {
-        "tight_big_m": 20.0,
+        "tight_big_m": 20.00000000372529,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -2118,18 +2118,18 @@
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_opt[2] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
       },
       "0,0,5": {
-        "tight_big_m": 20.0,
+        "tight_big_m": 20.000000003725294,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_opt[4] reached the default upper lambda bound"
       },
       "0,0,6": {
-        "tight_big_m": 10.000000006053597,
+        "tight_big_m": 10.000000006752089,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -2137,7 +2137,7 @@
         "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
       },
       "0,0,7": {
-        "tight_big_m": 10.00000000465667,
+        "tight_big_m": 10.00000000372529,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -2161,15 +2161,15 @@
         "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
       },
       "0,1,3": {
-        "tight_big_m": 10.0,
+        "tight_big_m": 10.000000003725372,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_opt[3] reached the default upper lambda bound"
       },
       "0,1,4": {
-        "tight_big_m": 10.0,
+        "tight_big_m": 10.000000002095511,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -2177,7 +2177,7 @@
         "cap_limit_reason": "lambda_opt[4] reached the default upper lambda bound"
       },
       "0,1,5": {
-        "tight_big_m": 10.0,
+        "tight_big_m": 10.000000004191001,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -2193,7 +2193,7 @@
         "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
       },
       "1,0,1": {
-        "tight_big_m": 40.000000004190966,
+        "tight_big_m": 40.0,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -2209,7 +2209,7 @@
         "cap_limit_reason": "lambda_opt[2] reached the default upper lambda bound"
       },
       "1,0,3": {
-        "tight_big_m": 40.000000005355105,
+        "tight_big_m": 40.0,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -2222,7 +2222,7 @@
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_opt[4] reached the default upper lambda bound"
       },
       "1,0,5": {
         "tight_big_m": 40.0,
@@ -2230,7 +2230,7 @@
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_opt[5] reached the default upper lambda bound"
       },
       "1,0,6": {
         "tight_big_m": 40.0,
@@ -2238,7 +2238,7 @@
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_opt[2] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_opt[6] reached the default upper lambda bound"
       },
       "1,0,7": {
         "tight_big_m": 40.0,
@@ -2246,10 +2246,10 @@
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_opt[4] reached the default upper lambda bound"
       },
       "1,1,1": {
-        "tight_big_m": 30.000000003725305,
+        "tight_big_m": 30.0,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -2278,7 +2278,7 @@
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_opt[4] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
       },
       "1,1,5": {
         "tight_big_m": 30.0,
@@ -2297,12 +2297,12 @@
         "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
       },
       "1,1,7": {
-        "tight_big_m": 30.0,
+        "tight_big_m": 20.00000000745056,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
-        "certified": false,
-        "cap_limited": true,
-        "cap_limit_reason": "lambda_opt[7] reached the default upper lambda bound"
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
       },
       "2,0,0": {
         "tight_big_m": 49.5,
@@ -2350,7 +2350,7 @@
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_opt[5] reached the default upper lambda bound"
       },
       "2,0,6": {
         "tight_big_m": 49.5,
@@ -2414,7 +2414,7 @@
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_opt[5] reached the default upper lambda bound"
       },
       "3,0,6": {
         "tight_big_m": 49.75,
@@ -2425,15 +2425,15 @@
         "cap_limit_reason": "lambda_opt[6] reached the default upper lambda bound"
       },
       "3,0,7": {
-        "tight_big_m": 49.75,
+        "tight_big_m": 39.75,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_opt[7] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
       },
       "4,0,0": {
-        "tight_big_m": 49.99,
+        "tight_big_m": 49.99000000151342,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -2462,7 +2462,7 @@
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_opt[2] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_opt[3] reached the default upper lambda bound"
       },
       "4,0,4": {
         "tight_big_m": 49.99,
@@ -2481,342 +2481,20 @@
         "cap_limit_reason": "lambda_opt[5] reached the default upper lambda bound"
       },
       "4,0,6": {
-        "tight_big_m": 49.99000000000001,
-        "fixed_by_slack": false,
-        "termination_condition": "optimal",
-        "certified": false,
-        "cap_limited": true,
-        "cap_limit_reason": "lambda_opt[2] reached the default upper lambda bound"
-      },
-      "4,0,7": {
         "tight_big_m": 49.99,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
-      }
-    },
-    "mu_ramp_down_opt": {
-      "0,2": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
+        "cap_limit_reason": "lambda_opt[6] reached the default upper lambda bound"
       },
-      "2,0": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "2,1": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "2,2": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "2,3": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "2,4": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "2,5": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "2,6": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "2,7": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "3,0": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "3,1": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "3,2": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "3,3": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "3,4": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "3,5": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "3,6": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "3,7": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "4,0": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "4,1": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "4,2": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "4,3": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "4,4": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "4,5": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "4,6": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "4,7": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "0,0": {
-        "tight_big_m": 29.75,
-        "fixed_by_slack": false,
-        "termination_condition": "optimal",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "0,1": {
-        "tight_big_m": 10.0,
-        "fixed_by_slack": false,
-        "termination_condition": "optimal",
-        "certified": false,
-        "cap_limited": true,
-        "cap_limit_reason": "lambda_opt[0] reached the default upper lambda bound"
-      },
-      "0,3": {
-        "tight_big_m": 19.999900000999993,
-        "fixed_by_slack": false,
-        "termination_condition": "optimal",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "0,4": {
-        "tight_big_m": 3.725304509316629e-09,
-        "fixed_by_slack": false,
-        "termination_condition": "optimal",
-        "certified": false,
-        "cap_limited": true,
-        "cap_limit_reason": "lambda_opt[2] reached the default upper lambda bound"
-      },
-      "0,5": {
-        "tight_big_m": 10.00000000116422,
-        "fixed_by_slack": false,
-        "termination_condition": "optimal",
-        "certified": false,
-        "cap_limited": true,
-        "cap_limit_reason": "lambda_opt[4] reached the default upper lambda bound"
-      },
-      "0,6": {
-        "tight_big_m": 20.000000000618293,
-        "fixed_by_slack": false,
-        "termination_condition": "optimal",
-        "certified": false,
-        "cap_limited": true,
-        "cap_limit_reason": "lambda_opt[4] reached the default upper lambda bound"
-      },
-      "0,7": {
-        "tight_big_m": 10.0,
+      "4,0,7": {
+        "tight_big_m": 39.99000000069851,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
         "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
-      },
-      "1,0": {
-        "tight_big_m": 9.75,
-        "fixed_by_slack": false,
-        "termination_condition": "optimal",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "1,1": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": false,
-        "termination_condition": "optimal",
-        "certified": false,
-        "cap_limited": true,
-        "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
-      },
-      "1,2": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": false,
-        "termination_condition": "optimal",
-        "certified": false,
-        "cap_limited": true,
-        "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
-      },
-      "1,3": {
-        "tight_big_m": 19.75,
-        "fixed_by_slack": false,
-        "termination_condition": "optimal",
-        "certified": false,
-        "cap_limited": true,
-        "cap_limit_reason": "lambda_opt[2] reached the default upper lambda bound"
-      },
-      "1,4": {
-        "tight_big_m": 9.5,
-        "fixed_by_slack": false,
-        "termination_condition": "optimal",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "1,5": {
-        "tight_big_m": 10.000000001105946,
-        "fixed_by_slack": false,
-        "termination_condition": "optimal",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "1,6": {
-        "tight_big_m": 10.000000001105946,
-        "fixed_by_slack": false,
-        "termination_condition": "optimal",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "1,7": {
-        "tight_big_m": 10.000000004976757,
-        "fixed_by_slack": false,
-        "termination_condition": "optimal",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
       }
     },
     "mu_ramp_up_opt": {
@@ -2828,15 +2506,7 @@
         "cap_limited": false,
         "cap_limit_reason": null
       },
-      "0,5": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": true,
-        "termination_condition": "fixed_binary_zero",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
-      },
-      "0,6": {
+      "1,5": {
         "tight_big_m": 0.0,
         "fixed_by_slack": true,
         "termination_condition": "fixed_binary_zero",
@@ -3053,7 +2723,7 @@
         "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
       },
       "0,2": {
-        "tight_big_m": 10.0,
+        "tight_big_m": 10.000000019169523,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": false,
@@ -3061,12 +2731,28 @@
         "cap_limit_reason": "lambda_opt[2] reached the default upper lambda bound"
       },
       "0,4": {
-        "tight_big_m": 10.000000002701322,
+        "tight_big_m": 10.00000000209548,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
-        "certified": true,
-        "cap_limited": false,
-        "cap_limit_reason": null
+        "certified": false,
+        "cap_limited": true,
+        "cap_limit_reason": "lambda_opt[4] reached the default upper lambda bound"
+      },
+      "0,5": {
+        "tight_big_m": 3.725290298461914e-09,
+        "fixed_by_slack": false,
+        "termination_condition": "optimal",
+        "certified": false,
+        "cap_limited": true,
+        "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
+      },
+      "0,6": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": false,
+        "termination_condition": "optimal",
+        "certified": false,
+        "cap_limited": true,
+        "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
       },
       "0,7": {
         "tight_big_m": 10.0,
@@ -3074,7 +2760,7 @@
         "termination_condition": "optimal",
         "certified": false,
         "cap_limited": true,
-        "cap_limit_reason": "lambda_opt[2] reached the default upper lambda bound"
+        "cap_limit_reason": "lambda_opt[4] reached the default upper lambda bound"
       },
       "1,0": {
         "tight_big_m": 30.0,
@@ -3085,7 +2771,7 @@
         "cap_limit_reason": "lambda_opt[0] reached the default upper lambda bound"
       },
       "1,1": {
-        "tight_big_m": 10.0,
+        "tight_big_m": 10.000000003958178,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
@@ -3109,20 +2795,12 @@
         "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
       },
       "1,4": {
-        "tight_big_m": 10.000000001513481,
+        "tight_big_m": 10.000000001746239,
         "fixed_by_slack": false,
         "termination_condition": "optimal",
         "certified": true,
         "cap_limited": false,
         "cap_limit_reason": null
-      },
-      "1,5": {
-        "tight_big_m": 0.0,
-        "fixed_by_slack": false,
-        "termination_condition": "optimal",
-        "certified": false,
-        "cap_limited": true,
-        "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
       },
       "1,6": {
         "tight_big_m": 0.0,
@@ -3131,6 +2809,328 @@
         "certified": false,
         "cap_limited": true,
         "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
+      },
+      "1,7": {
+        "tight_big_m": 10.0,
+        "fixed_by_slack": false,
+        "termination_condition": "optimal",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      }
+    },
+    "mu_ramp_down_opt": {
+      "1,1": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": true,
+        "termination_condition": "fixed_binary_zero",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "2,0": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": true,
+        "termination_condition": "fixed_binary_zero",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "2,1": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": true,
+        "termination_condition": "fixed_binary_zero",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "2,2": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": true,
+        "termination_condition": "fixed_binary_zero",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "2,3": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": true,
+        "termination_condition": "fixed_binary_zero",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "2,4": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": true,
+        "termination_condition": "fixed_binary_zero",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "2,5": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": true,
+        "termination_condition": "fixed_binary_zero",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "2,6": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": true,
+        "termination_condition": "fixed_binary_zero",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "2,7": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": true,
+        "termination_condition": "fixed_binary_zero",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "3,0": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": true,
+        "termination_condition": "fixed_binary_zero",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "3,1": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": true,
+        "termination_condition": "fixed_binary_zero",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "3,2": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": true,
+        "termination_condition": "fixed_binary_zero",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "3,3": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": true,
+        "termination_condition": "fixed_binary_zero",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "3,4": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": true,
+        "termination_condition": "fixed_binary_zero",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "3,5": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": true,
+        "termination_condition": "fixed_binary_zero",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "3,6": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": true,
+        "termination_condition": "fixed_binary_zero",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "3,7": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": true,
+        "termination_condition": "fixed_binary_zero",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "4,0": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": true,
+        "termination_condition": "fixed_binary_zero",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "4,1": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": true,
+        "termination_condition": "fixed_binary_zero",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "4,2": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": true,
+        "termination_condition": "fixed_binary_zero",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "4,3": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": true,
+        "termination_condition": "fixed_binary_zero",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "4,4": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": true,
+        "termination_condition": "fixed_binary_zero",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "4,5": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": true,
+        "termination_condition": "fixed_binary_zero",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "4,6": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": true,
+        "termination_condition": "fixed_binary_zero",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "4,7": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": true,
+        "termination_condition": "fixed_binary_zero",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "0,0": {
+        "tight_big_m": 29.75,
+        "fixed_by_slack": false,
+        "termination_condition": "optimal",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "0,1": {
+        "tight_big_m": 10.000000004773032,
+        "fixed_by_slack": false,
+        "termination_condition": "optimal",
+        "certified": false,
+        "cap_limited": true,
+        "cap_limit_reason": "lambda_opt[4] reached the default upper lambda bound"
+      },
+      "0,2": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": false,
+        "termination_condition": "optimal",
+        "certified": false,
+        "cap_limited": true,
+        "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
+      },
+      "0,3": {
+        "tight_big_m": 20.0,
+        "fixed_by_slack": false,
+        "termination_condition": "optimal",
+        "certified": false,
+        "cap_limited": true,
+        "cap_limit_reason": "lambda_opt[2] reached the default upper lambda bound"
+      },
+      "0,4": {
+        "tight_big_m": 3.725290298461914e-09,
+        "fixed_by_slack": false,
+        "termination_condition": "optimal",
+        "certified": false,
+        "cap_limited": true,
+        "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
+      },
+      "0,5": {
+        "tight_big_m": 20.0,
+        "fixed_by_slack": false,
+        "termination_condition": "optimal",
+        "certified": false,
+        "cap_limited": true,
+        "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
+      },
+      "0,6": {
+        "tight_big_m": 10.00000000209577,
+        "fixed_by_slack": false,
+        "termination_condition": "optimal",
+        "certified": false,
+        "cap_limited": true,
+        "cap_limit_reason": "lambda_opt[5] reached the default upper lambda bound"
+      },
+      "0,7": {
+        "tight_big_m": 10.0,
+        "fixed_by_slack": false,
+        "termination_condition": "optimal",
+        "certified": false,
+        "cap_limited": true,
+        "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
+      },
+      "1,0": {
+        "tight_big_m": 9.75,
+        "fixed_by_slack": false,
+        "termination_condition": "optimal",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "1,2": {
+        "tight_big_m": 0.0,
+        "fixed_by_slack": false,
+        "termination_condition": "optimal",
+        "certified": false,
+        "cap_limited": true,
+        "cap_limit_reason": "lambda_opt[1] reached the default upper lambda bound"
+      },
+      "1,3": {
+        "tight_big_m": 10.000000001105946,
+        "fixed_by_slack": false,
+        "termination_condition": "optimal",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "1,4": {
+        "tight_big_m": 9.5,
+        "fixed_by_slack": false,
+        "termination_condition": "optimal",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "1,5": {
+        "tight_big_m": 10.000000013737008,
+        "fixed_by_slack": false,
+        "termination_condition": "optimal",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
+      },
+      "1,6": {
+        "tight_big_m": 10.0,
+        "fixed_by_slack": false,
+        "termination_condition": "optimal",
+        "certified": true,
+        "cap_limited": false,
+        "cap_limit_reason": null
       },
       "1,7": {
         "tight_big_m": 10.0,
@@ -3458,31 +3458,31 @@
       "upper": 40.0
     },
     "1,0,0": {
-      "lower": 6.963726977785502,
+      "lower": 6.964699628109496,
       "upper": 59.339025768702925
     },
     "1,0,1": {
-      "lower": 7.473946357428879,
+      "lower": 7.474919007752874,
       "upper": 62.67860039315707
     },
     "1,0,2": {
-      "lower": 8.56175426706168,
+      "lower": 8.562726917385675,
       "upper": 68.17485827121995
     },
     "1,0,3": {
-      "lower": 6.517997572796079,
+      "lower": 6.518970223120073,
       "upper": 64.0716485151073
     },
     "1,0,4": {
-      "lower": 6.145687338611925,
+      "lower": 6.14665998893592,
       "upper": 67.590473306882
     },
     "1,0,5": {
-      "lower": 5.790056777376503,
+      "lower": 5.791029427700498,
       "upper": 65.63070044061065
     },
     "1,0,6": {
-      "lower": 5.453249434328132,
+      "lower": 5.454222084652128,
       "upper": 59.18817310367818
     },
     "1,0,7": {
@@ -3490,31 +3490,31 @@
       "upper": 58.45187582752168
     },
     "1,1,0": {
-      "lower": 17.270345352099355,
+      "lower": 17.271131726176524,
       "upper": 44.40268312081998
     },
     "1,1,1": {
-      "lower": 17.686347376914426,
+      "lower": 17.687133750991592,
       "upper": 45.944344327358245
     },
     "1,1,2": {
-      "lower": 18.571997774445855,
+      "lower": 18.57278414852302,
       "upper": 49.00136666301319
     },
     "1,1,3": {
-      "lower": 16.908955187131184,
+      "lower": 16.90974156120835,
       "upper": 46.71752332424643
     },
     "1,1,4": {
-      "lower": 16.606055685939292,
+      "lower": 16.60684206001646,
       "upper": 48.619289751421235
     },
     "1,1,5": {
-      "lower": 16.315689039389508,
+      "lower": 16.316475413466673,
       "upper": 47.810632493268045
     },
     "1,1,6": {
-      "lower": 16.040831837969705,
+      "lower": 16.04161821204687,
       "upper": 44.43824220262458
     },
     "1,1,7": {
@@ -3523,27 +3523,27 @@
     },
     "2,0,0": {
       "lower": -6.669915003572658,
-      "upper": 10.496546173822729
+      "upper": 10.495315899878449
     },
     "2,0,1": {
-      "lower": -2.4960763995546267,
-      "upper": 10.634018468939969
+      "lower": -2.496076399554544,
+      "upper": 10.632788194995683
     },
     "2,0,2": {
-      "lower": 0.4799858927574663,
-      "upper": 10.431302301427827
+      "lower": 0.47998639610250393,
+      "upper": 10.430073633457763
     },
     "2,0,3": {
       "lower": -8.125416114379076,
-      "upper": 10.8962257652614
+      "upper": 10.89499549131712
     },
     "2,0,4": {
       "lower": -11.274856061143264,
-      "upper": 11.003598156848444
+      "upper": 11.002367882904164
     },
     "2,0,5": {
       "lower": -15.050885745658533,
-      "upper": 10.817249220825625
+      "upper": 10.817249220825627
     },
     "2,0,6": {
       "lower": -16.83939936223541,
@@ -3551,19 +3551,19 @@
     },
     "2,0,7": {
       "lower": -10.744880702862154,
-      "upper": 10.482647545114713
+      "upper": 10.482647545114709
     },
     "3,0,0": {
       "lower": 0.2508964240550995,
-      "upper": 0.5320735054725491
+      "upper": 0.5320735054725488
     },
     "3,0,1": {
       "lower": 0.2508964240550995,
-      "upper": 0.5089807142611047
+      "upper": 0.5089807142611049
     },
     "3,0,2": {
       "lower": 0.2508964240550995,
-      "upper": 0.5003629089484043
+      "upper": 0.5003629089484042
     },
     "3,0,3": {
       "lower": 0.2508964240550995,
@@ -3575,11 +3575,11 @@
     },
     "3,0,5": {
       "lower": 0.2508964240550995,
-      "upper": 0.557709670437317
+      "upper": 0.5577096704373166
     },
     "3,0,6": {
       "lower": 0.2508964240550995,
-      "upper": 0.5653984637712424
+      "upper": 0.5653984637712428
     },
     "3,0,7": {
       "lower": 0.2508964240550995,
@@ -3748,7 +3748,7 @@
       "termination_condition": "optimal"
     },
     "1,0,0:lower": {
-      "value": 6.963726977785502,
+      "value": 6.964699628109496,
       "termination_condition": "optimal"
     },
     "1,0,0:upper": {
@@ -3756,7 +3756,7 @@
       "termination_condition": "optimal"
     },
     "1,0,1:lower": {
-      "value": 7.473946357428879,
+      "value": 7.474919007752874,
       "termination_condition": "optimal"
     },
     "1,0,1:upper": {
@@ -3764,7 +3764,7 @@
       "termination_condition": "optimal"
     },
     "1,0,2:lower": {
-      "value": 8.56175426706168,
+      "value": 8.562726917385675,
       "termination_condition": "optimal"
     },
     "1,0,2:upper": {
@@ -3772,7 +3772,7 @@
       "termination_condition": "optimal"
     },
     "1,0,3:lower": {
-      "value": 6.517997572796079,
+      "value": 6.518970223120073,
       "termination_condition": "optimal"
     },
     "1,0,3:upper": {
@@ -3780,7 +3780,7 @@
       "termination_condition": "optimal"
     },
     "1,0,4:lower": {
-      "value": 6.145687338611925,
+      "value": 6.14665998893592,
       "termination_condition": "optimal"
     },
     "1,0,4:upper": {
@@ -3788,7 +3788,7 @@
       "termination_condition": "optimal"
     },
     "1,0,5:lower": {
-      "value": 5.790056777376503,
+      "value": 5.791029427700498,
       "termination_condition": "optimal"
     },
     "1,0,5:upper": {
@@ -3796,7 +3796,7 @@
       "termination_condition": "optimal"
     },
     "1,0,6:lower": {
-      "value": 5.453249434328132,
+      "value": 5.454222084652128,
       "termination_condition": "optimal"
     },
     "1,0,6:upper": {
@@ -3812,7 +3812,7 @@
       "termination_condition": "optimal"
     },
     "1,1,0:lower": {
-      "value": 17.270345352099355,
+      "value": 17.271131726176524,
       "termination_condition": "optimal"
     },
     "1,1,0:upper": {
@@ -3820,7 +3820,7 @@
       "termination_condition": "optimal"
     },
     "1,1,1:lower": {
-      "value": 17.686347376914426,
+      "value": 17.687133750991592,
       "termination_condition": "optimal"
     },
     "1,1,1:upper": {
@@ -3828,7 +3828,7 @@
       "termination_condition": "optimal"
     },
     "1,1,2:lower": {
-      "value": 18.571997774445855,
+      "value": 18.57278414852302,
       "termination_condition": "optimal"
     },
     "1,1,2:upper": {
@@ -3836,7 +3836,7 @@
       "termination_condition": "optimal"
     },
     "1,1,3:lower": {
-      "value": 16.908955187131184,
+      "value": 16.90974156120835,
       "termination_condition": "optimal"
     },
     "1,1,3:upper": {
@@ -3844,7 +3844,7 @@
       "termination_condition": "optimal"
     },
     "1,1,4:lower": {
-      "value": 16.606055685939292,
+      "value": 16.60684206001646,
       "termination_condition": "optimal"
     },
     "1,1,4:upper": {
@@ -3852,7 +3852,7 @@
       "termination_condition": "optimal"
     },
     "1,1,5:lower": {
-      "value": 16.315689039389508,
+      "value": 16.316475413466673,
       "termination_condition": "optimal"
     },
     "1,1,5:upper": {
@@ -3860,7 +3860,7 @@
       "termination_condition": "optimal"
     },
     "1,1,6:lower": {
-      "value": 16.040831837969705,
+      "value": 16.04161821204687,
       "termination_condition": "optimal"
     },
     "1,1,6:upper": {
@@ -3880,23 +3880,23 @@
       "termination_condition": "optimal"
     },
     "2,0,0:upper": {
-      "value": 10.496546173822729,
+      "value": 10.495315899878449,
       "termination_condition": "optimal"
     },
     "2,0,1:lower": {
-      "value": -2.4960763995546267,
+      "value": -2.496076399554544,
       "termination_condition": "optimal"
     },
     "2,0,1:upper": {
-      "value": 10.634018468939969,
+      "value": 10.632788194995683,
       "termination_condition": "optimal"
     },
     "2,0,2:lower": {
-      "value": 0.4799858927574663,
+      "value": 0.47998639610250393,
       "termination_condition": "optimal"
     },
     "2,0,2:upper": {
-      "value": 10.431302301427827,
+      "value": 10.430073633457763,
       "termination_condition": "optimal"
     },
     "2,0,3:lower": {
@@ -3904,7 +3904,7 @@
       "termination_condition": "optimal"
     },
     "2,0,3:upper": {
-      "value": 10.8962257652614,
+      "value": 10.89499549131712,
       "termination_condition": "optimal"
     },
     "2,0,4:lower": {
@@ -3912,7 +3912,7 @@
       "termination_condition": "optimal"
     },
     "2,0,4:upper": {
-      "value": 11.003598156848444,
+      "value": 11.002367882904164,
       "termination_condition": "optimal"
     },
     "2,0,5:lower": {
@@ -3920,7 +3920,7 @@
       "termination_condition": "optimal"
     },
     "2,0,5:upper": {
-      "value": 10.817249220825625,
+      "value": 10.817249220825627,
       "termination_condition": "optimal"
     },
     "2,0,6:lower": {
@@ -3936,7 +3936,7 @@
       "termination_condition": "optimal"
     },
     "2,0,7:upper": {
-      "value": 10.482647545114713,
+      "value": 10.482647545114709,
       "termination_condition": "optimal"
     },
     "3,0,0:lower": {
@@ -3944,7 +3944,7 @@
       "termination_condition": "optimal"
     },
     "3,0,0:upper": {
-      "value": 0.5320735054725491,
+      "value": 0.5320735054725488,
       "termination_condition": "optimal"
     },
     "3,0,1:lower": {
@@ -3952,7 +3952,7 @@
       "termination_condition": "optimal"
     },
     "3,0,1:upper": {
-      "value": 0.5089807142611047,
+      "value": 0.5089807142611049,
       "termination_condition": "optimal"
     },
     "3,0,2:lower": {
@@ -3960,7 +3960,7 @@
       "termination_condition": "optimal"
     },
     "3,0,2:upper": {
-      "value": 0.5003629089484043,
+      "value": 0.5003629089484042,
       "termination_condition": "optimal"
     },
     "3,0,3:lower": {
@@ -3984,7 +3984,7 @@
       "termination_condition": "optimal"
     },
     "3,0,5:upper": {
-      "value": 0.557709670437317,
+      "value": 0.5577096704373166,
       "termination_condition": "optimal"
     },
     "3,0,6:lower": {
@@ -3992,7 +3992,7 @@
       "termination_condition": "optimal"
     },
     "3,0,6:upper": {
-      "value": 0.5653984637712424,
+      "value": 0.5653984637712428,
       "termination_condition": "optimal"
     },
     "3,0,7:lower": {
@@ -4961,13 +4961,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "eq:lower:4,0,1": {
-      "minimum_slack": 7.458644046024503,
-      "incumbent_slack_objective": 7.458644046024503,
-      "robustly_inactive": true,
+      "minimum_slack": 0.0,
+      "incumbent_slack_objective": 0.0,
+      "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "positive_slack_optimal"
+      "result_classification": "zero_slack_feasible"
     },
     "eq:upper:4,0,2": {
       "minimum_slack": 0.0,
@@ -4997,8 +4997,8 @@
       "result_classification": "zero_slack_feasible"
     },
     "eq:lower:4,0,3": {
-      "minimum_slack": 8.935208381745852,
-      "incumbent_slack_objective": 8.935208381745852,
+      "minimum_slack": 7.016650756777388,
+      "incumbent_slack_objective": 7.016650756777388,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -5299,7 +5299,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_down:1,4": {
@@ -5308,7 +5308,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_up:1,5": {
@@ -5402,8 +5402,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_up:2,2": {
-      "minimum_slack": 11.661934920587669,
-      "incumbent_slack_objective": 11.661934920587669,
+      "minimum_slack": 11.661934920587662,
+      "incumbent_slack_objective": 11.661934920587662,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -5420,8 +5420,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_up:2,3": {
-      "minimum_slack": 8.37816751280073,
-      "incumbent_slack_objective": 8.37816751280073,
+      "minimum_slack": 8.378167512800736,
+      "incumbent_slack_objective": 8.378167512800736,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -5672,8 +5672,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_up:4,1": {
-      "minimum_slack": 24.856888043886407,
-      "incumbent_slack_objective": 24.856888043886407,
+      "minimum_slack": 24.856888043886336,
+      "incumbent_slack_objective": 24.856888043886336,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -5681,8 +5681,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_down:4,1": {
-      "minimum_slack": 37.27153996837553,
-      "incumbent_slack_objective": 37.27153996837553,
+      "minimum_slack": 38.818934860913544,
+      "incumbent_slack_objective": 38.818934860913544,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -5690,8 +5690,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_up:4,2": {
-      "minimum_slack": 37.88829079956331,
-      "incumbent_slack_objective": 37.88829079956331,
+      "minimum_slack": 37.88829079956363,
+      "incumbent_slack_objective": 37.88829079956363,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -5699,8 +5699,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_down:4,2": {
-      "minimum_slack": 46.04720237001981,
-      "incumbent_slack_objective": 46.04720237001981,
+      "minimum_slack": 46.10246042248311,
+      "incumbent_slack_objective": 46.10246042248311,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -5708,8 +5708,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_up:4,3": {
-      "minimum_slack": 42.3814597624405,
-      "incumbent_slack_objective": 42.3814597624405,
+      "minimum_slack": 42.4367178149038,
+      "incumbent_slack_objective": 42.4367178149038,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -5717,8 +5717,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_down:4,3": {
-      "minimum_slack": 38.67858567736471,
-      "incumbent_slack_objective": 38.67858567736471,
+      "minimum_slack": 38.678585677364666,
+      "incumbent_slack_objective": 38.678585677364666,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -5726,8 +5726,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_up:4,4": {
-      "minimum_slack": 32.64165075341282,
-      "incumbent_slack_objective": 32.64165075341282,
+      "minimum_slack": 32.64165075341317,
+      "incumbent_slack_objective": 32.64165075341317,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -5744,8 +5744,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_up:4,5": {
-      "minimum_slack": 38.21689632509742,
-      "incumbent_slack_objective": 38.21689632509742,
+      "minimum_slack": 38.216896329019136,
+      "incumbent_slack_objective": 38.216896329019136,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -5753,8 +5753,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_down:4,5": {
-      "minimum_slack": 36.75229764418418,
-      "incumbent_slack_objective": 36.75229764418418,
+      "minimum_slack": 36.75229764040894,
+      "incumbent_slack_objective": 36.75229764040894,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -5771,8 +5771,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_down:4,6": {
-      "minimum_slack": 25.5131990654086,
-      "incumbent_slack_objective": 25.5131990654086,
+      "minimum_slack": 25.513199062756918,
+      "incumbent_slack_objective": 25.513199062756918,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -5780,8 +5780,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_up:4,7": {
-      "minimum_slack": 30.726082831127947,
-      "incumbent_slack_objective": 30.726082831127947,
+      "minimum_slack": 10.83788376571934,
+      "incumbent_slack_objective": 10.83788376571934,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -6527,13 +6527,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:3,0,0": {
-      "minimum_slack": 0.0,
-      "incumbent_slack_objective": 0.0,
-      "robustly_inactive": false,
+      "minimum_slack": 7.5304045587002335,
+      "incumbent_slack_objective": 7.5304045587002335,
+      "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "zero_slack_feasible"
+      "result_classification": "positive_slack_optimal"
     },
     "opt:upper:3,0,1": {
       "minimum_slack": 0.0,
@@ -6545,13 +6545,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:3,0,1": {
-      "minimum_slack": 7.458644046024503,
-      "incumbent_slack_objective": 7.458644046024503,
-      "robustly_inactive": true,
+      "minimum_slack": 0.0,
+      "incumbent_slack_objective": 0.0,
+      "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "positive_slack_optimal"
+      "result_classification": "zero_slack_feasible"
     },
     "opt:upper:3,0,2": {
       "minimum_slack": 0.0,
@@ -6635,13 +6635,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:3,0,6": {
-      "minimum_slack": 0.0,
-      "incumbent_slack_objective": 0.0,
-      "robustly_inactive": false,
+      "minimum_slack": 9.439901146451959,
+      "incumbent_slack_objective": 9.439901146451959,
+      "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "zero_slack_feasible"
+      "result_classification": "positive_slack_optimal"
     },
     "opt:upper:3,0,7": {
       "minimum_slack": 0.0,
@@ -6671,8 +6671,8 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:4,0,0": {
-      "minimum_slack": 7.530404558700226,
-      "incumbent_slack_objective": 7.530404558700226,
+      "minimum_slack": 7.530404558700223,
+      "incumbent_slack_objective": 7.530404558700223,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -6851,17 +6851,17 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:ramp_down:0,2": {
-      "minimum_slack": 6.193065648025083,
-      "incumbent_slack_objective": 6.193065648025083,
-      "robustly_inactive": true,
+      "minimum_slack": 0.0,
+      "incumbent_slack_objective": 0.0,
+      "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "positive_slack_optimal"
+      "result_classification": "zero_slack_feasible"
     },
     "opt:ramp_up:0,3": {
-      "minimum_slack": 6.690448540867024,
-      "incumbent_slack_objective": 6.690448540867024,
+      "minimum_slack": 6.527173834387796,
+      "incumbent_slack_objective": 6.527173834387796,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -6896,13 +6896,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:ramp_up:0,5": {
-      "minimum_slack": 1.1319410791753945,
-      "incumbent_slack_objective": 1.1319410791753945,
-      "robustly_inactive": true,
+      "minimum_slack": 0.0,
+      "incumbent_slack_objective": 0.0,
+      "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "positive_slack_optimal"
+      "result_classification": "zero_slack_feasible"
     },
     "opt:ramp_down:0,5": {
       "minimum_slack": 0.0,
@@ -6914,13 +6914,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:ramp_up:0,6": {
-      "minimum_slack": 11.435838452447918,
-      "incumbent_slack_objective": 11.435838452447918,
-      "robustly_inactive": true,
+      "minimum_slack": 0.0,
+      "incumbent_slack_objective": 0.0,
+      "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "positive_slack_optimal"
+      "result_classification": "zero_slack_feasible"
     },
     "opt:ramp_down:0,6": {
       "minimum_slack": 0.0,
@@ -6977,13 +6977,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:ramp_down:1,1": {
-      "minimum_slack": 0.0,
-      "incumbent_slack_objective": 0.0,
-      "robustly_inactive": false,
+      "minimum_slack": 6.901269955752667,
+      "incumbent_slack_objective": 6.901269955752667,
+      "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "zero_slack_feasible"
+      "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:1,2": {
       "minimum_slack": 0.0,
@@ -7040,13 +7040,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:ramp_up:1,5": {
-      "minimum_slack": 0.0,
-      "incumbent_slack_objective": 0.0,
-      "robustly_inactive": false,
+      "minimum_slack": 0.9501988656535119,
+      "incumbent_slack_objective": 0.9501988656535119,
+      "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "zero_slack_feasible"
+      "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:1,5": {
       "minimum_slack": 0.0,
@@ -7112,8 +7112,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:2,1": {
-      "minimum_slack": 16.54429035089283,
-      "incumbent_slack_objective": 16.54429035089283,
+      "minimum_slack": 16.752957997495734,
+      "incumbent_slack_objective": 16.752957997495734,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7121,8 +7121,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:2,1": {
-      "minimum_slack": 30.28072681135452,
-      "incumbent_slack_objective": 30.28072681135452,
+      "minimum_slack": 22.374098276040918,
+      "incumbent_slack_objective": 22.374098276040918,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7139,8 +7139,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:2,2": {
-      "minimum_slack": 41.16219778032604,
-      "incumbent_slack_objective": 41.16219778032604,
+      "minimum_slack": 41.383229990179245,
+      "incumbent_slack_objective": 41.383229990179245,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7148,8 +7148,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:2,3": {
-      "minimum_slack": 42.38145976244051,
-      "incumbent_slack_objective": 42.38145976244051,
+      "minimum_slack": 42.4367178149038,
+      "incumbent_slack_objective": 42.4367178149038,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7157,8 +7157,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:2,3": {
-      "minimum_slack": 19.757502525291216,
-      "incumbent_slack_objective": 19.757502525291216,
+      "minimum_slack": 11.661934920587669,
+      "incumbent_slack_objective": 11.661934920587669,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7166,8 +7166,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:2,4": {
-      "minimum_slack": 22.965721633142607,
-      "incumbent_slack_objective": 22.965721633142607,
+      "minimum_slack": 22.845344249000544,
+      "incumbent_slack_objective": 22.845344249000544,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7175,8 +7175,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:2,4": {
-      "minimum_slack": 14.575504880423772,
-      "incumbent_slack_objective": 14.575504880423772,
+      "minimum_slack": 32.80019728055835,
+      "incumbent_slack_objective": 32.80019728055835,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7184,8 +7184,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:2,5": {
-      "minimum_slack": 34.69586430193172,
-      "incumbent_slack_objective": 34.69586430193172,
+      "minimum_slack": 35.459365540720434,
+      "incumbent_slack_objective": 35.459365540720434,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7193,8 +7193,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:2,5": {
-      "minimum_slack": 28.914988225983144,
-      "incumbent_slack_objective": 28.914988225983144,
+      "minimum_slack": 29.13602043882682,
+      "incumbent_slack_objective": 29.13602043882682,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7202,8 +7202,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:2,6": {
-      "minimum_slack": 39.30764225661126,
-      "incumbent_slack_objective": 39.30764225661126,
+      "minimum_slack": 39.528674466464466,
+      "incumbent_slack_objective": 39.528674466464466,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7211,8 +7211,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:2,6": {
-      "minimum_slack": 5.625,
-      "incumbent_slack_objective": 5.625,
+      "minimum_slack": 22.838758897364443,
+      "incumbent_slack_objective": 22.838758897364443,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7220,8 +7220,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:2,7": {
-      "minimum_slack": 29.37828938033501,
-      "incumbent_slack_objective": 29.37828938033501,
+      "minimum_slack": 29.599321590188225,
+      "incumbent_slack_objective": 29.599321590188225,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7229,8 +7229,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:2,7": {
-      "minimum_slack": 34.63209287123098,
-      "incumbent_slack_objective": 34.63209287123098,
+      "minimum_slack": 34.85312508108419,
+      "incumbent_slack_objective": 34.85312508108419,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7247,8 +7247,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:3,0": {
-      "minimum_slack": 25.0,
-      "incumbent_slack_objective": 25.0,
+      "minimum_slack": 32.53040455870023,
+      "incumbent_slack_objective": 32.53040455870023,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7256,8 +7256,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:3,1": {
-      "minimum_slack": 24.8568880438864,
-      "incumbent_slack_objective": 24.8568880438864,
+      "minimum_slack": 12.807860519964798,
+      "incumbent_slack_objective": 12.807860519964798,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7265,8 +7265,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:3,1": {
-      "minimum_slack": 45.44994563220022,
-      "incumbent_slack_objective": 45.44994563220022,
+      "minimum_slack": 45.50874695661676,
+      "incumbent_slack_objective": 45.50874695661676,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7274,8 +7274,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:3,2": {
-      "minimum_slack": 37.88829079956363,
-      "incumbent_slack_objective": 37.88829079956363,
+      "minimum_slack": 37.88829079567479,
+      "incumbent_slack_objective": 37.88829079567479,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7283,8 +7283,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:3,2": {
-      "minimum_slack": 46.04720237001981,
-      "incumbent_slack_objective": 46.04720237001981,
+      "minimum_slack": 46.1024604224831,
+      "incumbent_slack_objective": 46.1024604224831,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7292,8 +7292,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:3,3": {
-      "minimum_slack": 42.38145976244049,
-      "incumbent_slack_objective": 42.38145976244049,
+      "minimum_slack": 42.4367178149038,
+      "incumbent_slack_objective": 42.4367178149038,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7310,8 +7310,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:3,4": {
-      "minimum_slack": 32.95552078344863,
-      "incumbent_slack_objective": 32.95552078344863,
+      "minimum_slack": 33.10432562317446,
+      "incumbent_slack_objective": 33.10432562317446,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7319,8 +7319,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:3,4": {
-      "minimum_slack": 42.904831635428685,
-      "incumbent_slack_objective": 42.904831635428685,
+      "minimum_slack": 43.07060578507819,
+      "incumbent_slack_objective": 43.07060578507819,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7328,8 +7328,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:3,5": {
-      "minimum_slack": 39.29070457938702,
-      "incumbent_slack_objective": 39.29070457938702,
+      "minimum_slack": 39.454781259248264,
+      "incumbent_slack_objective": 39.454781259248264,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7337,8 +7337,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:3,5": {
-      "minimum_slack": 36.865491151941505,
-      "incumbent_slack_objective": 36.865491151941505,
+      "minimum_slack": 37.03126530933143,
+      "incumbent_slack_objective": 37.03126530933143,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7346,8 +7346,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:3,6": {
-      "minimum_slack": 45.990888476175385,
-      "incumbent_slack_objective": 45.990888476175385,
+      "minimum_slack": 46.15666263356525,
+      "incumbent_slack_objective": 46.15666263356525,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7355,8 +7355,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:3,6": {
-      "minimum_slack": 29.84127397280625,
-      "incumbent_slack_objective": 29.84127397280625,
+      "minimum_slack": 30.007048130196154,
+      "incumbent_slack_objective": 30.007048130196154,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7364,8 +7364,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:3,7": {
-      "minimum_slack": 16.535140426793582,
-      "incumbent_slack_objective": 16.535140426793582,
+      "minimum_slack": 16.700534297561354,
+      "incumbent_slack_objective": 16.700534297561354,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7373,8 +7373,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:3,7": {
-      "minimum_slack": 37.4106029827739,
-      "incumbent_slack_objective": 37.4106029827739,
+      "minimum_slack": 37.576377140163814,
+      "incumbent_slack_objective": 37.576377140163814,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7400,8 +7400,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:4,1": {
-      "minimum_slack": 45.73698768290318,
-      "incumbent_slack_objective": 45.73698768290318,
+      "minimum_slack": 45.79655237818453,
+      "incumbent_slack_objective": 45.79655237818453,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7409,8 +7409,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:4,1": {
-      "minimum_slack": 45.451634149657075,
-      "incumbent_slack_objective": 45.451634149657075,
+      "minimum_slack": 45.50520368466352,
+      "incumbent_slack_objective": 45.50520368466352,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7418,8 +7418,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:4,2": {
-      "minimum_slack": 44.5193015708503,
-      "incumbent_slack_objective": 44.5193015708503,
+      "minimum_slack": 44.57455962331361,
+      "incumbent_slack_objective": 44.57455962331361,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7427,8 +7427,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:4,2": {
-      "minimum_slack": 46.04720237001981,
-      "incumbent_slack_objective": 46.04720237001981,
+      "minimum_slack": 46.102460422483105,
+      "incumbent_slack_objective": 46.102460422483105,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7436,8 +7436,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:4,3": {
-      "minimum_slack": 42.38145976244049,
-      "incumbent_slack_objective": 42.38145976244049,
+      "minimum_slack": 42.4367178149038,
+      "incumbent_slack_objective": 42.4367178149038,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7445,8 +7445,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:4,3": {
-      "minimum_slack": 46.75981630615641,
-      "incumbent_slack_objective": 46.75981630615641,
+      "minimum_slack": 46.81507435861971,
+      "incumbent_slack_objective": 46.81507435861971,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7454,8 +7454,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:4,4": {
-      "minimum_slack": 41.34118188930116,
-      "incumbent_slack_objective": 41.34118188930116,
+      "minimum_slack": 41.39643994176446,
+      "incumbent_slack_objective": 41.39643994176446,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7463,8 +7463,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:4,4": {
-      "minimum_slack": 47.10657559720286,
-      "incumbent_slack_objective": 47.10657559720286,
+      "minimum_slack": 47.161833649666164,
+      "incumbent_slack_objective": 47.161833649666164,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7472,8 +7472,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:4,5": {
-      "minimum_slack": 44.78205310286256,
-      "incumbent_slack_objective": 44.78205310286256,
+      "minimum_slack": 44.837311155325864,
+      "incumbent_slack_objective": 44.837311155325864,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7481,8 +7481,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:4,5": {
-      "minimum_slack": 45.959618526015724,
-      "incumbent_slack_objective": 45.959618526015724,
+      "minimum_slack": 46.014876578479026,
+      "incumbent_slack_objective": 46.014876578479026,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7490,8 +7490,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:4,6": {
-      "minimum_slack": 46.89627418828505,
-      "incumbent_slack_objective": 46.89627418828505,
+      "minimum_slack": 46.95153224074835,
+      "incumbent_slack_objective": 46.95153224074835,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7499,8 +7499,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:4,6": {
-      "minimum_slack": 42.18224633826253,
-      "incumbent_slack_objective": 42.18224633826253,
+      "minimum_slack": 42.23750439072583,
+      "incumbent_slack_objective": 42.23750439072583,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7508,8 +7508,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:4,7": {
-      "minimum_slack": 46.98982535257307,
-      "incumbent_slack_objective": 46.98982535257307,
+      "minimum_slack": 47.04508340503637,
+      "incumbent_slack_objective": 47.04508340503637,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7517,8 +7517,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:4,7": {
-      "minimum_slack": 41.691432623190536,
-      "incumbent_slack_objective": 41.691432623190536,
+      "minimum_slack": 41.74669067565384,
+      "incumbent_slack_objective": 41.74669067565384,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -7542,13 +7542,6 @@
         "constraint_type": "lower",
         "result_classification": "positive_slack_optimal"
       },
-      "4,0,1": {
-        "fixed_value": 0,
-        "minimum_slack": 7.458644046024503,
-        "side": "eq",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
       "4,0,2": {
         "fixed_value": 0,
         "minimum_slack": 7.840619245816882,
@@ -7558,7 +7551,7 @@
       },
       "4,0,3": {
         "fixed_value": 0,
-        "minimum_slack": 8.935208381745852,
+        "minimum_slack": 7.016650756777388,
         "side": "eq",
         "constraint_type": "lower",
         "result_classification": "positive_slack_optimal"
@@ -7611,14 +7604,14 @@
       },
       "2,2": {
         "fixed_value": 0,
-        "minimum_slack": 11.661934920587669,
+        "minimum_slack": 11.661934920587662,
         "side": "eq",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "2,3": {
         "fixed_value": 0,
-        "minimum_slack": 8.37816751280073,
+        "minimum_slack": 8.378167512800736,
         "side": "eq",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
@@ -7716,35 +7709,35 @@
       },
       "4,1": {
         "fixed_value": 0,
-        "minimum_slack": 24.856888043886407,
+        "minimum_slack": 24.856888043886336,
         "side": "eq",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "4,2": {
         "fixed_value": 0,
-        "minimum_slack": 37.88829079956331,
+        "minimum_slack": 37.88829079956363,
         "side": "eq",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "4,3": {
         "fixed_value": 0,
-        "minimum_slack": 42.3814597624405,
+        "minimum_slack": 42.4367178149038,
         "side": "eq",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "4,4": {
         "fixed_value": 0,
-        "minimum_slack": 32.64165075341282,
+        "minimum_slack": 32.64165075341317,
         "side": "eq",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "4,5": {
         "fixed_value": 0,
-        "minimum_slack": 38.21689632509742,
+        "minimum_slack": 38.216896329019136,
         "side": "eq",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
@@ -7758,7 +7751,7 @@
       },
       "4,7": {
         "fixed_value": 0,
-        "minimum_slack": 30.726082831127947,
+        "minimum_slack": 10.83788376571934,
         "side": "eq",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
@@ -7886,21 +7879,21 @@
       },
       "4,1": {
         "fixed_value": 0,
-        "minimum_slack": 37.27153996837553,
+        "minimum_slack": 38.818934860913544,
         "side": "eq",
         "constraint_type": "ramp_down",
         "result_classification": "positive_slack_optimal"
       },
       "4,2": {
         "fixed_value": 0,
-        "minimum_slack": 46.04720237001981,
+        "minimum_slack": 46.10246042248311,
         "side": "eq",
         "constraint_type": "ramp_down",
         "result_classification": "positive_slack_optimal"
       },
       "4,3": {
         "fixed_value": 0,
-        "minimum_slack": 38.67858567736471,
+        "minimum_slack": 38.678585677364666,
         "side": "eq",
         "constraint_type": "ramp_down",
         "result_classification": "positive_slack_optimal"
@@ -7914,14 +7907,14 @@
       },
       "4,5": {
         "fixed_value": 0,
-        "minimum_slack": 36.75229764418418,
+        "minimum_slack": 36.75229764040894,
         "side": "eq",
         "constraint_type": "ramp_down",
         "result_classification": "positive_slack_optimal"
       },
       "4,6": {
         "fixed_value": 0,
-        "minimum_slack": 25.5131990654086,
+        "minimum_slack": 25.513199062756918,
         "side": "eq",
         "constraint_type": "ramp_down",
         "result_classification": "positive_slack_optimal"
@@ -7949,9 +7942,9 @@
         "constraint_type": "lower",
         "result_classification": "positive_slack_optimal"
       },
-      "3,0,1": {
+      "3,0,0": {
         "fixed_value": 0,
-        "minimum_slack": 7.458644046024503,
+        "minimum_slack": 7.5304045587002335,
         "side": "opt",
         "constraint_type": "lower",
         "result_classification": "positive_slack_optimal"
@@ -7984,6 +7977,13 @@
         "constraint_type": "lower",
         "result_classification": "positive_slack_optimal"
       },
+      "3,0,6": {
+        "fixed_value": 0,
+        "minimum_slack": 9.439901146451959,
+        "side": "opt",
+        "constraint_type": "lower",
+        "result_classification": "positive_slack_optimal"
+      },
       "3,0,7": {
         "fixed_value": 0,
         "minimum_slack": 8.11530296410632,
@@ -7993,7 +7993,7 @@
       },
       "4,0,0": {
         "fixed_value": 0,
-        "minimum_slack": 7.530404558700226,
+        "minimum_slack": 7.530404558700223,
         "side": "opt",
         "constraint_type": "lower",
         "result_classification": "positive_slack_optimal"
@@ -8078,201 +8078,17 @@
         "result_classification": "positive_slack_optimal"
       }
     },
-    "z_ramp_down_opt": {
-      "0,2": {
-        "fixed_value": 0,
-        "minimum_slack": 6.193065648025083,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "2,0": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "2,1": {
-        "fixed_value": 0,
-        "minimum_slack": 30.28072681135452,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "2,2": {
-        "fixed_value": 0,
-        "minimum_slack": 41.16219778032604,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "2,3": {
-        "fixed_value": 0,
-        "minimum_slack": 19.757502525291216,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "2,4": {
-        "fixed_value": 0,
-        "minimum_slack": 14.575504880423772,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "2,5": {
-        "fixed_value": 0,
-        "minimum_slack": 28.914988225983144,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "2,6": {
-        "fixed_value": 0,
-        "minimum_slack": 5.625,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "2,7": {
-        "fixed_value": 0,
-        "minimum_slack": 34.63209287123098,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,0": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,1": {
-        "fixed_value": 0,
-        "minimum_slack": 45.44994563220022,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,2": {
-        "fixed_value": 0,
-        "minimum_slack": 46.04720237001981,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,3": {
-        "fixed_value": 0,
-        "minimum_slack": 38.67858567736502,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,4": {
-        "fixed_value": 0,
-        "minimum_slack": 42.904831635428685,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,5": {
-        "fixed_value": 0,
-        "minimum_slack": 36.865491151941505,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,6": {
-        "fixed_value": 0,
-        "minimum_slack": 29.84127397280625,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,7": {
-        "fixed_value": 0,
-        "minimum_slack": 37.4106029827739,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,0": {
-        "fixed_value": 0,
-        "minimum_slack": 32.530404558700226,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,1": {
-        "fixed_value": 0,
-        "minimum_slack": 45.451634149657075,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,2": {
-        "fixed_value": 0,
-        "minimum_slack": 46.04720237001981,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,3": {
-        "fixed_value": 0,
-        "minimum_slack": 46.75981630615641,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,4": {
-        "fixed_value": 0,
-        "minimum_slack": 47.10657559720286,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,5": {
-        "fixed_value": 0,
-        "minimum_slack": 45.959618526015724,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,6": {
-        "fixed_value": 0,
-        "minimum_slack": 42.18224633826253,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,7": {
-        "fixed_value": 0,
-        "minimum_slack": 41.691432623190536,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      }
-    },
     "z_ramp_up_opt": {
       "0,3": {
         "fixed_value": 0,
-        "minimum_slack": 6.690448540867024,
+        "minimum_slack": 6.527173834387796,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
-      "0,5": {
+      "1,5": {
         "fixed_value": 0,
-        "minimum_slack": 1.1319410791753945,
-        "side": "opt",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,6": {
-        "fixed_value": 0,
-        "minimum_slack": 11.435838452447918,
+        "minimum_slack": 0.9501988656535119,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
@@ -8286,7 +8102,7 @@
       },
       "2,1": {
         "fixed_value": 0,
-        "minimum_slack": 16.54429035089283,
+        "minimum_slack": 16.752957997495734,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
@@ -8300,35 +8116,35 @@
       },
       "2,3": {
         "fixed_value": 0,
-        "minimum_slack": 42.38145976244051,
+        "minimum_slack": 42.4367178149038,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "2,4": {
         "fixed_value": 0,
-        "minimum_slack": 22.965721633142607,
+        "minimum_slack": 22.845344249000544,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "2,5": {
         "fixed_value": 0,
-        "minimum_slack": 34.69586430193172,
+        "minimum_slack": 35.459365540720434,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "2,6": {
         "fixed_value": 0,
-        "minimum_slack": 39.30764225661126,
+        "minimum_slack": 39.528674466464466,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "2,7": {
         "fixed_value": 0,
-        "minimum_slack": 29.37828938033501,
+        "minimum_slack": 29.599321590188225,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
@@ -8342,49 +8158,49 @@
       },
       "3,1": {
         "fixed_value": 0,
-        "minimum_slack": 24.8568880438864,
+        "minimum_slack": 12.807860519964798,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "3,2": {
         "fixed_value": 0,
-        "minimum_slack": 37.88829079956363,
+        "minimum_slack": 37.88829079567479,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "3,3": {
         "fixed_value": 0,
-        "minimum_slack": 42.38145976244049,
+        "minimum_slack": 42.4367178149038,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "3,4": {
         "fixed_value": 0,
-        "minimum_slack": 32.95552078344863,
+        "minimum_slack": 33.10432562317446,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "3,5": {
         "fixed_value": 0,
-        "minimum_slack": 39.29070457938702,
+        "minimum_slack": 39.454781259248264,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "3,6": {
         "fixed_value": 0,
-        "minimum_slack": 45.990888476175385,
+        "minimum_slack": 46.15666263356525,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "3,7": {
         "fixed_value": 0,
-        "minimum_slack": 16.535140426793582,
+        "minimum_slack": 16.700534297561354,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
@@ -8398,51 +8214,228 @@
       },
       "4,1": {
         "fixed_value": 0,
-        "minimum_slack": 45.73698768290318,
+        "minimum_slack": 45.79655237818453,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "4,2": {
         "fixed_value": 0,
-        "minimum_slack": 44.5193015708503,
+        "minimum_slack": 44.57455962331361,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "4,3": {
         "fixed_value": 0,
-        "minimum_slack": 42.38145976244049,
+        "minimum_slack": 42.4367178149038,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "4,4": {
         "fixed_value": 0,
-        "minimum_slack": 41.34118188930116,
+        "minimum_slack": 41.39643994176446,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "4,5": {
         "fixed_value": 0,
-        "minimum_slack": 44.78205310286256,
+        "minimum_slack": 44.837311155325864,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "4,6": {
         "fixed_value": 0,
-        "minimum_slack": 46.89627418828505,
+        "minimum_slack": 46.95153224074835,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "4,7": {
         "fixed_value": 0,
-        "minimum_slack": 46.98982535257307,
+        "minimum_slack": 47.04508340503637,
         "side": "opt",
         "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      }
+    },
+    "z_ramp_down_opt": {
+      "1,1": {
+        "fixed_value": 0,
+        "minimum_slack": 6.901269955752667,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,0": {
+        "fixed_value": 0,
+        "minimum_slack": 25.0,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,1": {
+        "fixed_value": 0,
+        "minimum_slack": 22.374098276040918,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,2": {
+        "fixed_value": 0,
+        "minimum_slack": 41.383229990179245,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,3": {
+        "fixed_value": 0,
+        "minimum_slack": 11.661934920587669,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,4": {
+        "fixed_value": 0,
+        "minimum_slack": 32.80019728055835,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,5": {
+        "fixed_value": 0,
+        "minimum_slack": 29.13602043882682,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,6": {
+        "fixed_value": 0,
+        "minimum_slack": 22.838758897364443,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,7": {
+        "fixed_value": 0,
+        "minimum_slack": 34.85312508108419,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,0": {
+        "fixed_value": 0,
+        "minimum_slack": 32.53040455870023,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,1": {
+        "fixed_value": 0,
+        "minimum_slack": 45.50874695661676,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,2": {
+        "fixed_value": 0,
+        "minimum_slack": 46.1024604224831,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,3": {
+        "fixed_value": 0,
+        "minimum_slack": 38.67858567736502,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,4": {
+        "fixed_value": 0,
+        "minimum_slack": 43.07060578507819,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,5": {
+        "fixed_value": 0,
+        "minimum_slack": 37.03126530933143,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,6": {
+        "fixed_value": 0,
+        "minimum_slack": 30.007048130196154,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,7": {
+        "fixed_value": 0,
+        "minimum_slack": 37.576377140163814,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,0": {
+        "fixed_value": 0,
+        "minimum_slack": 32.530404558700226,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,1": {
+        "fixed_value": 0,
+        "minimum_slack": 45.50520368466352,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,2": {
+        "fixed_value": 0,
+        "minimum_slack": 46.102460422483105,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,3": {
+        "fixed_value": 0,
+        "minimum_slack": 46.81507435861971,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,4": {
+        "fixed_value": 0,
+        "minimum_slack": 47.161833649666164,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,5": {
+        "fixed_value": 0,
+        "minimum_slack": 46.014876578479026,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,6": {
+        "fixed_value": 0,
+        "minimum_slack": 42.23750439072583,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,7": {
+        "fixed_value": 0,
+        "minimum_slack": 41.74669067565384,
+        "side": "opt",
+        "constraint_type": "ramp_down",
         "result_classification": "positive_slack_optimal"
       }
     }

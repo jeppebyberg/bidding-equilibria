@@ -6,7 +6,7 @@ bids, then solves two LP dispatch models:
   - equilibrium dispatch: NN bids for strategic generators, true costs for others
   - optimal dispatch:     true marginal costs for all generators (social optimum)
 
-Computes mean realized PoA ratio = mean(C_eq / C_opt) across scenarios.
+Computes mean and maximum realized PoA ratio across scenarios.
 C_eq and C_opt both use true block costs (not bids) as the cost measure.
 
 This is post-processing only -- no MILP is invoked, only LP dispatch (Gurobi).
@@ -406,14 +406,14 @@ def evaluate_oos_poa_for_regime(
 
     Returns:
         dict with keys:
-            regime_name           – regime drawn from.
-            n_scenarios_requested – n_scenarios argument.
-            n_scenarios_used      – scenarios with C_opt > 0 (used for mean PoA).
-            seed                  – seed used.
-            oos_mean_poa_ratio    – mean(C_eq / C_opt) across valid scenarios.
-            poa_ratios            – per-scenario PoA ratios.
-            c_eq                  – per-scenario equilibrium true costs.
-            c_opt                 – per-scenario optimal true costs.
+            regime_name           - regime drawn from.
+            n_scenarios_requested - n_scenarios argument.
+            n_scenarios_used      - scenarios with C_opt > 0 (used for mean PoA).
+            seed                  - seed used.
+            oos_mean_poa_ratio    - mean(C_eq / C_opt) across valid scenarios.
+            poa_ratios            - per-scenario PoA ratios.
+            c_eq                  - per-scenario equilibrium true costs.
+            c_opt                 - per-scenario optimal true costs.
     """
     source_regime_config = Path(source_regime_config)
 
@@ -517,24 +517,24 @@ def evaluate_oos_poa_for_regime(
             )
 
     oos_mean_poa = float(np.mean(poa_ratios)) if poa_ratios else float("nan")
+    oos_max_poa = float(np.max(poa_ratios)) if poa_ratios else float("nan")
     return {
         "regime_name": regime_name,
         "n_scenarios_requested": n_scenarios,
         "n_scenarios_used": len(poa_ratios),
         "seed": seed,
         "oos_mean_poa_ratio": oos_mean_poa,
+        "oos_max_poa_ratio": oos_max_poa,
         "poa_ratios": poa_ratios,
         "c_eq": c_eq_list,
         "c_opt": c_opt_list,
     }
-
 
 def save_oos_results(results: list[dict[str, Any]], output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as f:
         json.dump(results, f, indent=2)
     print(f"Saved OOS PoA results: {output_path}")
-
 
 # ---------------------------------------------------------------------------
 # Entry point — edit the config block below, then run this script directly
@@ -552,7 +552,7 @@ if __name__ == "__main__":
         "models/neural_network/features/generated/normalized/min_max_stats.json"
     )
     NN_POLICY_GENERATORS = ["G1", "W2", "W3"]
-    N_SCENARIOS = 100
+    N_SCENARIOS = 1000
     SEED = 999                          # different from poa_seed=1 used in training
     OUTPUT_DIR = Path("results/oos_poa")
     # ─────────────────────────────────────────────────────────────────────────
@@ -573,9 +573,13 @@ if __name__ == "__main__":
             seed=SEED,
             oos_config_path=OUTPUT_DIR / "oos_regime_config.json",
         )
-        oos_poa = result["oos_mean_poa_ratio"]
+        oos_mean_poa = result["oos_mean_poa_ratio"]
+        oos_max_poa = result["oos_max_poa_ratio"]
         n_used = result["n_scenarios_used"]
-        print(f"  OOS mean PoA ratio: {oos_poa:.4f}  (from {n_used} scenarios)")
+        print(
+            f"  OOS PoA ratio: mean={oos_mean_poa:.4f}, max={oos_max_poa:.4f} "
+            f"(from {n_used} scenarios)"
+        )
         all_results.append(result)
 
     save_oos_results(all_results, OUTPUT_DIR / "oos_poa_results.json")
@@ -584,14 +588,16 @@ if __name__ == "__main__":
     from results_viz.plot_dro_poa_eta_sweep import (
         calibrated_epsilon,
         load_eta_sweep_records,
+        plot_poa_epsilon_frontier,
     )
 
     dro_results_dir = Path("results/dro_poa")
     print()
     for result in all_results:
         reg = result["regime_name"]
-        oos_poa = result["oos_mean_poa_ratio"]
-        if np.isnan(oos_poa):
+        oos_mean_poa = result["oos_mean_poa_ratio"]
+        oos_max_poa = result["oos_max_poa_ratio"]
+        if np.isnan(oos_mean_poa) and np.isnan(oos_max_poa):
             print(f"Regime '{reg}': OOS PoA is NaN -- skipping calibration.")
             continue
         try:
@@ -599,5 +605,18 @@ if __name__ == "__main__":
         except FileNotFoundError as exc:
             print(f"Regime '{reg}': no sweep records found ({exc}). Run the DRO sweep first.")
             continue
-        ce = calibrated_epsilon(records, oos_poa)
-        print(f"Regime '{reg}': {ce['message']}")
+        if not np.isnan(oos_mean_poa):
+            ce_mean = calibrated_epsilon(records, oos_mean_poa)
+            print(f"Regime '{reg}' mean: {ce_mean['message']}")
+        if not np.isnan(oos_max_poa):
+            ce_max = calibrated_epsilon(records, oos_max_poa)
+            print(f"Regime '{reg}' max:  {ce_max['message']}")
+        frontier_path = plot_poa_epsilon_frontier(
+            records=records,
+            output_dir=OUTPUT_DIR / "frontiers" / reg,
+            regime_name=reg,
+            poa_metric="inner_objective",
+            oos_mean_poa=oos_mean_poa,
+            oos_max_poa=oos_max_poa,
+        )
+        print(f"Regime '{reg}': saved OOS PoA-epsilon frontier: {frontier_path}")

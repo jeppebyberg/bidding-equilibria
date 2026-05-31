@@ -4,14 +4,14 @@
     5.0
   ],
   "C_opt": [
-    251.06595088892377,
-    13485.405004257125
+    240.73171299950306,
+    14636.260948491372
   ],
   "metadata": {
-    "raw_C_opt_lower": 251.06620295512673,
-    "raw_C_opt_upper": 13485.391517865606,
-    "safe_C_opt_lower": 251.06595088892377,
-    "safe_C_opt_upper": 13485.405004257125,
+    "raw_C_opt_lower": 240.7319547314578,
+    "raw_C_opt_upper": 14636.24631124506,
+    "safe_C_opt_lower": 240.73171299950306,
+    "safe_C_opt_upper": 14636.260948491372,
     "method": "poa_optimal_dispatch_kkt_bounds",
     "support_set_source": "regime_ambiguity_set",
     "test_profile": "full",
@@ -20,12 +20,12 @@
       1,
       2
     ],
-    "active_constraints_min": 715,
-    "active_constraints_max": 715,
-    "num_variables_min": 1377,
-    "num_variables_max": 1377,
-    "num_constraints_min": 715,
-    "num_constraints_max": 715,
+    "active_constraints_min": 675,
+    "active_constraints_max": 675,
+    "num_variables_min": 1323,
+    "num_variables_max": 1323,
+    "num_constraints_min": 675,
+    "num_constraints_max": 675,
     "constraint_extraction_min": {
       "kept_constraint_components": [
         "conventional_capacity",
@@ -35,8 +35,6 @@
         "demand_budget_constraint",
         "demand_lower_bound_constraints",
         "demand_lower_feasibility",
-        "demand_ramp_down_constraints",
-        "demand_ramp_up_constraints",
         "demand_upper_bound_constraints",
         "final_ramp_down_dual_opt",
         "final_ramp_up_dual_opt",
@@ -64,13 +62,13 @@
         "wind_capacity_factor_lower_feasibility",
         "wind_capacity_factor_upper_feasibility",
         "wind_even_block_split",
-        "wind_ramp_down",
-        "wind_ramp_up",
         "wind_total_lower_bound",
         "wind_total_upper_bound"
       ],
       "deactivated_constraint_components": [
         "cost_definition_eq",
+        "demand_ar1_down_constraints",
+        "demand_ar1_up_constraints",
         "final_ramp_down_dual_eq",
         "final_ramp_up_dual_eq",
         "generation_lower_eq",
@@ -93,10 +91,12 @@
         "stationarity_eq",
         "true_cost_alpha",
         "upper_bound_complementarity_dual_eq",
-        "upper_bound_complementarity_eq"
+        "upper_bound_complementarity_eq",
+        "wind_ar1_down_constraints",
+        "wind_ar1_up_constraints"
       ],
-      "kept_constraint_component_count": 40,
-      "deactivated_constraint_component_count": 24
+      "kept_constraint_component_count": 36,
+      "deactivated_constraint_component_count": 28
     },
     "constraint_extraction_max": {
       "kept_constraint_components": [
@@ -107,8 +107,6 @@
         "demand_budget_constraint",
         "demand_lower_bound_constraints",
         "demand_lower_feasibility",
-        "demand_ramp_down_constraints",
-        "demand_ramp_up_constraints",
         "demand_upper_bound_constraints",
         "final_ramp_down_dual_opt",
         "final_ramp_up_dual_opt",
@@ -136,13 +134,13 @@
         "wind_capacity_factor_lower_feasibility",
         "wind_capacity_factor_upper_feasibility",
         "wind_even_block_split",
-        "wind_ramp_down",
-        "wind_ramp_up",
         "wind_total_lower_bound",
         "wind_total_upper_bound"
       ],
       "deactivated_constraint_components": [
         "cost_definition_eq",
+        "demand_ar1_down_constraints",
+        "demand_ar1_up_constraints",
         "final_ramp_down_dual_eq",
         "final_ramp_up_dual_eq",
         "generation_lower_eq",
@@ -165,10 +163,12 @@
         "stationarity_eq",
         "true_cost_alpha",
         "upper_bound_complementarity_dual_eq",
-        "upper_bound_complementarity_eq"
+        "upper_bound_complementarity_eq",
+        "wind_ar1_down_constraints",
+        "wind_ar1_up_constraints"
       ],
-      "kept_constraint_component_count": 40,
-      "deactivated_constraint_component_count": 24
+      "kept_constraint_component_count": 36,
+      "deactivated_constraint_component_count": 28
     },
     "solver_status_min": "ok",
     "termination_condition_min": "optimal",

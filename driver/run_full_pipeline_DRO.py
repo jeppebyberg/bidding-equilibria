@@ -4,6 +4,7 @@ import json
 import shutil
 import sys
 import time
+import warnings
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -28,6 +29,8 @@ from models.DRO_PoA.DRO_PoA_tightening.tightening_main import (
     DEFAULT_DRO_TIGHTENING_OUTPUT_PATHS,
     DROPoATighteningMain,
 )
+from models.DRO_PoA.dro_poa_model.support_set import DROWassersteinSupportSet, _ar1_kappa
+from driver.verify_dro_support import calibrate_support_coverage
 
 
 DRO_TIGHTENING_FLAGS = {
@@ -145,7 +148,20 @@ class DROFullPipelineConfig:
     # tightening and the final optimization.  Empirical scenarios are checked
     # against the AR(1) tube and any violating trajectories are dropped with a
     # warning before they enter the model.
-    use_wasserstein_support_set: bool = False
+    use_wasserstein_support_set: bool = True
+
+    # Support-set coverage calibration (independent of the DRO draw).
+    calibrate_support_coverage: bool = True
+    support_verify_seed: int = 77777
+    support_verify_num_draws: int = 2000
+    support_coverage_grid: list[float] = field(
+        default_factory=lambda: [0.90, 0.95, 0.99, 0.999, 0.9999]
+    )
+    support_include_fleet_band: bool = True
+    ar1_coverage: float | None = None
+    support_calibration_report_path: Path = Path(
+        "results/full_pipeline_DRO/support_calibration.json"
+    )
 
     # Step toggles.
     run_scenario_generation: bool = True
@@ -203,6 +219,13 @@ def main(config: DROFullPipelineConfig) -> None:
 
     if config.run_nn_training:
         train_policies(config)
+
+    if (
+        (config.run_dro_tightening or config.run_dro_optimization)
+        and config.use_wasserstein_support_set
+        and config.calibrate_support_coverage
+    ):
+        run_support_calibration(config)
 
     if config.run_dro_tightening or config.run_dro_optimization:
         dro_scenarios = load_dro_scenario_data(config)
@@ -298,39 +321,165 @@ def load_or_generate_scenarios(
     return scenarios
 
 
+def resolve_dro_regime_names_from_runtime_config(config: DROFullPipelineConfig) -> list[str]:
+    if config.dro_regime_names is not None:
+        return [str(regime_name) for regime_name in config.dro_regime_names]
+    if not config.runtime_config_path.exists():
+        write_runtime_regime_config(config)
+    with config.runtime_config_path.open("r", encoding="utf-8") as file_handle:
+        raw_config = yaml.safe_load(file_handle) or {}
+    regime_sets = raw_config.get("regime_sets", {}) or {}
+    regime_set = regime_sets.get(config.poa_regime_set, {}) or {}
+    regimes = regime_set.get("regimes", []) or []
+    names = [str(regime.get("name")) for regime in regimes if regime.get("name") is not None]
+    if not names:
+        raise ValueError(
+            f"No regimes found for '{config.poa_regime_set}' in {config.runtime_config_path}"
+        )
+    return names
+
+
+def run_support_calibration(config: DROFullPipelineConfig) -> dict[str, Any]:
+    if config.support_verify_seed == config.poa_seed:
+        warnings.warn(
+            "support_verify_seed equals poa_seed; support calibration is not out-of-sample.",
+            stacklevel=2,
+        )
+    if config.support_verify_seed == config.synthetic_seed:
+        warnings.warn(
+            "support_verify_seed equals synthetic_seed; support calibration reuses "
+            "the synthetic-label seed.",
+            stacklevel=2,
+        )
+
+    manager = ScenarioManager(config.case)
+    apply_time_steps_override(manager, config.horizon)
+    regime_names = resolve_dro_regime_names_from_runtime_config(config)
+
+    print("\nRunning Wasserstein support coverage calibration")
+    print(
+        f"  seed={config.support_verify_seed}, n_draws={config.support_verify_num_draws}, "
+        f"grid={config.support_coverage_grid}"
+    )
+    print(f"  fleet band included: {config.support_include_fleet_band}")
+
+    regime_reports: list[dict[str, Any]] = []
+    failed_regimes: list[str] = []
+    for regime_name in regime_names:
+        report = calibrate_support_coverage(
+            manager=manager,
+            regime_config_path=config.runtime_config_path,
+            regime_set=config.poa_regime_set,
+            regime_name=regime_name,
+            horizon=config.horizon,
+            n_draws=config.support_verify_num_draws,
+            seed=config.support_verify_seed,
+            coverage_grid=list(config.support_coverage_grid),
+            include_fleet_band=bool(config.support_include_fleet_band),
+        )
+        regime_reports.append(report)
+        if report.get("coverage") is None:
+            failed_regimes.append(regime_name)
+
+    if failed_regimes:
+        raise RuntimeError(
+            "Support coverage calibration did not clear all families for regimes "
+            f"{failed_regimes}. Increase support_coverage_grid's maximum value."
+        )
+
+    global_coverage = max(float(report["coverage"]) for report in regime_reports)
+    binding_candidates = [
+        report
+        for report in regime_reports
+        if abs(float(report["coverage"]) - global_coverage) <= 1e-12
+    ]
+    binding_report = sorted(
+        binding_candidates,
+        key=lambda report: (str(report.get("regime_name")), str(report.get("binding_family"))),
+    )[0]
+    global_kappa = _ar1_kappa(config.horizon, global_coverage)
+    config.ar1_coverage = global_coverage
+
+    for report in regime_reports:
+        print(
+            f"\n  Regime '{report['regime_name']}': selected coverage={report['coverage']} "
+            f"kappa={float(report['kappa']):.4f} binding={report['binding_family']}"
+        )
+        per_family = report.get("per_family_rejection", {}) or {}
+        for family in sorted(per_family):
+            values = per_family[family]
+            row = ", ".join(
+                f"{float(cov):.5g}: {float(pct):.4g}%"
+                for cov, pct in sorted(values.items(), key=lambda item: float(item[0]))
+            )
+            print(f"    {family:<24} {row}")
+
+    print(
+        "\nChosen Wasserstein support coverage: "
+        f"{global_coverage} (kappa={global_kappa:.4f})"
+    )
+    print(
+        "  Binding regime/family: "
+        f"{binding_report['regime_name']} / {binding_report['binding_family']}"
+    )
+
+    full_report = {
+        "case": config.case,
+        "regime_set": config.poa_regime_set,
+        "regime_names": regime_names,
+        "horizon": config.horizon,
+        "coverage_grid": list(config.support_coverage_grid),
+        "support_verify_seed": config.support_verify_seed,
+        "poa_seed": config.poa_seed,
+        "synthetic_seed": config.synthetic_seed,
+        "n_draws": config.support_verify_num_draws,
+        "include_fleet_band": bool(config.support_include_fleet_band),
+        "chosen_coverage": global_coverage,
+        "chosen_kappa": global_kappa,
+        "binding_regime": binding_report["regime_name"],
+        "binding_family": binding_report["binding_family"],
+        "regime_reports": regime_reports,
+    }
+    write_json(config.support_calibration_report_path, full_report)
+    print(f"Saved support calibration report: {config.support_calibration_report_path}")
+    return full_report
+
+
 def validate_scenarios_within_wasserstein_support(
     scenarios: dict[str, Any],
     manager: ScenarioManager,
     horizon: int,
     ar1_coverage: float,
+    include_fleet_band: bool = False,
 ) -> dict[str, Any]:
-    """Check each empirical scenario against the Wasserstein AR(1) tube.
+    """Drop empirical scenarios outside the enforced Wasserstein support bands.
 
-    Scenarios that violate the tube at any time step are dropped.  A warning is
-    emitted listing the rejected scenario indices and the fraction removed.
-    Returns a new scenarios dict with the filtered scenarios_df (costs and ramps
-    are unchanged — they are scenario-independent).
-
-    The tube bounds are:
-      |D[t] - rho_D*D[t-1] - D_ref*mu_D*(shape[t]-rho_D*shape[t-1])| <= kappa * D_ref * sigma_D
-    at t >= 1, and |D[0] - D_ref*mu_D*shape[0]| <= kappa * D_ref * sigma_D at t=0.
-    Analogue for each wind generator's total capacity.
+    The same single kappa is used for demand/wind innovation tubes, stationary
+    level bands, and the optional wind fleet aggregate band.
     """
     import ast
-    import warnings as _warnings
-    from models.DRO_PoA.dro_poa_model.support_set import _ar1_kappa
-
     kappa = _ar1_kappa(horizon, ar1_coverage)
     scenarios_df = scenarios["scenarios_df"].copy().reset_index(drop=True)
     D_ref = float(manager.base_case["demand"])
     wind_generators = [g for g in manager.physical_generators if bool(g["is_wind"])]
+    wind_blocks_by_generator = {
+        str(g["physical_name"]): [
+            b for b in manager.blocks
+            if b["physical_name"] == g["physical_name"] and bool(b["is_wind"])
+        ]
+        for g in wind_generators
+    }
+    demand_shape = ScenarioManager._build_demand_shape(horizon)
 
     def _parse(v: Any) -> list[float]:
         if isinstance(v, (list, np.ndarray)):
             return [float(x) for x in v]
         return [float(x) for x in ast.literal_eval(str(v))]
 
-    rejected: list[int] = []
+    def _first_violation(values: np.ndarray, threshold: float) -> bool:
+        return bool(np.any(np.abs(values) > threshold + 1e-9))
+
+    rejected_reasons: dict[int, str] = {}
     for s in range(len(scenarios_df)):
         row = scenarios_df.iloc[s]
         mu_D = float(row["mu_D"])
@@ -340,70 +489,101 @@ def validate_scenarios_within_wasserstein_support(
         sigma_W = float(row["sigma_W"])
         rho_W = float(row["rho_W"])
         peak_W = float(row["peak_W"])
-        demand_shape = ScenarioManager._build_demand_shape(horizon)
         wind_shape = ScenarioManager._build_wind_shape(horizon, peak_W)
         thr_D = kappa * D_ref * sigma_D
+        thr_D_level = kappa * D_ref * sigma_D / np.sqrt(1.0 - rho_D ** 2)
 
-        D = np.array(_parse(row["demand_profile"]))
-        # t=0 band (non-stationary cold start)
-        if abs(D[0] - D_ref * mu_D * demand_shape[0]) > thr_D:
-            rejected.append(s)
+        D = np.array(_parse(row["demand_profile"]), dtype=float)[:horizon]
+        demand_ref = D_ref * mu_D * demand_shape
+        if _first_violation(np.array([D[0] - demand_ref[0]]), thr_D):
+            rejected_reasons[s] = "demand_innov_t0"
             continue
-        # t>=1 AR(1) tube
         if horizon > 1:
             ar1_ref = D_ref * mu_D * (demand_shape[1:] - rho_D * demand_shape[:-1])
             innov_D = D[1:] - rho_D * D[:-1] - ar1_ref
-            if np.any(np.abs(innov_D) > thr_D):
-                rejected.append(s)
+            if _first_violation(innov_D, thr_D):
+                rejected_reasons[s] = "demand_innov"
                 continue
+        if _first_violation(D - demand_ref, thr_D_level):
+            rejected_reasons[s] = "demand_level"
+            continue
 
-        # Wind generators
-        violated = False
+        wind_profiles: dict[str, tuple[np.ndarray, float]] = {}
         for g in wind_generators:
-            name = g["physical_name"]
+            name = str(g["physical_name"])
             P_W_max = float(g["pmax"])
             thr_W = kappa * P_W_max * sigma_W
-            blocks = [b for b in manager.blocks if b["physical_name"] == name and bool(b["is_wind"])]
+            thr_W_level = kappa * P_W_max * sigma_W / np.sqrt(1.0 - rho_W ** 2)
             P = np.zeros(horizon, dtype=float)
-            for b in blocks:
+            for b in wind_blocks_by_generator[name]:
                 col = f"{b['block_name']}_profile"
                 if col in scenarios_df.columns:
-                    P += np.array(_parse(row[col]))
-            # t=0
-            if abs(P[0] - P_W_max * mu_W * wind_shape[0]) > thr_W:
-                violated = True
+                    P += np.array(_parse(row[col]), dtype=float)[:horizon]
+            wind_profiles[name] = (P, P_W_max)
+            wind_ref = P_W_max * mu_W * wind_shape
+            if _first_violation(np.array([P[0] - wind_ref[0]]), thr_W):
+                rejected_reasons[s] = f"wind_{name}_innov_t0"
                 break
-            # t>=1
             if horizon > 1:
                 ar1_ref_W = P_W_max * mu_W * (wind_shape[1:] - rho_W * wind_shape[:-1])
                 innov_W = P[1:] - rho_W * P[:-1] - ar1_ref_W
-                if np.any(np.abs(innov_W) > thr_W):
-                    violated = True
+                if _first_violation(innov_W, thr_W):
+                    rejected_reasons[s] = f"wind_{name}_innov"
                     break
-        if violated:
-            rejected.append(s)
+            if _first_violation(P - wind_ref, thr_W_level):
+                rejected_reasons[s] = f"wind_{name}_level"
+                break
 
-    if rejected:
+        if s in rejected_reasons:
+            continue
+
+        if include_fleet_band and wind_profiles:
+            caps = [cap_i for _, cap_i in wind_profiles.values()]
+            cap_rms = float(np.sqrt(sum(cap_i ** 2 for cap_i in caps)))
+            sum_caps = float(sum(caps))
+            fleet_profile = sum(P for P, _ in wind_profiles.values())
+            fleet_ref = sum_caps * mu_W * wind_shape
+            fleet_threshold = kappa * cap_rms * sigma_W / np.sqrt(1.0 - rho_W ** 2)
+            if _first_violation(fleet_profile - fleet_ref, fleet_threshold):
+                rejected_reasons[s] = "wind_fleet"
+
+    if rejected_reasons:
         total = len(scenarios_df)
+        rejected = sorted(rejected_reasons)
         pct = 100.0 * len(rejected) / total
-        _warnings.warn(
+        reason_counts: dict[str, int] = {}
+        reason_indices: dict[str, list[int]] = {}
+        for idx, reason in rejected_reasons.items():
+            reason_counts[reason] = reason_counts.get(reason, 0) + 1
+            reason_indices.setdefault(reason, []).append(idx)
+        reason_summary = "; ".join(
+            f"{reason}: {count}/{total} ({100.0 * count / total:.1f}%), "
+            f"indices={reason_indices[reason]}"
+            for reason, count in sorted(reason_counts.items())
+        )
+        warnings.warn(
             f"Wasserstein support set: {len(rejected)}/{total} empirical scenarios "
-            f"({pct:.1f}%) violate the AR(1) tube (coverage={ar1_coverage}, "
+            f"({pct:.1f}%) violate enforced bands at coverage={ar1_coverage}, "
             f"kappa={kappa:.4f}) and have been dropped.  Regime distribution may "
-            f"be wider than the tube — consider raising ar1_coverage or inspecting "
-            f"the rejected indices: {rejected}.",
+            f"be wider than the calibrated support bands. Rejected indices: "
+            f"{rejected}. By band: {reason_summary}.",
             stacklevel=2,
         )
         valid_idx = [i for i in range(total) if i not in set(rejected)]
         if not valid_idx:
             raise RuntimeError(
-                "All empirical scenarios were rejected by the Wasserstein AR(1) tube. "
-                "The support set is too tight for the generated scenarios.  "
+                "All empirical scenarios were rejected by the Wasserstein support bands. "
+                "The support set is too tight for the generated scenarios. "
                 "Increase ar1_coverage or disable use_wasserstein_support_set."
             )
         filtered_df = scenarios_df.iloc[valid_idx].reset_index(drop=True)
     else:
         filtered_df = scenarios_df
+        print(
+            "Wasserstein support validation: 0 empirical scenarios dropped "
+            f"(coverage={ar1_coverage}, kappa={kappa:.4f}, "
+            f"fleet_band={include_fleet_band})."
+        )
 
     return {**scenarios, "scenarios_df": filtered_df}
 
@@ -424,15 +604,17 @@ def load_dro_scenario_data(config: DROFullPipelineConfig) -> dict[str, Any]:
         enforce_support_set=enforce_support_set,
     )
     if config.use_wasserstein_support_set:
-        from models.DRO_PoA.dro_poa_model.support_set import DROWassersteinSupportSet
         ar1_coverage = float(
-            getattr(config, "ar1_coverage", DROWassersteinSupportSet.AR1_JOINT_COVERAGE)
+            config.ar1_coverage
+            if config.ar1_coverage is not None
+            else DROWassersteinSupportSet.AR1_JOINT_COVERAGE
         )
         scenarios = validate_scenarios_within_wasserstein_support(
             scenarios=scenarios,
             manager=scenario_manager,
             horizon=config.horizon,
             ar1_coverage=ar1_coverage,
+            include_fleet_band=bool(config.support_include_fleet_band),
         )
     if config.run_scenario_generation:
         config.poa_scenario_dir.mkdir(parents=True, exist_ok=True)
@@ -524,6 +706,8 @@ def build_dro_tightening(
         ambiguity_kappa=config.ambiguity_kappa,
         use_default_bounds=(objective_mode != "difference"),
         use_wasserstein_support_set=config.use_wasserstein_support_set,
+        ar1_coverage=config.ar1_coverage,
+        enable_fleet_band=bool(config.support_include_fleet_band),
     )
 
 def run_dro_tightening_for_regime(
@@ -617,8 +801,12 @@ def _print_wasserstein_floor_diagnostic(
         print(
             f"    k={row['scenario_k']:2d}  min_W={row['min_W_total']:.4f}"
             f"  (demand: pw={row['demand_pointwise_violations']}"
+            f" t0={row.get('demand_t0_violations', 0)}"
             f" ar1={row['demand_ar1_violations']}"
-            f"  wind ar1={row['wind_ar1_violations']}){flag}"
+            f"  wind: level={row.get('wind_level_violations', 0)}"
+            f" t0={row.get('wind_t0_violations', 0)}"
+            f" ar1={row['wind_ar1_violations']}"
+            f" fleet={row.get('wind_fleet_violations', 0)}){flag}"
         )
     if any_violation:
         print(
@@ -856,6 +1044,8 @@ def build_dro_optimizer(
         mccormick_bounds=mccormick_bounds,
         ambiguity_kappa=config.ambiguity_kappa,
         use_wasserstein_support_set=config.use_wasserstein_support_set,
+        ar1_coverage=config.ar1_coverage,
+        enable_fleet_band=bool(config.support_include_fleet_band),
     )
     return optimizer
 
@@ -987,10 +1177,10 @@ if __name__ == "__main__":
         horizon=8,
         nn_policy_generators=["G1", "W2", "W3"],
 
-        dro_regime_names=None,        
+        dro_regime_names=None,
         # dro_regime_names=["normal"],
 
-        etas=[0.0] + np.logspace(-3, 0.5, 25).tolist(),
+        etas=[0.0] + np.logspace(-3, 0.5, 10).tolist(),
         # etas=[10000.0],
         dro_wasserstein_epsilon=2000,
         ambiguity_kappa=0.3,
@@ -1017,7 +1207,7 @@ if __name__ == "__main__":
         run_heuristic_labels=False,
         run_feature_building=False,
         run_nn_training=False,
-        run_dro_tightening=False,
+        run_dro_tightening=True,
         tightening_flags={
             "primal_big_m": True,
             "relu_bounds": True,

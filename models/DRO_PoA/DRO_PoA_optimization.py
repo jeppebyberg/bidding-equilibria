@@ -28,20 +28,29 @@ if str(_REPO_ROOT) not in sys.path:
 
 from config.scenarios.scenario_generator import ScenarioManager
 from models.helper import (
+    block_cost_vector,
+    block_structure_from_dataframes,
     ensure_profile,
     find_demand_profile_column,
     infer_num_time_steps,
+    is_wind_generator_name,
+    ramp_vectors,
 )
+from models.DRO_PoA.dro_poa_model.mccormick import DROPoAMcCormick
 from models.DRO_PoA.dro_poa_model.nn_policy_embedding import DROPoAPolicyEmbedding
 from models.DRO_PoA.dro_poa_model.results import DROPoAResults
-from models.DRO_PoA.dro_poa_model.support_set import DROPoASupportSet, DROWassersteinSupportSet
+from models.DRO_PoA.dro_poa_model.support_set import (
+    DROPoASupportSet,
+    DROWassersteinSupportSet,
+    _ar1_kappa,
+)
 from models.DRO_PoA.dro_poa_model.tightening_reports import DROPoATighteningReports
-from models.synthetic_data_generation.economic_dispatch import EconomicDispatchModel
 
 
 class DRO_PoAOptimization(
     DROPoAPolicyEmbedding,
     DROPoATighteningReports,
+    DROPoAMcCormick,
     DROPoASupportSet,
     DROPoAResults,
 ):
@@ -74,8 +83,6 @@ class DRO_PoAOptimization(
         "mccormick",
         "piecewise_mccormick",
     }
-
-    mccormick_bounds_tolerance = 1e-7
 
     def __init__(
         self,
@@ -114,6 +121,7 @@ class DRO_PoAOptimization(
         default_phi_upper: Optional[float] = None,
         use_wasserstein_support_set: bool = False,
         ar1_coverage: Optional[float] = None,
+        enable_fleet_band: bool = True,
     ):
         if float(eta) < 0.0:
             raise ValueError("eta must be nonnegative")
@@ -137,6 +145,7 @@ class DRO_PoAOptimization(
         self.ambiguity_kappa = float(ambiguity_kappa)
         self.reference_case = reference_case
         self.use_wasserstein_support_set = bool(use_wasserstein_support_set)
+        self.enable_fleet_band = bool(enable_fleet_band)
         if self.use_wasserstein_support_set:
             self.ar1_coverage = float(
                 ar1_coverage
@@ -214,7 +223,7 @@ class DRO_PoAOptimization(
             self.regime_name,
             regime_name_was_explicit=regime_name is not None,
         )
-        self._initialize_block_structure_from_ed()
+        self._initialize_block_structure()
         self.num_time_steps = int(num_time_steps or infer_num_time_steps(self.scenarios_df))
         if self.num_time_steps <= 0:
             raise ValueError("num_time_steps must be positive")
@@ -265,286 +274,45 @@ class DRO_PoAOptimization(
             )
         return normalized_mode
 
-    def _normalize_mccormick_bounds_alias(
-        self,
-        mccormick_bounds: Optional[dict[str, Any]],
-        ratio_bounds: Optional[dict[str, Any]],
-    ) -> Optional[dict[str, Any]]:
-        raw_bounds = mccormick_bounds if mccormick_bounds is not None else ratio_bounds
-        if raw_bounds is None or not isinstance(raw_bounds, dict):
-            return raw_bounds
-        normalized = dict(raw_bounds)
-        if "PoA" not in normalized and "phi" in normalized:
-            normalized["PoA"] = normalized["phi"]
-        return normalized
-
-    def _default_mccormick_bounds_payload(
-        self,
-        mccormick_bounds: Optional[dict[str, Any]] = None,
-    ) -> dict[str, Any]:
-        completed = dict(mccormick_bounds or {})
-        completed.setdefault(
-            "PoA",
-            (float(self.default_PoA_lower), float(self.default_PoA_upper)),
-        )
-        completed.setdefault(
-            "C_opt",
-            (float(self.default_c_opt_lower), float(self.default_c_opt_upper)),
-        )
-        if self.objective_mode == "piecewise_mccormick":
-            completed.setdefault("num_pieces", 10)
-        return completed
-
-    def _mccormick_bounds_with_defaults(
-        self,
-        mccormick_bounds: Optional[dict[str, Any]],
-    ) -> Optional[dict[str, Any]]:
-        if self.objective_mode == "difference":
-            return mccormick_bounds
-        if mccormick_bounds is None:
-            if not self.use_default_bounds:
-                return None
-            self._mark_default_bound_used(
-                "optimal_cost_bounds",
-                "Default loose mccormick/C_opt bounds were used because mccormick_bounds was missing.",
-            )
-            return self._default_mccormick_bounds_payload()
-        if self.use_default_bounds and (
-            "C_opt" not in mccormick_bounds or "PoA" not in mccormick_bounds
-        ):
-            self._mark_default_bound_used(
-                "optimal_cost_bounds",
-                "Default loose mccormick/C_opt bounds filled missing mccormick_bounds entries.",
-            )
-            return self._default_mccormick_bounds_payload(mccormick_bounds)
-        return mccormick_bounds
-
-    def _validate_deferred_mccormick_bounds(
-        self,
-        mccormick_bounds: Optional[dict[str, Any]],
-    ) -> Optional[dict[str, Any]]:
-        if mccormick_bounds is None:
-            raise ValueError(
-                f"mccormick_bounds with at least 'PoA' is required when "
-                f"objective_mode='{self.objective_mode}' and "
-                "defer_mccormick_bound_validation=True"
-            )
-        if not isinstance(mccormick_bounds, dict):
-            raise ValueError("mccormick_bounds must be a dictionary")
-        mccormick_bounds = self._normalize_mccormick_bounds_alias(mccormick_bounds, None)
-        if "PoA" not in mccormick_bounds:
-            raise ValueError("mccormick_bounds must contain 'PoA' for deferred mccormick validation")
-        raw_PoA = mccormick_bounds["PoA"]
-        if not isinstance(raw_PoA, (list, tuple)) or len(raw_PoA) != 2:
-            raise ValueError("mccormick_bounds['PoA'] must be a pair (lower, upper)")
-        PoA_L = float(raw_PoA[0])
-        PoA_U = float(raw_PoA[1])
-        if not np.isfinite(PoA_L) or not np.isfinite(PoA_U):
-            raise ValueError("mccormick_bounds['PoA'] entries must be finite")
-        if PoA_L < 0.0:
-            raise ValueError("mccormick_bounds['PoA'][0] must be nonnegative")
-        if PoA_U <= PoA_L:
-            raise ValueError(
-                "mccormick_bounds['PoA'][1] must be greater than mccormick_bounds['PoA'][0]"
-            )
-        if self.objective_mode == "piecewise_mccormick":
-            if "num_pieces" not in mccormick_bounds and "C_opt_breakpoints" not in mccormick_bounds:
-                raise ValueError(
-                    "deferred piecewise_mccormick bounds must include "
-                    "'num_pieces' or 'C_opt_breakpoints'"
-                )
-            if "num_pieces" in mccormick_bounds:
-                try:
-                    num_pieces = int(mccormick_bounds["num_pieces"])
-                except (TypeError, ValueError) as exc:
-                    raise ValueError("mccormick_bounds['num_pieces'] must be an integer") from exc
-                if num_pieces < 2:
-                    raise ValueError("mccormick_bounds['num_pieces'] must be at least 2")
-        return dict(mccormick_bounds)
-
-    def _validate_mccormick_bounds(
-        self,
-        mccormick_bounds: Optional[dict[str, Any]],
-    ) -> Optional[dict[str, Any]]:
-        if self.objective_mode == "difference":
-            return mccormick_bounds
-
-        if mccormick_bounds is None:
-            raise ValueError(
-                f"mccormick_bounds is required when objective_mode='{self.objective_mode}'"
-            )
-        if not isinstance(mccormick_bounds, dict):
-            raise ValueError("mccormick_bounds must be a dictionary")
-        mccormick_bounds = self._normalize_mccormick_bounds_alias(mccormick_bounds, None)
-        missing = [key for key in ("PoA", "C_opt") if key not in mccormick_bounds]
-        if missing:
-            raise ValueError(
-                "mccormick_bounds must contain bounds for: " + ", ".join(missing)
-            )
-
-        def parse_bounds(key: str) -> tuple[float, float]:
-            raw_bounds = mccormick_bounds[key]
-            if not isinstance(raw_bounds, (list, tuple)) or len(raw_bounds) != 2:
-                raise ValueError(f"mccormick_bounds['{key}'] must be a pair (lower, upper)")
-            lower = float(raw_bounds[0])
-            upper = float(raw_bounds[1])
-            if not np.isfinite(lower) or not np.isfinite(upper):
-                raise ValueError(f"mccormick_bounds['{key}'] entries must be finite")
-            return lower, upper
-
-        PoA_L, PoA_U = parse_bounds("PoA")
-        C_opt_L, C_opt_U = parse_bounds("C_opt")
-
-        if C_opt_L <= 0.0:
-            raise ValueError("mccormick_bounds['C_opt'][0] must be strictly positive")
-        if C_opt_U < C_opt_L:
-            raise ValueError(
-                "mccormick_bounds['C_opt'][1] must be greater than or equal to "
-                "mccormick_bounds['C_opt'][0]"
-            )
-        if PoA_L < 0.0:
-            raise ValueError("mccormick_bounds['PoA'][0] must be nonnegative")
-        if PoA_U <= PoA_L:
-            raise ValueError(
-                "mccormick_bounds['PoA'][1] must be greater than mccormick_bounds['PoA'][0]"
-            )
-
-        validated_bounds: dict[str, Any] = {
-            "PoA": (PoA_L, PoA_U),
-            "C_opt": (C_opt_L, C_opt_U),
-        }
-        if self.objective_mode == "piecewise_mccormick":
-            validated_bounds["C_opt_breakpoints"] = self._validate_mccormick_breakpoints(
-                mccormick_bounds,
-                C_opt_L,
-                C_opt_U,
-            )
-            validated_bounds["num_pieces"] = (
-                len(validated_bounds["C_opt_breakpoints"]) - 1
-            )
-        return validated_bounds
-
-    def _validate_mccormick_breakpoints(
-        self,
-        mccormick_bounds: dict[str, Any],
-        C_opt_L: float,
-        C_opt_U: float,
-    ) -> list[float]:
-        tolerance = self.mccormick_bounds_tolerance
-        if "C_opt_breakpoints" in mccormick_bounds:
-            raw_breakpoints = mccormick_bounds["C_opt_breakpoints"]
-            if not isinstance(raw_breakpoints, (list, tuple)):
-                raise ValueError("mccormick_bounds['C_opt_breakpoints'] must be a list")
-            breakpoints = [float(value) for value in raw_breakpoints]
-            if len(breakpoints) < 3:
-                raise ValueError(
-                    "mccormick_bounds['C_opt_breakpoints'] must contain at least 3 values"
-                )
-            if not all(np.isfinite(value) for value in breakpoints):
-                raise ValueError("mccormick_bounds['C_opt_breakpoints'] entries must be finite")
-            if abs(breakpoints[0] - C_opt_L) > tolerance:
-                raise ValueError(
-                    "mccormick_bounds['C_opt_breakpoints'][0] must match "
-                    "mccormick_bounds['C_opt'][0]"
-                )
-            if abs(breakpoints[-1] - C_opt_U) > tolerance:
-                raise ValueError(
-                    "mccormick_bounds['C_opt_breakpoints'][-1] must match "
-                    "mccormick_bounds['C_opt'][1]"
-                )
-            if any(
-                breakpoints[idx + 1] <= breakpoints[idx]
-                for idx in range(len(breakpoints) - 1)
-            ):
-                raise ValueError(
-                    "mccormick_bounds['C_opt_breakpoints'] must be strictly increasing"
-                )
-            return breakpoints
-
-        if "num_pieces" not in mccormick_bounds:
-            raise ValueError(
-                "mccormick_bounds must include either 'num_pieces' or "
-                "'C_opt_breakpoints' for objective_mode='piecewise_mccormick'"
-            )
-        try:
-            num_pieces = int(mccormick_bounds["num_pieces"])
-        except (TypeError, ValueError) as exc:
-            raise ValueError("mccormick_bounds['num_pieces'] must be an integer") from exc
-        if num_pieces < 2:
-            raise ValueError("mccormick_bounds['num_pieces'] must be at least 2")
-        return [
-            float(value)
-            for value in np.linspace(C_opt_L, C_opt_U, num_pieces + 1)
-        ]
-
-    def _mccormick_bounds_with_loaded_C_opt_bounds(
-        self,
-        mccormick_bounds: Optional[dict[str, Any]],
-    ) -> Optional[dict[str, Any]]:
-        if self.objective_mode == "difference":
-            return mccormick_bounds
-        if mccormick_bounds is None:
-            raise ValueError(
-                f"mccormick_bounds is required when objective_mode='{self.objective_mode}'"
-            )
-        mccormick_bounds = self._normalize_mccormick_bounds_alias(mccormick_bounds, None)
-        if "C_opt" in mccormick_bounds:
-            return mccormick_bounds
-
-        C_opt_bounds = self.optimal_cost_bounds or {}
-        if "C_opt" in C_opt_bounds and isinstance(C_opt_bounds.get("C_opt"), dict):
-            C_opt_bounds = C_opt_bounds.get("C_opt", {}) or {}
-        lower = C_opt_bounds.get("lower")
-        upper = C_opt_bounds.get("upper")
-        if lower is None or upper is None:
-            raise ValueError(
-                "Mccormick objective modes require denominator bounds. Pass "
-                "mccormick_bounds['C_opt'] explicitly or run/load the DRO "
-                "optimal-cost-bound tightening stage first."
-            )
-        completed = dict(mccormick_bounds)
-        completed["C_opt"] = (float(lower), float(upper))
-        return completed
-
     # ------------------------------------------------------------------
     # Data and configuration
     # ------------------------------------------------------------------
 
-    def _initialize_block_structure_from_ed(self) -> None:
-        mapping_model = EconomicDispatchModel(
-            scenarios_df=self.scenarios_df,
-            costs_df=self.costs_df,
-            ramps_df=self.ramps_df,
-            p_init=None,
+    def _initialize_block_structure(self) -> None:
+        block_structure = block_structure_from_dataframes(
+            self.scenarios_df,
+            self.ramps_df,
         )
 
-        self.block_names = list(mapping_model.block_names)
-        self.num_blocks = int(mapping_model.num_blocks)
-        self.physical_generator_names = list(mapping_model.physical_generator_names)
-        self.num_physical_generators = int(mapping_model.num_physical_generators)
-        self.block_to_physical = dict(mapping_model.block_to_physical)
-        self.block_to_physical_idx = list(mapping_model.block_to_physical_idx)
+        self.block_names = list(block_structure.block_names)
+        self.num_blocks = len(self.block_names)
+        self.physical_generator_names = list(block_structure.physical_generator_names)
+        self.num_physical_generators = len(self.physical_generator_names)
+        self.block_to_physical = dict(block_structure.block_to_physical)
+        self.block_to_physical_idx = list(block_structure.block_to_physical_idx)
         self.physical_to_block_indices = [
-            list(blocks) for blocks in mapping_model.physical_to_block_indices
+            list(blocks) for blocks in block_structure.physical_to_block_indices
         ]
         self.blocks_by_generator = {
-            int(i): list(blocks) for i, blocks in mapping_model.blocks_by_generator.items()
+            int(i): list(blocks) for i, blocks in block_structure.blocks_by_generator.items()
         }
         self.local_blocks_by_generator = {
             int(i): list(blocks)
-            for i, blocks in mapping_model.local_blocks_by_generator.items()
+            for i, blocks in block_structure.local_blocks_by_generator.items()
         }
-        self.local_to_global_block = dict(mapping_model.local_to_global_block)
-        self.global_to_local_block = dict(mapping_model.global_to_local_block)
-        self.generator_block_pairs = list(mapping_model.generator_block_pairs)
-        self.block_cost_vector = [float(v) for v in mapping_model.block_cost_vector]
-        self.ramp_vector_up = [float(v) for v in mapping_model.ramp_vector_up]
-        self.ramp_vector_down = [float(v) for v in mapping_model.ramp_vector_down]
+        self.local_to_global_block = dict(block_structure.local_to_global_block)
+        self.global_to_local_block = dict(block_structure.global_to_local_block)
+        self.generator_block_pairs = list(block_structure.generator_block_pairs)
+        self.block_cost_vector = block_cost_vector(self.costs_df, self.block_names)
+        self.ramp_vector_up, self.ramp_vector_down = ramp_vectors(
+            self.ramps_df,
+            self.physical_generator_names,
+        )
 
         self.wind_physical_generator_ids = [
             i
             for i, name in enumerate(self.physical_generator_names)
-            if self._is_wind_name(name)
+            if is_wind_generator_name(name)
         ]
         self.conventional_physical_generator_ids = [
             i
@@ -561,11 +329,6 @@ class DRO_PoAOptimization(
             for (i, b) in self.generator_block_pairs
             if i in self.conventional_physical_generator_ids
         ]
-
-    @staticmethod
-    def _is_wind_name(name: str) -> bool:
-        stripped = str(name).strip()
-        return stripped.upper().startswith("W") or "wind" in stripped.lower()
 
     @staticmethod
     def load_regime_config(
@@ -766,10 +529,6 @@ class DRO_PoAOptimization(
     def compute_deterministic_p_init(self) -> list[list[float]]:
         """Compute p_init from the optimal single-step dispatch at the regime's
         deterministic (mu_D, mu_W) operating point (no stochastic innovations).
-
-        This avoids the artificial ramp infeasibility that arises when p_init=50%
-        forces a minimum conventional dispatch that conflicts with the KKT
-        stationarity conditions under high wind availability.
 
         Returns the same row for every scenario (the deterministic point is
         regime-wide), shaped [num_empirical_scenarios][num_physical_generators].
@@ -1010,7 +769,7 @@ class DRO_PoAOptimization(
         )
         m = self.model
         breakpoints = list(self.mccormick_bounds["C_opt_breakpoints"])
-        _PoA_L, PoA_U = self.mccormick_bounds["PoA"]
+        PoA_U = self.mccormick_bounds["PoA"][1]
         m.mccormick_piece_index = Set(initialize=range(len(breakpoints) - 1))
         m.mccormick_piece_active = Var(m.scenarios, m.mccormick_piece_index, domain=Binary)
         m.C_opt_piece = Var(
@@ -1023,6 +782,8 @@ class DRO_PoAOptimization(
             m.scenarios,
             m.mccormick_piece_index,
             domain=NonNegativeReals,
+            # Inactive pieces must be zero; PoA_L is enforced by
+            # mccormick_piece_PoA_lower after the active binary is known.
             bounds=(0.0, PoA_U),
         )
         m.z_mccormick_piece = Var(
@@ -1276,6 +1037,7 @@ class DRO_PoAOptimization(
         ar1_ref: "np.ndarray",
         innov_margin: float,
         rho: float,
+        t0_ref: float,
     ) -> float:
         """Min L1 distance from x_emp to the support set defined by pointwise
         box bounds and AR1 innovation bounds, solved as a small LP.
@@ -1298,6 +1060,17 @@ class DRO_PoAOptimization(
 
         rows: list = []
         rhs: list = []
+
+        # t=0 cold-start innovation band.
+        row_t0_up = np.zeros(2 * T)
+        row_t0_up[0] = 1.0
+        rows.append(row_t0_up)
+        rhs.append(t0_ref + innov_margin)
+
+        row_t0_dn = np.zeros(2 * T)
+        row_t0_dn[0] = -1.0
+        rows.append(row_t0_dn)
+        rhs.append(innov_margin - t0_ref)
 
         # AR1 up:   x[t] - rho*x[t-1] <=  ar1_ref[t-1] + innov_margin
         # AR1 down: x[t] - rho*x[t-1] >= ar1_ref[t-1] - innov_margin
@@ -1338,6 +1111,110 @@ class DRO_PoAOptimization(
             return float(result.fun)
         return float("inf")
 
+    @staticmethod
+    def _min_wasserstein_to_wind_support(
+        empirical_profiles: "list[np.ndarray]",
+        lb_profiles: "list[np.ndarray]",
+        ub_profiles: "list[np.ndarray]",
+        ar1_refs: "list[np.ndarray]",
+        t0_refs: "list[float]",
+        innov_margins: "list[float]",
+        rho: float,
+        fleet_lb: "np.ndarray | None" = None,
+        fleet_ub: "np.ndarray | None" = None,
+    ) -> float:
+        """Min L1 distance from wind profiles to per-gen support, plus fleet band."""
+        import numpy as np
+        from scipy.optimize import linprog
+
+        n_gen = len(empirical_profiles)
+        if n_gen == 0:
+            return 0.0
+        T = len(empirical_profiles[0])
+        n_x = n_gen * T
+        n_var = 2 * n_x
+        c = np.zeros(n_var)
+        c[n_x:] = 1.0
+
+        def x_idx(g: int, t: int) -> int:
+            return g * T + t
+
+        def u_idx(g: int, t: int) -> int:
+            return n_x + g * T + t
+
+        bounds = []
+        for g in range(n_gen):
+            bounds.extend(
+                (float(lb_profiles[g][t]), float(ub_profiles[g][t]))
+                for t in range(T)
+            )
+        bounds.extend([(0.0, None)] * n_x)
+
+        rows: list = []
+        rhs: list = []
+
+        for g in range(n_gen):
+            margin = float(innov_margins[g])
+
+            row_t0_up = np.zeros(n_var)
+            row_t0_up[x_idx(g, 0)] = 1.0
+            rows.append(row_t0_up)
+            rhs.append(float(t0_refs[g]) + margin)
+
+            row_t0_dn = np.zeros(n_var)
+            row_t0_dn[x_idx(g, 0)] = -1.0
+            rows.append(row_t0_dn)
+            rhs.append(margin - float(t0_refs[g]))
+
+            for t in range(1, T):
+                row_up = np.zeros(n_var)
+                row_up[x_idx(g, t)] = 1.0
+                row_up[x_idx(g, t - 1)] = -rho
+                rows.append(row_up)
+                rhs.append(float(ar1_refs[g][t - 1]) + margin)
+
+                row_dn = np.zeros(n_var)
+                row_dn[x_idx(g, t)] = -1.0
+                row_dn[x_idx(g, t - 1)] = rho
+                rows.append(row_dn)
+                rhs.append(margin - float(ar1_refs[g][t - 1]))
+
+            for t in range(T):
+                emp = float(empirical_profiles[g][t])
+
+                row1 = np.zeros(n_var)
+                row1[x_idx(g, t)] = -1.0
+                row1[u_idx(g, t)] = -1.0
+                rows.append(row1)
+                rhs.append(-emp)
+
+                row2 = np.zeros(n_var)
+                row2[x_idx(g, t)] = 1.0
+                row2[u_idx(g, t)] = -1.0
+                rows.append(row2)
+                rhs.append(emp)
+
+        if fleet_lb is not None and fleet_ub is not None:
+            for t in range(T):
+                row_up = np.zeros(n_var)
+                for g in range(n_gen):
+                    row_up[x_idx(g, t)] = 1.0
+                rows.append(row_up)
+                rhs.append(float(fleet_ub[t]))
+
+                row_dn = np.zeros(n_var)
+                for g in range(n_gen):
+                    row_dn[x_idx(g, t)] = -1.0
+                rows.append(row_dn)
+                rhs.append(-float(fleet_lb[t]))
+
+        A_ub = np.vstack(rows)
+        b_ub = np.array(rhs)
+        result = linprog(c, A_ub=A_ub, b_ub=b_ub, bounds=bounds, method="highs")
+        if result.status == 0:
+            return float(result.fun)
+        return float("inf")
+
     def diagnose_empirical_support_set_violations(self) -> list[dict]:
         """For each empirical scenario, compute the minimum achievable Wasserstein
         distance and flag which support-set constraint families are violated.
@@ -1352,12 +1229,16 @@ class DRO_PoAOptimization(
         Returns a list of dicts, one per scenario.
         """
         import numpy as np
-        from scipy.stats import norm as _norm
 
         T = self.num_time_steps
         D_ref = float(self.demand_D_ref)
-        kappa = 1.96
-        kappa_ar1 = float(_norm.ppf((1.0 + 0.95 ** (1.0 / T)) / 2.0))
+        coverage = float(
+            getattr(self, "ar1_coverage", DROWassersteinSupportSet.AR1_JOINT_COVERAGE)
+        )
+        kappa_ar1 = _ar1_kappa(T, coverage)
+        kappa_level = kappa_ar1
+        kappa_fleet = kappa_ar1
+        enable_fleet_band = bool(getattr(self, "enable_fleet_band", True))
 
         from config.scenarios.scenario_generator import ScenarioManager
         demand_shape = ScenarioManager._build_demand_shape(T)
@@ -1368,57 +1249,110 @@ class DRO_PoAOptimization(
             D_emp = np.asarray(self.empirical_D[k], dtype=float)
             D_ref_vec = D_ref * self.mu_D_fixed * demand_shape
             stationary_std_D = self.sigma_D_fixed / np.sqrt(1.0 - self.demand_rho_fixed ** 2)
-            margin_D = kappa * D_ref * stationary_std_D
+            margin_D = kappa_level * D_ref * stationary_std_D
 
             lb_D = np.maximum(D_ref_vec - margin_D, 0.0)
             ub_D = D_ref_vec + margin_D
 
             innov_margin_D = kappa_ar1 * D_ref * self.sigma_D_fixed
+            t0_ref_D = D_ref * self.mu_D_fixed * demand_shape[0]
             ar1_ref_D = D_ref * self.mu_D_fixed * (
                 demand_shape[1:] - self.demand_rho_fixed * demand_shape[:-1]
             )
+            t0_violation_D = int(abs(D_emp[0] - t0_ref_D) > innov_margin_D + 1e-9)
             innov_D = D_emp[1:] - self.demand_rho_fixed * D_emp[:-1]
             ar1_violations_D = int(np.sum(np.abs(innov_D - ar1_ref_D) > innov_margin_D + 1e-9))
 
             min_W_demand = self._min_wasserstein_to_support_1d(
-                D_emp, lb_D, ub_D, ar1_ref_D, innov_margin_D, self.demand_rho_fixed
+                D_emp, lb_D, ub_D, ar1_ref_D, innov_margin_D, self.demand_rho_fixed, t0_ref_D
             )
 
-            min_W_wind = 0.0
+            wind_emp_profiles = []
+            wind_lb_profiles = []
+            wind_ub_profiles = []
+            wind_ar1_refs = []
+            wind_t0_refs = []
+            wind_innov_margins = []
             wind_ar1_violations = 0
+            wind_t0_violations = 0
+            wind_level_violations = 0
             stationary_std_W = self.sigma_W_fixed / np.sqrt(1.0 - self.wind_rho_fixed ** 2)
-            innov_margin_W = kappa_ar1 * self.sigma_W_fixed
+            fleet_profile = np.zeros(T, dtype=float)
+            fleet_ref = np.zeros(T, dtype=float)
+            fleet_cap_rms_sq = 0.0
 
             for i in self.wind_physical_generator_ids:
                 cap = float(self.static_physical_capacity[int(i)])
                 P_emp = np.asarray(self.empirical_Pmax_phys[k][int(i)], dtype=float)
                 P_ref_vec = cap * self.mu_W_fixed * wind_shape
-                margin_W = kappa * cap * stationary_std_W
+                margin_W = kappa_level * cap * stationary_std_W
                 lb_W = np.maximum(P_ref_vec - margin_W, 0.0)
                 ub_W = np.minimum(P_ref_vec + margin_W, cap)
 
+                innov_margin_W = kappa_ar1 * cap * self.sigma_W_fixed
+                t0_ref_W = cap * self.mu_W_fixed * wind_shape[0]
                 ar1_ref_W = cap * self.mu_W_fixed * (
                     wind_shape[1:] - self.wind_rho_fixed * wind_shape[:-1]
                 )
+                wind_t0_violations += int(abs(P_emp[0] - t0_ref_W) > innov_margin_W + 1e-9)
                 innov_W = P_emp[1:] - self.wind_rho_fixed * P_emp[:-1]
                 wind_ar1_violations += int(
-                    np.sum(np.abs(innov_W - ar1_ref_W) > innov_margin_W * cap + 1e-9)
+                    np.sum(np.abs(innov_W - ar1_ref_W) > innov_margin_W + 1e-9)
+                )
+                wind_level_violations += int(
+                    np.sum((P_emp < lb_W - 1e-9) | (P_emp > ub_W + 1e-9))
                 )
 
-                min_W_wind += self._min_wasserstein_to_support_1d(
-                    P_emp, lb_W, ub_W, ar1_ref_W, innov_margin_W * cap, self.wind_rho_fixed
+                wind_emp_profiles.append(P_emp)
+                wind_lb_profiles.append(lb_W)
+                wind_ub_profiles.append(ub_W)
+                wind_ar1_refs.append(ar1_ref_W)
+                wind_t0_refs.append(t0_ref_W)
+                wind_innov_margins.append(innov_margin_W)
+                fleet_profile += P_emp
+                fleet_ref += P_ref_vec
+                fleet_cap_rms_sq += cap ** 2
+
+            fleet_violations = 0
+            fleet_lb = None
+            fleet_ub = None
+            if enable_fleet_band and wind_emp_profiles:
+                fleet_cap_rms = float(np.sqrt(fleet_cap_rms_sq))
+                fleet_margin = kappa_fleet * fleet_cap_rms * stationary_std_W
+                fleet_lb = fleet_ref - fleet_margin
+                fleet_ub = fleet_ref + fleet_margin
+                fleet_violations = int(
+                    np.sum((fleet_profile < fleet_lb - 1e-9) | (fleet_profile > fleet_ub + 1e-9))
                 )
+
+            min_W_wind = self._min_wasserstein_to_wind_support(
+                wind_emp_profiles,
+                wind_lb_profiles,
+                wind_ub_profiles,
+                wind_ar1_refs,
+                wind_t0_refs,
+                wind_innov_margins,
+                self.wind_rho_fixed,
+                fleet_lb=fleet_lb,
+                fleet_ub=fleet_ub,
+            )
 
             results.append({
                 "scenario_k": k,
                 "min_W_demand": min_W_demand,
                 "min_W_wind": min_W_wind,
                 "min_W_total": min_W_demand + min_W_wind,
+                "coverage": coverage,
+                "kappa": kappa_ar1,
                 "demand_pointwise_violations": int(
                     np.sum(D_emp < lb_D - 1e-9) + np.sum(D_emp > ub_D + 1e-9)
                 ),
+                "demand_t0_violations": t0_violation_D,
                 "demand_ar1_violations": ar1_violations_D,
+                "wind_level_violations": wind_level_violations,
+                "wind_t0_violations": wind_t0_violations,
                 "wind_ar1_violations": wind_ar1_violations,
+                "wind_fleet_violations": fleet_violations,
             })
         return results
 

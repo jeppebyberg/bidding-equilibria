@@ -58,6 +58,7 @@ class DROPoATighteningMain:
         use_default_bounds: bool = False,
         use_wasserstein_support_set: bool = False,
         ar1_coverage: Optional[float] = None,
+        enable_fleet_band: bool = True,
     ) -> None:
         self.poa = DRO_PoAOptimization(
             scenarios_df=scenarios_df,
@@ -80,6 +81,7 @@ class DROPoATighteningMain:
             use_default_bounds=use_default_bounds,
             use_wasserstein_support_set=use_wasserstein_support_set,
             ar1_coverage=ar1_coverage,
+            enable_fleet_band=enable_fleet_band,
         )
         self.dro = self.poa
         self.dro_poa = self.poa
@@ -325,6 +327,7 @@ class DROPoATighteningMain:
                 "use_default_bounds": self.poa.use_default_bounds,
                 "use_wasserstein_support_set": self.poa.use_wasserstein_support_set,
                 "ar1_coverage": getattr(self.poa, "ar1_coverage", None),
+                "enable_fleet_band": getattr(self.poa, "enable_fleet_band", None),
             },
             "tightening_data": dict(self.tightening_data),
         }

@@ -292,6 +292,8 @@ class DROWassersteinSupportSet(DROPoASupportSet):
     """
 
     AR1_JOINT_COVERAGE: float = 0.99
+    LEVEL_JOINT_COVERAGE: float = 0.9999  # calibrated: first coverage giving 0% rejection on fresh draws
+    FLEET_JOINT_COVERAGE: float = 0.999  # calibrated: first coverage giving 0% fleet rejection
 
     def _build_support_set(self) -> None:
         # _build_regime_fixing_constraints is inherited from DROPoASupportSet and is
@@ -312,8 +314,16 @@ class DROWassersteinSupportSet(DROPoASupportSet):
         # ar1_coverage can be overridden on the instance (e.g. from DRO_PoAOptimization).
         # Fall back to the class constant, accessed via the class directly so that
         # this method works correctly when called on a non-DROWassersteinSupportSet instance.
-        coverage = float(getattr(self, "ar1_coverage", DROWassersteinSupportSet.AR1_JOINT_COVERAGE))
+        coverage = float(
+            getattr(self, "ar1_coverage", None)
+            or DROWassersteinSupportSet.AR1_JOINT_COVERAGE
+        )
         kappa_ar1 = _ar1_kappa(self.num_time_steps, coverage)
+        # level/fleet fallback to the single ar1_coverage so one calibrated κ drives all bands.
+        level_coverage = float(getattr(self, "level_coverage", None) or coverage)
+        kappa_lvl_D = _ar1_kappa(self.num_time_steps, level_coverage)
+        # 1/sqrt(1-rho_D^2): multiply by m.sigma_D to get stationary std coefficient
+        sigma_bar_D_scale = 1.0 / np.sqrt(1.0 - self.demand_rho_fixed ** 2)
 
         # Reference increment shared by both t=0 and t>=1 rules.
         # mu_D is a fixed Pyomo Var (pinned by regime_fixing); using it keeps
@@ -360,6 +370,15 @@ class DROWassersteinSupportSet(DROPoASupportSet):
                 m.P_max_block[k, i, b, t] for i, b in m.generator_blocks
             )
 
+        # Stationary level band: caps accumulated drift from stacked innovations.
+        def demand_level_lower_rule(m, k, t):
+            ref = self.demand_D_ref * m.mu_D * self.demand_shape[int(t)]
+            return m.D[k, t] >= ref - kappa_lvl_D * self.demand_D_ref * m.sigma_D * sigma_bar_D_scale
+
+        def demand_level_upper_rule(m, k, t):
+            ref = self.demand_D_ref * m.mu_D * self.demand_shape[int(t)]
+            return m.D[k, t] <= ref + kappa_lvl_D * self.demand_D_ref * m.sigma_D * sigma_bar_D_scale
+
         m.demand_ar1_t0_up = Constraint(m.scenarios, rule=demand_ar1_t0_up_rule)
         m.demand_ar1_t0_down = Constraint(m.scenarios, rule=demand_ar1_t0_down_rule)
         m.demand_ar1_up_constraints = Constraint(
@@ -371,6 +390,12 @@ class DROWassersteinSupportSet(DROPoASupportSet):
         m.dispatch_capacity_feasibility = Constraint(
             m.scenarios, m.time_steps, rule=dispatch_feasibility_rule
         )
+        m.demand_level_lower_constraints = Constraint(
+            m.scenarios, m.time_steps, rule=demand_level_lower_rule
+        )
+        m.demand_level_upper_constraints = Constraint(
+            m.scenarios, m.time_steps, rule=demand_level_upper_rule
+        )
 
     # ------------------------------------------------------------------
     # Wind
@@ -378,8 +403,21 @@ class DROWassersteinSupportSet(DROPoASupportSet):
 
     def _build_wasserstein_wind(self) -> None:
         m = self.model
-        coverage = float(getattr(self, "ar1_coverage", DROWassersteinSupportSet.AR1_JOINT_COVERAGE))
+        coverage = float(
+            getattr(self, "ar1_coverage", None)
+            or DROWassersteinSupportSet.AR1_JOINT_COVERAGE
+        )
         kappa_ar1 = _ar1_kappa(self.num_time_steps, coverage)
+        # level/fleet fallback to the single ar1_coverage so one calibrated κ drives all bands.
+        level_coverage = float(getattr(self, "level_coverage", None) or coverage)
+        fleet_coverage = float(getattr(self, "fleet_coverage", None) or coverage)
+        kappa_lvl_W = _ar1_kappa(self.num_time_steps, level_coverage)
+        kappa_fleet = _ar1_kappa(self.num_time_steps, fleet_coverage)
+        sigma_bar_W_scale = 1.0 / np.sqrt(1.0 - self.wind_rho_fixed ** 2)
+        cap_rms = float(np.sqrt(sum(
+            self.static_physical_capacity[int(i)] ** 2 for i in m.wind_physical_generators
+        )))
+        sum_caps = float(sum(self.static_physical_capacity[int(i)] for i in m.wind_physical_generators))
 
         def _ar1_ref_W(m, i: int, t: int) -> object:
             """P_W_max[i] * mu_W * (shape[t] - rho_W * shape[t-1])  for t >= 1."""
@@ -449,6 +487,28 @@ class DROWassersteinSupportSet(DROPoASupportSet):
         m.wind_ar1_t0_down = Constraint(
             m.scenarios, m.wind_physical_generators, rule=wind_ar1_t0_down_rule
         )
+        # Per-generator stationary level band: coexists with physical cap and innovation tube.
+        def wind_level_lower_rule(m, k, i, t):
+            cap_i = self.static_physical_capacity[int(i)]
+            ref = cap_i * m.mu_W * self.wind_shape[int(t)]
+            return _P_total(m, k, i, t) >= ref - kappa_lvl_W * cap_i * m.sigma_W * sigma_bar_W_scale
+
+        def wind_level_upper_rule(m, k, i, t):
+            cap_i = self.static_physical_capacity[int(i)]
+            ref = cap_i * m.mu_W * self.wind_shape[int(t)]
+            return _P_total(m, k, i, t) <= ref + kappa_lvl_W * cap_i * m.sigma_W * sigma_bar_W_scale
+
+        # Fleet aggregate band: independence-scaled width cap_rms << sum_caps for N > 1.
+        def wind_fleet_lower_rule(m, k, t):
+            fleet_sum = sum(_P_total(m, k, i, t) for i in m.wind_physical_generators)
+            ref_S = sum_caps * m.mu_W * self.wind_shape[int(t)]
+            return fleet_sum >= ref_S - kappa_fleet * cap_rms * m.sigma_W * sigma_bar_W_scale
+
+        def wind_fleet_upper_rule(m, k, t):
+            fleet_sum = sum(_P_total(m, k, i, t) for i in m.wind_physical_generators)
+            ref_S = sum_caps * m.mu_W * self.wind_shape[int(t)]
+            return fleet_sum <= ref_S + kappa_fleet * cap_rms * m.sigma_W * sigma_bar_W_scale
+
         m.wind_ar1_up_constraints = Constraint(
             m.scenarios, m.wind_physical_generators, m.time_steps_minus_1, rule=wind_ar1_up_rule
         )
@@ -458,3 +518,16 @@ class DROWassersteinSupportSet(DROPoASupportSet):
         m.wind_even_block_split = Constraint(
             m.scenarios, m.wind_blocks, m.time_steps, rule=wind_even_block_split_rule
         )
+        m.wind_level_lower_constraints = Constraint(
+            m.scenarios, m.wind_physical_generators, m.time_steps, rule=wind_level_lower_rule
+        )
+        m.wind_level_upper_constraints = Constraint(
+            m.scenarios, m.wind_physical_generators, m.time_steps, rule=wind_level_upper_rule
+        )
+        if bool(getattr(self, "enable_fleet_band", True)):
+            m.wind_fleet_lower_constraint = Constraint(
+                m.scenarios, m.time_steps, rule=wind_fleet_lower_rule
+            )
+            m.wind_fleet_upper_constraint = Constraint(
+                m.scenarios, m.time_steps, rule=wind_fleet_upper_rule
+            )

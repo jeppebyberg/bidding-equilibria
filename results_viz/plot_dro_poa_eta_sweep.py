@@ -340,6 +340,7 @@ def plot_poa_epsilon_frontier(
     regime_name: str,
     poa_metric: str = "inner_objective",
     oos_mean_poa: float | None = None,
+    oos_max_poa: float | None = None,
     show: bool = False,
 ) -> Path:
     """Plot worst-case PoA vs achieved Wasserstein distance, tangent slope = eta at each point.
@@ -402,19 +403,23 @@ def plot_poa_epsilon_frontier(
                 color=color,
             )
 
-    # OOS overlay
-    if oos_mean_poa is not None and np.isfinite(oos_mean_poa):
-        oos_color = "tab:orange"
+    # OOS overlays
+    for label_name, poa_value, oos_color, line_style in [
+        ("mean", oos_mean_poa, "tab:orange", "--"),
+        ("max", oos_max_poa, "tab:red", "-."),
+    ]:
+        if poa_value is None or not np.isfinite(poa_value):
+            continue
         ax.axhline(
-            oos_mean_poa,
+            poa_value,
             color=oos_color,
-            linestyle="--",
+            linestyle=line_style,
             linewidth=1.5,
             zorder=4,
-            label=f"OOS mean PoA = {oos_mean_poa:.4g}",
+            label=f"OOS {label_name} PoA = {poa_value:.4g}",
         )
         try:
-            ce = calibrated_epsilon(records, oos_mean_poa, poa_metric)
+            ce = calibrated_epsilon(records, poa_value, poa_metric)
             if ce["in_range"] and ce["eps_star"] is not None:
                 eps_star = float(ce["eps_star"])
                 ax.axvline(
@@ -426,7 +431,7 @@ def plot_poa_epsilon_frontier(
                 )
                 ax.plot(
                     eps_star,
-                    oos_mean_poa,
+                    poa_value,
                     marker="*",
                     markersize=13,
                     color=oos_color,
@@ -695,23 +700,39 @@ def clean_output_dir(output_dir: Path) -> None:
 
 def _load_oos_poa_by_regime(
     oos_results_path: Path,
-) -> dict[str, float]:
-    """Load oos_poa_results.json and return {regime_name: oos_mean_poa_ratio}."""
+) -> dict[str, dict[str, float]]:
+    """Load oos_poa_results.json and return OOS mean/max PoA by regime."""
     if not oos_results_path.exists():
         return {}
     with oos_results_path.open("r", encoding="utf-8") as f:
         entries = json.load(f)
-    result: dict[str, float] = {}
+    result: dict[str, dict[str, float]] = {}
     for entry in entries if isinstance(entries, list) else []:
         reg = entry.get("regime_name")
-        val = entry.get("oos_mean_poa_ratio")
-        if reg and val is not None:
+        if not reg:
+            continue
+        stats: dict[str, float] = {}
+        for key, stat_name in (
+            ("oos_mean_poa_ratio", "mean"),
+            ("oos_max_poa_ratio", "max"),
+        ):
+            val = entry.get(key)
+            if val is None and key == "oos_max_poa_ratio":
+                ratios = entry.get("poa_ratios") or []
+                try:
+                    val = max(float(ratio) for ratio in ratios)
+                except (TypeError, ValueError):
+                    val = None
+            if val is None:
+                continue
             try:
                 fval = float(val)
             except (TypeError, ValueError):
                 continue
             if np.isfinite(fval):
-                result[str(reg)] = fval
+                stats[stat_name] = fval
+        if stats:
+            result[str(reg)] = stats
     return result
 
 
@@ -728,7 +749,7 @@ def main() -> None:
 
     oos_poa_by_regime = _load_oos_poa_by_regime(oos_results_path) if oos_results_path else {}
     if oos_poa_by_regime:
-        print(f"Loaded OOS PoA for regimes: {sorted(oos_poa_by_regime)}")
+        print(f"Loaded OOS PoA mean/max for regimes: {sorted(oos_poa_by_regime)}")
 
     regimes = discover_regime_names(results_dir) if regime is None else [regime]
     if not regimes:
@@ -759,7 +780,8 @@ def main() -> None:
             output_dir=output_dir,
             regime_name=regime_name,
             poa_metric="inner_objective",
-            oos_mean_poa=oos_poa_by_regime.get(regime_name),
+            oos_mean_poa=oos_poa_by_regime.get(regime_name, {}).get("mean"),
+            oos_max_poa=oos_poa_by_regime.get(regime_name, {}).get("max"),
             show=show,
         )
         print(f"Saved DRO PoA eta-sweep figure:   {figure_path}")
