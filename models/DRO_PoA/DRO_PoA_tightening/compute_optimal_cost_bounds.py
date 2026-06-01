@@ -92,6 +92,40 @@ class DROOptimalCostBoundsComputer(DROPoATighteningMain):
         dro._build_KKT_stationarity_optimal_constraints()
         dro._build_KKT_complementarity_optimal_constraints()
 
+        # Replace the fixed p_init in the initial ramp constraints with a free
+        # decision variable so the model jointly optimises the generation at t=0
+        # (i.e. p_init = economic dispatch at the first time step).  This removes
+        # the artificial floor/ceiling imposed by the regime's deterministic p_init
+        # and gives the true support-set-wide C_opt bounds.
+        m.del_component(m.ramp_up_initial_opt)
+        m.del_component(m.ramp_down_initial_opt)
+        m.p_init_free = Var(
+            m.physical_generators,
+            domain=NonNegativeReals,
+            bounds=lambda _, i: (0.0, dro.static_physical_capacity[int(i)]),
+        )
+
+        def ramp_up_initial_free_rule(m, k, i):
+            return (
+                sum(m.P_opt[k, i, b, 0] for b in dro.local_blocks_by_generator[int(i)])
+                - m.p_init_free[i]
+                <= dro.ramp_vector_up[int(i)]
+            )
+
+        def ramp_down_initial_free_rule(m, k, i):
+            return (
+                -sum(m.P_opt[k, i, b, 0] for b in dro.local_blocks_by_generator[int(i)])
+                + m.p_init_free[i]
+                <= dro.ramp_vector_down[int(i)]
+            )
+
+        m.ramp_up_initial_opt = Constraint(
+            m.scenarios, m.physical_generators, rule=ramp_up_initial_free_rule
+        )
+        m.ramp_down_initial_opt = Constraint(
+            m.scenarios, m.physical_generators, rule=ramp_down_initial_free_rule
+        )
+
         m.C_opt = Var(m.scenarios, domain=Reals)
 
         def cost_opt_rule(m, k):

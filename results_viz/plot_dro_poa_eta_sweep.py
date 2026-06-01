@@ -241,10 +241,26 @@ def _records_by_epsilon(records: list[dict[str, Any]]) -> dict[float, list[dict[
     }
 
 
+def _epsilon_label(epsilon: float, labels: dict[float, str] | None) -> str:
+    """Return a display label for epsilon, using a custom mapping if one is provided.
+
+    Lookup uses a relative tolerance of 1e-6 so that float-serialised epsilon
+    values (e.g. 2000.0000000001) still match a key of 2000.0.
+    Falls back to a plain numeric string when no match is found.
+    """
+    if labels:
+        for key, text in labels.items():
+            tol = 1e-6 * max(1.0, abs(float(key)))
+            if abs(float(key) - epsilon) <= tol:
+                return text
+    return f"eps_cap = {epsilon:.4g}" if epsilon != 0.0 else "SAA (eps_cap = 0)"
+
+
 def _plot_metric_by_epsilon(
     axis: plt.Axes,
     grouped_records: dict[float, list[dict[str, Any]]],
     metric: str,
+    epsilon_labels: dict[float, str] | None = None,
 ) -> bool:
     plotted_any = False
     for epsilon, epsilon_records in grouped_records.items():
@@ -270,7 +286,7 @@ def _plot_metric_by_epsilon(
             marker="o",
             linewidth=2.0,
             markersize=5.5,
-            label=f"epsilon={epsilon:.4g}",
+            label=_epsilon_label(epsilon, epsilon_labels),
         )
 
     axis.set_ylabel(METRIC_LABELS[metric])
@@ -284,45 +300,53 @@ def plot_poa_eta_sweep(
     output_dir: Path,
     regime_name: str,
     show: bool = False,
+    epsilon_labels: dict[float, str] | None = None,
 ) -> Path:
     grouped_records = _records_by_epsilon(records)
     output_dir.mkdir(parents=True, exist_ok=True)
     fig, axes = plt.subplots(2, 1, figsize=(9.2, 8.0), sharex=True)
 
-    plotted_ratio = _plot_metric_by_epsilon(
-        axes[0],
-        grouped_records,
-        "average_poa_ratio",
-    )
-    plotted_difference = _plot_metric_by_epsilon(
-        axes[1],
-        grouped_records,
-        "average_poa_difference",
-    )
+    plotted_ratio = _plot_metric_by_epsilon(axes[0], grouped_records, "average_poa_ratio",
+                                            epsilon_labels=epsilon_labels)
+    plotted_difference = _plot_metric_by_epsilon(axes[1], grouped_records, "average_poa_difference",
+                                                 epsilon_labels=epsilon_labels)
     if not plotted_ratio and not plotted_difference:
         raise ValueError("PoA ratio and PoA difference are missing for all epsilon curves.")
 
-    axes[0].set_title(f"DRO PoA eta sweep: {regime_name}")
-    axes[0].legend(loc="best", frameon=True)
-    axes[1].set_xlabel("eta")
+    # Log scale when eta spans more than one order of magnitude.
+    all_etas = [
+        float(r["eta"])
+        for r in records
+        if r.get("eta") is not None and float(r["eta"]) > 0
+    ]
+    if all_etas and max(all_etas) / min(all_etas) > 20:
+        axes[1].set_xscale("log")
+
+    # Reference line: competitive PoA ratio = 1.
+    if plotted_ratio:
+        axes[0].axhline(1.0, color="0.4", linewidth=1.2, linestyle="--", alpha=0.6,
+                        zorder=1, label="PoA ratio = 1 (competitive)")
+
+    axes[0].set_title(f"DRO PoA η sweep  —  {regime_name}", fontsize=12)
+    axes[0].legend(loc="best", frameon=True, fontsize=9)
+    axes[0].set_ylabel(METRIC_LABELS["average_poa_ratio"])
+    axes[1].set_xlabel("η  (Wasserstein penalty)", fontsize=10)
 
     horizon = records[0].get("num_time_steps")
     n_scenarios = records[0].get("num_empirical_scenarios")
-    context = []
+    context_parts = []
     if horizon is not None:
-        context.append(f"T={horizon}")
+        context_parts.append(f"T = {horizon}")
     if n_scenarios is not None:
-        context.append(f"N={n_scenarios}")
+        context_parts.append(f"N = {n_scenarios}")
     n_epsilons = len(grouped_records)
-    context.append(f"{n_epsilons} epsilon curve{'s' if n_epsilons != 1 else ''}")
-    if context:
+    context_parts.append(f"{n_epsilons} ε curve{'s' if n_epsilons != 1 else ''}")
+    if context_parts:
         axes[1].text(
-            0.01,
-            0.02,
-            ", ".join(context),
+            0.01, 0.97, "  ".join(context_parts),
             transform=axes[1].transAxes,
-            fontsize=9,
-            color="0.35",
+            fontsize=8.5, color="0.40", va="top",
+            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="0.75", alpha=0.85),
         )
 
     fig.tight_layout()
@@ -342,19 +366,19 @@ def plot_poa_epsilon_frontier(
     oos_mean_poa: float | None = None,
     oos_max_poa: float | None = None,
     show: bool = False,
+    epsilon_labels: dict[float, str] | None = None,
 ) -> Path:
-    """Plot worst-case PoA vs achieved Wasserstein distance, tangent slope = eta at each point.
+    """Plot worst-case PoA vs achieved Wasserstein distance.
 
-    Each (eta, epsilon_cap) pair in the sweep traces one point on the PoA–epsilon
-    efficient frontier.  The envelope theorem guarantees that dv/d(epsilon) = eta at
-    the optimum, so the tangent line drawn at every point has slope exactly eta.
-    Large eta pins the solution near epsilon=0 (steep tangent); eta->0 reaches the
-    robust plateau (flat tangent).
+    Each (η, ε_cap) pair traces one point on the PoA–ε efficient frontier.
+    The envelope theorem guarantees dv/dε = η at each optimally solved point, so
+    η labels are shown sparsely (at most 5 per curve) to avoid clutter.
 
-    If oos_mean_poa is provided (mean realized PoA from fresh out-of-sample draws),
-    a horizontal dashed line is added at that level and the calibrated ε* crossing
-    is marked with a star and a vertical dotted line.
+    If oos_mean_poa is provided, a horizontal dashed line marks that level and
+    the calibrated ε* crossing is marked with a star.
     """
+    import math
+
     grouped = _records_by_epsilon(records)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -378,32 +402,26 @@ def plot_poa_epsilon_frontier(
         xs = [p[0] for p in points]
         ys = [p[1] for p in points]
         etas = [p[2] for p in points]
+        n = len(points)
 
-        label = f"ε_cap={eps_cap:.4g}" if eps_cap != 0.0 else "ε_cap=0"
-        ax.plot(xs, ys, "o-", color=color, linewidth=2.0, markersize=6, label=label, zorder=3)
+        ax.plot(xs, ys, "o-", color=color, linewidth=2.0, markersize=5, zorder=3,
+                label=_epsilon_label(eps_cap, epsilon_labels))
 
-        x_span = max(xs) - min(xs) if len(xs) > 1 else (xs[0] if xs[0] > 0 else 1.0)
-        half_len = x_span * 0.10
-
-        for x0, y0, eta in zip(xs, ys, etas):
-            ax.plot(
-                [x0 - half_len, x0 + half_len],
-                [y0 - eta * half_len, y0 + eta * half_len],
-                color=color,
-                linewidth=1.0,
-                alpha=0.55,
-                zorder=2,
-            )
+        # Annotate at most 5 points per curve, always including first and last.
+        step = max(1, math.ceil(n / 5))
+        annotated_indices = sorted(set(range(0, n, step)) | {n - 1})
+        for i in annotated_indices:
             ax.annotate(
-                f"η={eta:.3g}",
-                xy=(x0, y0),
+                f"η={etas[i]:.2g}",
+                xy=(xs[i], ys[i]),
                 xytext=(5, 4),
                 textcoords="offset points",
                 fontsize=7,
                 color=color,
+                alpha=0.85,
             )
 
-    # OOS overlays
+    # OOS overlays.
     for label_name, poa_value, oos_color, line_style in [
         ("mean", oos_mean_poa, "tab:orange", "--"),
         ("max", oos_max_poa, "tab:red", "-."),
@@ -422,33 +440,23 @@ def plot_poa_epsilon_frontier(
             ce = calibrated_epsilon(records, poa_value, poa_metric)
             if ce["in_range"] and ce["eps_star"] is not None:
                 eps_star = float(ce["eps_star"])
-                ax.axvline(
-                    eps_star,
-                    color=oos_color,
-                    linestyle=":",
-                    linewidth=1.5,
-                    zorder=4,
-                )
+                ax.axvline(eps_star, color=oos_color, linestyle=":", linewidth=1.5, zorder=4)
                 ax.plot(
-                    eps_star,
-                    poa_value,
-                    marker="*",
-                    markersize=13,
-                    color=oos_color,
-                    zorder=5,
-                    label=f"ε* = {eps_star:.4g}",
-                    linestyle="none",
+                    eps_star, poa_value,
+                    marker="*", markersize=13, color=oos_color,
+                    zorder=5, label=f"ε* = {eps_star:.4g}", linestyle="none",
                 )
         except (ValueError, StopIteration):
             pass  # frontier too sparse for calibration — overlay line still shown
 
-    ax.set_xlabel("Achieved Wasserstein distance (ε)")
-    ax.set_ylabel(METRIC_LABELS.get(poa_metric, poa_metric))
+    ax.set_xlabel("Achieved Wasserstein distance (ε)", fontsize=10)
+    ax.set_ylabel(METRIC_LABELS.get(poa_metric, poa_metric), fontsize=10)
     ax.set_title(
-        f"PoA–ε frontier: {regime_name}\n"
-        "tangent slope = η at each point  (envelope theorem)"
+        f"PoA–ε frontier  —  {regime_name}\n"
+        "η labels show marginal cost of robustness  (dPoA/dε = η, envelope theorem)",
+        fontsize=11,
     )
-    ax.legend(loc="best", frameon=True)
+    ax.legend(loc="best", frameon=True, fontsize=9)
     ax.ticklabel_format(axis="both", style="plain", useOffset=False)
     ax.grid(True, alpha=0.25)
     fig.tight_layout()
@@ -493,14 +501,14 @@ def _check_frontier_shape(points: list[_FrontierPoint], poa_metric: str) -> None
         prev, curr = points[i - 1], points[i]
         if curr.poa < prev.poa - 1e-9:
             warnings.warn(
-                f"Frontier non-monotone at ε={curr.eps:.6g}: {poa_metric} fell from "
-                f"{prev.poa:.6g} to {curr.poa:.6g}. Re-gridding η may resolve this.",
+                f"Frontier non-monotone at eps={curr.eps:.6g}: {poa_metric} fell from "
+                f"{prev.poa:.6g} to {curr.poa:.6g}. Re-gridding eta may resolve this.",
                 stacklevel=3,
             )
         if curr.eta > prev.eta + 1e-9:
             warnings.warn(
-                f"Frontier non-concave at ε={curr.eps:.6g}: η rose from "
-                f"{prev.eta:.6g} to {curr.eta:.6g}. Re-gridding η may resolve this.",
+                f"Frontier non-concave at eps={curr.eps:.6g}: eta rose from "
+                f"{prev.eta:.6g} to {curr.eta:.6g}. Re-gridding eta may resolve this.",
                 stacklevel=3,
             )
 
@@ -553,7 +561,7 @@ def query_frontier(
             "eta": None,
             "in_range": False,
             "message": (
-                f"ε={eps_query:.6g} is below the swept range [{eps_min:.6g}, {eps_max:.6g}] "
+                f"eps={eps_query:.6g} is below the swept range [{eps_min:.6g}, {eps_max:.6g}] "
                 "(below the SAA point). Extrapolation is not supported."
             ),
         }
@@ -564,7 +572,7 @@ def query_frontier(
             "eta": None,
             "in_range": False,
             "message": (
-                f"ε={eps_query:.6g} is above the swept range [{eps_min:.6g}, {eps_max:.6g}] "
+                f"eps={eps_query:.6g} is above the swept range [{eps_min:.6g}, {eps_max:.6g}] "
                 "(beyond the robust plateau). Extrapolation is not supported."
             ),
         }
@@ -573,8 +581,8 @@ def query_frontier(
     eta_interp = float(np.interp(eps_query, eps_arr, eta_arr))
 
     message = (
-        f"ε={eps_query:.6g} → plan for worst-case PoA {poa_interp:.4g}; "
-        f"marginal cost of robustness η={eta_interp:.4g} (PoA per unit ε)."
+        f"eps={eps_query:.6g} -> plan for worst-case PoA {poa_interp:.4g}; "
+        f"marginal cost of robustness eta={eta_interp:.4g} (PoA per unit eps)."
     )
     return {
         "eps_query": eps_query,
@@ -630,7 +638,7 @@ def calibrated_epsilon(
             "poa_at_eps_star": poa_min,
             "in_range": True,
             "message": (
-                f"ε*={eps_min:.6g}: even the SAA point (ε={eps_min:.6g}, "
+                f"eps*={eps_min:.6g}: even the SAA point (eps={eps_min:.6g}, "
                 f"worst-case PoA={poa_min:.4g}) covers OOS PoA {oos_mean_poa:.4g}. "
                 "No additional robustness required."
             ),
@@ -644,8 +652,8 @@ def calibrated_epsilon(
             "in_range": False,
             "message": (
                 f"OOS PoA {oos_mean_poa:.4g} exceeds the maximum frontier PoA "
-                f"{poa_max:.4g} at ε={eps_max:.6g}. "
-                "Extend the η sweep to larger ε to find a covering plan."
+                f"{poa_max:.4g} at eps={eps_max:.6g}. "
+                "Extend the eta sweep to larger eps to find a covering plan."
             ),
         }
 
@@ -662,7 +670,7 @@ def calibrated_epsilon(
         "poa_at_eps_star": oos_mean_poa,
         "in_range": True,
         "message": (
-            f"ε*={eps_star:.6g}: smallest trust radius whose worst-case PoA "
+            f"eps*={eps_star:.6g}: smallest trust radius whose worst-case PoA "
             f"covers the OOS realized PoA of {oos_mean_poa:.4g}."
         ),
     }
@@ -747,6 +755,16 @@ def main() -> None:
     # Set to None to skip the OOS overlay entirely.
     oos_results_path: Path | None = Path("results/oos_poa/oos_poa_results.json")
 
+    # Human-readable labels for epsilon_cap values shown in the plots.
+    # Keys are the numeric epsilon_cap values stored in the result JSON.
+    # If a value is not listed here, the plot falls back to "eps_cap = X".
+    # Example for a multi-cap experiment:
+    #   EPSILON_LABELS = {0.0: "SAA", 0.5: "tight", 5.0: "moderate", 2000.0: "unconstrained"}
+    EPSILON_LABELS: dict[float, str] = {
+        0.0: "SAA (no robustness)",
+        2000.0: "DRO — Wasserstein cap (no binding constraint)",
+    }
+
     oos_poa_by_regime = _load_oos_poa_by_regime(oos_results_path) if oos_results_path else {}
     if oos_poa_by_regime:
         print(f"Loaded OOS PoA mean/max for regimes: {sorted(oos_poa_by_regime)}")
@@ -774,6 +792,7 @@ def main() -> None:
             output_dir=output_dir,
             regime_name=regime_name,
             show=show,
+            epsilon_labels=EPSILON_LABELS,
         )
         frontier_path = plot_poa_epsilon_frontier(
             records=records,
@@ -783,9 +802,10 @@ def main() -> None:
             oos_mean_poa=oos_poa_by_regime.get(regime_name, {}).get("mean"),
             oos_max_poa=oos_poa_by_regime.get(regime_name, {}).get("max"),
             show=show,
+            epsilon_labels=EPSILON_LABELS,
         )
         print(f"Saved DRO PoA eta-sweep figure:   {figure_path}")
-        print(f"Saved DRO PoA ε-frontier figure:  {frontier_path}")
+        print(f"Saved DRO PoA eps-frontier figure: {frontier_path}")
         print(f"Saved DRO PoA eta-sweep summary:  {csv_path}")
         _demo_query_frontier(records, regime_name)
 

@@ -536,7 +536,7 @@ def build_poa_optimizer(
     scenarios = load_poa_scenario_data(config)
     ambiguity_set_config = load_ambiguity_set_config(config)
     mccormick_bounds = build_poa_mccormick_bounds(config)
-    return optimizer_cls(
+    optimizer = optimizer_cls(
         scenarios_df=scenarios["scenarios_df"],
         costs_df=scenarios["costs_df"],
         ramps_df=scenarios["ramps_df"],
@@ -550,6 +550,8 @@ def build_poa_optimizer(
         objective_mode=config.poa_objective_mode,
         mccormick_bounds=mccormick_bounds,
     )
+    optimizer.p_init = optimizer.compute_deterministic_p_init()
+    return optimizer
 
 def build_poa_tightening(
     config: FullPipelineConfig,
@@ -558,7 +560,7 @@ def build_poa_tightening(
     scenarios = load_poa_scenario_data(config)
     ambiguity_set_config = load_ambiguity_set_config(config)
     objective_mode = str(config.poa_objective_mode).strip().lower()
-    return tightening_cls(
+    tightening = tightening_cls(
         scenarios_df=scenarios["scenarios_df"],
         costs_df=scenarios["costs_df"],
         ramps_df=scenarios["ramps_df"],
@@ -573,6 +575,8 @@ def build_poa_tightening(
         mccormick_bounds=build_poa_tightening_mccormick_bounds(config),
         use_default_bounds=(objective_mode != "difference"),
     )
+    tightening.poa.p_init = tightening.poa.compute_deterministic_p_init()
+    return tightening
 
 def run_tightening_pipeline(config: FullPipelineConfig) -> Path:
     flags = {**TIGHTENING_FLAGS, **dict(config.tightening_flags)}
@@ -923,9 +927,15 @@ if __name__ == "__main__":
         nn_feature_columns=[
             "demand",
             "total_wind_generation_capacity",
+            "total_generation_capacity",
             "residual_demand",
+            "previous_generation_capacity",
+            "previous_demand",
             "next_generation_capacity",
             "next_demand",
+            "own_generation_capacity",
+            "previous_own_generation_capacity",
+            "next_own_generation_capacity",
         ],
 
         per_generator_normalization=True,

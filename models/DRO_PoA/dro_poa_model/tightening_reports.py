@@ -439,7 +439,7 @@ class DROPoATighteningReports:
                 0.0,
                 min(
                     float(default_bound),
-                    float(parsed[regime_index]) * self._DUAL_BIG_M_SAFETY_FACTOR,
+                    float(parsed[regime_index]),
                 ),
             )
         return prepared

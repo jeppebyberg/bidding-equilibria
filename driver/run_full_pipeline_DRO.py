@@ -1180,7 +1180,7 @@ if __name__ == "__main__":
         dro_regime_names=None,
         # dro_regime_names=["normal"],
 
-        etas=[0.0] + np.logspace(-3, 0.5, 10).tolist(),
+        etas=[0.0] + np.logspace(-2, 0.5, 10).tolist() + [10.0],
         # etas=[10000.0],
         dro_wasserstein_epsilon=2000,
         ambiguity_kappa=0.3,

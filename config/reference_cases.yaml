@@ -7,6 +7,22 @@ base_test_case:
 
   generators:
     - id: 0
+      name: "G3"
+      type: "conventional"
+      pmin: 0.0
+      R_rate_up: 20.0
+      R_rate_down: 20.0
+      bidding_blocks:
+        - block_id: 0
+          name: "G3_B1"
+          pmax: 25.0
+          cost: 50.0
+        - block_id: 1
+          name: "G3_B2"
+          pmax: 25.0
+          cost: 60.0
+
+    - id: 1
       name: "G2"
       type: "conventional"
       pmin: 0.0
@@ -22,7 +38,7 @@ base_test_case:
           pmax: 25.0
           cost: 40.0
 
-    - id: 1
+    - id: 2
       name: "G1"
       type: "conventional"
       pmin: 0.0
@@ -38,7 +54,7 @@ base_test_case:
           pmax: 25.0
           cost: 20.0
 
-    - id: 2
+    - id: 3
       name: "W3"
       type: "wind"
       pmin: 0.0
@@ -54,7 +70,7 @@ base_test_case:
         #   pmax: 25.0
         #   cost: 5.51
 
-    - id: 3
+    - id: 4
       name: "W2"
       type: "wind"
       pmin: 0.0
@@ -70,7 +86,7 @@ base_test_case:
         #   pmax: 25.0
         #   cost: 5.01
 
-    - id: 4
+    - id: 5
       name: "W1"
       type: "wind"
       pmin: 0.0
@@ -101,3 +117,6 @@ base_test_case:
 
     - id: 4
       controlled_generators: [4]
+
+    - id: 5
+      controlled_generators: [5]

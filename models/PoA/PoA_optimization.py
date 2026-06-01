@@ -372,6 +372,46 @@ class PoAOptimization(
                     f"Wind generator {generator_name} must have positive installed capacity"
                 )
 
+    def compute_deterministic_p_init(self) -> list[float]:
+        """Compute p_init from the merit-order dispatch at the context scenario's
+        deterministic (mu_D, mu_W) operating point at t=0.
+
+        Mirrors DRO_PoAOptimization.compute_deterministic_p_init so both
+        pipelines seed the ramp constraints consistently.  Returns one value
+        per physical generator.
+        """
+        row = self.scenarios_df.iloc[0]
+        mu_D = float(row["mu_D"]) if "mu_D" in self.scenarios_df.columns else 1.0
+        mu_W = float(row["mu_W"]) if "mu_W" in self.scenarios_df.columns else 1.0
+        D0 = float(self.demand_D_ref * mu_D * self.demand_shape[0])
+
+        wind_ids = set(int(i) for i in self.wind_physical_generator_ids)
+        blocks: list[tuple[float, float, int]] = []
+        for i, b in self.generator_block_pairs:
+            global_b = self.local_to_global_block[(int(i), int(b))]
+            cost = self.block_cost_vector[global_b]
+            if int(i) in wind_ids:
+                phys_cap_0 = (
+                    self.static_physical_capacity[int(i)] * mu_W * self.wind_shape[0]
+                )
+                n_blocks = len(self.local_blocks_by_generator[int(i)])
+                block_cap = phys_cap_0 / n_blocks
+            else:
+                block_cap = float(self.static_block_capacity[global_b])
+            blocks.append((cost, block_cap, int(i)))
+
+        blocks.sort(key=lambda x: x[0])
+        p_dispatch: dict[int, float] = {i: 0.0 for i in range(self.num_physical_generators)}
+        remaining = D0
+        for cost, cap, i in blocks:
+            dispatched = min(cap, remaining)
+            p_dispatch[i] += dispatched
+            remaining -= dispatched
+            if remaining <= 1e-9:
+                break
+
+        return [p_dispatch[i] for i in range(self.num_physical_generators)]
+
     @staticmethod
     def load_ambiguity_set(
         config_path: str = "models/PoA/ambiguity_set_config.yaml",

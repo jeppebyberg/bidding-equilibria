@@ -202,6 +202,7 @@ def plot_ambiguity_regime_trajectories(
     result_path: Path,
     output_dir: Path = DEFAULT_OUTPUT_DIR,
     show: bool = False,
+    extra_title_line: str | None = None,
 ) -> Path:
     """Plot the optimized demand and wind trajectories against the support set.
 
@@ -246,10 +247,10 @@ def plot_ambiguity_regime_trajectories(
         sharex=True,
     )
     regime_label = _format_regime_label(selected_regime)
-    fig.suptitle(
-        f"Optimized Ambiguity Regime and Induced Support Bounds\n{regime_label}",
-        fontsize=12,
-    )
+    title = f"Optimized Ambiguity Regime and Induced Support Bounds\n{regime_label}"
+    if extra_title_line:
+        title += f"\n{extra_title_line}"
+    fig.suptitle(title, fontsize=12)
 
     # Demand subplot.
     axes[0].fill_between(
