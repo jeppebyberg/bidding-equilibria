@@ -24,7 +24,6 @@ def dual_big_m_stage():
         scenarios_df=scenarios["scenarios_df"],
         costs_df=scenarios["costs_df"],
         ramps_df=scenarios["ramps_df"],
-        p_init=None,
         num_time_steps=2,
         ambiguity_set_config=ambiguity_set_config,
         nn_model_dir=None,

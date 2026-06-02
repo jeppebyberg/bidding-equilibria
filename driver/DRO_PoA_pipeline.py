@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from config.scenarios.scenario_generator import ScenarioManager
-from driver.run_full_pipeline import (
+from driver.PoA_pipeline import (
     apply_time_steps_override,
     build_features,
     run_heuristic,
@@ -62,7 +62,7 @@ DRO_TIGHTENING_STAGE_LABELS = {
 
 
 @dataclass
-class DROFullPipelineConfig:
+class DROPoAPipelineConfig:
     # Case and random seeds.
     case: str = "base_test_case"
     synthetic_time_steps: int | None = 24
@@ -143,13 +143,6 @@ class DROFullPipelineConfig:
     poa_parallel_workers: int = 1
     poa_solver_threads_per_worker: int | None = None
 
-    # Support-set selection.
-    # When True, DROWassersteinSupportSet replaces DROPoASupportSet in both the
-    # tightening and the final optimization.  Empirical scenarios are checked
-    # against the AR(1) tube and any violating trajectories are dropped with a
-    # warning before they enter the model.
-    use_wasserstein_support_set: bool = True
-
     # Support-set coverage calibration (independent of the DRO draw).
     calibrate_support_coverage: bool = True
     support_verify_seed: int = 77777
@@ -157,7 +150,6 @@ class DROFullPipelineConfig:
     support_coverage_grid: list[float] = field(
         default_factory=lambda: [0.90, 0.95, 0.99, 0.999, 0.9999]
     )
-    support_include_fleet_band: bool = True
     ar1_coverage: float | None = None
     support_calibration_report_path: Path = Path(
         "results/full_pipeline_DRO/support_calibration.json"
@@ -198,7 +190,7 @@ class DROFullPipelineConfig:
         return self.normalized_feature_dir / "min_max_stats.json"
 
 
-def main(config: DROFullPipelineConfig) -> None:
+def main(config: DROPoAPipelineConfig) -> None:
     print_pipeline_header(config)
     write_runtime_regime_config(config)
 
@@ -222,7 +214,6 @@ def main(config: DROFullPipelineConfig) -> None:
 
     if (
         (config.run_dro_tightening or config.run_dro_optimization)
-        and config.use_wasserstein_support_set
         and config.calibrate_support_coverage
     ):
         run_support_calibration(config)
@@ -249,7 +240,7 @@ def main(config: DROFullPipelineConfig) -> None:
     print("\nDRO full pipeline complete.")
 
 
-def print_pipeline_header(config: DROFullPipelineConfig) -> None:
+def print_pipeline_header(config: DROPoAPipelineConfig) -> None:
     eta_values = ", ".join(str(float(eta)) for eta in config.etas)
     print(
         "\nDRO full pipeline configuration\n"
@@ -264,7 +255,7 @@ def print_pipeline_header(config: DROFullPipelineConfig) -> None:
         f"  solver={config.solver_name}, parallel_workers={config.poa_parallel_workers}"
     )
 
-def write_runtime_regime_config(config: DROFullPipelineConfig) -> Path:
+def write_runtime_regime_config(config: DROPoAPipelineConfig) -> Path:
     source_path = Path("config/regime_definitions.yaml")
     with source_path.open("r", encoding="utf-8") as file_handle:
         raw_config = yaml.safe_load(file_handle) or {}
@@ -298,7 +289,7 @@ def write_runtime_regime_config(config: DROFullPipelineConfig) -> Path:
 
 
 def load_or_generate_scenarios(
-    config: DROFullPipelineConfig,
+    config: DROPoAPipelineConfig,
     manager: ScenarioManager,
     output_dir: Path,
     should_generate: bool,
@@ -321,7 +312,7 @@ def load_or_generate_scenarios(
     return scenarios
 
 
-def resolve_dro_regime_names_from_runtime_config(config: DROFullPipelineConfig) -> list[str]:
+def resolve_dro_regime_names_from_runtime_config(config: DROPoAPipelineConfig) -> list[str]:
     if config.dro_regime_names is not None:
         return [str(regime_name) for regime_name in config.dro_regime_names]
     if not config.runtime_config_path.exists():
@@ -339,7 +330,7 @@ def resolve_dro_regime_names_from_runtime_config(config: DROFullPipelineConfig) 
     return names
 
 
-def run_support_calibration(config: DROFullPipelineConfig) -> dict[str, Any]:
+def run_support_calibration(config: DROPoAPipelineConfig) -> dict[str, Any]:
     if config.support_verify_seed == config.poa_seed:
         warnings.warn(
             "support_verify_seed equals poa_seed; support calibration is not out-of-sample.",
@@ -361,8 +352,6 @@ def run_support_calibration(config: DROFullPipelineConfig) -> dict[str, Any]:
         f"  seed={config.support_verify_seed}, n_draws={config.support_verify_num_draws}, "
         f"grid={config.support_coverage_grid}"
     )
-    print(f"  fleet band included: {config.support_include_fleet_band}")
-
     regime_reports: list[dict[str, Any]] = []
     failed_regimes: list[str] = []
     for regime_name in regime_names:
@@ -375,7 +364,6 @@ def run_support_calibration(config: DROFullPipelineConfig) -> dict[str, Any]:
             n_draws=config.support_verify_num_draws,
             seed=config.support_verify_seed,
             coverage_grid=list(config.support_coverage_grid),
-            include_fleet_band=bool(config.support_include_fleet_band),
         )
         regime_reports.append(report)
         if report.get("coverage") is None:
@@ -433,7 +421,6 @@ def run_support_calibration(config: DROFullPipelineConfig) -> dict[str, Any]:
         "poa_seed": config.poa_seed,
         "synthetic_seed": config.synthetic_seed,
         "n_draws": config.support_verify_num_draws,
-        "include_fleet_band": bool(config.support_include_fleet_band),
         "chosen_coverage": global_coverage,
         "chosen_kappa": global_kappa,
         "binding_regime": binding_report["regime_name"],
@@ -450,12 +437,11 @@ def validate_scenarios_within_wasserstein_support(
     manager: ScenarioManager,
     horizon: int,
     ar1_coverage: float,
-    include_fleet_band: bool = False,
 ) -> dict[str, Any]:
     """Drop empirical scenarios outside the enforced Wasserstein support bands.
 
-    The same single kappa is used for demand/wind innovation tubes, stationary
-    level bands, and the optional wind fleet aggregate band.
+    The same single kappa is used for demand/wind innovation tubes and stationary
+    level bands (per generator).
     """
     import ast
     kappa = _ar1_kappa(horizon, ar1_coverage)
@@ -537,16 +523,6 @@ def validate_scenarios_within_wasserstein_support(
         if s in rejected_reasons:
             continue
 
-        if include_fleet_band and wind_profiles:
-            caps = [cap_i for _, cap_i in wind_profiles.values()]
-            cap_rms = float(np.sqrt(sum(cap_i ** 2 for cap_i in caps)))
-            sum_caps = float(sum(caps))
-            fleet_profile = sum(P for P, _ in wind_profiles.values())
-            fleet_ref = sum_caps * mu_W * wind_shape
-            fleet_threshold = kappa * cap_rms * sigma_W / np.sqrt(1.0 - rho_W ** 2)
-            if _first_violation(fleet_profile - fleet_ref, fleet_threshold):
-                rejected_reasons[s] = "wind_fleet"
-
     if rejected_reasons:
         total = len(scenarios_df)
         rejected = sorted(rejected_reasons)
@@ -574,47 +550,43 @@ def validate_scenarios_within_wasserstein_support(
             raise RuntimeError(
                 "All empirical scenarios were rejected by the Wasserstein support bands. "
                 "The support set is too tight for the generated scenarios. "
-                "Increase ar1_coverage or disable use_wasserstein_support_set."
+                "Increase ar1_coverage in the pipeline config."
             )
         filtered_df = scenarios_df.iloc[valid_idx].reset_index(drop=True)
     else:
         filtered_df = scenarios_df
         print(
             "Wasserstein support validation: 0 empirical scenarios dropped "
-            f"(coverage={ar1_coverage}, kappa={kappa:.4f}, "
-            f"fleet_band={include_fleet_band})."
+            f"(coverage={ar1_coverage}, kappa={kappa:.4f})."
         )
 
     return {**scenarios, "scenarios_df": filtered_df}
 
 
-def load_dro_scenario_data(config: DROFullPipelineConfig) -> dict[str, Any]:
+def load_dro_scenario_data(config: DROPoAPipelineConfig) -> dict[str, Any]:
     if not config.runtime_config_path.exists():
         write_runtime_regime_config(config)
     scenario_manager = ScenarioManager(config.case)
     apply_time_steps_override(scenario_manager, config.horizon)
-    # When using the Wasserstein support set the tube is enforced by the
-    # optimizer constraints, not by rejection during generation, so we generate
-    # unconstrained AR(1) draws and then filter here.
-    enforce_support_set = not config.use_wasserstein_support_set
+    # The Wasserstein support set tube is enforced by the optimizer constraints,
+    # not by rejection during generation, so we generate unconstrained AR(1)
+    # draws and then filter here to drop any trajectories outside the tube.
     scenarios = scenario_manager.create_scenario_set_from_regimes(
         regime_config_path=str(config.runtime_config_path),
         regime_set=config.poa_regime_set,
         seed=config.poa_seed,
-        enforce_support_set=enforce_support_set,
+        enforce_support_set=False,
     )
-    if config.use_wasserstein_support_set:
-        ar1_coverage = float(
-            config.ar1_coverage
-            if config.ar1_coverage is not None
-            else DROWassersteinSupportSet.AR1_JOINT_COVERAGE
-        )
-        scenarios = validate_scenarios_within_wasserstein_support(
+    ar1_coverage = float(
+        config.ar1_coverage
+        if config.ar1_coverage is not None
+        else DROWassersteinSupportSet.AR1_JOINT_COVERAGE
+    )
+    scenarios = validate_scenarios_within_wasserstein_support(
             scenarios=scenarios,
             manager=scenario_manager,
             horizon=config.horizon,
             ar1_coverage=ar1_coverage,
-            include_fleet_band=bool(config.support_include_fleet_band),
         )
     if config.run_scenario_generation:
         config.poa_scenario_dir.mkdir(parents=True, exist_ok=True)
@@ -629,7 +601,7 @@ def load_dro_scenario_data(config: DROFullPipelineConfig) -> dict[str, Any]:
 
 
 def resolve_dro_regime_names(
-    config: DROFullPipelineConfig,
+    config: DROPoAPipelineConfig,
     scenarios: dict[str, Any],
 ) -> list[str]:
     if config.dro_regime_names is not None:
@@ -642,51 +614,16 @@ def resolve_dro_regime_names(
     return sorted(scenarios_df["regime"].dropna().astype(str).unique().tolist())
 
 
-def compute_regime_p_init(
-    config: DROFullPipelineConfig,
-    scenarios: dict[str, Any],
-    regime_name: str,
-) -> list[list[float]]:
-    """Solve the single-step optimal dispatch at the regime's deterministic
-    operating point and return it as p_init for every empirical scenario.
-
-    Creating a minimal (no-NN, difference-mode) optimizer is the simplest way
-    to reuse the block-structure and regime-parameter setup already in
-    DRO_PoAOptimization without duplicating that logic here.
-    """
-    _tmp = DRO_PoAOptimization(
-        scenarios_df=scenarios["scenarios_df"],
-        costs_df=scenarios["costs_df"],
-        ramps_df=scenarios["ramps_df"],
-        p_init=None,
-        num_time_steps=config.horizon,
-        regime_config_path=str(config.runtime_config_path),
-        regime_set=config.poa_regime_set,
-        regime_name=regime_name,
-        eta=0.0,
-        epsilon=0.0,
-        nn_model_dir=None,
-        nn_normalization_stats_path=None,
-        nn_policy_generators=[],
-        reference_case=config.case,
-        objective_mode="difference",
-        ambiguity_kappa=config.ambiguity_kappa,
-    )
-    return _tmp.compute_deterministic_p_init()
-
-
 def build_dro_tightening(
-    config: DROFullPipelineConfig,
+    config: DROPoAPipelineConfig,
     scenarios: dict[str, Any],
     regime_name: str,
-    p_init: list[list[float]] | None = None,
 ) -> DROPoATighteningMain:
     objective_mode = str(config.dro_objective_mode).strip().lower()
     return DROPoATighteningMain(
         scenarios_df=scenarios["scenarios_df"],
         costs_df=scenarios["costs_df"],
         ramps_df=scenarios["ramps_df"],
-        p_init=p_init,
         num_time_steps=config.horizon,
         regime_config_path=str(config.runtime_config_path),
         regime_set=config.poa_regime_set,
@@ -705,13 +642,11 @@ def build_dro_tightening(
         mccormick_bounds=build_dro_tightening_mccormick_bounds(config),
         ambiguity_kappa=config.ambiguity_kappa,
         use_default_bounds=(objective_mode != "difference"),
-        use_wasserstein_support_set=config.use_wasserstein_support_set,
         ar1_coverage=config.ar1_coverage,
-        enable_fleet_band=bool(config.support_include_fleet_band),
     )
 
 def run_dro_tightening_for_regime(
-    config: DROFullPipelineConfig,
+    config: DROPoAPipelineConfig,
     scenarios: dict[str, Any],
     regime_name: str,
 ) -> Path:
@@ -722,8 +657,7 @@ def run_dro_tightening_for_regime(
     print_tightening_plan(config, regime_name, flags, previous_paths, output_paths)
 
     start = time.perf_counter()
-    p_init = compute_regime_p_init(config, scenarios, regime_name)
-    tightening = build_dro_tightening(config, scenarios, regime_name, p_init=p_init)
+    tightening = build_dro_tightening(config, scenarios, regime_name)
     final_report_path = tightening.run_all(
         run_primal_big_m=bool(flags["primal_big_m"]),
         run_relu_bounds=bool(flags["relu_bounds"]),
@@ -747,7 +681,7 @@ def run_dro_tightening_for_regime(
     return final_report_path
 
 def print_tightening_plan(
-    config: DROFullPipelineConfig,
+    config: DROPoAPipelineConfig,
     regime_name: str,
     flags: dict[str, bool],
     previous_paths: dict[str, str],
@@ -782,7 +716,7 @@ def print_tightening_plan(
     print("  Note: this support-tightening report is reused for every eta in the regime.")
 
 def _print_wasserstein_floor_diagnostic(
-    config: DROFullPipelineConfig,
+    config: DROPoAPipelineConfig,
     scenarios: dict[str, Any],
     regime_name: str,
 ) -> None:
@@ -805,8 +739,7 @@ def _print_wasserstein_floor_diagnostic(
             f" ar1={row['demand_ar1_violations']}"
             f"  wind: level={row.get('wind_level_violations', 0)}"
             f" t0={row.get('wind_t0_violations', 0)}"
-            f" ar1={row['wind_ar1_violations']}"
-            f" fleet={row.get('wind_fleet_violations', 0)}){flag}"
+            f" ar1={row['wind_ar1_violations']}){flag}"
         )
     if any_violation:
         print(
@@ -822,7 +755,7 @@ def _print_wasserstein_floor_diagnostic(
 
 
 def run_dro_eta_sweep(
-    config: DROFullPipelineConfig,
+    config: DROPoAPipelineConfig,
     scenarios: dict[str, Any],
     regime_names: list[str],
 ) -> list[dict[str, Any]]:
@@ -836,7 +769,6 @@ def run_dro_eta_sweep(
                 f"regime '{regime_name}': {tightening_report_path}"
             )
         _print_wasserstein_floor_diagnostic(config, scenarios, regime_name)
-        p_init = compute_regime_p_init(config, scenarios, regime_name)
         for eta in config.etas:
             result_path = run_final_dro_for_eta(
                 config=config,
@@ -844,14 +776,13 @@ def run_dro_eta_sweep(
                 regime_name=regime_name,
                 eta=float(eta),
                 tightening_report_path=tightening_report_path,
-                p_init=p_init,
             )
             summaries.append(load_result_summary(result_path))
     return summaries
 
 
 def archive_existing_dro_result_folders(
-    config: DROFullPipelineConfig,
+    config: DROPoAPipelineConfig,
     regime_names: list[str],
 ) -> list[Path]:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -882,14 +813,13 @@ def _available_archive_path(path: Path) -> Path:
         suffix += 1
 
 def run_final_dro_for_eta(
-    config: DROFullPipelineConfig,
+    config: DROPoAPipelineConfig,
     scenarios: dict[str, Any],
     regime_name: str,
     eta: float,
     tightening_report_path: Path,
-    p_init: list[list[float]] | None = None,
 ) -> Path:
-    optimizer = build_dro_optimizer(config, scenarios, regime_name, eta, p_init=p_init)
+    optimizer = build_dro_optimizer(config, scenarios, regime_name, eta)
     result_path = dro_result_path(config, regime_name, eta)
 
     start = time.perf_counter()
@@ -916,7 +846,7 @@ def run_final_dro_for_eta(
     return output_path
 
 def build_dro_mccormick_bounds(
-    config: DROFullPipelineConfig,
+    config: DROPoAPipelineConfig,
     regime_name: str,
 ) -> dict[str, Any] | None:
     mode = str(config.dro_objective_mode).strip().lower()
@@ -965,7 +895,7 @@ def default_dro_mccormick_c_opt_bounds() -> tuple[float, float]:
     )
 
 def build_dro_tightening_mccormick_bounds(
-    config: DROFullPipelineConfig,
+    config: DROPoAPipelineConfig,
 ) -> dict[str, Any] | None:
     mode = str(config.dro_objective_mode).strip().lower()
     if mode == "difference":
@@ -983,7 +913,7 @@ def build_dro_tightening_mccormick_bounds(
     return mccormick_bounds
 
 def load_dro_optimal_cost_bounds(
-    config: DROFullPipelineConfig,
+    config: DROPoAPipelineConfig,
     regime_name: str,
 ) -> tuple[float, float] | None:
     output_stage_paths = resolved_stage_paths(config.tightening_output_paths, regime_name)
@@ -1014,18 +944,16 @@ def load_dro_optimal_cost_bounds(
     return None
 
 def build_dro_optimizer(
-    config: DROFullPipelineConfig,
+    config: DROPoAPipelineConfig,
     scenarios: dict[str, Any],
     regime_name: str,
     eta: float,
-    p_init: list[list[float]] | None = None,
 ) -> DRO_PoAOptimization:
     mccormick_bounds = build_dro_mccormick_bounds(config, regime_name)
     optimizer = DRO_PoAOptimization(
         scenarios_df=scenarios["scenarios_df"],
         costs_df=scenarios["costs_df"],
         ramps_df=scenarios["ramps_df"],
-        p_init=p_init,
         num_time_steps=config.horizon,
         regime_config_path=str(config.runtime_config_path),
         regime_set=config.poa_regime_set,
@@ -1043,9 +971,7 @@ def build_dro_optimizer(
         objective_mode=config.dro_objective_mode,
         mccormick_bounds=mccormick_bounds,
         ambiguity_kappa=config.ambiguity_kappa,
-        use_wasserstein_support_set=config.use_wasserstein_support_set,
         ar1_coverage=config.ar1_coverage,
-        enable_fleet_band=bool(config.support_include_fleet_band),
     )
     return optimizer
 
@@ -1066,7 +992,7 @@ def eta_label(eta: float) -> str:
 
 
 def dro_result_path(
-    config: DROFullPipelineConfig,
+    config: DROPoAPipelineConfig,
     regime_name: str,
     eta: float,
 ) -> Path:
@@ -1129,7 +1055,7 @@ def average_poa_ratio(result: dict[str, Any]) -> float | None:
 
 
 if __name__ == "__main__":
-    run_config = DROFullPipelineConfig(
+    run_config = DROPoAPipelineConfig(
         # Case and random seeds.
         case="base_test_case",
         synthetic_time_steps=24,
@@ -1177,16 +1103,14 @@ if __name__ == "__main__":
         horizon=8,
         nn_policy_generators=["G1", "W2", "W3"],
 
-        dro_regime_names=None,
-        # dro_regime_names=["normal"],
+        # dro_regime_names=None,
+        dro_regime_names=["normal"],
 
         etas=[0.0] + np.logspace(-2, 0.5, 10).tolist() + [10.0],
         # etas=[10000.0],
         dro_wasserstein_epsilon=2000,
         ambiguity_kappa=0.3,
         dro_tightening_eta=0.0,
-        use_wasserstein_support_set = True,
-
         # Toggle DRO objective here:
         #   "difference"
         #   "mccormick"

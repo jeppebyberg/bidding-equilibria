@@ -371,7 +371,8 @@ class PoAResults:
                 if i not in self.nn_policy_generator_ids
             ],
             "dual_bounds": {
-                "lambda_bound": float(self.lambda_bound),
+                "lambda_lower": float(self.default_lambda_lower),
+                "lambda_upper": float(self.default_lambda_upper),
                 "lambda_bounds": self.lambda_bounds,
                 "capacity_dual_bound": float(self.capacity_dual_bound),
                 "ramp_dual_bound": float(self.ramp_dual_bound),

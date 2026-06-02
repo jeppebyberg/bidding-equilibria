@@ -83,7 +83,6 @@ def _build_optimizer(
         scenarios_df=scenarios["scenarios_df"],
         costs_df=scenarios["costs_df"],
         ramps_df=scenarios["ramps_df"],
-        p_init=None,
         num_time_steps=HORIZON,
         ambiguity_set_config=ambiguity_set_config,
         nn_model_dir=str(NN_MODEL_DIR) if NN_MODEL_DIR is not None else None,

@@ -6,9 +6,9 @@ from models.PoA.PoA_tightening.compute_dual_big_m import DualBigMComputer
 
 
 def main() -> None:
-    from driver.run_full_pipeline import FullPipelineConfig, build_poa_tightening
+    from driver.PoA_pipeline import PoAPipelineConfig, build_poa_tightening
 
-    config = FullPipelineConfig(run_tightening=False)
+    config = PoAPipelineConfig(run_tightening=False)
     stage = build_poa_tightening(config, DualBigMComputer)
     stage._load_previous_stage("primal_big_m", config.primal_big_m_path)
     stage._load_previous_stage("alpha_bounds", config.alpha_bounds_path)

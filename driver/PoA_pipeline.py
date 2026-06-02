@@ -87,7 +87,7 @@ TIGHTENING_STAGE_LABELS = {
 }
 
 @dataclass
-class FullPipelineConfig:
+class PoAPipelineConfig:
     # Case and random seeds.
     case: str = "base_test_case"
     synthetic_time_steps: int | None = 24
@@ -227,7 +227,7 @@ class FullPipelineConfig:
         )
 
 
-def main(config: FullPipelineConfig) -> None:
+def main(config: PoAPipelineConfig) -> None:
     print_pipeline_header(config)
 
     synthetic_manager = ScenarioManager(config.case)
@@ -274,7 +274,7 @@ def main(config: FullPipelineConfig) -> None:
     print("\nFull pipeline complete.")
 
 
-def print_pipeline_header(config: FullPipelineConfig) -> None:
+def print_pipeline_header(config: PoAPipelineConfig) -> None:
     print(
         "\nFull pipeline configuration\n"
         f"  case={config.case}\n"
@@ -291,7 +291,7 @@ def print_pipeline_header(config: FullPipelineConfig) -> None:
 
 
 def load_or_generate_scenarios(
-    config: FullPipelineConfig,
+    config: PoAPipelineConfig,
     manager: ScenarioManager,
     n_scenarios: int,
     seed: int,
@@ -327,7 +327,7 @@ def apply_time_steps_override(manager: ScenarioManager, time_steps: int | None) 
     manager.base_case["time_steps"] = int(time_steps)
 
 def run_heuristic(
-    config: FullPipelineConfig,
+    config: PoAPipelineConfig,
     scenarios: dict[str, Any],
     scenario_manager: ScenarioManager,
 ) -> Path:
@@ -346,7 +346,7 @@ def run_heuristic(
     print(f"Heuristic runtime: {elapsed:.2f} seconds")
     return output_path
 
-def build_features(config: FullPipelineConfig, scenarios: dict[str, Any]) -> dict[str, Path]:
+def build_features(config: PoAPipelineConfig, scenarios: dict[str, Any]) -> dict[str, Path]:
     start = time.perf_counter()
     builder = NeuralNetworkFeatureBuilder(
         scenarios_df=scenarios["scenarios_df"],
@@ -374,7 +374,7 @@ def build_features(config: FullPipelineConfig, scenarios: dict[str, Any]) -> dic
     print(f"Feature-building runtime: {elapsed:.2f} seconds")
     return normalized_paths
 
-def train_policies(config: FullPipelineConfig) -> Path:
+def train_policies(config: PoAPipelineConfig) -> Path:
     config.model_dir.mkdir(parents=True, exist_ok=True)
     config.training_result_dir.mkdir(parents=True, exist_ok=True)
 
@@ -392,7 +392,15 @@ def train_policies(config: FullPipelineConfig) -> Path:
         final_activation=config.nn_final_activation,
     )
 
-    csv_paths = find_generator_feature_files(config.normalized_feature_dir)
+    all_csv_paths = find_generator_feature_files(config.normalized_feature_dir)
+    if config.nn_policy_generators:
+        allowed = set(config.nn_policy_generators)
+        csv_paths = [
+            p for p in all_csv_paths
+            if p.name.replace("_features_normalized.csv", "") in allowed
+        ]
+    else:
+        csv_paths = all_csv_paths
     if not csv_paths:
         raise ValueError(
             f"No normalized generator feature CSVs found in {config.normalized_feature_dir}"
@@ -432,7 +440,7 @@ def find_generator_feature_files(feature_dir: Path) -> list[Path]:
         if path.is_file()
     )
 
-def load_poa_scenario_data(config: FullPipelineConfig) -> dict[str, Any]:
+def load_poa_scenario_data(config: PoAPipelineConfig) -> dict[str, Any]:
     scenario_manager = ScenarioManager(config.case)
     apply_time_steps_override(scenario_manager, config.horizon)
     return scenario_manager.create_scenario_set_from_ambiguity_set(
@@ -443,14 +451,14 @@ def load_poa_scenario_data(config: FullPipelineConfig) -> dict[str, Any]:
     )
 
 
-def load_ambiguity_set_config(config: FullPipelineConfig) -> dict[str, Any]:
+def load_ambiguity_set_config(config: PoAPipelineConfig) -> dict[str, Any]:
     return PoAOptimization.load_ambiguity_set(
         config_path=config.ambiguity_set_config_path,
         config_name=config.ambiguity_set_config_name,
     )
 
 
-def build_poa_mccormick_bounds(config: FullPipelineConfig) -> dict[str, Any] | None:
+def build_poa_mccormick_bounds(config: PoAPipelineConfig) -> dict[str, Any] | None:
     mode = str(config.poa_objective_mode).strip().lower()
     if mode not in PoAOptimization.allowed_objective_modes:
         allowed = ", ".join(sorted(PoAOptimization.allowed_objective_modes))
@@ -497,7 +505,7 @@ def default_poa_mccormick_c_opt_bounds() -> tuple[float, float]:
     )
 
 def build_poa_tightening_mccormick_bounds(
-    config: FullPipelineConfig,
+    config: PoAPipelineConfig,
 ) -> dict[str, Any] | None:
     mode = str(config.poa_objective_mode).strip().lower()
     if mode == "difference":
@@ -514,7 +522,7 @@ def build_poa_tightening_mccormick_bounds(
         mccormick_bounds["num_pieces"] = int(config.poa_mccormick_num_pieces)
     return mccormick_bounds
 
-def load_poa_optimal_cost_bounds(config: FullPipelineConfig) -> tuple[float, float] | None:
+def load_poa_optimal_cost_bounds(config: PoAPipelineConfig) -> tuple[float, float] | None:
     for path in (config.tightening_report_path, config.optimal_cost_bounds_path):
         if not Path(path).exists():
             continue
@@ -530,7 +538,7 @@ def load_poa_optimal_cost_bounds(config: FullPipelineConfig) -> tuple[float, flo
     return None
 
 def build_poa_optimizer(
-    config: FullPipelineConfig,
+    config: PoAPipelineConfig,
     optimizer_cls: type[PoAOptimization] = PoAOptimization,
 ) -> PoAOptimization:
     scenarios = load_poa_scenario_data(config)
@@ -540,7 +548,6 @@ def build_poa_optimizer(
         scenarios_df=scenarios["scenarios_df"],
         costs_df=scenarios["costs_df"],
         ramps_df=scenarios["ramps_df"],
-        p_init=None,
         num_time_steps=config.horizon,
         ambiguity_set_config=ambiguity_set_config,
         nn_model_dir=str(config.model_dir),
@@ -550,11 +557,10 @@ def build_poa_optimizer(
         objective_mode=config.poa_objective_mode,
         mccormick_bounds=mccormick_bounds,
     )
-    optimizer.p_init = optimizer.compute_deterministic_p_init()
     return optimizer
 
 def build_poa_tightening(
-    config: FullPipelineConfig,
+    config: PoAPipelineConfig,
     tightening_cls: type[PoATighteningMain] = PoATighteningMain,
 ) -> PoATighteningMain:
     scenarios = load_poa_scenario_data(config)
@@ -564,7 +570,6 @@ def build_poa_tightening(
         scenarios_df=scenarios["scenarios_df"],
         costs_df=scenarios["costs_df"],
         ramps_df=scenarios["ramps_df"],
-        p_init=None,
         num_time_steps=config.horizon,
         ambiguity_set_config=ambiguity_set_config,
         nn_model_dir=str(config.model_dir),
@@ -575,10 +580,9 @@ def build_poa_tightening(
         mccormick_bounds=build_poa_tightening_mccormick_bounds(config),
         use_default_bounds=(objective_mode != "difference"),
     )
-    tightening.poa.p_init = tightening.poa.compute_deterministic_p_init()
     return tightening
 
-def run_tightening_pipeline(config: FullPipelineConfig) -> Path:
+def run_tightening_pipeline(config: PoAPipelineConfig) -> Path:
     flags = {**TIGHTENING_FLAGS, **dict(config.tightening_flags)}
     previous_paths = {
         **DEFAULT_TIGHTENING_OUTPUT_PATHS,
@@ -615,7 +619,7 @@ def run_tightening_pipeline(config: FullPipelineConfig) -> Path:
     return final_report_path
 
 def print_tightening_plan(
-    config: FullPipelineConfig,
+    config: PoAPipelineConfig,
     flags: dict[str, bool],
     previous_paths: dict[str, str | Path],
     output_paths: dict[str, str | Path],
@@ -647,7 +651,7 @@ def print_tightening_plan(
         print(f"    {label:<17} {action:<5} {path_label}: {path}")
     print(f"  Final report: {output_paths['final']}")
 
-def run_nn_relu_bounds(config: FullPipelineConfig) -> Path:
+def run_nn_relu_bounds(config: PoAPipelineConfig) -> Path:
     print("\nStarting PoA NN ReLU bound tightening")
     print(f"  output={config.nn_relu_bounds_path}")
     print(f"  horizon={config.horizon}")
@@ -704,7 +708,7 @@ def run_nn_relu_bounds(config: FullPipelineConfig) -> Path:
     print(f"Total fixed NN ReLU binaries: {total_fixed}")
     return output_path
 
-def run_alpha_bounds(config: FullPipelineConfig) -> Path:
+def run_alpha_bounds(config: PoAPipelineConfig) -> Path:
     stage = build_poa_tightening(config, AlphaBoundsComputer)
     if config.primal_big_m_path.exists():
         stage._load_previous_stage("primal_big_m", config.primal_big_m_path)
@@ -732,7 +736,7 @@ def run_alpha_bounds(config: FullPipelineConfig) -> Path:
     return output_path
 
 def run_primal_big_m(
-    config: FullPipelineConfig,
+    config: PoAPipelineConfig,
     optimizer: PoAOptimization | None = None,
 ) -> dict[str, dict[str, Any]]:
     if optimizer is None:
@@ -772,7 +776,7 @@ def run_primal_big_m(
     print(f"Primal Big-M runtime: {elapsed:.2f} seconds")
     return primal_big_m
 
-def run_slack_binary_fix(config: FullPipelineConfig) -> Path:
+def run_slack_binary_fix(config: PoAPipelineConfig) -> Path:
     stage = build_poa_tightening(config, SlackBinaryFixComputer)
     stage._load_previous_stage("primal_big_m", config.primal_big_m_path)
     stage._load_previous_stage("alpha_bounds", config.alpha_bounds_path)
@@ -795,7 +799,7 @@ def run_slack_binary_fix(config: FullPipelineConfig) -> Path:
     print(f"Slack/binary runtime: {elapsed:.2f} seconds")
     return output_path
 
-def run_dual_big_m(config: FullPipelineConfig) -> Path:
+def run_dual_big_m(config: PoAPipelineConfig) -> Path:
     stage = build_poa_tightening(config, DualBigMComputer)
     stage._load_previous_stage("primal_big_m", config.primal_big_m_path)
     stage._load_previous_stage("alpha_bounds", config.alpha_bounds_path)
@@ -817,7 +821,7 @@ def run_dual_big_m(config: FullPipelineConfig) -> Path:
     print(f"Dual Big-M runtime: {elapsed:.2f} seconds")
     return output_path
 
-def run_optimal_cost_bounds(config: FullPipelineConfig) -> Path:
+def run_optimal_cost_bounds(config: PoAPipelineConfig) -> Path:
     stage = build_poa_tightening(config, OptimalCostBoundsComputer)
     if config.primal_big_m_path.exists():
         stage._load_previous_stage("primal_big_m", config.primal_big_m_path)
@@ -844,7 +848,7 @@ def run_optimal_cost_bounds(config: FullPipelineConfig) -> Path:
     print(f"C_opt bound runtime: {elapsed:.2f} seconds")
     return output_path
 
-def run_final_poa(config: FullPipelineConfig) -> Path:
+def run_final_poa(config: PoAPipelineConfig) -> Path:
     optimizer = build_poa_optimizer(config, PoAOptimization)
     start = time.perf_counter()
     optimizer.load_tightening_report(config.tightening_report_path)
@@ -909,7 +913,7 @@ def ensure_primal_big_m_in_report(path: Path, optimizer: PoAOptimization) -> boo
     return True
 
 if __name__ == "__main__":
-    run_config = FullPipelineConfig(
+    run_config = PoAPipelineConfig(
         # Case and random seeds.
         case="base_test_case",
         synthetic_time_steps=24,

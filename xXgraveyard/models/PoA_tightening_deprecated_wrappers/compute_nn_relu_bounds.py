@@ -6,9 +6,9 @@ from models.PoA.PoA_tightening.compute_relu_bounds import ReLUBoundsComputer
 
 
 def main() -> None:
-    from driver.run_full_pipeline import FullPipelineConfig, build_poa_tightening
+    from driver.PoA_pipeline import PoAPipelineConfig, build_poa_tightening
 
-    config = FullPipelineConfig(run_tightening=False)
+    config = PoAPipelineConfig(run_tightening=False)
     stage = build_poa_tightening(config, ReLUBoundsComputer)
     report = stage.run_relu_bounds(
         output_path=config.nn_relu_bounds_path,

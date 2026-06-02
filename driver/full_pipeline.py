@@ -1,14 +1,17 @@
-"""Sensitivity pipeline: base PoA → DRO eta sweep on the worst-case regime.
+"""Full pipeline: base PoA → DRO eta sweep on the worst-case regime.
 
 Runs shared pre-processing (scenario generation, heuristic labels, feature
 building, NN training) once, then:
 
   1. Base PoA optimization over the ambiguity-set context scenario.
   2. Extracts the AR(1) regime parameters (mu_D, sigma_D, rho_D, mu_W, ...)
-     from the PoA context scenario — i.e. the market state the PoA upper
-     level chose as worst case.
+     from the PoA context scenario — the market state the PoA upper level
+     chose as worst case.
   3. Writes a custom runtime regime definition with those parameters.
   4. DRO eta sweep over that extracted regime.
+
+This script runs a single case.  For sensitivity analyses over multiple cases
+or physical configurations, see driver/sensitivity/.
 """
 from __future__ import annotations
 
@@ -26,11 +29,9 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from config.scenarios.scenario_generator import ScenarioManager
-from driver.run_full_pipeline import (
+from driver.PoA_pipeline import (
     TIGHTENING_FLAGS as POA_TIGHTENING_FLAGS,
-    TIGHTENING_OUTPUT_PATHS as POA_TIGHTENING_OUTPUT_PATHS,
-    TIGHTENING_PREVIOUS_PATHS as POA_TIGHTENING_PREVIOUS_PATHS,
-    FullPipelineConfig,
+    PoAPipelineConfig,
     build_features,
     load_or_generate_scenarios,
     run_final_poa,
@@ -39,9 +40,9 @@ from driver.run_full_pipeline import (
     train_policies,
     write_json,
 )
-from driver.run_full_pipeline_DRO import (
+from driver.DRO_PoA_pipeline import (
     DRO_TIGHTENING_FLAGS,
-    DROFullPipelineConfig,
+    DROPoAPipelineConfig,
     archive_existing_dro_result_folders,
     load_dro_scenario_data,
     resolve_dro_regime_names,
@@ -49,23 +50,20 @@ from driver.run_full_pipeline_DRO import (
     run_dro_tightening_for_regime,
     run_support_calibration,
 )
-from models.DRO_PoA.DRO_PoA_tightening.tightening_main import (
-    DEFAULT_DRO_TIGHTENING_OUTPUT_PATHS,
-)
 
 # AR(1) parameter columns present in the scenarios_df / scenarios.csv.
 _REGIME_PARAM_COLUMNS = ("mu_D", "rho_D", "sigma_D", "mu_W", "rho_W", "sigma_W", "peak_W")
 
 
 @dataclass
-class SensitivityPipelineConfig:
+class FullPipelineConfig:
     # -----------------------------------------------------------------------
     # Shared / common
     # -----------------------------------------------------------------------
     case: str = "base_test_case"
     synthetic_time_steps: int | None = 24
     synthetic_seed: int = 1
-    poa_seed: int = 1
+    poa_seed: int = 2
 
     synthetic_num_scenarios: int = 500
     ambiguity_set_config_path: str = "config/ambiguity_set_config.yaml"
@@ -103,9 +101,7 @@ class SensitivityPipelineConfig:
     nn_final_activation: str = "linear"
 
     horizon: int = 8
-    nn_policy_generators: list[str] = field(
-        default_factory=lambda: ["G1", "W2", "W3"]
-    )
+    nn_policy_generators: list[str] = field(default_factory=list)
 
     solver_name: str = "gurobi"
     preprocessing_time_limit: int = 200
@@ -151,14 +147,12 @@ class SensitivityPipelineConfig:
     dro_mccormick_num_pieces: int = 50
     dro_time_limit: int | None = None
 
-    use_wasserstein_support_set: bool = True
     calibrate_support_coverage: bool = True
     support_verify_seed: int = 77777
     support_verify_num_draws: int = 2000
     support_coverage_grid: list[float] = field(
         default_factory=lambda: [0.90, 0.95, 0.99, 0.999, 0.9999]
     )
-    support_include_fleet_band: bool = True
     ar1_coverage: float | None = None
 
     run_dro_tightening: bool = True
@@ -168,12 +162,12 @@ class SensitivityPipelineConfig:
     run_dro_optimization: bool = True
     archive_existing_dro_results: bool = True
 
-    # When True (default), the DRO empirical distribution is the single
-    # PoA-optimal scenario (D[t], P_W_max[t] from the PoA result JSON)
-    # rather than fresh stochastic draws from the regime.  This ensures
-    # DRO(eta=0) evaluates PoA at the same worst-case market state as the
-    # base PoA, making the two analyses directly comparable.
-    use_poa_optimal_as_dro_scenario: bool = True
+    # -----------------------------------------------------------------------
+    # NN training gate: only generators with more than this many accepted
+    # heuristic label changes receive an NN policy; the rest bid at their
+    # true marginal cost.  Set to None to train all nn_policy_generators.
+    # -----------------------------------------------------------------------
+    nn_training_min_label_changes: int | None = 50
 
     # -----------------------------------------------------------------------
     # Step toggles
@@ -194,14 +188,10 @@ class SensitivityPipelineConfig:
     heuristic_results_path: Path = Path(
         "results/sensitivity_pipeline/merit_order_results.json"
     )
-    raw_feature_dir: Path = Path("models/neural_network/features/generated/raw")
-    normalized_feature_dir: Path = Path(
-        "models/neural_network/features/generated/normalized"
-    )
-    model_dir: Path = Path("models/neural_network/training/trained_models")
-    training_result_dir: Path = Path(
-        "models/neural_network/training/training_results"
-    )
+    raw_feature_dir: Path = Path("results/sensitivity_pipeline/features/raw")
+    normalized_feature_dir: Path = Path("results/sensitivity_pipeline/features/normalized")
+    model_dir: Path = Path("results/sensitivity_pipeline/trained_models")
+    training_result_dir: Path = Path("results/sensitivity_pipeline/training_results")
     dro_result_dir: Path = Path("results/sensitivity_pipeline/dro")
     dro_result_archive_dir: Path = Path("results/sensitivity_pipeline/dro/old_results")
     runtime_config_path: Path = Path(
@@ -213,18 +203,90 @@ class SensitivityPipelineConfig:
 
 
 # ---------------------------------------------------------------------------
+# NN training gate: label-change activity filter
+# ---------------------------------------------------------------------------
+
+def filter_nn_policy_generators_by_activity(
+    heuristic_results_path: Path,
+    candidate_generators: list[str],
+    min_label_changes: int,
+) -> tuple[list[str], dict[str, int]]:
+    """Return generators whose accepted heuristic bid changes exceed the threshold.
+
+    Reads the merit-order heuristic result JSON and counts, for each physical
+    generator in ``candidate_generators``, how many of its block bids were
+    accepted as updated labels.  Only generators with a count > min_label_changes
+    are returned; the rest will bid at true marginal cost in all downstream models.
+
+    Returns (filtered_generators, changes_per_generator).
+    """
+    with heuristic_results_path.open("r", encoding="utf-8") as fh:
+        results: dict[str, Any] = json.load(fh)
+
+    block_to_physical: dict[str, str] = results.get("block_to_physical", {})
+    history: list[dict[str, Any]] = results.get("history", [])
+
+    changes: dict[str, int] = {gen: 0 for gen in candidate_generators}
+    for entry in history:
+        if not entry.get("accepted"):
+            continue
+        block_name = str(entry.get("block_name", ""))
+        physical = block_to_physical.get(block_name, "")
+        if physical in changes:
+            changes[physical] += 1
+
+    filtered = [gen for gen in candidate_generators if changes.get(gen, 0) > min_label_changes]
+    return filtered, changes
+
+
+def _print_label_change_filter(
+    threshold: int,
+    label_counts: dict[str, int],
+    filtered: list[str],
+    original: list[str],
+) -> None:
+    dropped = [g for g in original if g not in filtered]
+    print(f"\nNN policy generator filter (threshold > {threshold} accepted label changes):")
+    for gen in original:
+        count = label_counts.get(gen, 0)
+        status = "TRAIN NN" if gen in filtered else "true cost (skipped)"
+        print(f"  {gen:>6}: {count:>6} changes  →  {status}")
+    if dropped:
+        print(f"  Skipping NN training for: {', '.join(dropped)}")
+    if not filtered:
+        print("  WARNING: no generators exceeded the threshold — "
+              "all will bid at true marginal cost.")
+
+
+def discover_trained_policy_generators(model_dir: Path) -> list[str]:
+    """Return generator names that have a trained policy file in model_dir.
+
+    Scans for files matching ``{generator}_policy.pt`` and returns the
+    generator names in sorted order.  Used to synchronise nn_policy_generators
+    with what was actually trained, rather than relying on a hardcoded list.
+    """
+    return sorted(p.stem.replace("_policy", "") for p in model_dir.glob("*_policy.pt"))
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
-def main(config: SensitivityPipelineConfig) -> None:
+def main(config: FullPipelineConfig) -> None:
     print_pipeline_header(config)
 
-    poa_config = build_poa_config(config)
+    if not config.nn_policy_generators:
+        _manager = ScenarioManager(config.case)
+        config.nn_policy_generators = sorted(
+            g["physical_name"] for g in _manager.physical_generators
+        )
+
+    pipeline_config = build_poa_config(config)
 
     # Stage 1: shared pre-processing ------------------------------------------
     synthetic_manager = ScenarioManager(config.case)
     synthetic_scenarios = load_or_generate_scenarios(
-        config=poa_config,
+        config=pipeline_config,
         manager=synthetic_manager,
         n_scenarios=config.synthetic_num_scenarios,
         seed=config.synthetic_seed,
@@ -234,18 +296,52 @@ def main(config: SensitivityPipelineConfig) -> None:
     )
 
     if config.run_heuristic_labels:
-        run_heuristic(poa_config, synthetic_scenarios, synthetic_manager)
+        run_heuristic(pipeline_config, synthetic_scenarios, synthetic_manager)
+
+    # Gate NN training on label-change activity.  Applied whether or not the
+    # heuristic was re-run this session, so existing results are also used.
+    if (
+        config.nn_training_min_label_changes is not None
+        and pipeline_config.heuristic_results_path.exists()
+    ):
+        filtered_gens, label_counts = filter_nn_policy_generators_by_activity(
+            pipeline_config.heuristic_results_path,
+            pipeline_config.nn_policy_generators,
+            config.nn_training_min_label_changes,
+        )
+        _print_label_change_filter(
+            config.nn_training_min_label_changes,
+            label_counts,
+            filtered_gens,
+            pipeline_config.nn_policy_generators,
+        )
+        # Propagate to both the PoA config and the top-level config so that
+        # subsequent DRO config construction picks up the filtered list.
+        pipeline_config.nn_policy_generators = filtered_gens
+        config.nn_policy_generators = filtered_gens
 
     if config.run_feature_building:
-        build_features(poa_config, synthetic_scenarios)
+        build_features(pipeline_config, synthetic_scenarios)
 
     if config.run_nn_training:
-        train_policies(poa_config)
+        train_policies(pipeline_config)
+
+    # Sync nn_policy_generators to exactly the generators with trained model files.
+    # This picks up the effect of the label-change filter and any skipped training,
+    # and replaces any hardcoded list that may have been passed in.
+    discovered = discover_trained_policy_generators(pipeline_config.model_dir)
+    if discovered:
+        if discovered != pipeline_config.nn_policy_generators:
+            print(f"\nnn_policy_generators updated from trained model files: {discovered}")
+        pipeline_config.nn_policy_generators = discovered
+        config.nn_policy_generators = discovered
+    else:
+        print("\nWARNING: no trained model files found — nn_policy_generators unchanged.")
 
     # Stage 2: base PoA analysis -----------------------------------------------
     if config.run_poa_tightening or config.run_poa_optimization:
         load_or_generate_scenarios(
-            config=poa_config,
+            config=pipeline_config,
             manager=ScenarioManager(config.case),
             n_scenarios=config.poa_context_num_scenarios,
             seed=config.poa_seed,
@@ -255,39 +351,26 @@ def main(config: SensitivityPipelineConfig) -> None:
         )
 
     if config.run_poa_tightening:
-        run_tightening_pipeline(poa_config)
+        run_tightening_pipeline(pipeline_config)
 
     if config.run_poa_optimization:
-        run_final_poa(poa_config)
+        run_final_poa(pipeline_config)
 
-    # Stage 3: bridge — extract regime from PoA context scenario ---------------
-    regime_params = extract_poa_regime_params(config.poa_scenario_dir)
+    # Stage 3: bridge — extract regime from optimized PoA state ----------------
+    regime_params = extract_poa_regime_params(
+        config.poa_scenario_dir,
+        poa_results_path=pipeline_config.poa_results_path,
+    )
     print_regime_bridge(config, regime_params)
 
     # Stage 4: DRO pipeline ----------------------------------------------------
-    # The DRO McCormick needs C_opt bounds that span the PoA worst-case scenario.
-    # DRO tightening uses regime-drawn scenarios whose C_opt can differ widely
-    # from the PoA optimal scenario's C_opt, corrupting the McCormick approximation.
-    # Use the PoA tightening bounds instead, which are valid for the shared physical model.
-    poa_c_opt_bounds = load_poa_tightening_c_opt_bounds(poa_config)
-    if poa_c_opt_bounds is not None:
-        print(
-            f"\nSensitivity bridge: using PoA tightening C_opt bounds "
-            f"[{poa_c_opt_bounds[0]:.4g}, {poa_c_opt_bounds[1]:.4g}] for DRO McCormick"
-        )
-    dro_config = build_dro_config(config, poa_c_opt_bounds=poa_c_opt_bounds)
+    dro_config = build_dro_config(config)
     write_poa_regime_runtime_config(config, dro_config, regime_params)
 
     if config.run_dro_tightening or config.run_dro_optimization:
-        if config.use_wasserstein_support_set and config.calibrate_support_coverage:
+        if config.calibrate_support_coverage:
             run_support_calibration(dro_config)
-        if config.use_poa_optimal_as_dro_scenario:
-            dro_scenarios = load_poa_optimal_scenario_as_dro_scenarios(
-                config, poa_config
-            )
-            print(dro_scenarios["description_text"])
-        else:
-            dro_scenarios = load_dro_scenario_data(dro_config)
+        dro_scenarios = load_dro_scenario_data(dro_config)
         regime_names = resolve_dro_regime_names(dro_config, dro_scenarios)
     else:
         dro_scenarios = {}
@@ -312,14 +395,47 @@ def main(config: SensitivityPipelineConfig) -> None:
 # Sensitivity bridge
 # ---------------------------------------------------------------------------
 
-def extract_poa_regime_params(poa_scenario_dir: Path) -> dict[str, float]:
-    """Read AR(1) regime parameters from the PoA context scenario CSV.
+def extract_poa_regime_params(
+    poa_scenario_dir: Path,
+    poa_results_path: Path | None = None,
+) -> dict[str, float]:
+    """Read AR(1) regime parameters from the optimized PoA result.
 
-    The PoA optimization uses a single context scenario whose parameters
-    (mu_D, rho_D, sigma_D, mu_W, rho_W, sigma_W, peak_W) define the market
-    regime that maximised inefficiency.  Those parameters are exactly what
-    DRO regime definitions require.
+    The sensitivity bridge should center the DRO regime on the state selected
+    by the base PoA upper level, not merely on the sampled context scenario
+    used to instantiate the model.  If a PoA result JSON is unavailable, fall
+    back to the context scenario CSV.
     """
+    if poa_results_path is not None and Path(poa_results_path).exists():
+        with Path(poa_results_path).open("r", encoding="utf-8") as fh:
+            poa_result: dict[str, Any] = json.load(fh)
+        ambiguity_set = poa_result.get("ambiguity_set", {}) or {}
+        selected_regime = ambiguity_set.get("selected_regime", {}) or {}
+        fixed_parameters = ambiguity_set.get("fixed_parameters", {}) or {}
+        required_selected = ("mu_D", "sigma_D", "mu_W", "sigma_W")
+        missing_selected = [
+            key for key in required_selected if selected_regime.get(key) is None
+        ]
+        required_fixed = ("rho_D", "rho_W")
+        missing_fixed = [
+            key for key in required_fixed if fixed_parameters.get(key) is None
+        ]
+        peak_value = fixed_parameters.get("peak_W", fixed_parameters.get("tau_W"))
+        if not missing_selected and not missing_fixed and peak_value is not None:
+            return {
+                "mu_D": float(selected_regime["mu_D"]),
+                "rho_D": float(fixed_parameters["rho_D"]),
+                "sigma_D": float(selected_regime["sigma_D"]),
+                "mu_W": float(selected_regime["mu_W"]),
+                "rho_W": float(fixed_parameters["rho_W"]),
+                "sigma_W": float(selected_regime["sigma_W"]),
+                "peak_W": float(peak_value),
+            }
+        print(
+            "\nWARNING: PoA result did not contain a complete optimized regime; "
+            "falling back to PoA context scenario CSV."
+        )
+
     scenarios_csv = Path(poa_scenario_dir) / "scenarios.csv"
     if not scenarios_csv.exists():
         raise FileNotFoundError(
@@ -338,8 +454,8 @@ def extract_poa_regime_params(poa_scenario_dir: Path) -> dict[str, float]:
 
 
 def write_poa_regime_runtime_config(
-    config: SensitivityPipelineConfig,
-    dro_config: DROFullPipelineConfig,
+    config: FullPipelineConfig,
+    dro_config: DROPoAPipelineConfig,
     regime_params: dict[str, float],
 ) -> Path:
     """Write a runtime regime YAML containing only the extracted PoA regime.
@@ -352,7 +468,7 @@ def write_poa_regime_runtime_config(
         "regime_sets": {
             dro_config.poa_regime_set: {
                 "description": (
-                    "Single regime extracted from the PoA worst-case context scenario."
+                    "Single regime extracted from the optimized PoA state."
                 ),
                 "seed": dro_config.poa_seed,
                 "enforce_dispatch_feasibility": True,
@@ -373,112 +489,30 @@ def write_poa_regime_runtime_config(
     return output_path
 
 
-def load_poa_optimal_scenario_as_dro_scenarios(
-    config: SensitivityPipelineConfig,
-    poa_config: FullPipelineConfig,
-) -> dict[str, Any]:
-    """Build the DRO empirical distribution from the PoA-optimal trajectory.
-
-    The base PoA finds the worst-case market scenario (D[t], P_W_max[t]) by
-    optimising over the ambiguity set.  Using that exact scenario as the DRO
-    reference distribution (N=1) ensures DRO(eta=0) evaluates PoA at the same
-    market state as the base PoA, making the two analyses directly comparable.
-    At eta>0 the DRO then explores distributional uncertainty around that point.
-
-    The regime parameters (mu_D, sigma_D, ...) and all static columns (block
-    capacities, costs) are taken from the original PoA context scenario so the
-    DRO support set and block structure remain consistent.
-    """
-    result_path = poa_config.poa_results_path
-    if not result_path.exists():
-        raise FileNotFoundError(
-            f"PoA result not found: {result_path}\n"
-            "Run run_poa_optimization=True before the DRO stage."
-        )
-    with result_path.open("r", encoding="utf-8") as fh:
-        poa_result: dict[str, Any] = json.load(fh)
-
-    context_csv = config.poa_scenario_dir / "scenarios.csv"
-    if not context_csv.exists():
-        raise FileNotFoundError(
-            f"PoA context scenario not found: {context_csv}\n"
-            "Run the PoA stage so the context scenario is saved first."
-        )
-
-    context_df = pd.read_csv(context_csv)
-    costs_df = pd.read_csv(config.poa_scenario_dir / "costs.csv")
-    ramps_df = pd.read_csv(config.poa_scenario_dir / "ramps.csv")
-
-    # Start from the context scenario row; replace the stochastic profiles
-    # with the PoA-optimal trajectories.
-    row = context_df.iloc[0].copy()
-
-    # Overwrite demand profile and scalar demand with PoA-optimal values.
-    demand_profile: list[float] = poa_result.get("demand_profile") or []
-    if demand_profile:
-        row["demand_profile"] = str(demand_profile)
-        row["demand"] = float(np.mean(demand_profile))
-
-    # Overwrite each wind generator's capacity profile.
-    generators: dict[str, Any] = poa_result.get("generators") or {}
-    for gen_name, gen_data in generators.items():
-        if not gen_data.get("is_wind"):
-            continue
-        cap_profile: list[float] = gen_data.get("physical_capacity_profile") or []
-        col = f"{gen_name}_B1_profile"
-        if col in context_df.columns and cap_profile:
-            row[col] = str(cap_profile)
-
-    # Ensure the regime column matches the name the DRO optimizer will filter on.
-    row["regime"] = config.poa_worst_case_regime_name
-
-    obj: dict[str, Any] = poa_result.get("objective") or {}
-    poa_ratio = obj.get("PoA_ratio")
-    ratio_str = f"{float(poa_ratio):.4f}" if poa_ratio is not None else "N/A"
-
-    return {
-        "scenarios_df": pd.DataFrame([row]),
-        "costs_df": costs_df,
-        "ramps_df": ramps_df,
-        "description_text": (
-            f"\nSensitivity bridge: DRO empirical scenario = PoA-optimal trajectory "
-            f"(ex-post PoA={ratio_str}, T={poa_result.get('num_time_steps')}, N=1)"
-        ),
-    }
-
-
-def load_poa_tightening_c_opt_bounds(
-    poa_config: FullPipelineConfig,
-) -> tuple[float, float] | None:
-    """Read C_opt bounds from the PoA final tightening report.
-
-    The PoA tightening runs on the PoA context scenario and produces C_opt
-    bounds that span the actual worst-case cost range.  These bounds must be
-    used for the DRO McCormick — DRO tightening runs on regime-drawn scenarios
-    whose C_opt range can be entirely different, which would make the piecewise
-    McCormick invalid over the PoA worst-case region.
-    """
-    report_path = poa_config.tightening_report_path
-    if not report_path.exists():
-        return None
-    with report_path.open("r", encoding="utf-8") as fh:
-        report: dict[str, Any] = json.load(fh)
-    bounds = report.get("optimal_cost_bounds") or {}
-    if isinstance(bounds.get("C_opt"), dict):
-        bounds = bounds["C_opt"]
-    lower = bounds.get("lower")
-    upper = bounds.get("upper")
-    if lower is None or upper is None:
-        return None
-    return (float(lower), float(upper))
-
-
 # ---------------------------------------------------------------------------
 # Config builders
 # ---------------------------------------------------------------------------
 
-def build_poa_config(config: SensitivityPipelineConfig) -> FullPipelineConfig:
-    return FullPipelineConfig(
+def _poa_tightening_paths(base_dir: Path) -> dict[str, str]:
+    base = str(base_dir / "tightening")
+    stages = ["primal_big_m", "relu_bounds", "alpha_bounds", "slack_binary_fix",
+              "dual_big_m", "optimal_cost_bounds"]
+    paths = {s: f"{base}/{s}_report.json" for s in stages}
+    paths["final"] = f"{base}/final_tightening_report.json"
+    return paths
+
+
+def _dro_tightening_paths(base_dir: Path) -> dict[str, str]:
+    base = str(base_dir / "tightening" / "{regime_name}")
+    stages = ["primal_big_m", "relu_bounds", "alpha_bounds", "slack_binary_fix",
+              "dual_big_m", "optimal_cost_bounds"]
+    paths = {s: f"{base}/{s}_report.json" for s in stages}
+    paths["final"] = f"{base}/final_tightening_report.json"
+    return paths
+
+
+def build_poa_config(config: FullPipelineConfig) -> PoAPipelineConfig:
+    return PoAPipelineConfig(
         case=config.case,
         synthetic_time_steps=config.synthetic_time_steps,
         synthetic_seed=config.synthetic_seed,
@@ -518,8 +552,8 @@ def build_poa_config(config: SensitivityPipelineConfig) -> FullPipelineConfig:
         run_nn_training=config.run_nn_training,
         run_tightening=config.run_poa_tightening,
         tightening_flags=dict(config.poa_tightening_flags),
-        tightening_previous_paths=dict(POA_TIGHTENING_PREVIOUS_PATHS),
-        tightening_output_paths=dict(POA_TIGHTENING_OUTPUT_PATHS),
+        tightening_previous_paths=_poa_tightening_paths(config.poa_result_dir),
+        tightening_output_paths=_poa_tightening_paths(config.poa_result_dir),
         run_poa_optimization=config.run_poa_optimization,
         synthetic_scenario_dir=config.synthetic_scenario_dir,
         poa_scenario_dir=config.poa_scenario_dir,
@@ -532,12 +566,9 @@ def build_poa_config(config: SensitivityPipelineConfig) -> FullPipelineConfig:
     )
 
 
-def build_dro_config(
-    config: SensitivityPipelineConfig,
-    poa_c_opt_bounds: tuple[float, float] | None = None,
-) -> DROFullPipelineConfig:
+def build_dro_config(config: FullPipelineConfig) -> DROPoAPipelineConfig:
     """Build the DRO config targeting only the extracted PoA regime."""
-    return DROFullPipelineConfig(
+    return DROPoAPipelineConfig(
         case=config.case,
         synthetic_time_steps=config.synthetic_time_steps,
         poa_regime_set=config.poa_regime_set,
@@ -575,7 +606,7 @@ def build_dro_config(
         nn_policy_generators=list(config.nn_policy_generators),
         dro_objective_mode=config.dro_objective_mode,
         dro_mccormick_PoA_bounds=config.dro_mccormick_PoA_bounds,
-        dro_mccormick_c_opt_bounds=poa_c_opt_bounds,
+        dro_mccormick_c_opt_bounds=None,
         dro_mccormick_num_pieces=config.dro_mccormick_num_pieces,
         solver_name=config.solver_name,
         preprocessing_time_limit=config.preprocessing_time_limit,
@@ -583,12 +614,10 @@ def build_dro_config(
         slack_epsilon=config.epsilon,
         poa_parallel_workers=config.poa_parallel_workers,
         poa_solver_threads_per_worker=config.poa_solver_threads_per_worker,
-        use_wasserstein_support_set=config.use_wasserstein_support_set,
         calibrate_support_coverage=config.calibrate_support_coverage,
         support_verify_seed=config.support_verify_seed,
         support_verify_num_draws=config.support_verify_num_draws,
         support_coverage_grid=list(config.support_coverage_grid),
-        support_include_fleet_band=config.support_include_fleet_band,
         ar1_coverage=config.ar1_coverage,
         support_calibration_report_path=config.support_calibration_report_path,
         # Pre-processing already completed in the PoA stage; skip in DRO.
@@ -599,8 +628,8 @@ def build_dro_config(
         run_dro_tightening=config.run_dro_tightening,
         run_dro_optimization=config.run_dro_optimization,
         tightening_flags=dict(config.dro_tightening_flags),
-        tightening_previous_paths=dict(DEFAULT_DRO_TIGHTENING_OUTPUT_PATHS),
-        tightening_output_paths=dict(DEFAULT_DRO_TIGHTENING_OUTPUT_PATHS),
+        tightening_previous_paths=_dro_tightening_paths(config.dro_result_dir),
+        tightening_output_paths=_dro_tightening_paths(config.dro_result_dir),
         runtime_config_path=config.runtime_config_path,
         synthetic_scenario_dir=config.synthetic_scenario_dir,
         poa_scenario_dir=config.dro_scenario_dir,
@@ -619,10 +648,10 @@ def build_dro_config(
 # Printing
 # ---------------------------------------------------------------------------
 
-def print_pipeline_header(config: SensitivityPipelineConfig) -> None:
+def print_pipeline_header(config: FullPipelineConfig) -> None:
     eta_values = ", ".join(str(float(eta)) for eta in config.etas)
     print(
-        "\nSensitivity pipeline configuration\n"
+        "\nConfiguration in pipeline: \n"
         f"  case={config.case}\n"
         f"  synthetic_time_steps={config.synthetic_time_steps or 'case default'}\n"
         f"  horizon={config.horizon}\n"
@@ -642,11 +671,11 @@ def print_pipeline_header(config: SensitivityPipelineConfig) -> None:
 
 
 def print_regime_bridge(
-    config: SensitivityPipelineConfig,
+    config: FullPipelineConfig,
     regime_params: dict[str, float],
 ) -> None:
     print(
-        f"\nSensitivity bridge: PoA context scenario → "
+        f"\nConfiguration bridge: PoA context scenario → "
         f"DRO regime '{config.poa_worst_case_regime_name}'"
     )
     for key, value in regime_params.items():
@@ -658,22 +687,16 @@ def print_regime_bridge(
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    run_config = SensitivityPipelineConfig(
-        # Case and random seeds.
+    config = FullPipelineConfig(
         case="base_test_case",
         synthetic_time_steps=24,
         synthetic_seed=1,
-        poa_seed=1,
-
-        # Scenario counts.
-        synthetic_num_scenarios=500,
+        poa_seed=2,
+        synthetic_num_scenarios=1000,
         ambiguity_set_config_path="config/ambiguity_set_config.yaml",
         ambiguity_set_config_name="base_test_case",
-
-        # Heuristic synthetic-label generation.
         bid_tolerance=1e-2,
 
-        # Neural-network feature and training parameters.
         nn_feature_columns=[
             "demand",
             "total_wind_generation_capacity",
@@ -688,55 +711,48 @@ if __name__ == "__main__":
             "next_own_generation_capacity",
         ],
         per_generator_normalization=True,
-        hidden_layers=[4, 8],
+        hidden_layers=[8, 8],
         learning_rate=1e-3,
-        batch_size=32,
+        batch_size=64,
         num_epochs=500,
         weight_decay=0.0,
         test_size=0.2,
         random_state=42,
-        patience=50,
+        patience=500,
         min_delta=1e-6,
         device=None,
         nn_final_activation="linear",
 
-        # Model dimensions.
-        horizon=8,
-        nn_policy_generators=["G1", "W2", "W3"],
-
+        horizon=4,
         solver_name="gurobi",
         preprocessing_time_limit=200,
         epsilon=1e-6,
         poa_parallel_workers=6,
         poa_solver_threads_per_worker=1,
 
-        # PoA analysis.
         poa_context_num_scenarios=1,
         poa_objective_mode="piecewise_mccormick",
-        poa_mccormick_PoA_bounds=(1.0, 10.0),
-        poa_mccormick_num_pieces=50,
+        poa_mccormick_PoA_bounds=(1.0, 20.0),
+        poa_mccormick_num_pieces=100,
         poa_time_limit=None,
 
-        # DRO analysis — regime derived from PoA context scenario.
         poa_worst_case_regime_name="poa_worst_case",
-        poa_worst_case_n_scenarios=10,
+        poa_worst_case_n_scenarios=5,
         etas=[0.0] + np.logspace(-2, 0.5, 10).tolist() + [10.0],
         dro_wasserstein_epsilon=2000,
-        ambiguity_kappa=0.3,
+        ambiguity_kappa=0.1,
         dro_tightening_eta=0.0,
         dro_objective_mode="piecewise_mccormick",
-        dro_mccormick_PoA_bounds=(1.0, 10.0),
-        dro_mccormick_num_pieces=50,
+        dro_mccormick_PoA_bounds=(1.0, 20.0),
+        dro_mccormick_num_pieces=100,
         dro_time_limit=None,
-        use_wasserstein_support_set=True,
 
-        # Step toggles. Turn expensive stages off when reusing outputs.
+        # Stage toggles — flip to False to reuse existing artifacts.
         run_scenario_generation=False,
         run_heuristic_labels=False,
         run_feature_building=False,
         run_nn_training=False,
-        run_poa_tightening=True,
-        
+        run_poa_tightening=False,
         poa_tightening_flags={
             "primal_big_m": True,
             "relu_bounds": True,
@@ -745,9 +761,7 @@ if __name__ == "__main__":
             "dual_big_m": True,
             "optimal_cost_bounds": True,
         },
-
         run_poa_optimization=True,
-        
         run_dro_tightening=True,
         dro_tightening_flags={
             "primal_big_m": True,
@@ -759,25 +773,6 @@ if __name__ == "__main__":
         },
         run_dro_optimization=True,
         archive_existing_dro_results=True,
-
-        # Output paths — reuse existing NN artifacts; write PoA/DRO to
-        # sensitivity_pipeline/ so results don't overwrite the standalone runs.
-        synthetic_scenario_dir=Path("results/full_pipeline/synthetic_scenarios"),
-        poa_scenario_dir=Path("results/sensitivity_pipeline/poa_scenarios"),
-        dro_scenario_dir=Path("results/sensitivity_pipeline/dro_scenarios"),
-        heuristic_results_path=Path("results/merit_order_best_response_results.json"),
-        raw_feature_dir=Path("models/neural_network/features/generated/raw"),
-        normalized_feature_dir=Path("models/neural_network/features/generated/normalized"),
-        model_dir=Path("models/neural_network/training/trained_models"),
-        training_result_dir=Path("models/neural_network/training/training_results"),
-        poa_result_dir=Path("results/sensitivity_pipeline/poa"),
-        dro_result_dir=Path("results/sensitivity_pipeline/dro"),
-        dro_result_archive_dir=Path("results/sensitivity_pipeline/dro/old_results"),
-        runtime_config_path=Path(
-            "results/sensitivity_pipeline/runtime_regime_definitions.yaml"
-        ),
-        support_calibration_report_path=Path(
-            "results/sensitivity_pipeline/support_calibration.json"
-        ),
     )
-    main(run_config)
+
+    main(config)

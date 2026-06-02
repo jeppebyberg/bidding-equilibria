@@ -11,9 +11,9 @@ from models.PoA.PoA_tightening.compute_primal_big_m import (
 
 
 def main() -> None:
-    from driver.run_full_pipeline import FullPipelineConfig, build_poa_tightening
+    from driver.PoA_pipeline import PoAPipelineConfig, build_poa_tightening
 
-    config = FullPipelineConfig(run_tightening=False)
+    config = PoAPipelineConfig(run_tightening=False)
     stage = build_poa_tightening(config, PrimalBigMComputer)
     report = stage.run_primal_big_m(output_path=config.primal_big_m_path)
     print(f"\nDeprecated wrapper complete: {config.primal_big_m_path}")

@@ -41,7 +41,6 @@ class DROPoATighteningMain:
         scenarios_df,
         costs_df,
         ramps_df,
-        p_init: Optional[list[float] | list[list[float]]] = None,
         num_time_steps: Optional[int] = None,
         regime_config_path: str | Path = "config/regime_definitions.yaml",
         regime_set: str = "PoA_analysis",
@@ -56,15 +55,12 @@ class DROPoATighteningMain:
         mccormick_bounds: Optional[dict[str, Any]] = None,
         ambiguity_kappa: float = 0.3,
         use_default_bounds: bool = False,
-        use_wasserstein_support_set: bool = False,
         ar1_coverage: Optional[float] = None,
-        enable_fleet_band: bool = True,
     ) -> None:
         self.poa = DRO_PoAOptimization(
             scenarios_df=scenarios_df,
             costs_df=costs_df,
             ramps_df=ramps_df,
-            p_init=p_init,
             num_time_steps=num_time_steps,
             regime_config_path=regime_config_path,
             regime_set=regime_set,
@@ -79,9 +75,7 @@ class DROPoATighteningMain:
             mccormick_bounds=mccormick_bounds,
             ambiguity_kappa=ambiguity_kappa,
             use_default_bounds=use_default_bounds,
-            use_wasserstein_support_set=use_wasserstein_support_set,
             ar1_coverage=ar1_coverage,
-            enable_fleet_band=enable_fleet_band,
         )
         self.dro = self.poa
         self.dro_poa = self.poa
@@ -307,11 +301,11 @@ class DROPoATighteningMain:
 
     def _parallel_stage_state(self) -> dict[str, Any]:
         return {
+            "p_init": [list(values) for values in self.poa.p_init],
             "constructor_kwargs": {
                 "scenarios_df": self.poa.scenarios_df,
                 "costs_df": self.poa.costs_df,
                 "ramps_df": self.poa.ramps_df,
-                "p_init": self.poa.requested_p_init,
                 "num_time_steps": self.poa.num_time_steps,
                 "regime_config_path": self.poa.regime_config_path,
                 "regime_set": self.poa.regime_set,
@@ -325,9 +319,7 @@ class DROPoATighteningMain:
                 "objective_mode": self.poa.objective_mode,
                 "mccormick_bounds": self.poa.mccormick_bounds,
                 "use_default_bounds": self.poa.use_default_bounds,
-                "use_wasserstein_support_set": self.poa.use_wasserstein_support_set,
                 "ar1_coverage": getattr(self.poa, "ar1_coverage", None),
-                "enable_fleet_band": getattr(self.poa, "enable_fleet_band", None),
             },
             "tightening_data": dict(self.tightening_data),
         }
@@ -338,6 +330,8 @@ class DROPoATighteningMain:
         state: dict[str, Any],
     ) -> "DROPoATighteningMain":
         stage = cls(**state["constructor_kwargs"])
+        if "p_init" in state:
+            stage.poa.p_init = state["p_init"]
         tightening_data = dict(state.get("tightening_data", {}) or {})
         stage.tightening_data.update(tightening_data)
         stage._merge_report(tightening_data)

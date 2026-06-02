@@ -50,7 +50,7 @@
         0.9455483839677397
       ]
     },
-    "runtime_seconds": 42.403024399998685
+    "runtime_seconds": 51.561053400000674
   },
   "epsilon": 1e-06,
   "stop_at_zero_slack": true,
@@ -58,15 +58,6 @@
   "early_stop_enabled": true,
   "slack_bounds": {
     "eq:upper:0,0,0": {
-      "minimum_slack": 0.0,
-      "incumbent_slack_objective": 0.0,
-      "robustly_inactive": false,
-      "early_stop_enabled": true,
-      "slack_stop_tolerance": 1e-06,
-      "termination_condition": "optimal",
-      "result_classification": "zero_slack_feasible"
-    },
-    "eq:lower:0,0,0": {
       "minimum_slack": 5.0,
       "incumbent_slack_objective": 5.0,
       "robustly_inactive": true,
@@ -74,6 +65,15 @@
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
       "result_classification": "positive_slack_optimal"
+    },
+    "eq:lower:0,0,0": {
+      "minimum_slack": 0.0,
+      "incumbent_slack_objective": 0.0,
+      "robustly_inactive": false,
+      "early_stop_enabled": true,
+      "slack_stop_tolerance": 1e-06,
+      "termination_condition": "optimal",
+      "result_classification": "zero_slack_feasible"
     },
     "eq:upper:0,0,1": {
       "minimum_slack": 0.0,
@@ -184,13 +184,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "eq:upper:0,0,7": {
-      "minimum_slack": 5.0,
-      "incumbent_slack_objective": 5.0,
-      "robustly_inactive": true,
+      "minimum_slack": 0.0,
+      "incumbent_slack_objective": 0.0,
+      "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "positive_slack_optimal"
+      "result_classification": "zero_slack_feasible"
     },
     "eq:lower:0,0,7": {
       "minimum_slack": 0.0,
@@ -220,8 +220,8 @@
       "result_classification": "zero_slack_feasible"
     },
     "eq:upper:0,1,1": {
-      "minimum_slack": 25.0,
-      "incumbent_slack_objective": 25.0,
+      "minimum_slack": 10.0,
+      "incumbent_slack_objective": 10.0,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -238,13 +238,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "eq:upper:0,1,2": {
-      "minimum_slack": 25.0,
-      "incumbent_slack_objective": 25.0,
-      "robustly_inactive": true,
+      "minimum_slack": 0.0,
+      "incumbent_slack_objective": 0.0,
+      "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "positive_slack_optimal"
+      "result_classification": "zero_slack_feasible"
     },
     "eq:lower:0,1,2": {
       "minimum_slack": 0.0,
@@ -256,13 +256,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "eq:upper:0,1,3": {
-      "minimum_slack": 25.0,
-      "incumbent_slack_objective": 25.0,
-      "robustly_inactive": true,
+      "minimum_slack": 0.0,
+      "incumbent_slack_objective": 0.0,
+      "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "positive_slack_optimal"
+      "result_classification": "zero_slack_feasible"
     },
     "eq:lower:0,1,3": {
       "minimum_slack": 0.0,
@@ -274,13 +274,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "eq:upper:0,1,4": {
-      "minimum_slack": 25.0,
-      "incumbent_slack_objective": 25.0,
-      "robustly_inactive": true,
+      "minimum_slack": 0.0,
+      "incumbent_slack_objective": 0.0,
+      "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "positive_slack_optimal"
+      "result_classification": "zero_slack_feasible"
     },
     "eq:lower:0,1,4": {
       "minimum_slack": 0.0,
@@ -292,13 +292,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "eq:upper:0,1,5": {
-      "minimum_slack": 25.0,
-      "incumbent_slack_objective": 25.0,
-      "robustly_inactive": true,
+      "minimum_slack": 0.0,
+      "incumbent_slack_objective": 0.0,
+      "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "positive_slack_optimal"
+      "result_classification": "zero_slack_feasible"
     },
     "eq:lower:0,1,5": {
       "minimum_slack": 0.0,
@@ -310,8 +310,8 @@
       "result_classification": "zero_slack_feasible"
     },
     "eq:upper:0,1,6": {
-      "minimum_slack": 25.0,
-      "incumbent_slack_objective": 25.0,
+      "minimum_slack": 5.0,
+      "incumbent_slack_objective": 5.0,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -346,15 +346,6 @@
       "result_classification": "zero_slack_feasible"
     },
     "eq:upper:1,0,0": {
-      "minimum_slack": 0.0,
-      "incumbent_slack_objective": 0.0,
-      "robustly_inactive": false,
-      "early_stop_enabled": true,
-      "slack_stop_tolerance": 1e-06,
-      "termination_condition": "optimal",
-      "result_classification": "zero_slack_feasible"
-    },
-    "eq:lower:1,0,0": {
       "minimum_slack": 5.0,
       "incumbent_slack_objective": 5.0,
       "robustly_inactive": true,
@@ -362,6 +353,15 @@
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
       "result_classification": "positive_slack_optimal"
+    },
+    "eq:lower:1,0,0": {
+      "minimum_slack": 0.0,
+      "incumbent_slack_objective": 0.0,
+      "robustly_inactive": false,
+      "early_stop_enabled": true,
+      "slack_stop_tolerance": 1e-06,
+      "termination_condition": "optimal",
+      "result_classification": "zero_slack_feasible"
     },
     "eq:upper:1,0,1": {
       "minimum_slack": 0.0,
@@ -634,13 +634,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "eq:upper:2,0,0": {
-      "minimum_slack": 0.0,
-      "incumbent_slack_objective": 0.0,
-      "robustly_inactive": false,
+      "minimum_slack": 5.0,
+      "incumbent_slack_objective": 5.0,
+      "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "zero_slack_feasible"
+      "result_classification": "positive_slack_optimal"
     },
     "eq:lower:2,0,0": {
       "minimum_slack": 0.0,
@@ -778,13 +778,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "eq:upper:2,1,0": {
-      "minimum_slack": 0.0,
-      "incumbent_slack_objective": 0.0,
-      "robustly_inactive": false,
+      "minimum_slack": 5.0,
+      "incumbent_slack_objective": 5.0,
+      "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "zero_slack_feasible"
+      "result_classification": "positive_slack_optimal"
     },
     "eq:lower:2,1,0": {
       "minimum_slack": 0.0,
@@ -1219,13 +1219,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "eq:lower:5,0,0": {
-      "minimum_slack": 0.0,
-      "incumbent_slack_objective": 0.0,
-      "robustly_inactive": false,
+      "minimum_slack": 2.0490275239216302,
+      "incumbent_slack_objective": 2.0490275239216302,
+      "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "zero_slack_feasible"
+      "result_classification": "positive_slack_optimal"
     },
     "eq:upper:5,0,1": {
       "minimum_slack": 0.0,
@@ -1237,8 +1237,8 @@
       "result_classification": "zero_slack_feasible"
     },
     "eq:lower:5,0,1": {
-      "minimum_slack": 7.458644046024503,
-      "incumbent_slack_objective": 7.458644046024503,
+      "minimum_slack": 1.226355878975987,
+      "incumbent_slack_objective": 1.226355878975987,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -1273,13 +1273,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "eq:lower:5,0,3": {
-      "minimum_slack": 8.935208381745852,
-      "incumbent_slack_objective": 8.935208381745852,
-      "robustly_inactive": true,
+      "minimum_slack": 0.0,
+      "incumbent_slack_objective": 0.0,
+      "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "positive_slack_optimal"
+      "result_classification": "zero_slack_feasible"
     },
     "eq:upper:5,0,4": {
       "minimum_slack": 0.0,
@@ -1291,13 +1291,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "eq:lower:5,0,4": {
-      "minimum_slack": 10.376556808721276,
-      "incumbent_slack_objective": 10.376556808721276,
-      "robustly_inactive": true,
+      "minimum_slack": 0.0,
+      "incumbent_slack_objective": 0.0,
+      "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "positive_slack_optimal"
+      "result_classification": "zero_slack_feasible"
     },
     "eq:upper:5,0,5": {
       "minimum_slack": 0.0,
@@ -1309,13 +1309,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "eq:lower:5,0,5": {
-      "minimum_slack": 10.670948164509568,
-      "incumbent_slack_objective": 10.670948164509568,
-      "robustly_inactive": true,
+      "minimum_slack": 0.0,
+      "incumbent_slack_objective": 0.0,
+      "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "positive_slack_optimal"
+      "result_classification": "zero_slack_feasible"
     },
     "eq:upper:5,0,6": {
       "minimum_slack": 0.0,
@@ -1345,15 +1345,24 @@
       "result_classification": "zero_slack_feasible"
     },
     "eq:lower:5,0,7": {
-      "minimum_slack": 8.11530296410632,
-      "incumbent_slack_objective": 8.11530296410632,
-      "robustly_inactive": true,
+      "minimum_slack": 0.0,
+      "incumbent_slack_objective": 0.0,
+      "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "positive_slack_optimal"
+      "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_up:0,0": {
+      "minimum_slack": 0.0,
+      "incumbent_slack_objective": 0.0,
+      "robustly_inactive": false,
+      "early_stop_enabled": true,
+      "slack_stop_tolerance": 1e-06,
+      "termination_condition": "optimal",
+      "result_classification": "zero_slack_feasible"
+    },
+    "eq:ramp_down:0,0": {
       "minimum_slack": 20.0,
       "incumbent_slack_objective": 20.0,
       "robustly_inactive": true,
@@ -1362,22 +1371,13 @@
       "termination_condition": "optimal",
       "result_classification": "positive_slack_optimal"
     },
-    "eq:ramp_down:0,0": {
-      "minimum_slack": 0.0,
-      "incumbent_slack_objective": 0.0,
-      "robustly_inactive": false,
-      "early_stop_enabled": true,
-      "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
-      "result_classification": "zero_slack_feasible"
-    },
     "eq:ramp_up:0,1": {
       "minimum_slack": 0.0,
       "incumbent_slack_objective": 0.0,
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_down:0,1": {
@@ -1386,7 +1386,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_up:0,2": {
@@ -1404,7 +1404,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_up:0,3": {
@@ -1422,7 +1422,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_up:0,4": {
@@ -1431,7 +1431,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_down:0,4": {
@@ -1440,7 +1440,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_up:0,5": {
@@ -1449,7 +1449,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_down:0,5": {
@@ -1458,7 +1458,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_up:0,6": {
@@ -1476,7 +1476,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_up:0,7": {
@@ -1507,13 +1507,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_down:1,0": {
-      "minimum_slack": 0.0,
-      "incumbent_slack_objective": 0.0,
-      "robustly_inactive": false,
+      "minimum_slack": 20.0,
+      "incumbent_slack_objective": 20.0,
+      "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "zero_slack_feasible"
+      "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_up:1,1": {
       "minimum_slack": 0.0,
@@ -1539,7 +1539,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "optimal",
+      "termination_condition": "other",
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_down:1,2": {
@@ -1548,7 +1548,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "optimal",
+      "termination_condition": "other",
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_up:1,3": {
@@ -1566,7 +1566,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "optimal",
+      "termination_condition": "other",
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_up:1,4": {
@@ -1629,7 +1629,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "optimal",
+      "termination_condition": "other",
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_down:1,7": {
@@ -1651,13 +1651,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_down:2,0": {
-      "minimum_slack": 0.0,
-      "incumbent_slack_objective": 0.0,
-      "robustly_inactive": false,
+      "minimum_slack": 20.0,
+      "incumbent_slack_objective": 20.0,
+      "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "zero_slack_feasible"
+      "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_up:2,1": {
       "minimum_slack": 0.0,
@@ -1674,7 +1674,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_up:2,2": {
@@ -1692,7 +1692,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_up:2,3": {
@@ -1701,7 +1701,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_down:2,3": {
@@ -1710,7 +1710,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_up:2,4": {
@@ -1719,7 +1719,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_down:2,4": {
@@ -1728,7 +1728,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_up:2,5": {
@@ -1737,7 +1737,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_down:2,5": {
@@ -1746,7 +1746,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_up:2,6": {
@@ -1764,7 +1764,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_up:2,7": {
@@ -1782,12 +1782,12 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "eq:ramp_up:3,0": {
-      "minimum_slack": 37.592578981937585,
-      "incumbent_slack_objective": 37.592578981937585,
+      "minimum_slack": 32.060402902290754,
+      "incumbent_slack_objective": 32.060402902290754,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -1795,8 +1795,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_down:3,0": {
-      "minimum_slack": 25.0,
-      "incumbent_slack_objective": 25.0,
+      "minimum_slack": 30.532176079646835,
+      "incumbent_slack_objective": 30.532176079646835,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -1930,8 +1930,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_up:4,0": {
-      "minimum_slack": 37.592578981937585,
-      "incumbent_slack_objective": 37.592578981937585,
+      "minimum_slack": 42.12180253159632,
+      "incumbent_slack_objective": 42.12180253159632,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -1939,8 +1939,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_down:4,0": {
-      "minimum_slack": 25.0,
-      "incumbent_slack_objective": 25.0,
+      "minimum_slack": 20.47077645034126,
+      "incumbent_slack_objective": 20.47077645034126,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -2074,8 +2074,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_up:5,0": {
-      "minimum_slack": 37.592578981937585,
-      "incumbent_slack_objective": 37.592578981937585,
+      "minimum_slack": 42.12180253159632,
+      "incumbent_slack_objective": 42.12180253159632,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -2083,8 +2083,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_down:5,0": {
-      "minimum_slack": 25.0,
-      "incumbent_slack_objective": 25.0,
+      "minimum_slack": 22.519803974262896,
+      "incumbent_slack_objective": 22.519803974262896,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -2092,8 +2092,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_up:5,1": {
-      "minimum_slack": 19.8568880438864,
-      "incumbent_slack_objective": 19.8568880438864,
+      "minimum_slack": 14.856888042300712,
+      "incumbent_slack_objective": 14.856888042300712,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -2101,8 +2101,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_down:5,1": {
-      "minimum_slack": 38.818934860913025,
-      "incumbent_slack_objective": 38.818934860913025,
+      "minimum_slack": 13.818934860913544,
+      "incumbent_slack_objective": 13.818934860913544,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -2110,8 +2110,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_up:5,2": {
-      "minimum_slack": 37.88829079956314,
-      "incumbent_slack_objective": 37.88829079956314,
+      "minimum_slack": 12.888290799563627,
+      "incumbent_slack_objective": 12.888290799563627,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -2137,8 +2137,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_down:5,3": {
-      "minimum_slack": 38.67858567736448,
-      "incumbent_slack_objective": 38.67858567736448,
+      "minimum_slack": 11.661934920587669,
+      "incumbent_slack_objective": 11.661934920587669,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -2146,8 +2146,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_up:5,4": {
-      "minimum_slack": 31.751024046445103,
-      "incumbent_slack_objective": 31.751024046445103,
+      "minimum_slack": 7.641650756777359,
+      "incumbent_slack_objective": 7.641650756777359,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -2155,8 +2155,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_down:5,4": {
-      "minimum_slack": 40.97006384181932,
-      "incumbent_slack_objective": 40.97006384181932,
+      "minimum_slack": 10.970063840622856,
+      "incumbent_slack_objective": 10.970063840622856,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -2164,8 +2164,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_up:5,5": {
-      "minimum_slack": 38.21689632509742,
-      "incumbent_slack_objective": 38.21689632509742,
+      "minimum_slack": 5.625,
+      "incumbent_slack_objective": 5.625,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -2173,8 +2173,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_down:5,5": {
-      "minimum_slack": 36.752297640408926,
-      "incumbent_slack_objective": 36.752297640408926,
+      "minimum_slack": 5.625,
+      "incumbent_slack_objective": 5.625,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -2182,8 +2182,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_up:5,6": {
-      "minimum_slack": 37.99138686286662,
-      "incumbent_slack_objective": 37.99138686286662,
+      "minimum_slack": 6.864089218682437,
+      "incumbent_slack_objective": 6.864089218682437,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -2191,8 +2191,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_down:5,6": {
-      "minimum_slack": 25.51319906275672,
-      "incumbent_slack_objective": 25.51319906275672,
+      "minimum_slack": 5.625,
+      "incumbent_slack_objective": 5.625,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -2209,8 +2209,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "eq:ramp_down:5,7": {
-      "minimum_slack": 27.21877699447171,
-      "incumbent_slack_objective": 27.21877699447171,
+      "minimum_slack": 6.864089218682437,
+      "incumbent_slack_objective": 6.864089218682437,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -2218,15 +2218,6 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:upper:0,0,0": {
-      "minimum_slack": 18.742189650178307,
-      "incumbent_slack_objective": 18.742189650178307,
-      "robustly_inactive": true,
-      "early_stop_enabled": true,
-      "slack_stop_tolerance": 1e-06,
-      "termination_condition": "optimal",
-      "result_classification": "positive_slack_optimal"
-    },
-    "opt:lower:0,0,0": {
       "minimum_slack": 5.0,
       "incumbent_slack_objective": 5.0,
       "robustly_inactive": true,
@@ -2235,9 +2226,18 @@
       "termination_condition": "optimal",
       "result_classification": "positive_slack_optimal"
     },
+    "opt:lower:0,0,0": {
+      "minimum_slack": 0.0,
+      "incumbent_slack_objective": 0.0,
+      "robustly_inactive": false,
+      "early_stop_enabled": true,
+      "slack_stop_tolerance": 1e-06,
+      "termination_condition": "optimal",
+      "result_classification": "zero_slack_feasible"
+    },
     "opt:upper:0,0,1": {
-      "minimum_slack": 16.756795102511013,
-      "incumbent_slack_objective": 16.756795102511013,
+      "minimum_slack": 16.979410214985215,
+      "incumbent_slack_objective": 16.979410214985215,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -2254,8 +2254,8 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:upper:0,0,2": {
-      "minimum_slack": 4.298147181116136,
-      "incumbent_slack_objective": 4.298147181116136,
+      "minimum_slack": 5.0808551861987326,
+      "incumbent_slack_objective": 5.0808551861987326,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -2272,8 +2272,8 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:upper:0,0,3": {
-      "minimum_slack": 17.65320994932752,
-      "incumbent_slack_objective": 17.65320994932752,
+      "minimum_slack": 17.65320994932749,
+      "incumbent_slack_objective": 17.65320994932749,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -2290,13 +2290,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:upper:0,0,4": {
-      "minimum_slack": 8.09656674897401,
-      "incumbent_slack_objective": 8.09656674897401,
-      "robustly_inactive": true,
+      "minimum_slack": 0.0,
+      "incumbent_slack_objective": 0.0,
+      "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "positive_slack_optimal"
+      "result_classification": "zero_slack_feasible"
     },
     "opt:lower:0,0,4": {
       "minimum_slack": 0.0,
@@ -2308,8 +2308,8 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:upper:0,0,5": {
-      "minimum_slack": 6.498587505196539,
-      "incumbent_slack_objective": 6.498587505196539,
+      "minimum_slack": 6.498587505196625,
+      "incumbent_slack_objective": 6.498587505196625,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -2326,8 +2326,8 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:upper:0,0,6": {
-      "minimum_slack": 21.73071090944716,
-      "incumbent_slack_objective": 21.73071090944716,
+      "minimum_slack": 5.0,
+      "incumbent_slack_objective": 5.0,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -2506,15 +2506,6 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:upper:1,0,0": {
-      "minimum_slack": 0.0,
-      "incumbent_slack_objective": 0.0,
-      "robustly_inactive": false,
-      "early_stop_enabled": true,
-      "slack_stop_tolerance": 1e-06,
-      "termination_condition": "optimal",
-      "result_classification": "zero_slack_feasible"
-    },
-    "opt:lower:1,0,0": {
       "minimum_slack": 5.0,
       "incumbent_slack_objective": 5.0,
       "robustly_inactive": true,
@@ -2522,6 +2513,15 @@
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
       "result_classification": "positive_slack_optimal"
+    },
+    "opt:lower:1,0,0": {
+      "minimum_slack": 0.0,
+      "incumbent_slack_objective": 0.0,
+      "robustly_inactive": false,
+      "early_stop_enabled": true,
+      "slack_stop_tolerance": 1e-06,
+      "termination_condition": "optimal",
+      "result_classification": "zero_slack_feasible"
     },
     "opt:upper:1,0,1": {
       "minimum_slack": 0.0,
@@ -2650,8 +2650,8 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:upper:1,1,0": {
-      "minimum_slack": 5.0,
-      "incumbent_slack_objective": 5.0,
+      "minimum_slack": 25.0,
+      "incumbent_slack_objective": 25.0,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -2668,13 +2668,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:upper:1,1,1": {
-      "minimum_slack": 0.0,
-      "incumbent_slack_objective": 0.0,
-      "robustly_inactive": false,
+      "minimum_slack": 10.0,
+      "incumbent_slack_objective": 10.0,
+      "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "zero_slack_feasible"
+      "result_classification": "positive_slack_optimal"
     },
     "opt:lower:1,1,1": {
       "minimum_slack": 0.0,
@@ -2758,8 +2758,8 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:upper:1,1,6": {
-      "minimum_slack": 3.5245772384107994,
-      "incumbent_slack_objective": 3.5245772384107994,
+      "minimum_slack": 3.5245772388630243,
+      "incumbent_slack_objective": 3.5245772388630243,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -2776,8 +2776,8 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:upper:1,1,7": {
-      "minimum_slack": 5.396292419586715,
-      "incumbent_slack_objective": 5.396292419586715,
+      "minimum_slack": 5.396292418947056,
+      "incumbent_slack_objective": 5.396292418947056,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -2794,15 +2794,6 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:upper:2,0,0": {
-      "minimum_slack": 0.0,
-      "incumbent_slack_objective": 0.0,
-      "robustly_inactive": false,
-      "early_stop_enabled": true,
-      "slack_stop_tolerance": 1e-06,
-      "termination_condition": "optimal",
-      "result_classification": "zero_slack_feasible"
-    },
-    "opt:lower:2,0,0": {
       "minimum_slack": 5.0,
       "incumbent_slack_objective": 5.0,
       "robustly_inactive": true,
@@ -2810,6 +2801,15 @@
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
       "result_classification": "positive_slack_optimal"
+    },
+    "opt:lower:2,0,0": {
+      "minimum_slack": 0.0,
+      "incumbent_slack_objective": 0.0,
+      "robustly_inactive": false,
+      "early_stop_enabled": true,
+      "slack_stop_tolerance": 1e-06,
+      "termination_condition": "optimal",
+      "result_classification": "zero_slack_feasible"
     },
     "opt:upper:2,0,1": {
       "minimum_slack": 0.0,
@@ -2938,8 +2938,8 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:upper:2,1,0": {
-      "minimum_slack": 5.0,
-      "incumbent_slack_objective": 5.0,
+      "minimum_slack": 25.0,
+      "incumbent_slack_objective": 25.0,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -2956,13 +2956,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:upper:2,1,1": {
-      "minimum_slack": 0.0,
-      "incumbent_slack_objective": 0.0,
-      "robustly_inactive": false,
+      "minimum_slack": 10.0,
+      "incumbent_slack_objective": 10.0,
+      "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "zero_slack_feasible"
+      "result_classification": "positive_slack_optimal"
     },
     "opt:lower:2,1,1": {
       "minimum_slack": 0.0,
@@ -3087,7 +3087,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:3,0,0": {
@@ -3105,7 +3105,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:3,0,1": {
@@ -3123,7 +3123,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:3,0,2": {
@@ -3141,7 +3141,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:3,0,3": {
@@ -3159,7 +3159,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:3,0,4": {
@@ -3177,7 +3177,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:3,0,5": {
@@ -3195,7 +3195,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:3,0,6": {
@@ -3213,7 +3213,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:3,0,7": {
@@ -3231,12 +3231,12 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:4,0,0": {
-      "minimum_slack": 7.04902752392163,
-      "incumbent_slack_objective": 7.04902752392163,
+      "minimum_slack": 7.530404558700226,
+      "incumbent_slack_objective": 7.530404558700226,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -3249,7 +3249,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:4,0,1": {
@@ -3267,12 +3267,12 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:4,0,2": {
-      "minimum_slack": 7.840619245816882,
-      "incumbent_slack_objective": 7.840619245816882,
+      "minimum_slack": 7.840619245816875,
+      "incumbent_slack_objective": 7.840619245816875,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -3285,7 +3285,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:4,0,3": {
@@ -3303,12 +3303,12 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:4,0,4": {
-      "minimum_slack": 10.376556808721276,
-      "incumbent_slack_objective": 10.376556808721276,
+      "minimum_slack": 10.37655680872128,
+      "incumbent_slack_objective": 10.37655680872128,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -3321,12 +3321,12 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:4,0,5": {
-      "minimum_slack": 10.670948164509568,
-      "incumbent_slack_objective": 10.670948164509568,
+      "minimum_slack": 10.670948164509571,
+      "incumbent_slack_objective": 10.670948164509571,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -3339,17 +3339,17 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:4,0,6": {
-      "minimum_slack": 9.439901146451959,
-      "incumbent_slack_objective": 9.439901146451959,
-      "robustly_inactive": true,
+      "minimum_slack": 0.0,
+      "incumbent_slack_objective": 0.0,
+      "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "positive_slack_optimal"
+      "result_classification": "zero_slack_feasible"
     },
     "opt:upper:4,0,7": {
       "minimum_slack": 0.0,
@@ -3357,12 +3357,12 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:4,0,7": {
-      "minimum_slack": 8.11530296410632,
-      "incumbent_slack_objective": 8.11530296410632,
+      "minimum_slack": 8.115302964106318,
+      "incumbent_slack_objective": 8.115302964106318,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -3375,12 +3375,12 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:5,0,0": {
-      "minimum_slack": 7.530404558700226,
-      "incumbent_slack_objective": 7.530404558700226,
+      "minimum_slack": 7.530404558700235,
+      "incumbent_slack_objective": 7.530404558700235,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -3393,7 +3393,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:5,0,1": {
@@ -3411,12 +3411,12 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:5,0,2": {
-      "minimum_slack": 7.840619245816882,
-      "incumbent_slack_objective": 7.840619245816882,
+      "minimum_slack": 7.840619245816875,
+      "incumbent_slack_objective": 7.840619245816875,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -3429,12 +3429,12 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:5,0,3": {
-      "minimum_slack": 8.935208381745852,
-      "incumbent_slack_objective": 8.935208381745852,
+      "minimum_slack": 8.935208381745854,
+      "incumbent_slack_objective": 8.935208381745854,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -3447,12 +3447,12 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:5,0,4": {
-      "minimum_slack": 10.376556808721276,
-      "incumbent_slack_objective": 10.376556808721276,
+      "minimum_slack": 10.37655680872128,
+      "incumbent_slack_objective": 10.37655680872128,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -3465,12 +3465,12 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:5,0,5": {
-      "minimum_slack": 10.670948164509568,
-      "incumbent_slack_objective": 10.670948164509568,
+      "minimum_slack": 10.670948164509571,
+      "incumbent_slack_objective": 10.670948164509571,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -3483,12 +3483,12 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:5,0,6": {
-      "minimum_slack": 9.439901146451959,
-      "incumbent_slack_objective": 9.439901146451959,
+      "minimum_slack": 9.439901146451952,
+      "incumbent_slack_objective": 9.439901146451952,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -3501,7 +3501,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:lower:5,0,7": {
@@ -3514,26 +3514,26 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:0,0": {
-      "minimum_slack": 38.742189650178304,
-      "incumbent_slack_objective": 38.742189650178304,
+      "minimum_slack": 0.0,
+      "incumbent_slack_objective": 0.0,
+      "robustly_inactive": false,
+      "early_stop_enabled": true,
+      "slack_stop_tolerance": 1e-06,
+      "termination_condition": "optimal",
+      "result_classification": "zero_slack_feasible"
+    },
+    "opt:ramp_down:0,0": {
+      "minimum_slack": 20.0,
+      "incumbent_slack_objective": 20.0,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
       "result_classification": "positive_slack_optimal"
     },
-    "opt:ramp_down:0,0": {
-      "minimum_slack": 0.0,
-      "incumbent_slack_objective": 0.0,
-      "robustly_inactive": false,
-      "early_stop_enabled": true,
-      "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
-      "result_classification": "zero_slack_feasible"
-    },
     "opt:ramp_up:0,1": {
-      "minimum_slack": 5.0,
-      "incumbent_slack_objective": 5.0,
+      "minimum_slack": 20.0,
+      "incumbent_slack_objective": 20.0,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -3541,33 +3541,6 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:0,1": {
-      "minimum_slack": 13.742189650178307,
-      "incumbent_slack_objective": 13.742189650178307,
-      "robustly_inactive": true,
-      "early_stop_enabled": true,
-      "slack_stop_tolerance": 1e-06,
-      "termination_condition": "optimal",
-      "result_classification": "positive_slack_optimal"
-    },
-    "opt:ramp_up:0,2": {
-      "minimum_slack": 0.08085518619877519,
-      "incumbent_slack_objective": 0.08085518619877519,
-      "robustly_inactive": true,
-      "early_stop_enabled": true,
-      "slack_stop_tolerance": 1e-06,
-      "termination_condition": "optimal",
-      "result_classification": "positive_slack_optimal"
-    },
-    "opt:ramp_down:0,2": {
-      "minimum_slack": 11.756795102510985,
-      "incumbent_slack_objective": 11.756795102510985,
-      "robustly_inactive": true,
-      "early_stop_enabled": true,
-      "slack_stop_tolerance": 1e-06,
-      "termination_condition": "optimal",
-      "result_classification": "positive_slack_optimal"
-    },
-    "opt:ramp_up:0,3": {
       "minimum_slack": 0.0,
       "incumbent_slack_objective": 0.0,
       "robustly_inactive": false,
@@ -3576,9 +3549,36 @@
       "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
+    "opt:ramp_up:0,2": {
+      "minimum_slack": 2.9167861752358206,
+      "incumbent_slack_objective": 2.9167861752358206,
+      "robustly_inactive": true,
+      "early_stop_enabled": true,
+      "slack_stop_tolerance": 1e-06,
+      "termination_condition": "optimal",
+      "result_classification": "positive_slack_optimal"
+    },
+    "opt:ramp_down:0,2": {
+      "minimum_slack": 11.979410214985236,
+      "incumbent_slack_objective": 11.979410214985236,
+      "robustly_inactive": true,
+      "early_stop_enabled": true,
+      "slack_stop_tolerance": 1e-06,
+      "termination_condition": "optimal",
+      "result_classification": "positive_slack_optimal"
+    },
+    "opt:ramp_up:0,3": {
+      "minimum_slack": 15.455124261858192,
+      "incumbent_slack_objective": 15.455124261858192,
+      "robustly_inactive": true,
+      "early_stop_enabled": true,
+      "slack_stop_tolerance": 1e-06,
+      "termination_condition": "optimal",
+      "result_classification": "positive_slack_optimal"
+    },
     "opt:ramp_down:0,3": {
-      "minimum_slack": 0.08085518619877519,
-      "incumbent_slack_objective": 0.08085518619877519,
+      "minimum_slack": 0.08085518619873255,
+      "incumbent_slack_objective": 0.08085518619873255,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -3604,8 +3604,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:0,5": {
-      "minimum_slack": 1.5615512769429571,
-      "incumbent_slack_objective": 1.5615512769429571,
+      "minimum_slack": 1.5615512804476026,
+      "incumbent_slack_objective": 1.5615512804476026,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -3613,17 +3613,17 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:0,5": {
-      "minimum_slack": 3.0965667551829767,
-      "incumbent_slack_objective": 3.0965667551829767,
-      "robustly_inactive": true,
+      "minimum_slack": 0.0,
+      "incumbent_slack_objective": 0.0,
+      "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "positive_slack_optimal"
+      "result_classification": "zero_slack_feasible"
     },
     "opt:ramp_up:0,6": {
-      "minimum_slack": 16.730710932730204,
-      "incumbent_slack_objective": 16.730710932730204,
+      "minimum_slack": 16.73071093273019,
+      "incumbent_slack_objective": 16.73071093273019,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -3631,8 +3631,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:0,6": {
-      "minimum_slack": 1.4985875051965394,
-      "incumbent_slack_objective": 1.4985875051965394,
+      "minimum_slack": 1.4985875051965678,
+      "incumbent_slack_objective": 1.4985875051965678,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -3663,17 +3663,17 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:ramp_down:1,0": {
-      "minimum_slack": 0.0,
-      "incumbent_slack_objective": 0.0,
-      "robustly_inactive": false,
+      "minimum_slack": 20.0,
+      "incumbent_slack_objective": 20.0,
+      "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "zero_slack_feasible"
+      "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:1,1": {
       "minimum_slack": 0.0,
@@ -3685,13 +3685,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:ramp_down:1,1": {
-      "minimum_slack": 0.3271995418381408,
-      "incumbent_slack_objective": 0.3271995418381408,
-      "robustly_inactive": true,
+      "minimum_slack": 0.0,
+      "incumbent_slack_objective": 0.0,
+      "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "positive_slack_optimal"
+      "result_classification": "zero_slack_feasible"
     },
     "opt:ramp_up:1,2": {
       "minimum_slack": 0.0,
@@ -3766,13 +3766,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:ramp_up:1,6": {
-      "minimum_slack": 0.0,
-      "incumbent_slack_objective": 0.0,
-      "robustly_inactive": false,
+      "minimum_slack": 0.3215789680883887,
+      "incumbent_slack_objective": 0.3215789680883887,
+      "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "zero_slack_feasible"
+      "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:1,6": {
       "minimum_slack": 0.0,
@@ -3780,7 +3780,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:ramp_up:1,7": {
@@ -3798,7 +3798,7 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
+      "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
     "opt:ramp_up:2,0": {
@@ -3807,21 +3807,21 @@
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
-      "termination_condition": "other",
-      "result_classification": "zero_slack_feasible"
-    },
-    "opt:ramp_down:2,0": {
-      "minimum_slack": 0.0,
-      "incumbent_slack_objective": 0.0,
-      "robustly_inactive": false,
-      "early_stop_enabled": true,
-      "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
       "result_classification": "zero_slack_feasible"
     },
+    "opt:ramp_down:2,0": {
+      "minimum_slack": 20.0,
+      "incumbent_slack_objective": 20.0,
+      "robustly_inactive": true,
+      "early_stop_enabled": true,
+      "slack_stop_tolerance": 1e-06,
+      "termination_condition": "optimal",
+      "result_classification": "positive_slack_optimal"
+    },
     "opt:ramp_up:2,1": {
-      "minimum_slack": 3.552713678800501e-15,
-      "incumbent_slack_objective": 3.552713678800501e-15,
+      "minimum_slack": 0.0,
+      "incumbent_slack_objective": 0.0,
       "robustly_inactive": false,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -3829,13 +3829,13 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:ramp_down:2,1": {
-      "minimum_slack": 0.0,
-      "incumbent_slack_objective": 0.0,
-      "robustly_inactive": false,
+      "minimum_slack": 2.9821208715538994,
+      "incumbent_slack_objective": 2.9821208715538994,
+      "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "zero_slack_feasible"
+      "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:2,2": {
       "minimum_slack": 0.0,
@@ -3847,17 +3847,17 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:ramp_down:2,2": {
-      "minimum_slack": 0.0,
-      "incumbent_slack_objective": 0.0,
-      "robustly_inactive": false,
+      "minimum_slack": 5.0,
+      "incumbent_slack_objective": 5.0,
+      "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
       "termination_condition": "optimal",
-      "result_classification": "zero_slack_feasible"
+      "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:2,3": {
-      "minimum_slack": 2.9459547684964775,
-      "incumbent_slack_objective": 2.9459547684964775,
+      "minimum_slack": 2.9459547684964846,
+      "incumbent_slack_objective": 2.9459547684964846,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -3946,8 +3946,8 @@
       "result_classification": "zero_slack_feasible"
     },
     "opt:ramp_up:3,0": {
-      "minimum_slack": 37.592578981937585,
-      "incumbent_slack_objective": 37.592578981937585,
+      "minimum_slack": 32.060402902290754,
+      "incumbent_slack_objective": 32.060402902290754,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -3955,8 +3955,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:3,0": {
-      "minimum_slack": 25.0,
-      "incumbent_slack_objective": 25.0,
+      "minimum_slack": 30.532176079646835,
+      "incumbent_slack_objective": 30.532176079646835,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -3964,8 +3964,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:3,1": {
-      "minimum_slack": 12.807860519964798,
-      "incumbent_slack_objective": 12.807860519964798,
+      "minimum_slack": 26.75295799749572,
+      "incumbent_slack_objective": 26.75295799749572,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -3973,8 +3973,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:3,1": {
-      "minimum_slack": 32.108707369396754,
-      "incumbent_slack_objective": 32.108707369396754,
+      "minimum_slack": 30.4949037635976,
+      "incumbent_slack_objective": 30.4949037635976,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -3982,8 +3982,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:3,2": {
-      "minimum_slack": 21.248687161586904,
-      "incumbent_slack_objective": 21.248687161586904,
+      "minimum_slack": 11.661934920587669,
+      "incumbent_slack_objective": 11.661934920587669,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -3991,8 +3991,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:3,2": {
-      "minimum_slack": 22.244404736726274,
-      "incumbent_slack_objective": 22.244404736726274,
+      "minimum_slack": 41.383229990179245,
+      "incumbent_slack_objective": 41.383229990179245,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4009,8 +4009,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:3,3": {
-      "minimum_slack": 11.661934920587669,
-      "incumbent_slack_objective": 11.661934920587669,
+      "minimum_slack": 19.97853473514442,
+      "incumbent_slack_objective": 19.97853473514442,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4018,8 +4018,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:3,4": {
-      "minimum_slack": 8.532949602643086,
-      "incumbent_slack_objective": 8.532949602643086,
+      "minimum_slack": 23.186753840577122,
+      "incumbent_slack_objective": 23.186753840577122,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4045,8 +4045,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:3,5": {
-      "minimum_slack": 29.13602043882787,
-      "incumbent_slack_objective": 29.13602043882787,
+      "minimum_slack": 9.16795083972135,
+      "incumbent_slack_objective": 9.16795083972135,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4054,8 +4054,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:3,6": {
-      "minimum_slack": 39.528674466464466,
-      "incumbent_slack_objective": 39.528674466464466,
+      "minimum_slack": 39.52867446646445,
+      "incumbent_slack_objective": 39.52867446646445,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4081,8 +4081,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:3,7": {
-      "minimum_slack": 14.828088130036711,
-      "incumbent_slack_objective": 14.828088130036711,
+      "minimum_slack": 14.82809937037193,
+      "incumbent_slack_objective": 14.82809937037193,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4090,8 +4090,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:4,0": {
-      "minimum_slack": 37.592578981937585,
-      "incumbent_slack_objective": 37.592578981937585,
+      "minimum_slack": 42.12180253159632,
+      "incumbent_slack_objective": 42.12180253159632,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4099,8 +4099,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:4,0": {
-      "minimum_slack": 32.04902752392161,
-      "incumbent_slack_objective": 32.04902752392161,
+      "minimum_slack": 28.001181009041492,
+      "incumbent_slack_objective": 28.001181009041492,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4108,8 +4108,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:4,1": {
-      "minimum_slack": 19.85688804388608,
-      "incumbent_slack_objective": 19.85688804388608,
+      "minimum_slack": 34.85688804388616,
+      "incumbent_slack_objective": 34.85688804388616,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4117,8 +4117,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:4,1": {
-      "minimum_slack": 45.50520368466352,
-      "incumbent_slack_objective": 45.50520368466352,
+      "minimum_slack": 43.055263402827,
+      "incumbent_slack_objective": 43.055263402827,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4126,8 +4126,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:4,2": {
-      "minimum_slack": 37.88829079956312,
-      "incumbent_slack_objective": 37.88829079956312,
+      "minimum_slack": 37.88829079956275,
+      "incumbent_slack_objective": 37.88829079956275,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4135,8 +4135,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:4,2": {
-      "minimum_slack": 46.10246042248311,
-      "incumbent_slack_objective": 46.10246042248311,
+      "minimum_slack": 46.102460422483105,
+      "incumbent_slack_objective": 46.102460422483105,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4153,8 +4153,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:4,3": {
-      "minimum_slack": 38.67858567339708,
-      "incumbent_slack_objective": 38.67858567339708,
+      "minimum_slack": 38.67858567736448,
+      "incumbent_slack_objective": 38.67858567736448,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4162,8 +4162,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:4,4": {
-      "minimum_slack": 33.104325619763905,
-      "incumbent_slack_objective": 33.104325619763905,
+      "minimum_slack": 33.10432562317446,
+      "incumbent_slack_objective": 33.10432562317446,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4171,8 +4171,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:4,4": {
-      "minimum_slack": 43.070605792818604,
-      "incumbent_slack_objective": 43.070605792818604,
+      "minimum_slack": 43.07060579281859,
+      "incumbent_slack_objective": 43.07060579281859,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4180,8 +4180,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:4,5": {
-      "minimum_slack": 39.45478125924827,
-      "incumbent_slack_objective": 39.45478125924827,
+      "minimum_slack": 39.45478125924828,
+      "incumbent_slack_objective": 39.45478125924828,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4198,8 +4198,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:4,6": {
-      "minimum_slack": 46.15666263356523,
-      "incumbent_slack_objective": 46.15666263356523,
+      "minimum_slack": 46.156662633565304,
+      "incumbent_slack_objective": 46.156662633565304,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4216,8 +4216,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:4,7": {
-      "minimum_slack": 36.694966957691534,
-      "incumbent_slack_objective": 36.694966957691534,
+      "minimum_slack": 16.700534297561354,
+      "incumbent_slack_objective": 16.700534297561354,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4234,8 +4234,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:5,0": {
-      "minimum_slack": 37.592578981937585,
-      "incumbent_slack_objective": 37.592578981937585,
+      "minimum_slack": 42.12180253159632,
+      "incumbent_slack_objective": 42.12180253159632,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4243,8 +4243,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:5,0": {
-      "minimum_slack": 32.530404558700226,
-      "incumbent_slack_objective": 32.530404558700226,
+      "minimum_slack": 28.001181009041492,
+      "incumbent_slack_objective": 28.001181009041492,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4270,8 +4270,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:5,2": {
-      "minimum_slack": 44.574559623313604,
-      "incumbent_slack_objective": 44.574559623313604,
+      "minimum_slack": 44.57455962331361,
+      "incumbent_slack_objective": 44.57455962331361,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4279,8 +4279,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:5,2": {
-      "minimum_slack": 46.102460422483105,
-      "incumbent_slack_objective": 46.102460422483105,
+      "minimum_slack": 46.10246042248311,
+      "incumbent_slack_objective": 46.10246042248311,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4288,8 +4288,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_up:5,3": {
-      "minimum_slack": 42.436717814903794,
-      "incumbent_slack_objective": 42.436717814903794,
+      "minimum_slack": 42.4367178149038,
+      "incumbent_slack_objective": 42.4367178149038,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4315,8 +4315,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:5,4": {
-      "minimum_slack": 47.16183364966615,
-      "incumbent_slack_objective": 47.16183364966615,
+      "minimum_slack": 47.16183364966617,
+      "incumbent_slack_objective": 47.16183364966617,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4333,8 +4333,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:5,5": {
-      "minimum_slack": 46.014876578479026,
-      "incumbent_slack_objective": 46.014876578479026,
+      "minimum_slack": 46.01859466051157,
+      "incumbent_slack_objective": 46.01859466051157,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4351,8 +4351,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:5,6": {
-      "minimum_slack": 42.237504390725825,
-      "incumbent_slack_objective": 42.237504390725825,
+      "minimum_slack": 42.23750439072583,
+      "incumbent_slack_objective": 42.23750439072583,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4369,8 +4369,8 @@
       "result_classification": "positive_slack_optimal"
     },
     "opt:ramp_down:5,7": {
-      "minimum_slack": 41.74669067565383,
-      "incumbent_slack_objective": 41.74669067565383,
+      "minimum_slack": 41.74669067565384,
+      "incumbent_slack_objective": 41.74669067565384,
       "robustly_inactive": true,
       "early_stop_enabled": true,
       "slack_stop_tolerance": 1e-06,
@@ -4379,66 +4379,8 @@
     }
   },
   "fixed_binaries": {
-    "z_lower_eq": {
-      "0,0,0": {
-        "fixed_value": 0,
-        "minimum_slack": 5.0,
-        "side": "eq",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "1,0,0": {
-        "fixed_value": 0,
-        "minimum_slack": 5.0,
-        "side": "eq",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "5,0,1": {
-        "fixed_value": 0,
-        "minimum_slack": 7.458644046024503,
-        "side": "eq",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "5,0,2": {
-        "fixed_value": 0,
-        "minimum_slack": 7.840619245816882,
-        "side": "eq",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "5,0,3": {
-        "fixed_value": 0,
-        "minimum_slack": 8.935208381745852,
-        "side": "eq",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "5,0,4": {
-        "fixed_value": 0,
-        "minimum_slack": 10.376556808721276,
-        "side": "eq",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "5,0,5": {
-        "fixed_value": 0,
-        "minimum_slack": 10.670948164509568,
-        "side": "eq",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "5,0,7": {
-        "fixed_value": 0,
-        "minimum_slack": 8.11530296410632,
-        "side": "eq",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      }
-    },
     "z_upper_eq": {
-      "0,0,7": {
+      "0,0,0": {
         "fixed_value": 0,
         "minimum_slack": 5.0,
         "side": "eq",
@@ -4454,42 +4396,14 @@
       },
       "0,1,1": {
         "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "eq",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,1,2": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "eq",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,1,3": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "eq",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,1,4": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "eq",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,1,5": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
+        "minimum_slack": 10.0,
         "side": "eq",
         "constraint_type": "upper",
         "result_classification": "positive_slack_optimal"
       },
       "0,1,6": {
         "fixed_value": 0,
-        "minimum_slack": 25.0,
+        "minimum_slack": 5.0,
         "side": "eq",
         "constraint_type": "upper",
         "result_classification": "positive_slack_optimal"
@@ -4501,7 +4415,28 @@
         "constraint_type": "upper",
         "result_classification": "positive_slack_optimal"
       },
+      "1,0,0": {
+        "fixed_value": 0,
+        "minimum_slack": 5.0,
+        "side": "eq",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
       "1,1,0": {
+        "fixed_value": 0,
+        "minimum_slack": 5.0,
+        "side": "eq",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,0,0": {
+        "fixed_value": 0,
+        "minimum_slack": 5.0,
+        "side": "eq",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,1,0": {
         "fixed_value": 0,
         "minimum_slack": 5.0,
         "side": "eq",
@@ -4509,187 +4444,54 @@
         "result_classification": "positive_slack_optimal"
       }
     },
-    "z_ramp_up_eq": {
-      "0,0": {
+    "z_lower_eq": {
+      "5,0,0": {
         "fixed_value": 0,
-        "minimum_slack": 20.0,
+        "minimum_slack": 2.0490275239216302,
         "side": "eq",
-        "constraint_type": "ramp_up",
+        "constraint_type": "lower",
         "result_classification": "positive_slack_optimal"
       },
-      "3,0": {
+      "5,0,1": {
         "fixed_value": 0,
-        "minimum_slack": 37.592578981937585,
+        "minimum_slack": 1.226355878975987,
         "side": "eq",
-        "constraint_type": "ramp_up",
+        "constraint_type": "lower",
         "result_classification": "positive_slack_optimal"
       },
-      "3,1": {
+      "5,0,2": {
         "fixed_value": 0,
-        "minimum_slack": 12.807860519964798,
+        "minimum_slack": 7.840619245816882,
         "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,2": {
-        "fixed_value": 0,
-        "minimum_slack": 11.661934920587669,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,3": {
-        "fixed_value": 0,
-        "minimum_slack": 8.378167512800736,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,4": {
-        "fixed_value": 0,
-        "minimum_slack": 5.625,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,5": {
-        "fixed_value": 0,
-        "minimum_slack": 5.625,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,6": {
-        "fixed_value": 0,
-        "minimum_slack": 6.864089218682437,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,7": {
-        "fixed_value": 0,
-        "minimum_slack": 10.83788376571934,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,0": {
-        "fixed_value": 0,
-        "minimum_slack": 37.592578981937585,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,1": {
-        "fixed_value": 0,
-        "minimum_slack": 12.807860519964798,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,2": {
-        "fixed_value": 0,
-        "minimum_slack": 11.661934920587669,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,3": {
-        "fixed_value": 0,
-        "minimum_slack": 8.378167512800736,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,4": {
-        "fixed_value": 0,
-        "minimum_slack": 5.625,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,5": {
-        "fixed_value": 0,
-        "minimum_slack": 5.625,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,6": {
-        "fixed_value": 0,
-        "minimum_slack": 6.864089218682437,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,7": {
-        "fixed_value": 0,
-        "minimum_slack": 10.83788376571934,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "5,0": {
-        "fixed_value": 0,
-        "minimum_slack": 37.592578981937585,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "5,1": {
-        "fixed_value": 0,
-        "minimum_slack": 19.8568880438864,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "5,2": {
-        "fixed_value": 0,
-        "minimum_slack": 37.88829079956314,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "5,3": {
-        "fixed_value": 0,
-        "minimum_slack": 42.4367178149038,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "5,4": {
-        "fixed_value": 0,
-        "minimum_slack": 31.751024046445103,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "5,5": {
-        "fixed_value": 0,
-        "minimum_slack": 38.21689632509742,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "5,6": {
-        "fixed_value": 0,
-        "minimum_slack": 37.99138686286662,
-        "side": "eq",
-        "constraint_type": "ramp_up",
-        "result_classification": "positive_slack_optimal"
-      },
-      "5,7": {
-        "fixed_value": 0,
-        "minimum_slack": 10.83788376571934,
-        "side": "eq",
-        "constraint_type": "ramp_up",
+        "constraint_type": "lower",
         "result_classification": "positive_slack_optimal"
       }
     },
     "z_ramp_down_eq": {
+      "0,0": {
+        "fixed_value": 0,
+        "minimum_slack": 20.0,
+        "side": "eq",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "1,0": {
+        "fixed_value": 0,
+        "minimum_slack": 20.0,
+        "side": "eq",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,0": {
+        "fixed_value": 0,
+        "minimum_slack": 20.0,
+        "side": "eq",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
       "3,0": {
         "fixed_value": 0,
-        "minimum_slack": 25.0,
+        "minimum_slack": 30.532176079646835,
         "side": "eq",
         "constraint_type": "ramp_down",
         "result_classification": "positive_slack_optimal"
@@ -4745,7 +4547,7 @@
       },
       "4,0": {
         "fixed_value": 0,
-        "minimum_slack": 25.0,
+        "minimum_slack": 20.47077645034126,
         "side": "eq",
         "constraint_type": "ramp_down",
         "result_classification": "positive_slack_optimal"
@@ -4801,14 +4603,14 @@
       },
       "5,0": {
         "fixed_value": 0,
-        "minimum_slack": 25.0,
+        "minimum_slack": 22.519803974262896,
         "side": "eq",
         "constraint_type": "ramp_down",
         "result_classification": "positive_slack_optimal"
       },
       "5,1": {
         "fixed_value": 0,
-        "minimum_slack": 38.818934860913025,
+        "minimum_slack": 13.818934860913544,
         "side": "eq",
         "constraint_type": "ramp_down",
         "result_classification": "positive_slack_optimal"
@@ -4822,86 +4624,249 @@
       },
       "5,3": {
         "fixed_value": 0,
-        "minimum_slack": 38.67858567736448,
+        "minimum_slack": 11.661934920587669,
         "side": "eq",
         "constraint_type": "ramp_down",
         "result_classification": "positive_slack_optimal"
       },
       "5,4": {
         "fixed_value": 0,
-        "minimum_slack": 40.97006384181932,
+        "minimum_slack": 10.970063840622856,
         "side": "eq",
         "constraint_type": "ramp_down",
         "result_classification": "positive_slack_optimal"
       },
       "5,5": {
         "fixed_value": 0,
-        "minimum_slack": 36.752297640408926,
+        "minimum_slack": 5.625,
         "side": "eq",
         "constraint_type": "ramp_down",
         "result_classification": "positive_slack_optimal"
       },
       "5,6": {
         "fixed_value": 0,
-        "minimum_slack": 25.51319906275672,
+        "minimum_slack": 5.625,
         "side": "eq",
         "constraint_type": "ramp_down",
         "result_classification": "positive_slack_optimal"
       },
       "5,7": {
         "fixed_value": 0,
-        "minimum_slack": 27.21877699447171,
+        "minimum_slack": 6.864089218682437,
         "side": "eq",
         "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      }
+    },
+    "z_ramp_up_eq": {
+      "3,0": {
+        "fixed_value": 0,
+        "minimum_slack": 32.060402902290754,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,1": {
+        "fixed_value": 0,
+        "minimum_slack": 12.807860519964798,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,2": {
+        "fixed_value": 0,
+        "minimum_slack": 11.661934920587669,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,3": {
+        "fixed_value": 0,
+        "minimum_slack": 8.378167512800736,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,4": {
+        "fixed_value": 0,
+        "minimum_slack": 5.625,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,5": {
+        "fixed_value": 0,
+        "minimum_slack": 5.625,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,6": {
+        "fixed_value": 0,
+        "minimum_slack": 6.864089218682437,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,7": {
+        "fixed_value": 0,
+        "minimum_slack": 10.83788376571934,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,0": {
+        "fixed_value": 0,
+        "minimum_slack": 42.12180253159632,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,1": {
+        "fixed_value": 0,
+        "minimum_slack": 12.807860519964798,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,2": {
+        "fixed_value": 0,
+        "minimum_slack": 11.661934920587669,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,3": {
+        "fixed_value": 0,
+        "minimum_slack": 8.378167512800736,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,4": {
+        "fixed_value": 0,
+        "minimum_slack": 5.625,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,5": {
+        "fixed_value": 0,
+        "minimum_slack": 5.625,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,6": {
+        "fixed_value": 0,
+        "minimum_slack": 6.864089218682437,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,7": {
+        "fixed_value": 0,
+        "minimum_slack": 10.83788376571934,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "5,0": {
+        "fixed_value": 0,
+        "minimum_slack": 42.12180253159632,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "5,1": {
+        "fixed_value": 0,
+        "minimum_slack": 14.856888042300712,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "5,2": {
+        "fixed_value": 0,
+        "minimum_slack": 12.888290799563627,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "5,3": {
+        "fixed_value": 0,
+        "minimum_slack": 42.4367178149038,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "5,4": {
+        "fixed_value": 0,
+        "minimum_slack": 7.641650756777359,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "5,5": {
+        "fixed_value": 0,
+        "minimum_slack": 5.625,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "5,6": {
+        "fixed_value": 0,
+        "minimum_slack": 6.864089218682437,
+        "side": "eq",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "5,7": {
+        "fixed_value": 0,
+        "minimum_slack": 10.83788376571934,
+        "side": "eq",
+        "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       }
     },
     "z_upper_opt": {
       "0,0,0": {
         "fixed_value": 0,
-        "minimum_slack": 18.742189650178307,
+        "minimum_slack": 5.0,
         "side": "opt",
         "constraint_type": "upper",
         "result_classification": "positive_slack_optimal"
       },
       "0,0,1": {
         "fixed_value": 0,
-        "minimum_slack": 16.756795102511013,
+        "minimum_slack": 16.979410214985215,
         "side": "opt",
         "constraint_type": "upper",
         "result_classification": "positive_slack_optimal"
       },
       "0,0,2": {
         "fixed_value": 0,
-        "minimum_slack": 4.298147181116136,
+        "minimum_slack": 5.0808551861987326,
         "side": "opt",
         "constraint_type": "upper",
         "result_classification": "positive_slack_optimal"
       },
       "0,0,3": {
         "fixed_value": 0,
-        "minimum_slack": 17.65320994932752,
-        "side": "opt",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,0,4": {
-        "fixed_value": 0,
-        "minimum_slack": 8.09656674897401,
+        "minimum_slack": 17.65320994932749,
         "side": "opt",
         "constraint_type": "upper",
         "result_classification": "positive_slack_optimal"
       },
       "0,0,5": {
         "fixed_value": 0,
-        "minimum_slack": 6.498587505196539,
+        "minimum_slack": 6.498587505196625,
         "side": "opt",
         "constraint_type": "upper",
         "result_classification": "positive_slack_optimal"
       },
       "0,0,6": {
         "fixed_value": 0,
-        "minimum_slack": 21.73071090944716,
+        "minimum_slack": 5.0,
         "side": "opt",
         "constraint_type": "upper",
         "result_classification": "positive_slack_optimal"
@@ -4969,60 +4934,67 @@
         "constraint_type": "upper",
         "result_classification": "positive_slack_optimal"
       },
-      "1,1,0": {
+      "1,0,0": {
         "fixed_value": 0,
         "minimum_slack": 5.0,
+        "side": "opt",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
+      "1,1,0": {
+        "fixed_value": 0,
+        "minimum_slack": 25.0,
+        "side": "opt",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
+      "1,1,1": {
+        "fixed_value": 0,
+        "minimum_slack": 10.0,
         "side": "opt",
         "constraint_type": "upper",
         "result_classification": "positive_slack_optimal"
       },
       "1,1,6": {
         "fixed_value": 0,
-        "minimum_slack": 3.5245772384107994,
+        "minimum_slack": 3.5245772388630243,
         "side": "opt",
         "constraint_type": "upper",
         "result_classification": "positive_slack_optimal"
       },
       "1,1,7": {
         "fixed_value": 0,
-        "minimum_slack": 5.396292419586715,
+        "minimum_slack": 5.396292418947056,
         "side": "opt",
         "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      },
-      "2,1,0": {
-        "fixed_value": 0,
-        "minimum_slack": 5.0,
-        "side": "opt",
-        "constraint_type": "upper",
-        "result_classification": "positive_slack_optimal"
-      }
-    },
-    "z_lower_opt": {
-      "0,0,0": {
-        "fixed_value": 0,
-        "minimum_slack": 5.0,
-        "side": "opt",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "1,0,0": {
-        "fixed_value": 0,
-        "minimum_slack": 5.0,
-        "side": "opt",
-        "constraint_type": "lower",
         "result_classification": "positive_slack_optimal"
       },
       "2,0,0": {
         "fixed_value": 0,
         "minimum_slack": 5.0,
         "side": "opt",
-        "constraint_type": "lower",
+        "constraint_type": "upper",
         "result_classification": "positive_slack_optimal"
       },
+      "2,1,0": {
+        "fixed_value": 0,
+        "minimum_slack": 25.0,
+        "side": "opt",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,1,1": {
+        "fixed_value": 0,
+        "minimum_slack": 10.0,
+        "side": "opt",
+        "constraint_type": "upper",
+        "result_classification": "positive_slack_optimal"
+      }
+    },
+    "z_lower_opt": {
       "4,0,0": {
         "fixed_value": 0,
-        "minimum_slack": 7.04902752392163,
+        "minimum_slack": 7.530404558700226,
         "side": "opt",
         "constraint_type": "lower",
         "result_classification": "positive_slack_optimal"
@@ -5036,7 +5008,7 @@
       },
       "4,0,2": {
         "fixed_value": 0,
-        "minimum_slack": 7.840619245816882,
+        "minimum_slack": 7.840619245816875,
         "side": "opt",
         "constraint_type": "lower",
         "result_classification": "positive_slack_optimal"
@@ -5050,35 +5022,28 @@
       },
       "4,0,4": {
         "fixed_value": 0,
-        "minimum_slack": 10.376556808721276,
+        "minimum_slack": 10.37655680872128,
         "side": "opt",
         "constraint_type": "lower",
         "result_classification": "positive_slack_optimal"
       },
       "4,0,5": {
         "fixed_value": 0,
-        "minimum_slack": 10.670948164509568,
-        "side": "opt",
-        "constraint_type": "lower",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,0,6": {
-        "fixed_value": 0,
-        "minimum_slack": 9.439901146451959,
+        "minimum_slack": 10.670948164509571,
         "side": "opt",
         "constraint_type": "lower",
         "result_classification": "positive_slack_optimal"
       },
       "4,0,7": {
         "fixed_value": 0,
-        "minimum_slack": 8.11530296410632,
+        "minimum_slack": 8.115302964106318,
         "side": "opt",
         "constraint_type": "lower",
         "result_classification": "positive_slack_optimal"
       },
       "5,0,0": {
         "fixed_value": 0,
-        "minimum_slack": 7.530404558700226,
+        "minimum_slack": 7.530404558700235,
         "side": "opt",
         "constraint_type": "lower",
         "result_classification": "positive_slack_optimal"
@@ -5092,35 +5057,35 @@
       },
       "5,0,2": {
         "fixed_value": 0,
-        "minimum_slack": 7.840619245816882,
+        "minimum_slack": 7.840619245816875,
         "side": "opt",
         "constraint_type": "lower",
         "result_classification": "positive_slack_optimal"
       },
       "5,0,3": {
         "fixed_value": 0,
-        "minimum_slack": 8.935208381745852,
+        "minimum_slack": 8.935208381745854,
         "side": "opt",
         "constraint_type": "lower",
         "result_classification": "positive_slack_optimal"
       },
       "5,0,4": {
         "fixed_value": 0,
-        "minimum_slack": 10.376556808721276,
+        "minimum_slack": 10.37655680872128,
         "side": "opt",
         "constraint_type": "lower",
         "result_classification": "positive_slack_optimal"
       },
       "5,0,5": {
         "fixed_value": 0,
-        "minimum_slack": 10.670948164509568,
+        "minimum_slack": 10.670948164509571,
         "side": "opt",
         "constraint_type": "lower",
         "result_classification": "positive_slack_optimal"
       },
       "5,0,6": {
         "fixed_value": 0,
-        "minimum_slack": 9.439901146451959,
+        "minimum_slack": 9.439901146451952,
         "side": "opt",
         "constraint_type": "lower",
         "result_classification": "positive_slack_optimal"
@@ -5133,38 +5098,278 @@
         "result_classification": "positive_slack_optimal"
       }
     },
-    "z_ramp_up_opt": {
+    "z_ramp_down_opt": {
       "0,0": {
         "fixed_value": 0,
-        "minimum_slack": 38.742189650178304,
+        "minimum_slack": 20.0,
         "side": "opt",
-        "constraint_type": "ramp_up",
+        "constraint_type": "ramp_down",
         "result_classification": "positive_slack_optimal"
       },
-      "0,1": {
+      "0,2": {
+        "fixed_value": 0,
+        "minimum_slack": 11.979410214985236,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,3": {
+        "fixed_value": 0,
+        "minimum_slack": 0.08085518619873255,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,4": {
+        "fixed_value": 0,
+        "minimum_slack": 12.653209949327518,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,6": {
+        "fixed_value": 0,
+        "minimum_slack": 1.4985875051965678,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,7": {
+        "fixed_value": 0,
+        "minimum_slack": 16.73071093273019,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "1,0": {
+        "fixed_value": 0,
+        "minimum_slack": 20.0,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,0": {
+        "fixed_value": 0,
+        "minimum_slack": 20.0,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,1": {
+        "fixed_value": 0,
+        "minimum_slack": 2.9821208715538994,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "2,2": {
         "fixed_value": 0,
         "minimum_slack": 5.0,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,0": {
+        "fixed_value": 0,
+        "minimum_slack": 30.532176079646835,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,1": {
+        "fixed_value": 0,
+        "minimum_slack": 30.4949037635976,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,2": {
+        "fixed_value": 0,
+        "minimum_slack": 41.383229990179245,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,3": {
+        "fixed_value": 0,
+        "minimum_slack": 19.97853473514442,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,4": {
+        "fixed_value": 0,
+        "minimum_slack": 32.80019728055835,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,5": {
+        "fixed_value": 0,
+        "minimum_slack": 9.16795083972135,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,6": {
+        "fixed_value": 0,
+        "minimum_slack": 5.625,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "3,7": {
+        "fixed_value": 0,
+        "minimum_slack": 14.82809937037193,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,0": {
+        "fixed_value": 0,
+        "minimum_slack": 28.001181009041492,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,1": {
+        "fixed_value": 0,
+        "minimum_slack": 43.055263402827,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,2": {
+        "fixed_value": 0,
+        "minimum_slack": 46.102460422483105,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,3": {
+        "fixed_value": 0,
+        "minimum_slack": 38.67858567736448,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,4": {
+        "fixed_value": 0,
+        "minimum_slack": 43.07060579281859,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,5": {
+        "fixed_value": 0,
+        "minimum_slack": 37.03126530933142,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,6": {
+        "fixed_value": 0,
+        "minimum_slack": 30.007048130196154,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "4,7": {
+        "fixed_value": 0,
+        "minimum_slack": 37.57637714016381,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "5,0": {
+        "fixed_value": 0,
+        "minimum_slack": 28.001181009041492,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "5,1": {
+        "fixed_value": 0,
+        "minimum_slack": 45.50520368466352,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "5,2": {
+        "fixed_value": 0,
+        "minimum_slack": 46.10246042248311,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "5,3": {
+        "fixed_value": 0,
+        "minimum_slack": 46.81507435861971,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "5,4": {
+        "fixed_value": 0,
+        "minimum_slack": 47.16183364966617,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "5,5": {
+        "fixed_value": 0,
+        "minimum_slack": 46.01859466051157,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "5,6": {
+        "fixed_value": 0,
+        "minimum_slack": 42.23750439072583,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      },
+      "5,7": {
+        "fixed_value": 0,
+        "minimum_slack": 41.74669067565384,
+        "side": "opt",
+        "constraint_type": "ramp_down",
+        "result_classification": "positive_slack_optimal"
+      }
+    },
+    "z_ramp_up_opt": {
+      "0,1": {
+        "fixed_value": 0,
+        "minimum_slack": 20.0,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "0,2": {
         "fixed_value": 0,
-        "minimum_slack": 0.08085518619877519,
+        "minimum_slack": 2.9167861752358206,
+        "side": "opt",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
+      "0,3": {
+        "fixed_value": 0,
+        "minimum_slack": 15.455124261858192,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "0,5": {
         "fixed_value": 0,
-        "minimum_slack": 1.5615512769429571,
+        "minimum_slack": 1.5615512804476026,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "0,6": {
         "fixed_value": 0,
-        "minimum_slack": 16.730710932730204,
+        "minimum_slack": 16.73071093273019,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
@@ -5176,30 +5381,37 @@
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
+      "1,6": {
+        "fixed_value": 0,
+        "minimum_slack": 0.3215789680883887,
+        "side": "opt",
+        "constraint_type": "ramp_up",
+        "result_classification": "positive_slack_optimal"
+      },
       "2,3": {
         "fixed_value": 0,
-        "minimum_slack": 2.9459547684964775,
+        "minimum_slack": 2.9459547684964846,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "3,0": {
         "fixed_value": 0,
-        "minimum_slack": 37.592578981937585,
+        "minimum_slack": 32.060402902290754,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "3,1": {
         "fixed_value": 0,
-        "minimum_slack": 12.807860519964798,
+        "minimum_slack": 26.75295799749572,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "3,2": {
         "fixed_value": 0,
-        "minimum_slack": 21.248687161586904,
+        "minimum_slack": 11.661934920587669,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
@@ -5213,7 +5425,7 @@
       },
       "3,4": {
         "fixed_value": 0,
-        "minimum_slack": 8.532949602643086,
+        "minimum_slack": 23.186753840577122,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
@@ -5227,7 +5439,7 @@
       },
       "3,6": {
         "fixed_value": 0,
-        "minimum_slack": 39.528674466464466,
+        "minimum_slack": 39.52867446646445,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
@@ -5241,21 +5453,21 @@
       },
       "4,0": {
         "fixed_value": 0,
-        "minimum_slack": 37.592578981937585,
+        "minimum_slack": 42.12180253159632,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "4,1": {
         "fixed_value": 0,
-        "minimum_slack": 19.85688804388608,
+        "minimum_slack": 34.85688804388616,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "4,2": {
         "fixed_value": 0,
-        "minimum_slack": 37.88829079956312,
+        "minimum_slack": 37.88829079956275,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
@@ -5269,35 +5481,35 @@
       },
       "4,4": {
         "fixed_value": 0,
-        "minimum_slack": 33.104325619763905,
+        "minimum_slack": 33.10432562317446,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "4,5": {
         "fixed_value": 0,
-        "minimum_slack": 39.45478125924827,
+        "minimum_slack": 39.45478125924828,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "4,6": {
         "fixed_value": 0,
-        "minimum_slack": 46.15666263356523,
+        "minimum_slack": 46.156662633565304,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "4,7": {
         "fixed_value": 0,
-        "minimum_slack": 36.694966957691534,
+        "minimum_slack": 16.700534297561354,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "5,0": {
         "fixed_value": 0,
-        "minimum_slack": 37.592578981937585,
+        "minimum_slack": 42.12180253159632,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
@@ -5311,14 +5523,14 @@
       },
       "5,2": {
         "fixed_value": 0,
-        "minimum_slack": 44.574559623313604,
+        "minimum_slack": 44.57455962331361,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       },
       "5,3": {
         "fixed_value": 0,
-        "minimum_slack": 42.436717814903794,
+        "minimum_slack": 42.4367178149038,
         "side": "opt",
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
@@ -5351,235 +5563,9 @@
         "constraint_type": "ramp_up",
         "result_classification": "positive_slack_optimal"
       }
-    },
-    "z_ramp_down_opt": {
-      "0,1": {
-        "fixed_value": 0,
-        "minimum_slack": 13.742189650178307,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,2": {
-        "fixed_value": 0,
-        "minimum_slack": 11.756795102510985,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,3": {
-        "fixed_value": 0,
-        "minimum_slack": 0.08085518619877519,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,4": {
-        "fixed_value": 0,
-        "minimum_slack": 12.653209949327518,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,5": {
-        "fixed_value": 0,
-        "minimum_slack": 3.0965667551829767,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,6": {
-        "fixed_value": 0,
-        "minimum_slack": 1.4985875051965394,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "0,7": {
-        "fixed_value": 0,
-        "minimum_slack": 16.73071093273019,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "1,1": {
-        "fixed_value": 0,
-        "minimum_slack": 0.3271995418381408,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,0": {
-        "fixed_value": 0,
-        "minimum_slack": 25.0,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,1": {
-        "fixed_value": 0,
-        "minimum_slack": 32.108707369396754,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,2": {
-        "fixed_value": 0,
-        "minimum_slack": 22.244404736726274,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,3": {
-        "fixed_value": 0,
-        "minimum_slack": 11.661934920587669,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,4": {
-        "fixed_value": 0,
-        "minimum_slack": 32.80019728055835,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,5": {
-        "fixed_value": 0,
-        "minimum_slack": 29.13602043882787,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,6": {
-        "fixed_value": 0,
-        "minimum_slack": 5.625,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "3,7": {
-        "fixed_value": 0,
-        "minimum_slack": 14.828088130036711,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,0": {
-        "fixed_value": 0,
-        "minimum_slack": 32.04902752392161,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,1": {
-        "fixed_value": 0,
-        "minimum_slack": 45.50520368466352,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,2": {
-        "fixed_value": 0,
-        "minimum_slack": 46.10246042248311,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,3": {
-        "fixed_value": 0,
-        "minimum_slack": 38.67858567339708,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,4": {
-        "fixed_value": 0,
-        "minimum_slack": 43.070605792818604,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,5": {
-        "fixed_value": 0,
-        "minimum_slack": 37.03126530933142,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,6": {
-        "fixed_value": 0,
-        "minimum_slack": 30.007048130196154,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "4,7": {
-        "fixed_value": 0,
-        "minimum_slack": 37.57637714016381,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "5,0": {
-        "fixed_value": 0,
-        "minimum_slack": 32.530404558700226,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "5,1": {
-        "fixed_value": 0,
-        "minimum_slack": 45.50520368466352,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "5,2": {
-        "fixed_value": 0,
-        "minimum_slack": 46.102460422483105,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "5,3": {
-        "fixed_value": 0,
-        "minimum_slack": 46.81507435861971,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "5,4": {
-        "fixed_value": 0,
-        "minimum_slack": 47.16183364966615,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "5,5": {
-        "fixed_value": 0,
-        "minimum_slack": 46.014876578479026,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "5,6": {
-        "fixed_value": 0,
-        "minimum_slack": 42.237504390725825,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      },
-      "5,7": {
-        "fixed_value": 0,
-        "minimum_slack": 41.74669067565383,
-        "side": "opt",
-        "constraint_type": "ramp_down",
-        "result_classification": "positive_slack_optimal"
-      }
     }
   },
-  "num_fixed_binaries": 169,
+  "num_fixed_binaries": 167,
   "primal_big_m": {
     "block_capacity": {
       "0,0": {
@@ -5783,48 +5769,48 @@
     },
     "ramp_up_initial": {
       "0": {
-        "big_m": 45.0,
-        "p_init": 25.0,
+        "big_m": 20.0,
+        "p_init": 0.0,
         "ramp_limit": 20.0,
         "physical_generator_index": 0,
         "physical_generator_name": "G3",
         "is_wind": false
       },
       "1": {
-        "big_m": 45.0,
-        "p_init": 25.0,
+        "big_m": 20.0,
+        "p_init": 0.0,
         "ramp_limit": 20.0,
         "physical_generator_index": 1,
         "physical_generator_name": "G2",
         "is_wind": false
       },
       "2": {
-        "big_m": 45.0,
-        "p_init": 25.0,
+        "big_m": 20.0,
+        "p_init": 0.0,
         "ramp_limit": 20.0,
         "physical_generator_index": 2,
         "physical_generator_name": "G1",
         "is_wind": false
       },
       "3": {
-        "big_m": 75.0,
-        "p_init": 25.0,
+        "big_m": 69.46782392035317,
+        "p_init": 19.467823920353165,
         "ramp_limit": 50.0,
         "physical_generator_index": 3,
         "physical_generator_name": "W3",
         "is_wind": true
       },
       "4": {
-        "big_m": 75.0,
-        "p_init": 25.0,
+        "big_m": 79.52922354965874,
+        "p_init": 29.52922354965874,
         "ramp_limit": 50.0,
         "physical_generator_index": 4,
         "physical_generator_name": "W2",
         "is_wind": true
       },
       "5": {
-        "big_m": 75.0,
-        "p_init": 25.0,
+        "big_m": 79.52922354965874,
+        "p_init": 29.52922354965874,
         "ramp_limit": 50.0,
         "physical_generator_index": 5,
         "physical_generator_name": "W1",
@@ -5833,48 +5819,48 @@
     },
     "ramp_down_initial": {
       "0": {
-        "big_m": 45.0,
-        "p_init": 25.0,
+        "big_m": 70.0,
+        "p_init": 0.0,
         "ramp_limit": 20.0,
         "physical_generator_index": 0,
         "physical_generator_name": "G3",
         "is_wind": false
       },
       "1": {
-        "big_m": 45.0,
-        "p_init": 25.0,
+        "big_m": 70.0,
+        "p_init": 0.0,
         "ramp_limit": 20.0,
         "physical_generator_index": 1,
         "physical_generator_name": "G2",
         "is_wind": false
       },
       "2": {
-        "big_m": 45.0,
-        "p_init": 25.0,
+        "big_m": 70.0,
+        "p_init": 0.0,
         "ramp_limit": 20.0,
         "physical_generator_index": 2,
         "physical_generator_name": "G1",
         "is_wind": false
       },
       "3": {
-        "big_m": 69.375,
-        "p_init": 25.0,
+        "big_m": 74.90717607964683,
+        "p_init": 19.467823920353165,
         "ramp_limit": 50.0,
         "physical_generator_index": 3,
         "physical_generator_name": "W3",
         "is_wind": true
       },
       "4": {
-        "big_m": 69.375,
-        "p_init": 25.0,
+        "big_m": 64.84577645034126,
+        "p_init": 29.52922354965874,
         "ramp_limit": 50.0,
         "physical_generator_index": 4,
         "physical_generator_name": "W2",
         "is_wind": true
       },
       "5": {
-        "big_m": 69.375,
-        "p_init": 25.0,
+        "big_m": 64.84577645034126,
+        "p_init": 29.52922354965874,
         "ramp_limit": 50.0,
         "physical_generator_index": 5,
         "physical_generator_name": "W1",
@@ -5884,869 +5870,869 @@
   },
   "alpha_bounds": {
     "0,0,0": {
-      "lower": 50.0,
-      "upper": 50.0
+      "lower": 49.982129035802146,
+      "upper": 50.00774773154865
     },
     "0,0,1": {
-      "lower": 50.0,
-      "upper": 50.0
+      "lower": 49.994517378844634,
+      "upper": 50.00457134135177
     },
     "0,0,2": {
-      "lower": 50.0,
-      "upper": 50.0
+      "lower": 49.98974255285946,
+      "upper": 49.99847874829543
     },
     "0,0,3": {
-      "lower": 50.0,
-      "upper": 50.0
+      "lower": 49.99756553059613,
+      "upper": 50.36236163813186
     },
     "0,0,4": {
-      "lower": 50.0,
-      "upper": 50.0
+      "lower": 49.99093198915306,
+      "upper": 51.083606408449604
     },
     "0,0,5": {
-      "lower": 50.0,
-      "upper": 50.0
+      "lower": 49.99353823516871,
+      "upper": 50.3135541328207
     },
     "0,0,6": {
-      "lower": 50.0,
-      "upper": 50.0
+      "lower": 49.98888027413872,
+      "upper": 50.00889560282372
     },
     "0,0,7": {
-      "lower": 50.0,
-      "upper": 50.0
+      "lower": 49.98175474693929,
+      "upper": 50.00510371705914
     },
     "0,1,0": {
-      "lower": 60.0,
-      "upper": 60.0
+      "lower": 59.98321100597717,
+      "upper": 60.018615425889095
     },
     "0,1,1": {
-      "lower": 60.0,
-      "upper": 60.0
+      "lower": 59.994983067504734,
+      "upper": 60.01060042450964
     },
     "0,1,2": {
-      "lower": 60.0,
-      "upper": 60.0
+      "lower": 59.99099066413049,
+      "upper": 60.01238015664077
     },
     "0,1,3": {
-      "lower": 60.0,
-      "upper": 60.0
+      "lower": 59.985680062451955,
+      "upper": 60.4274533805466
     },
     "0,1,4": {
-      "lower": 60.0,
-      "upper": 60.0
+      "lower": 59.9881928861051,
+      "upper": 61.30217075075037
     },
     "0,1,5": {
-      "lower": 60.0,
-      "upper": 60.0
+      "lower": 59.984846925065284,
+      "upper": 60.37191178490847
     },
     "0,1,6": {
-      "lower": 60.0,
-      "upper": 60.0
+      "lower": 59.98586389428632,
+      "upper": 60.00924255511839
     },
     "0,1,7": {
-      "lower": 60.0,
-      "upper": 60.0
+      "lower": 59.985584088740474,
+      "upper": 60.01336105262763
     },
     "1,0,0": {
-      "lower": 30.0,
-      "upper": 30.0
+      "lower": 27.33767171441132,
+      "upper": 69.41926815069347
     },
     "1,0,1": {
-      "lower": 30.0,
-      "upper": 30.0
+      "lower": 27.86419066881333,
+      "upper": 74.49552831988248
     },
     "1,0,2": {
-      "lower": 30.0,
-      "upper": 30.0
+      "lower": 28.52982017425272,
+      "upper": 78.55958332512995
     },
     "1,0,3": {
-      "lower": 30.0,
-      "upper": 30.0
+      "lower": 27.822312184707247,
+      "upper": 78.90590198149013
     },
     "1,0,4": {
-      "lower": 30.0,
-      "upper": 30.0
+      "lower": 28.273265045817148,
+      "upper": 79.01097948484019
     },
     "1,0,5": {
-      "lower": 30.0,
-      "upper": 30.0
+      "lower": 28.25824316543703,
+      "upper": 76.72197668355093
     },
     "1,0,6": {
-      "lower": 30.0,
-      "upper": 30.0
+      "lower": 27.787749217056252,
+      "upper": 70.927433252683
     },
     "1,0,7": {
-      "lower": 30.0,
-      "upper": 30.0
+      "lower": 27.600419516100537,
+      "upper": 68.07467684553045
     },
     "1,1,0": {
-      "lower": 40.0,
-      "upper": 40.0
+      "lower": 37.14900141251052,
+      "upper": 59.848092026983984
     },
     "1,1,1": {
-      "lower": 40.0,
-      "upper": 40.0
+      "lower": 37.82810800410538,
+      "upper": 62.31902731859529
     },
     "1,1,2": {
-      "lower": 40.0,
-      "upper": 40.0
+      "lower": 38.63676333837344,
+      "upper": 65.13896826390159
     },
     "1,1,3": {
-      "lower": 40.0,
-      "upper": 40.0
+      "lower": 37.64009493219332,
+      "upper": 64.30937206273707
     },
     "1,1,4": {
-      "lower": 40.0,
-      "upper": 40.0
+      "lower": 38.21149771787296,
+      "upper": 65.02692874338214
     },
     "1,1,5": {
-      "lower": 40.0,
-      "upper": 40.0
+      "lower": 38.233529970179255,
+      "upper": 63.9121995447759
     },
     "1,1,6": {
-      "lower": 40.0,
-      "upper": 40.0
+      "lower": 37.73478714733758,
+      "upper": 60.438119015844045
     },
     "1,1,7": {
-      "lower": 40.0,
-      "upper": 40.0
+      "lower": 37.52842960798736,
+      "upper": 59.21730463899394
     },
     "2,0,0": {
-      "lower": 5.5311717641297085,
-      "upper": 56.84614369351125
+      "lower": -16.27060832510174,
+      "upper": 31.092587305599007
     },
     "2,0,1": {
-      "lower": 6.08611560455782,
-      "upper": 60.58885870476598
+      "lower": -6.433776317763332,
+      "upper": 30.757038658547117
     },
     "2,0,2": {
-      "lower": 7.286699550992313,
-      "upper": 66.67599365995542
+      "lower": -0.18742673898745466,
+      "upper": 30.658209222000572
     },
     "2,0,3": {
-      "lower": 5.046860218062754,
-      "upper": 62.16924228497625
+      "lower": -18.859730223439477,
+      "upper": 30.861029055847126
     },
     "2,0,4": {
-      "lower": 4.650965794898141,
-      "upper": 66.09140807522608
+      "lower": -33.302942291327156,
+      "upper": 30.592060184351045
     },
     "2,0,5": {
-      "lower": 4.268770289680268,
-      "upper": 63.87666545139185
+      "lower": -38.75013749476471,
+      "upper": 30.701520609068798
     },
     "2,0,6": {
-      "lower": 3.889976929907686,
-      "upper": 56.6948919767167
+      "lower": -37.74711920622641,
+      "upper": 31.03450504144771
     },
     "2,0,7": {
-      "lower": 4.842758265254593,
-      "upper": 55.85687961282297
+      "lower": -26.646706728267375,
+      "upper": 31.021205614085286
     },
     "2,1,0": {
-      "lower": 16.105228441900827,
-      "upper": 43.647385720360965
+      "lower": 7.93414667346682,
+      "upper": 30.97823181105307
     },
     "2,1,1": {
-      "lower": 16.557730645055337,
-      "upper": 45.36356807091128
+      "lower": 12.456459315463015,
+      "upper": 30.662855475169195
     },
     "2,1,2": {
-      "lower": 17.5351866349332,
-      "upper": 48.74176774547175
+      "lower": 15.396083393259744,
+      "upper": 30.57733584647914
     },
     "2,1,3": {
-      "lower": 15.712614963920924,
-      "upper": 46.23169430544496
+      "lower": 6.789876468334349,
+      "upper": 30.732608739714955
     },
     "2,1,4": {
-      "lower": 15.390534150055757,
-      "upper": 48.343432896578015
+      "lower": 0.05370434630020071,
+      "upper": 30.518420699036106
     },
     "2,1,5": {
-      "lower": 15.078424605428228,
-      "upper": 47.43774016767171
+      "lower": -2.4028509261838664,
+      "upper": 30.60979581542661
     },
     "2,1,6": {
-      "lower": 14.769308568502758,
-      "upper": 43.695435400908984
+      "lower": -1.8757356612108254,
+      "upper": 30.87570968492884
     },
     "2,1,7": {
-      "lower": 15.545006031837321,
-      "upper": 43.2295229489252
+      "lower": 3.208974698102651,
+      "upper": 30.892615623427872
     },
     "3,0,0": {
-      "lower": -14.995438469756403,
-      "upper": 10.655021439743106
+      "lower": -5.8974607997191235,
+      "upper": 10.292419524380156
     },
     "3,0,1": {
-      "lower": -10.346416074633964,
-      "upper": 10.85223179349353
+      "lower": -2.171387556279617,
+      "upper": 10.245826644566728
     },
     "3,0,2": {
-      "lower": -4.030037731932891,
-      "upper": 10.62571357918979
+      "lower": 0.23945025181331342,
+      "upper": 10.171967451473973
     },
     "3,0,3": {
-      "lower": -16.439310308498136,
-      "upper": 11.125937447313198
+      "lower": -4.453197641797081,
+      "upper": 10.1964416094311
     },
     "3,0,4": {
-      "lower": -19.790397090501724,
-      "upper": 11.237776102898824
+      "lower": -4.765010606580159,
+      "upper": 10.2125619537588
     },
     "3,0,5": {
-      "lower": -23.979240568033237,
-      "upper": 10.983634433695192
+      "lower": -5.674332153065886,
+      "upper": 10.279060978005798
     },
     "3,0,6": {
-      "lower": -26.100355436115198,
-      "upper": 10.759858717789683
+      "lower": -8.395229780189448,
+      "upper": 10.322841181201863
     },
     "3,0,7": {
-      "lower": -19.469814733926356,
-      "upper": 10.62608602651536
+      "lower": -6.442073703265344,
+      "upper": 10.362635884542238
     },
     "4,0,0": {
-      "lower": 0.2508964240550995,
-      "upper": 0.5836274425260595
+      "lower": 0.21272749615058156,
+      "upper": 0.2583872361199926
     },
     "4,0,1": {
-      "lower": 0.2508964240550995,
-      "upper": 0.5574955466617648
+      "lower": 0.22147648590280275,
+      "upper": 0.2563308944412717
     },
     "4,0,2": {
-      "lower": 0.2508964240550995,
-      "upper": 0.548117343813341
+      "lower": 0.2154643373936791,
+      "upper": 0.255508084523856
     },
     "4,0,3": {
-      "lower": 0.2508964240550995,
-      "upper": 0.5778751065842704
+      "lower": 0.23337798332381846,
+      "upper": 0.2545160028110104
     },
     "4,0,4": {
-      "lower": 0.2508964240550995,
-      "upper": 0.5877004436168498
+      "lower": 0.23512860396836277,
+      "upper": 0.25526390385822517
     },
     "4,0,5": {
-      "lower": 0.2508964240550995,
-      "upper": 0.6108361721937523
+      "lower": 0.2227708909040786,
+      "upper": 0.2622853384901347
     },
     "4,0,6": {
-      "lower": 0.2508964240550995,
-      "upper": 0.636600193476915
+      "lower": 0.21797906059196032,
+      "upper": 0.2713327817451351
     },
     "4,0,7": {
-      "lower": 0.2508964240550995,
-      "upper": 0.6023976658206494
+      "lower": 0.20804081690811635,
+      "upper": 0.26425015983250466
     },
     "5,0,0": {
-      "lower": 0.01,
-      "upper": 0.01
+      "lower": -0.0036532423959001487,
+      "upper": 0.01250762107914438
     },
     "5,0,1": {
-      "lower": 0.01,
-      "upper": 0.01
+      "lower": 0.00037906887148237735,
+      "upper": 0.012133194718306064
     },
     "5,0,2": {
-      "lower": 0.01,
-      "upper": 0.01
+      "lower": 0.00619098665340605,
+      "upper": 0.012307965641574516
     },
     "5,0,3": {
-      "lower": 0.01,
-      "upper": 0.01
+      "lower": 0.008902035366106826,
+      "upper": 0.011596241147043301
     },
     "5,0,4": {
-      "lower": 0.01,
-      "upper": 0.01
+      "lower": 0.008442061159274636,
+      "upper": 0.011494915661316548
     },
     "5,0,5": {
-      "lower": 0.01,
-      "upper": 0.01
+      "lower": 0.008494505625075963,
+      "upper": 0.011692131743127516
     },
     "5,0,6": {
-      "lower": 0.01,
-      "upper": 0.01
+      "lower": 0.001296666014734416,
+      "upper": 0.011944676793609124
     },
     "5,0,7": {
-      "lower": 0.01,
-      "upper": 0.01
+      "lower": -0.004541228794874956,
+      "upper": 0.012606333203495721
     }
   },
   "alpha_optimization_results": {
     "0,0,0:lower": {
-      "value": 50.0,
+      "value": 49.982129035802146,
       "termination_condition": "optimal"
     },
     "0,0,0:upper": {
-      "value": 50.0,
+      "value": 50.00774773154865,
       "termination_condition": "optimal"
     },
     "0,0,1:lower": {
-      "value": 50.0,
+      "value": 49.994517378844634,
       "termination_condition": "optimal"
     },
     "0,0,1:upper": {
-      "value": 50.0,
+      "value": 50.00457134135177,
       "termination_condition": "optimal"
     },
     "0,0,2:lower": {
-      "value": 50.0,
+      "value": 49.98974255285946,
       "termination_condition": "optimal"
     },
     "0,0,2:upper": {
-      "value": 50.0,
+      "value": 49.99847874829543,
       "termination_condition": "optimal"
     },
     "0,0,3:lower": {
-      "value": 50.0,
+      "value": 49.99756553059613,
       "termination_condition": "optimal"
     },
     "0,0,3:upper": {
-      "value": 50.0,
+      "value": 50.36236163813186,
       "termination_condition": "optimal"
     },
     "0,0,4:lower": {
-      "value": 50.0,
+      "value": 49.99093198915306,
       "termination_condition": "optimal"
     },
     "0,0,4:upper": {
-      "value": 50.0,
+      "value": 51.083606408449604,
       "termination_condition": "optimal"
     },
     "0,0,5:lower": {
-      "value": 50.0,
+      "value": 49.99353823516871,
       "termination_condition": "optimal"
     },
     "0,0,5:upper": {
-      "value": 50.0,
+      "value": 50.3135541328207,
       "termination_condition": "optimal"
     },
     "0,0,6:lower": {
-      "value": 50.0,
+      "value": 49.98888027413872,
       "termination_condition": "optimal"
     },
     "0,0,6:upper": {
-      "value": 50.0,
+      "value": 50.00889560282372,
       "termination_condition": "optimal"
     },
     "0,0,7:lower": {
-      "value": 50.0,
+      "value": 49.98175474693929,
       "termination_condition": "optimal"
     },
     "0,0,7:upper": {
-      "value": 50.0,
+      "value": 50.00510371705914,
       "termination_condition": "optimal"
     },
     "0,1,0:lower": {
-      "value": 60.0,
+      "value": 59.98321100597717,
       "termination_condition": "optimal"
     },
     "0,1,0:upper": {
-      "value": 60.0,
+      "value": 60.018615425889095,
       "termination_condition": "optimal"
     },
     "0,1,1:lower": {
-      "value": 60.0,
+      "value": 59.994983067504734,
       "termination_condition": "optimal"
     },
     "0,1,1:upper": {
-      "value": 60.0,
+      "value": 60.01060042450964,
       "termination_condition": "optimal"
     },
     "0,1,2:lower": {
-      "value": 60.0,
+      "value": 59.99099066413049,
       "termination_condition": "optimal"
     },
     "0,1,2:upper": {
-      "value": 60.0,
+      "value": 60.01238015664077,
       "termination_condition": "optimal"
     },
     "0,1,3:lower": {
-      "value": 60.0,
+      "value": 59.985680062451955,
       "termination_condition": "optimal"
     },
     "0,1,3:upper": {
-      "value": 60.0,
+      "value": 60.4274533805466,
       "termination_condition": "optimal"
     },
     "0,1,4:lower": {
-      "value": 60.0,
+      "value": 59.9881928861051,
       "termination_condition": "optimal"
     },
     "0,1,4:upper": {
-      "value": 60.0,
+      "value": 61.30217075075037,
       "termination_condition": "optimal"
     },
     "0,1,5:lower": {
-      "value": 60.0,
+      "value": 59.984846925065284,
       "termination_condition": "optimal"
     },
     "0,1,5:upper": {
-      "value": 60.0,
+      "value": 60.37191178490847,
       "termination_condition": "optimal"
     },
     "0,1,6:lower": {
-      "value": 60.0,
+      "value": 59.98586389428632,
       "termination_condition": "optimal"
     },
     "0,1,6:upper": {
-      "value": 60.0,
+      "value": 60.00924255511839,
       "termination_condition": "optimal"
     },
     "0,1,7:lower": {
-      "value": 60.0,
+      "value": 59.985584088740474,
       "termination_condition": "optimal"
     },
     "0,1,7:upper": {
-      "value": 60.0,
+      "value": 60.01336105262763,
       "termination_condition": "optimal"
     },
     "1,0,0:lower": {
-      "value": 30.0,
+      "value": 27.33767171441132,
       "termination_condition": "optimal"
     },
     "1,0,0:upper": {
-      "value": 30.0,
+      "value": 69.41926815069347,
       "termination_condition": "optimal"
     },
     "1,0,1:lower": {
-      "value": 30.0,
+      "value": 27.86419066881333,
       "termination_condition": "optimal"
     },
     "1,0,1:upper": {
-      "value": 30.0,
+      "value": 74.49552831988248,
       "termination_condition": "optimal"
     },
     "1,0,2:lower": {
-      "value": 30.0,
+      "value": 28.52982017425272,
       "termination_condition": "optimal"
     },
     "1,0,2:upper": {
-      "value": 30.0,
+      "value": 78.55958332512995,
       "termination_condition": "optimal"
     },
     "1,0,3:lower": {
-      "value": 30.0,
+      "value": 27.822312184707247,
       "termination_condition": "optimal"
     },
     "1,0,3:upper": {
-      "value": 30.0,
+      "value": 78.90590198149013,
       "termination_condition": "optimal"
     },
     "1,0,4:lower": {
-      "value": 30.0,
+      "value": 28.273265045817148,
       "termination_condition": "optimal"
     },
     "1,0,4:upper": {
-      "value": 30.0,
+      "value": 79.01097948484019,
       "termination_condition": "optimal"
     },
     "1,0,5:lower": {
-      "value": 30.0,
+      "value": 28.25824316543703,
       "termination_condition": "optimal"
     },
     "1,0,5:upper": {
-      "value": 30.0,
+      "value": 76.72197668355093,
       "termination_condition": "optimal"
     },
     "1,0,6:lower": {
-      "value": 30.0,
+      "value": 27.787749217056252,
       "termination_condition": "optimal"
     },
     "1,0,6:upper": {
-      "value": 30.0,
+      "value": 70.927433252683,
       "termination_condition": "optimal"
     },
     "1,0,7:lower": {
-      "value": 30.0,
+      "value": 27.600419516100537,
       "termination_condition": "optimal"
     },
     "1,0,7:upper": {
-      "value": 30.0,
+      "value": 68.07467684553045,
       "termination_condition": "optimal"
     },
     "1,1,0:lower": {
-      "value": 40.0,
+      "value": 37.14900141251052,
       "termination_condition": "optimal"
     },
     "1,1,0:upper": {
-      "value": 40.0,
+      "value": 59.848092026983984,
       "termination_condition": "optimal"
     },
     "1,1,1:lower": {
-      "value": 40.0,
+      "value": 37.82810800410538,
       "termination_condition": "optimal"
     },
     "1,1,1:upper": {
-      "value": 40.0,
+      "value": 62.31902731859529,
       "termination_condition": "optimal"
     },
     "1,1,2:lower": {
-      "value": 40.0,
+      "value": 38.63676333837344,
       "termination_condition": "optimal"
     },
     "1,1,2:upper": {
-      "value": 40.0,
+      "value": 65.13896826390159,
       "termination_condition": "optimal"
     },
     "1,1,3:lower": {
-      "value": 40.0,
+      "value": 37.64009493219332,
       "termination_condition": "optimal"
     },
     "1,1,3:upper": {
-      "value": 40.0,
+      "value": 64.30937206273707,
       "termination_condition": "optimal"
     },
     "1,1,4:lower": {
-      "value": 40.0,
+      "value": 38.21149771787296,
       "termination_condition": "optimal"
     },
     "1,1,4:upper": {
-      "value": 40.0,
+      "value": 65.02692874338214,
       "termination_condition": "optimal"
     },
     "1,1,5:lower": {
-      "value": 40.0,
+      "value": 38.233529970179255,
       "termination_condition": "optimal"
     },
     "1,1,5:upper": {
-      "value": 40.0,
+      "value": 63.9121995447759,
       "termination_condition": "optimal"
     },
     "1,1,6:lower": {
-      "value": 40.0,
+      "value": 37.73478714733758,
       "termination_condition": "optimal"
     },
     "1,1,6:upper": {
-      "value": 40.0,
+      "value": 60.438119015844045,
       "termination_condition": "optimal"
     },
     "1,1,7:lower": {
-      "value": 40.0,
+      "value": 37.52842960798736,
       "termination_condition": "optimal"
     },
     "1,1,7:upper": {
-      "value": 40.0,
+      "value": 59.21730463899394,
       "termination_condition": "optimal"
     },
     "2,0,0:lower": {
-      "value": 5.5311717641297085,
+      "value": -16.27060832510174,
       "termination_condition": "optimal"
     },
     "2,0,0:upper": {
-      "value": 56.84614369351125,
+      "value": 31.092587305599007,
       "termination_condition": "optimal"
     },
     "2,0,1:lower": {
-      "value": 6.08611560455782,
+      "value": -6.433776317763332,
       "termination_condition": "optimal"
     },
     "2,0,1:upper": {
-      "value": 60.58885870476598,
+      "value": 30.757038658547117,
       "termination_condition": "optimal"
     },
     "2,0,2:lower": {
-      "value": 7.286699550992313,
+      "value": -0.18742673898745466,
       "termination_condition": "optimal"
     },
     "2,0,2:upper": {
-      "value": 66.67599365995542,
+      "value": 30.658209222000572,
       "termination_condition": "optimal"
     },
     "2,0,3:lower": {
-      "value": 5.046860218062754,
+      "value": -18.859730223439477,
       "termination_condition": "optimal"
     },
     "2,0,3:upper": {
-      "value": 62.16924228497625,
+      "value": 30.861029055847126,
       "termination_condition": "optimal"
     },
     "2,0,4:lower": {
-      "value": 4.650965794898141,
+      "value": -33.302942291327156,
       "termination_condition": "optimal"
     },
     "2,0,4:upper": {
-      "value": 66.09140807522608,
+      "value": 30.592060184351045,
       "termination_condition": "optimal"
     },
     "2,0,5:lower": {
-      "value": 4.268770289680268,
+      "value": -38.75013749476471,
       "termination_condition": "optimal"
     },
     "2,0,5:upper": {
-      "value": 63.87666545139185,
+      "value": 30.701520609068798,
       "termination_condition": "optimal"
     },
     "2,0,6:lower": {
-      "value": 3.889976929907686,
+      "value": -37.74711920622641,
       "termination_condition": "optimal"
     },
     "2,0,6:upper": {
-      "value": 56.6948919767167,
+      "value": 31.03450504144771,
       "termination_condition": "optimal"
     },
     "2,0,7:lower": {
-      "value": 4.842758265254593,
+      "value": -26.646706728267375,
       "termination_condition": "optimal"
     },
     "2,0,7:upper": {
-      "value": 55.85687961282297,
+      "value": 31.021205614085286,
       "termination_condition": "optimal"
     },
     "2,1,0:lower": {
-      "value": 16.105228441900827,
+      "value": 7.93414667346682,
       "termination_condition": "optimal"
     },
     "2,1,0:upper": {
-      "value": 43.647385720360965,
+      "value": 30.97823181105307,
       "termination_condition": "optimal"
     },
     "2,1,1:lower": {
-      "value": 16.557730645055337,
+      "value": 12.456459315463015,
       "termination_condition": "optimal"
     },
     "2,1,1:upper": {
-      "value": 45.36356807091128,
+      "value": 30.662855475169195,
       "termination_condition": "optimal"
     },
     "2,1,2:lower": {
-      "value": 17.5351866349332,
+      "value": 15.396083393259744,
       "termination_condition": "optimal"
     },
     "2,1,2:upper": {
-      "value": 48.74176774547175,
+      "value": 30.57733584647914,
       "termination_condition": "optimal"
     },
     "2,1,3:lower": {
-      "value": 15.712614963920924,
+      "value": 6.789876468334349,
       "termination_condition": "optimal"
     },
     "2,1,3:upper": {
-      "value": 46.23169430544496,
+      "value": 30.732608739714955,
       "termination_condition": "optimal"
     },
     "2,1,4:lower": {
-      "value": 15.390534150055757,
+      "value": 0.05370434630020071,
       "termination_condition": "optimal"
     },
     "2,1,4:upper": {
-      "value": 48.343432896578015,
+      "value": 30.518420699036106,
       "termination_condition": "optimal"
     },
     "2,1,5:lower": {
-      "value": 15.078424605428228,
+      "value": -2.4028509261838664,
       "termination_condition": "optimal"
     },
     "2,1,5:upper": {
-      "value": 47.43774016767171,
+      "value": 30.60979581542661,
       "termination_condition": "optimal"
     },
     "2,1,6:lower": {
-      "value": 14.769308568502758,
+      "value": -1.8757356612108254,
       "termination_condition": "optimal"
     },
     "2,1,6:upper": {
-      "value": 43.695435400908984,
+      "value": 30.87570968492884,
       "termination_condition": "optimal"
     },
     "2,1,7:lower": {
-      "value": 15.545006031837321,
+      "value": 3.208974698102651,
       "termination_condition": "optimal"
     },
     "2,1,7:upper": {
-      "value": 43.2295229489252,
+      "value": 30.892615623427872,
       "termination_condition": "optimal"
     },
     "3,0,0:lower": {
-      "value": -14.995438469756403,
+      "value": -5.8974607997191235,
       "termination_condition": "optimal"
     },
     "3,0,0:upper": {
-      "value": 10.655021439743106,
+      "value": 10.292419524380156,
       "termination_condition": "optimal"
     },
     "3,0,1:lower": {
-      "value": -10.346416074633964,
+      "value": -2.171387556279617,
       "termination_condition": "optimal"
     },
     "3,0,1:upper": {
-      "value": 10.85223179349353,
+      "value": 10.245826644566728,
       "termination_condition": "optimal"
     },
     "3,0,2:lower": {
-      "value": -4.030037731932891,
+      "value": 0.23945025181331342,
       "termination_condition": "optimal"
     },
     "3,0,2:upper": {
-      "value": 10.62571357918979,
+      "value": 10.171967451473973,
       "termination_condition": "optimal"
     },
     "3,0,3:lower": {
-      "value": -16.439310308498136,
+      "value": -4.453197641797081,
       "termination_condition": "optimal"
     },
     "3,0,3:upper": {
-      "value": 11.125937447313198,
+      "value": 10.1964416094311,
       "termination_condition": "optimal"
     },
     "3,0,4:lower": {
-      "value": -19.790397090501724,
+      "value": -4.765010606580159,
       "termination_condition": "optimal"
     },
     "3,0,4:upper": {
-      "value": 11.237776102898824,
+      "value": 10.2125619537588,
       "termination_condition": "optimal"
     },
     "3,0,5:lower": {
-      "value": -23.979240568033237,
+      "value": -5.674332153065886,
       "termination_condition": "optimal"
     },
     "3,0,5:upper": {
-      "value": 10.983634433695192,
+      "value": 10.279060978005798,
       "termination_condition": "optimal"
     },
     "3,0,6:lower": {
-      "value": -26.100355436115198,
+      "value": -8.395229780189448,
       "termination_condition": "optimal"
     },
     "3,0,6:upper": {
-      "value": 10.759858717789683,
+      "value": 10.322841181201863,
       "termination_condition": "optimal"
     },
     "3,0,7:lower": {
-      "value": -19.469814733926356,
+      "value": -6.442073703265344,
       "termination_condition": "optimal"
     },
     "3,0,7:upper": {
-      "value": 10.62608602651536,
+      "value": 10.362635884542238,
       "termination_condition": "optimal"
     },
     "4,0,0:lower": {
-      "value": 0.2508964240550995,
+      "value": 0.21272749615058156,
       "termination_condition": "optimal"
     },
     "4,0,0:upper": {
-      "value": 0.5836274425260595,
+      "value": 0.2583872361199926,
       "termination_condition": "optimal"
     },
     "4,0,1:lower": {
-      "value": 0.2508964240550995,
+      "value": 0.22147648590280275,
       "termination_condition": "optimal"
     },
     "4,0,1:upper": {
-      "value": 0.5574955466617648,
+      "value": 0.2563308944412717,
       "termination_condition": "optimal"
     },
     "4,0,2:lower": {
-      "value": 0.2508964240550995,
+      "value": 0.2154643373936791,
       "termination_condition": "optimal"
     },
     "4,0,2:upper": {
-      "value": 0.548117343813341,
+      "value": 0.255508084523856,
       "termination_condition": "optimal"
     },
     "4,0,3:lower": {
-      "value": 0.2508964240550995,
+      "value": 0.23337798332381846,
       "termination_condition": "optimal"
     },
     "4,0,3:upper": {
-      "value": 0.5778751065842704,
+      "value": 0.2545160028110104,
       "termination_condition": "optimal"
     },
     "4,0,4:lower": {
-      "value": 0.2508964240550995,
+      "value": 0.23512860396836277,
       "termination_condition": "optimal"
     },
     "4,0,4:upper": {
-      "value": 0.5877004436168498,
+      "value": 0.25526390385822517,
       "termination_condition": "optimal"
     },
     "4,0,5:lower": {
-      "value": 0.2508964240550995,
+      "value": 0.2227708909040786,
       "termination_condition": "optimal"
     },
     "4,0,5:upper": {
-      "value": 0.6108361721937523,
+      "value": 0.2622853384901347,
       "termination_condition": "optimal"
     },
     "4,0,6:lower": {
-      "value": 0.2508964240550995,
+      "value": 0.21797906059196032,
       "termination_condition": "optimal"
     },
     "4,0,6:upper": {
-      "value": 0.636600193476915,
+      "value": 0.2713327817451351,
       "termination_condition": "optimal"
     },
     "4,0,7:lower": {
-      "value": 0.2508964240550995,
+      "value": 0.20804081690811635,
       "termination_condition": "optimal"
     },
     "4,0,7:upper": {
-      "value": 0.6023976658206494,
+      "value": 0.26425015983250466,
       "termination_condition": "optimal"
     },
     "5,0,0:lower": {
-      "value": 0.01,
+      "value": -0.0036532423959001487,
       "termination_condition": "optimal"
     },
     "5,0,0:upper": {
-      "value": 0.01,
+      "value": 0.01250762107914438,
       "termination_condition": "optimal"
     },
     "5,0,1:lower": {
-      "value": 0.01,
+      "value": 0.00037906887148237735,
       "termination_condition": "optimal"
     },
     "5,0,1:upper": {
-      "value": 0.01,
+      "value": 0.012133194718306064,
       "termination_condition": "optimal"
     },
     "5,0,2:lower": {
-      "value": 0.01,
+      "value": 0.00619098665340605,
       "termination_condition": "optimal"
     },
     "5,0,2:upper": {
-      "value": 0.01,
+      "value": 0.012307965641574516,
       "termination_condition": "optimal"
     },
     "5,0,3:lower": {
-      "value": 0.01,
+      "value": 0.008902035366106826,
       "termination_condition": "optimal"
     },
     "5,0,3:upper": {
-      "value": 0.01,
+      "value": 0.011596241147043301,
       "termination_condition": "optimal"
     },
     "5,0,4:lower": {
-      "value": 0.01,
+      "value": 0.008442061159274636,
       "termination_condition": "optimal"
     },
     "5,0,4:upper": {
-      "value": 0.01,
+      "value": 0.011494915661316548,
       "termination_condition": "optimal"
     },
     "5,0,5:lower": {
-      "value": 0.01,
+      "value": 0.008494505625075963,
       "termination_condition": "optimal"
     },
     "5,0,5:upper": {
-      "value": 0.01,
+      "value": 0.011692131743127516,
       "termination_condition": "optimal"
     },
     "5,0,6:lower": {
-      "value": 0.01,
+      "value": 0.001296666014734416,
       "termination_condition": "optimal"
     },
     "5,0,6:upper": {
-      "value": 0.01,
+      "value": 0.011944676793609124,
       "termination_condition": "optimal"
     },
     "5,0,7:lower": {
-      "value": 0.01,
+      "value": -0.004541228794874956,
       "termination_condition": "optimal"
     },
     "5,0,7:upper": {
-      "value": 0.01,
+      "value": 0.012606333203495721,
       "termination_condition": "optimal"
     }
   },

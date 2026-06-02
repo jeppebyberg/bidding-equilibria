@@ -21,6 +21,7 @@ from models.helper import (
     is_wind_generator_name,
     ramp_vectors,
 )
+from models.synthetic_data_generation.economic_dispatch_clean import EconomicDispatchModel
 from models.PoA.poa_model.nn_policy_embedding import PoAPolicyEmbedding
 from models.PoA.poa_model.mccormick import PoAMcCormick
 from models.PoA.poa_model.results import PoAResults
@@ -48,7 +49,7 @@ class PoAOptimization(
     DEFAULT_LOOSE_ALPHA_UPPER = 1e4
     DEFAULT_LOOSE_DUAL_BIG_M = 1e6
     DEFAULT_LOOSE_LAMBDA_LOWER = 0
-    DEFAULT_LOOSE_LAMBDA_UPPER = 50
+    DEFAULT_LOOSE_LAMBDA_UPPER = 80
     DEFAULT_LOOSE_AGGREGATE_DUAL_UPPER = 1e8
     DEFAULT_LOOSE_C_OPT_LOWER = 1e-3
     DEFAULT_LOOSE_C_OPT_UPPER = 1e8
@@ -66,7 +67,6 @@ class PoAOptimization(
         scenarios_df: pd.DataFrame,
         costs_df: pd.DataFrame,
         ramps_df: pd.DataFrame,
-        p_init: Optional[list[float] | list[list[float]]] = None,
         num_time_steps: Optional[int] = None,
         ambiguity_set_config: Optional[dict[str, Any]] = None,
         nn_model_dir: Optional[str | Path] = None,
@@ -92,7 +92,6 @@ class PoAOptimization(
         self.scenarios_df = scenarios_df.reset_index(drop=True)
         self.costs_df = costs_df
         self.ramps_df = ramps_df
-        self.requested_p_init = p_init
         self.ambiguity_set_config = ambiguity_set_config or {}
         self.nn_model_dir = Path(nn_model_dir) if nn_model_dir is not None else None
         self.nn_normalization_stats_path = (
@@ -119,10 +118,6 @@ class PoAOptimization(
             raise ValueError("default_c_opt_upper must be >= default_c_opt_lower")
         if self.default_lambda_lower >= self.default_lambda_upper:
             raise ValueError("default_lambda_lower must be < default_lambda_upper")
-        self.lambda_bound = max(
-            abs(float(self.default_lambda_lower)),
-            abs(float(self.default_lambda_upper)),
-        )
         self.capacity_dual_bound = float(self.default_dual_big_m)
         self.ramp_dual_bound = float(self.default_dual_big_m)
         self.default_bounds_used: dict[str, Any] = self._empty_default_bounds_used()
@@ -160,8 +155,8 @@ class PoAOptimization(
             sum(self.static_block_capacity[g] for g in self.physical_to_block_indices[i])
             for i in range(self.num_physical_generators)
         ]
-        self.p_init = self._normalize_p_init(self.requested_p_init)
         self._configure_ambiguity_set_parameters()
+        self.p_init = self.compute_p_init_from_ed()
         self._configure_nn_policy_generators()
 
         self.nn_policies: dict[str, dict[str, Any]] = {}
@@ -237,28 +232,6 @@ class PoAOptimization(
     @staticmethod
     def _is_wind_name(name: str) -> bool:
         return is_wind_generator_name(name)
-
-    def _normalize_p_init(
-        self, p_init: Optional[list[float] | list[list[float]]]
-    ) -> list[float]:
-        if p_init is None:
-            return [0.5 * cap for cap in self.static_physical_capacity]
-
-        values: Any = p_init
-        if values and isinstance(values[0], (list, tuple, np.ndarray, pd.Series)):
-            values = values[0]
-        values = [float(v) for v in values]
-        if len(values) == self.num_physical_generators:
-            return values
-        if len(values) == self.num_blocks:
-            return [
-                sum(values[g] for g in self.physical_to_block_indices[i])
-                for i in range(self.num_physical_generators)
-            ]
-        raise ValueError(
-            f"p_init has {len(values)} values; expected {self.num_physical_generators} "
-            f"physical-generator values or {self.num_blocks} block values"
-        )
 
     @staticmethod
     def _required_nested(config: dict[str, Any], path: tuple[str, ...]) -> Any:
@@ -372,45 +345,43 @@ class PoAOptimization(
                     f"Wind generator {generator_name} must have positive installed capacity"
                 )
 
-    def compute_deterministic_p_init(self) -> list[float]:
-        """Compute p_init from the merit-order dispatch at the context scenario's
-        deterministic (mu_D, mu_W) operating point at t=0.
+    def compute_p_init_from_ed(self) -> list[float]:
+        """Compute p_init by solving a 1-step economic dispatch at the center of
+        the ambiguity set, using true marginal costs as bids.
 
-        Mirrors DRO_PoAOptimization.compute_deterministic_p_init so both
-        pipelines seed the ramp constraints consistently.  Returns one value
-        per physical generator.
+        Uses the midpoint of (mu_D_bounds, mu_W_bounds) to form a deterministic
+        demand and wind-capacity scenario at t=0, then delegates to
+        EconomicDispatchModel (exact LP) rather than the merit-order heuristic.
+        Returns one dispatch value per physical generator.
         """
-        row = self.scenarios_df.iloc[0]
-        mu_D = float(row["mu_D"]) if "mu_D" in self.scenarios_df.columns else 1.0
-        mu_W = float(row["mu_W"]) if "mu_W" in self.scenarios_df.columns else 1.0
-        D0 = float(self.demand_D_ref * mu_D * self.demand_shape[0])
+        
+        mu_D = 0.5 * (self.mu_D_bounds[0] + self.mu_D_bounds[1])
+        mu_W = 0.5 * (self.mu_W_bounds[0] + self.mu_W_bounds[1])
+        demand_t0 = float(self.demand_D_ref * mu_D * self.demand_shape[0])
 
         wind_ids = set(int(i) for i in self.wind_physical_generator_ids)
-        blocks: list[tuple[float, float, int]] = []
-        for i, b in self.generator_block_pairs:
-            global_b = self.local_to_global_block[(int(i), int(b))]
-            cost = self.block_cost_vector[global_b]
-            if int(i) in wind_ids:
-                phys_cap_0 = (
-                    self.static_physical_capacity[int(i)] * mu_W * self.wind_shape[0]
+        row: dict[str, Any] = {"demand_profile": [demand_t0], "time_steps": 1}
+        for global_b, block_name in enumerate(self.block_names):
+            phys_idx = int(self.block_to_physical_idx[global_b])
+            if phys_idx in wind_ids:
+                n_local = len(self.local_blocks_by_generator[phys_idx])
+                block_cap = float(
+                    self.static_physical_capacity[phys_idx] * mu_W * self.wind_shape[0] / n_local
                 )
-                n_blocks = len(self.local_blocks_by_generator[int(i)])
-                block_cap = phys_cap_0 / n_blocks
             else:
                 block_cap = float(self.static_block_capacity[global_b])
-            blocks.append((cost, block_cap, int(i)))
+            row[f"{block_name}_cap"] = block_cap
+            row[f"{block_name}_bid"] = float(self.block_cost_vector[global_b])
 
-        blocks.sort(key=lambda x: x[0])
-        p_dispatch: dict[int, float] = {i: 0.0 for i in range(self.num_physical_generators)}
-        remaining = D0
-        for cost, cap, i in blocks:
-            dispatched = min(cap, remaining)
-            p_dispatch[i] += dispatched
-            remaining -= dispatched
-            if remaining <= 1e-9:
-                break
-
-        return [p_dispatch[i] for i in range(self.num_physical_generators)]
+        scenarios_df = pd.DataFrame([row])
+        ed = EconomicDispatchModel(
+            scenarios_df=scenarios_df,
+            costs_df=self.costs_df,
+            ramps_df=self.ramps_df,
+        )
+        ed.solve()
+        dispatches = ed.get_dispatches()
+        return dispatches[0][0] 
 
     @staticmethod
     def load_ambiguity_set(
@@ -1136,7 +1107,6 @@ if __name__ == "__main__":
         "scenarios_df": scenarios_df,
         "costs_df": costs_df,
         "ramps_df": ramps_df,
-        "p_init": None,
         "num_time_steps": horizon,
         "ambiguity_set_config": ambiguity_set_config,
         "nn_model_dir": "models/neural_network/training/trained_models",

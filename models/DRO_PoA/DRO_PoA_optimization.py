@@ -40,7 +40,6 @@ from models.DRO_PoA.dro_poa_model.mccormick import DROPoAMcCormick
 from models.DRO_PoA.dro_poa_model.nn_policy_embedding import DROPoAPolicyEmbedding
 from models.DRO_PoA.dro_poa_model.results import DROPoAResults
 from models.DRO_PoA.dro_poa_model.support_set import (
-    DROPoASupportSet,
     DROWassersteinSupportSet,
     _ar1_kappa,
 )
@@ -51,7 +50,7 @@ class DRO_PoAOptimization(
     DROPoAPolicyEmbedding,
     DROPoATighteningReports,
     DROPoAMcCormick,
-    DROPoASupportSet,
+    DROWassersteinSupportSet,
     DROPoAResults,
 ):
     """
@@ -68,7 +67,7 @@ class DRO_PoAOptimization(
     DEFAULT_LOOSE_ALPHA_UPPER = 1e4
     DEFAULT_LOOSE_DUAL_BIG_M = 1e6
     DEFAULT_LOOSE_LAMBDA_LOWER = 0
-    DEFAULT_LOOSE_LAMBDA_UPPER = 50
+    DEFAULT_LOOSE_LAMBDA_UPPER = 1e4
     DEFAULT_LOOSE_AGGREGATE_DUAL_UPPER = 1e8
     DEFAULT_LOOSE_C_OPT_LOWER = 1e-3
     DEFAULT_LOOSE_C_OPT_UPPER = 1e8
@@ -89,7 +88,6 @@ class DRO_PoAOptimization(
         scenarios_df: pd.DataFrame,
         costs_df: pd.DataFrame,
         ramps_df: pd.DataFrame,
-        p_init: Optional[list[float] | list[list[float]]] = None,
         num_time_steps: Optional[int] = None,
         regime_config_path: str | Path = "config/regime_definitions.yaml",
         regime_set: str = "PoA_analysis",
@@ -100,7 +98,7 @@ class DRO_PoAOptimization(
         nn_normalization_stats_path: Optional[str | Path] = None,
         nn_policy_generators: Optional[list[int | str]] = None,
         reference_case: str = "base_test_case",
-        objective_mode: str = "difference",
+        objective_mode: str = "piecewise_mccormick",
         mccormick_bounds: Optional[dict[str, Any]] = None,
         ratio_bounds: Optional[dict[str, Any]] = None,
         ambiguity_kappa: float = 0.3,
@@ -119,9 +117,7 @@ class DRO_PoAOptimization(
         default_PoA_upper: float = DEFAULT_PoA_UPPER,
         default_phi_lower: Optional[float] = None,
         default_phi_upper: Optional[float] = None,
-        use_wasserstein_support_set: bool = False,
         ar1_coverage: Optional[float] = None,
-        enable_fleet_band: bool = True,
     ):
         if float(eta) < 0.0:
             raise ValueError("eta must be nonnegative")
@@ -130,7 +126,6 @@ class DRO_PoAOptimization(
 
         self.costs_df = costs_df
         self.ramps_df = ramps_df
-        self.requested_p_init = p_init
         self.nn_model_dir = Path(nn_model_dir) if nn_model_dir is not None else None
         self.nn_normalization_stats_path = (
             Path(nn_normalization_stats_path)
@@ -144,14 +139,11 @@ class DRO_PoAOptimization(
         self.epsilon = float(epsilon)
         self.ambiguity_kappa = float(ambiguity_kappa)
         self.reference_case = reference_case
-        self.use_wasserstein_support_set = bool(use_wasserstein_support_set)
-        self.enable_fleet_band = bool(enable_fleet_band)
-        if self.use_wasserstein_support_set:
-            self.ar1_coverage = float(
-                ar1_coverage
-                if ar1_coverage is not None
-                else DROWassersteinSupportSet.AR1_JOINT_COVERAGE
-            )
+        self.ar1_coverage = float(
+            ar1_coverage
+            if ar1_coverage is not None
+            else DROWassersteinSupportSet.AR1_JOINT_COVERAGE
+        )
         self.use_default_bounds = bool(use_default_bounds)
         self.default_relu_bound = float(default_relu_bound)
         self.default_alpha_lower = float(default_alpha_lower)
@@ -174,10 +166,6 @@ class DRO_PoAOptimization(
             raise ValueError("default_c_opt_upper must be >= default_c_opt_lower")
         if self.default_lambda_lower >= self.default_lambda_upper:
             raise ValueError("default_lambda_lower must be < default_lambda_upper")
-        self.lambda_bound = max(
-            abs(float(self.default_lambda_lower)),
-            abs(float(self.default_lambda_upper)),
-        )
         self.capacity_dual_bound = float(self.default_dual_big_m)
         self.ramp_dual_bound = float(self.default_dual_big_m)
         self.primal_big_m_placeholder = float(self.default_dual_big_m)
@@ -246,10 +234,9 @@ class DRO_PoAOptimization(
         self.empirical_D = self._parse_empirical_demand_profiles()
         self.empirical_Pmax_block = self._parse_empirical_block_capacity_profiles()
         self.empirical_Pmax_phys = self._build_empirical_physical_capacity_profiles()
-        self.p_init = self._normalize_p_init(self.requested_p_init)
-
         self._configure_fixed_regime_parameters()
         self._configure_regime_shape_profiles()
+        self.p_init = self.compute_p_init_from_ed()
         if self.nn_model_dir is not None and self.nn_policy_generator_ids:
             self._load_nn_policies()
             self._load_nn_normalization_stats()
@@ -481,95 +468,44 @@ class DRO_PoAOptimization(
             for t in range(1, self.num_time_steps)
         }
 
-    def _normalize_p_init(
-        self,
-        p_init: Optional[list[float] | list[list[float]]],
-    ) -> list[list[float]]:
-        default_row = [0.5 * cap for cap in self.static_physical_capacity]
-        if p_init is None:
-            return [list(default_row) for _ in range(self.num_empirical_scenarios)]
+    def compute_p_init_from_ed(self) -> list[list[float]]:
+        """Compute p_init by solving a 1-step economic dispatch at the regime's
+        deterministic (mu_D_fixed, mu_W_fixed) operating point, using true
+        marginal costs as bids.
 
-        values: Any = p_init
-        if values and isinstance(values[0], (list, tuple, np.ndarray, pd.Series)):
-            if len(values) == self.num_empirical_scenarios:
-                return [self._normalize_p_init_row(row) for row in values]
-            if len(values) == 1:
-                row = self._normalize_p_init_row(values[0])
-                return [list(row) for _ in range(self.num_empirical_scenarios)]
-            raise ValueError(
-                f"p_init has {len(values)} rows; expected 1 or "
-                f"{self.num_empirical_scenarios} empirical-scenario rows"
-            )
-
-        row = self._normalize_p_init_row(values)
-        return [list(row) for _ in range(self.num_empirical_scenarios)]
-
-    def _normalize_p_init_row(self, values: Any) -> list[float]:
-        row = [float(v) for v in values]
-        if len(row) == self.num_physical_generators:
-            return row
-        if len(row) == self.num_blocks:
-            return [
-                sum(row[g] for g in self.physical_to_block_indices[i])
-                for i in range(self.num_physical_generators)
-            ]
-        raise ValueError(
-            f"p_init row has {len(row)} values; expected "
-            f"{self.num_physical_generators} physical-generator values or "
-            f"{self.num_blocks} block values"
-        )
-
-    def _build_support_set(self) -> None:
-        """Dispatch to the correct support-set mixin based on use_wasserstein_support_set."""
-        if getattr(self, "use_wasserstein_support_set", False):
-            DROWassersteinSupportSet._build_support_set(self)
-        else:
-            DROPoASupportSet._build_support_set(self)
-
-    def compute_deterministic_p_init(self) -> list[list[float]]:
-        """Compute p_init from the optimal single-step dispatch at the regime's
-        deterministic (mu_D, mu_W) operating point (no stochastic innovations).
-
-        Returns the same row for every scenario (the deterministic point is
-        regime-wide), shaped [num_empirical_scenarios][num_physical_generators].
+        Replaces the merit-order heuristic in compute_deterministic_p_init() with
+        an exact LP.  Returns the same p_init row for every empirical scenario,
+        shaped [num_empirical_scenarios][num_physical_generators].
         """
-        T = self.num_time_steps
-        demand_shape = ScenarioManager._build_demand_shape(T)
-        wind_shape = ScenarioManager._build_wind_shape(T, self.peak_W_fixed)
+        from models.synthetic_data_generation.economic_dispatch_clean import EconomicDispatchModel
 
-        # Deterministic values at t=0 (no residual innovations)
-        D0 = float(self.demand_D_ref * self.mu_D_fixed * demand_shape[0])
+        demand_shape = ScenarioManager._build_demand_shape(self.num_time_steps)
+        wind_shape = ScenarioManager._build_wind_shape(self.num_time_steps, self.peak_W_fixed)
+        demand_t0 = float(self.demand_D_ref * self.mu_D_fixed * demand_shape[0])
+
         wind_ids = set(int(i) for i in self.wind_physical_generator_ids)
-
-        # Build (cost, available_capacity, physical_id) per block at t=0
-        blocks: list[tuple[float, float, int]] = []
-        for i, b in self.generator_block_pairs:
-            global_b = self.local_to_global_block[(int(i), int(b))]
-            cost = self.block_cost_vector[global_b]
-            if int(i) in wind_ids:
-                phys_cap_0 = (
-                    self.static_physical_capacity[int(i)]
-                    * self.mu_W_fixed
-                    * wind_shape[0]
+        row: dict[str, Any] = {"demand_profile": [demand_t0], "time_steps": 1}
+        for global_b, block_name in enumerate(self.block_names):
+            phys_idx = int(self.block_to_physical_idx[global_b])
+            if phys_idx in wind_ids:
+                n_local = len(self.local_blocks_by_generator[phys_idx])
+                block_cap = float(
+                    self.static_physical_capacity[phys_idx] * self.mu_W_fixed * wind_shape[0] / n_local
                 )
-                n_blocks = len(self.local_blocks_by_generator[int(i)])
-                block_cap = phys_cap_0 / n_blocks
             else:
                 block_cap = float(self.static_block_capacity[global_b])
-            blocks.append((cost, block_cap, int(i)))
+            row[f"{block_name}_cap"] = block_cap
+            row[f"{block_name}_bid"] = float(self.block_cost_vector[global_b])
 
-        # Merit-order dispatch: cheapest blocks first
-        blocks.sort(key=lambda x: x[0])
-        p_dispatch = {i: 0.0 for i in range(self.num_physical_generators)}
-        remaining = D0
-        for cost, cap, i in blocks:
-            dispatched = min(cap, remaining)
-            p_dispatch[i] += dispatched
-            remaining -= dispatched
-            if remaining <= 1e-9:
-                break
-
-        p_init_row = [p_dispatch[i] for i in range(self.num_physical_generators)]
+        scenarios_df = pd.DataFrame([row])
+        ed = EconomicDispatchModel(
+            scenarios_df=scenarios_df,
+            costs_df=self.costs_df,
+            ramps_df=self.ramps_df,
+        )
+        ed.solve()
+        dispatches = ed.get_dispatches()
+        p_init_row = dispatches[0][0]  # type: ignore[index]
         return [list(p_init_row) for _ in range(self.num_empirical_scenarios)]
 
     def _initialize_big_m_placeholders(self) -> None:
@@ -604,7 +540,7 @@ class DRO_PoAOptimization(
         self.M_mu_ramp_up_opt = {index: self.ramp_dual_bound for index in ramp_indices}
         self.M_mu_ramp_down_opt = {index: self.ramp_dual_bound for index in ramp_indices}
         self.lambda_eq_bounds = {
-            int(t): (-self.lambda_bound, self.lambda_bound)
+            int(t): (float(self.default_lambda_lower), float(self.default_lambda_upper))
             for t in range(self.num_time_steps)
         }
         self.lambda_opt_bounds = dict(self.lambda_eq_bounds)
@@ -1120,10 +1056,8 @@ class DRO_PoAOptimization(
         t0_refs: "list[float]",
         innov_margins: "list[float]",
         rho: float,
-        fleet_lb: "np.ndarray | None" = None,
-        fleet_ub: "np.ndarray | None" = None,
     ) -> float:
-        """Min L1 distance from wind profiles to per-gen support, plus fleet band."""
+        """Min L1 distance from empirical wind profiles to the per-generator support."""
         import numpy as np
         from scipy.optimize import linprog
 
@@ -1194,20 +1128,6 @@ class DRO_PoAOptimization(
                 rows.append(row2)
                 rhs.append(emp)
 
-        if fleet_lb is not None and fleet_ub is not None:
-            for t in range(T):
-                row_up = np.zeros(n_var)
-                for g in range(n_gen):
-                    row_up[x_idx(g, t)] = 1.0
-                rows.append(row_up)
-                rhs.append(float(fleet_ub[t]))
-
-                row_dn = np.zeros(n_var)
-                for g in range(n_gen):
-                    row_dn[x_idx(g, t)] = -1.0
-                rows.append(row_dn)
-                rhs.append(-float(fleet_lb[t]))
-
         A_ub = np.vstack(rows)
         b_ub = np.array(rhs)
         result = linprog(c, A_ub=A_ub, b_ub=b_ub, bounds=bounds, method="highs")
@@ -1237,8 +1157,6 @@ class DRO_PoAOptimization(
         )
         kappa_ar1 = _ar1_kappa(T, coverage)
         kappa_level = kappa_ar1
-        kappa_fleet = kappa_ar1
-        enable_fleet_band = bool(getattr(self, "enable_fleet_band", True))
 
         from config.scenarios.scenario_generator import ScenarioManager
         demand_shape = ScenarioManager._build_demand_shape(T)
@@ -1277,9 +1195,6 @@ class DRO_PoAOptimization(
             wind_t0_violations = 0
             wind_level_violations = 0
             stationary_std_W = self.sigma_W_fixed / np.sqrt(1.0 - self.wind_rho_fixed ** 2)
-            fleet_profile = np.zeros(T, dtype=float)
-            fleet_ref = np.zeros(T, dtype=float)
-            fleet_cap_rms_sq = 0.0
 
             for i in self.wind_physical_generator_ids:
                 cap = float(self.static_physical_capacity[int(i)])
@@ -1309,21 +1224,6 @@ class DRO_PoAOptimization(
                 wind_ar1_refs.append(ar1_ref_W)
                 wind_t0_refs.append(t0_ref_W)
                 wind_innov_margins.append(innov_margin_W)
-                fleet_profile += P_emp
-                fleet_ref += P_ref_vec
-                fleet_cap_rms_sq += cap ** 2
-
-            fleet_violations = 0
-            fleet_lb = None
-            fleet_ub = None
-            if enable_fleet_band and wind_emp_profiles:
-                fleet_cap_rms = float(np.sqrt(fleet_cap_rms_sq))
-                fleet_margin = kappa_fleet * fleet_cap_rms * stationary_std_W
-                fleet_lb = fleet_ref - fleet_margin
-                fleet_ub = fleet_ref + fleet_margin
-                fleet_violations = int(
-                    np.sum((fleet_profile < fleet_lb - 1e-9) | (fleet_profile > fleet_ub + 1e-9))
-                )
 
             min_W_wind = self._min_wasserstein_to_wind_support(
                 wind_emp_profiles,
@@ -1333,8 +1233,6 @@ class DRO_PoAOptimization(
                 wind_t0_refs,
                 wind_innov_margins,
                 self.wind_rho_fixed,
-                fleet_lb=fleet_lb,
-                fleet_ub=fleet_ub,
             )
 
             results.append({
@@ -1352,7 +1250,6 @@ class DRO_PoAOptimization(
                 "wind_level_violations": wind_level_violations,
                 "wind_t0_violations": wind_t0_violations,
                 "wind_ar1_violations": wind_ar1_violations,
-                "wind_fleet_violations": fleet_violations,
             })
         return results
 
@@ -1988,12 +1885,11 @@ class DRO_PoAOptimization(
                 for t in m.time_steps
             )
 
-        def poa_rule(m, k):
-            return m.C_eq[k] - m.C_opt[k] == m.PoA[k]
-
         m.cost_definition_eq = Constraint(m.scenarios, rule=cost_eq_rule)
         m.cost_definition_opt = Constraint(m.scenarios, rule=cost_opt_rule)
         if self.objective_mode == "difference":
+            def poa_rule(m, k):
+                return m.C_eq[k] - m.C_opt[k] == m.PoA[k]
             m.poa_definition = Constraint(m.scenarios, rule=poa_rule)
         if self.objective_mode == "mccormick":
             self._build_mccormick_constraints()
@@ -2215,7 +2111,6 @@ def load_regime_scenarios(
         seed=seed,
     )
 
-
 def run_eta_sweep_by_regime(
     etas: list[float],
     regimes: Optional[list[str]] = None,
@@ -2252,7 +2147,6 @@ def run_eta_sweep_by_regime(
                 scenarios_df=scenarios_df,
                 costs_df=costs_df,
                 ramps_df=ramps_df,
-                p_init=None,
                 num_time_steps=num_time_steps,
                 regime_config_path=regime_config_path,
                 regime_set=regime_set,
@@ -2293,7 +2187,6 @@ if __name__ == "__main__":
         scenarios_df=scenarios_df,
         costs_df=costs_df,
         ramps_df=ramps_df,
-        p_init=None,
         num_time_steps=horizon,
         regime_config_path="config/regime_definitions.yaml",
         regime_set=regime_set,

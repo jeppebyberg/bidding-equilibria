@@ -23,7 +23,6 @@ def _initialize_parallel_dual_computer(state: dict[str, Any]) -> None:
         scenarios_df=state["scenarios_df"],
         costs_df=state["costs_df"],
         ramps_df=state["ramps_df"],
-        p_init=state["p_init"],
         num_time_steps=state["num_time_steps"],
         ambiguity_set_config=state["ambiguity_set_config"],
         nn_model_dir=state["nn_model_dir"],
@@ -34,6 +33,8 @@ def _initialize_parallel_dual_computer(state: dict[str, Any]) -> None:
         mccormick_bounds=state.get("mccormick_bounds"),
         use_default_bounds=bool(state.get("use_default_bounds", False)),
     )
+    if "p_init" in state:
+        poa.p_init = state["p_init"]
     for attr_name in (
         "alpha_bounds",
         "fixed_binaries",
@@ -107,7 +108,7 @@ class DualBigMComputer(PoATighteningMain):
             "scenarios_df": self.poa.scenarios_df,
             "costs_df": self.poa.costs_df,
             "ramps_df": self.poa.ramps_df,
-            "p_init": self.poa.requested_p_init,
+            "p_init": list(self.poa.p_init),
             "num_time_steps": self.poa.num_time_steps,
             "ambiguity_set_config": self.poa.ambiguity_set_config,
             "nn_model_dir": (

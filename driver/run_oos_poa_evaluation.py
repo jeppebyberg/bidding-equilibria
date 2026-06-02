@@ -28,7 +28,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from config.scenarios.scenario_generator import ScenarioManager
-from driver.run_full_pipeline import apply_time_steps_override
+from driver.PoA_pipeline import apply_time_steps_override
 from models.helper import (
     available_block_capacity,
     block_cost_vector,
