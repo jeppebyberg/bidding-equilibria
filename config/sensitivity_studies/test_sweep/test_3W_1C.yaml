@@ -1,0 +1,67 @@
+test_3W_1C:
+  demand:
+  - 100.0
+  time_steps:
+  - 24
+  generators:
+  - id: 0
+    name: G1
+    type: conventional
+    pmin: 0.0
+    R_rate_up: 20.0
+    R_rate_down: 20.0
+    bidding_blocks:
+    - block_id: 0
+      name: G1_B1
+      pmax: 25.0
+      cost: 10.0
+    - block_id: 1
+      name: G1_B2
+      pmax: 25.0
+      cost: 20.0
+  - id: 1
+    name: W3
+    type: wind
+    pmin: 0.0
+    R_rate_up: 50.0
+    R_rate_down: 50.0
+    bidding_blocks:
+    - block_id: 0
+      name: W3_B1
+      pmax: 50.0
+      cost: 0.5
+  - id: 2
+    name: W2
+    type: wind
+    pmin: 0.0
+    R_rate_up: 50.0
+    R_rate_down: 50.0
+    bidding_blocks:
+    - block_id: 0
+      name: W2_B1
+      pmax: 50.0
+      cost: 0.25
+  - id: 3
+    name: W1
+    type: wind
+    pmin: 0.0
+    R_rate_up: 50.0
+    R_rate_down: 50.0
+    bidding_blocks:
+    - block_id: 0
+      name: W1_B1
+      pmax: 50.0
+      cost: 0.01
+  players:
+  - id: 0
+    controlled_generators:
+    - 0
+  - id: 1
+    controlled_generators:
+    - 1
+  - id: 2
+    controlled_generators:
+    - 2
+  - id: 3
+    controlled_generators:
+    - 3

@@ -98,6 +98,7 @@ class DRO_PoAOptimization(
         nn_normalization_stats_path: Optional[str | Path] = None,
         nn_policy_generators: Optional[list[int | str]] = None,
         reference_case: str = "base_test_case",
+        case_label: str = "",
         objective_mode: str = "piecewise_mccormick",
         mccormick_bounds: Optional[dict[str, Any]] = None,
         ratio_bounds: Optional[dict[str, Any]] = None,
@@ -139,6 +140,7 @@ class DRO_PoAOptimization(
         self.epsilon = float(epsilon)
         self.ambiguity_kappa = float(ambiguity_kappa)
         self.reference_case = reference_case
+        self.case_label = case_label
         self.ar1_coverage = float(
             ar1_coverage
             if ar1_coverage is not None

@@ -208,6 +208,7 @@ class DROPoAResults:
         )
         return {
             "reference_case": self.reference_case,
+            "case_label": getattr(self, "case_label", ""),
             "regime_set": self.regime_set,
             "regime_name": self.regime_name,
             "num_time_steps": self.num_time_steps,

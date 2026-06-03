@@ -282,72 +282,50 @@ def generate_reference_case(spec: _BaseCompositionSpec) -> dict[str, Any]:
     }
 
 
-def register_composition_in_yaml(
+def _study_yaml_path(study_name: str) -> Path:
+    return SENSITIVITY_STUDIES_DIR / f"{study_name}.yaml"
+
+
+def register_composition_in_study_yaml(
     spec: _BaseCompositionSpec,
-    path: Path = REFERENCE_CASES_PATH,
+    study_name: str,
 ) -> bool:
-    """Append the composition's reference case to the YAML file if not already present.
+    """Write the composition's reference case into config/sensitivity_studies/{study_name}.yaml.
 
     Returns True if newly added, False if already existed.
     """
-    with path.open("r", encoding="utf-8") as fh:
-        existing: dict[str, Any] = yaml.safe_load(fh) or {}
+    path = _study_yaml_path(study_name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    existing: dict[str, Any] = {}
+    if path.exists():
+        with path.open("r", encoding="utf-8") as fh:
+            existing = yaml.safe_load(fh) or {}
 
     if spec.case_name in existing:
         return False
 
-    new_block = yaml.dump(
-        {spec.case_name: generate_reference_case(spec)},
-        default_flow_style=False,
-        sort_keys=False,
-        allow_unicode=True,
-    )
-    with path.open("a", encoding="utf-8") as fh:
-        fh.write(f"\n{new_block}")
+    existing[spec.case_name] = generate_reference_case(spec)
+    with path.open("w", encoding="utf-8") as fh:
+        yaml.dump(existing, fh, default_flow_style=False, sort_keys=False, allow_unicode=True)
     return True
 
+def write_study_yaml(sweep: CompositionSweepConfig) -> Path:
+    """Write all compositions for this study into config/sensitivity_studies/{study_name}.yaml.
 
-def default_nn_policy_generators(spec: _BaseCompositionSpec) -> list[str]:
-    """Return which generators should receive strategic NN policies.
+    All cases are stored as top-level keys in one file, matching the format of
+    reference_cases.yaml.  The loader in config/utils/cases_utils.py searches
+    this directory automatically, so no changes to reference_cases.yaml are needed.
 
-    Convention: G1 (cheapest conv, usual price setter) + all wind except W1
-    (zero-cost wind has no incentive to withhold).  With only one wind
-    generator, include it regardless.
+    Returns the path to the written YAML file.
     """
-    result: list[str] = []
-    if spec.n_conv > 0:
-        result.append("G1")
-    if spec.n_wind >= 2:
-        result.extend(f"W{i}" for i in range(2, spec.n_wind + 1))
-    elif spec.n_wind == 1:
-        result.append("W1")
-    return result
-
-
-def write_study_yamls(
-    sweep: CompositionSweepConfig,
-    output_dir: Path = SENSITIVITY_STUDIES_DIR,
-) -> Path:
-    """Write one YAML per composition to config/sensitivity_studies/{study_name}/.
-
-    Returns the study directory.  Used by sensitivity_pipeline.run_sensitivity_study
-    to re-run a study without recomputing specs.
-    """
-    study_dir = output_dir / sweep.study_name
-    study_dir.mkdir(parents=True, exist_ok=True)
-    for spec in sweep.compositions:
-        yaml_path = study_dir / f"{spec.case_name}.yaml"
-        yaml_path.write_text(
-            yaml.dump(
-                {spec.case_name: generate_reference_case(spec)},
-                default_flow_style=False,
-                sort_keys=False,
-                allow_unicode=True,
-            ),
-            encoding="utf-8",
-        )
-    print(f"Wrote {len(sweep.compositions)} case YAML(s) to: {study_dir}")
-    return study_dir
+    path = _study_yaml_path(sweep.study_name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cases = {spec.case_name: generate_reference_case(spec) for spec in sweep.compositions}
+    with path.open("w", encoding="utf-8") as fh:
+        yaml.dump(cases, fh, default_flow_style=False, sort_keys=False, allow_unicode=True)
+    print(f"Wrote {len(cases)} case(s) to: {path}")
+    return path
 
 
 # ---------------------------------------------------------------------------
@@ -375,7 +353,6 @@ class CompositionSweepConfig:
 
     study_name: str = "composition_sweep"
     result_root: Path = Path("results/sensitivity_studies")
-    reference_cases_path: Path = REFERENCE_CASES_PATH
 
     # Maps case_name -> {SensitivityPipelineConfig field: value}.
     composition_overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -393,6 +370,7 @@ def build_composition_sensitivity_config(
     any entries in sweep.composition_overrides.
     """
     config = sweep.base_config.to_pipeline_config(spec.case_name)
+    config.case_label = getattr(spec, "label", "")
 
     comp_dir = sweep.result_root / sweep.study_name / spec.case_name
     config.synthetic_scenario_dir = comp_dir / "synthetic_scenarios"
@@ -428,28 +406,26 @@ def run_composition_sweep(sweep: CompositionSweepConfig) -> None:
     print(f"  result_root: {sweep.result_root / sweep.study_name}")
     print(f"{sep}")
 
-    write_study_yamls(sweep)
+    write_study_yaml(sweep)
 
-    print("\nRegistering compositions in reference_cases.yaml:")
+    print(f"\nCompositions registered in config/sensitivity_studies/{sweep.study_name}.yaml:")
     for spec in sweep.compositions:
-        added = register_composition_in_yaml(spec, sweep.reference_cases_path)
-        tag = "added  " if added else "exists "
-        print(f"  [{tag}] {spec.case_name}  "
+        print(f"  {spec.case_name}  "
               f"({spec.n_wind}W + {spec.n_conv}C, "
               f"total cap = {spec.total_conv_capacity_mw:.0f} MW conv + "
               f"{spec.total_wind_capacity_mw:.0f} MW wind)")
 
     for idx, spec in enumerate(sweep.compositions):
-        nn_gens = default_nn_policy_generators(spec)
         print(f"\n{sep}")
         print(f"  [{idx + 1}/{n}] {spec.case_name}")
         print(f"    generators : {spec.n_conv} conv ({', '.join(spec.conv_names)})"
               f"  +  {spec.n_wind} wind ({', '.join(spec.wind_names)})")
-        print(f"    nn_policy  : {nn_gens}")
+        print(f"    nn_policy  : determined by label-change filter "
+              f"(threshold > {sweep.base_config.nn_training_min_label_changes})")
         print(f"    result_dir : {sweep.result_root / sweep.study_name / spec.case_name}")
         print(f"{sep}")
 
-        config = build_composition_sensitivity_config(spec, sweep, nn_policy_generators=nn_gens)
+        config = build_composition_sensitivity_config(spec, sweep)
         run_pipeline(config)
 
     print(f"\n{sep}")

@@ -918,10 +918,10 @@ if __name__ == "__main__":
         case="base_test_case",
         synthetic_time_steps=24,
         synthetic_seed=1,
-        poa_seed=1,
+        poa_seed=2,
 
         # Scenario counts for ambiguity-set draws.
-        synthetic_num_scenarios=500,
+        synthetic_num_scenarios=1000,
         poa_context_num_scenarios=1,
 
         # Heuristic synthetic-label generation.
@@ -943,7 +943,7 @@ if __name__ == "__main__":
         ],
 
         per_generator_normalization=True,
-        hidden_layers=[4, 8],
+        hidden_layers=[8, 8],
         learning_rate=1e-3,
         batch_size=32,
         num_epochs=500,
@@ -971,7 +971,7 @@ if __name__ == "__main__":
         # Required for mccormick modes. Example:
         poa_mccormick_PoA_bounds=(1.0, 10.0),
         # poa_mccormick_c_opt_bounds=(0.01, 20000.0),
-        poa_mccormick_num_pieces=50,
+        poa_mccormick_num_pieces=100,
 
         solver_name="gurobi",
         preprocessing_time_limit=200,
@@ -981,10 +981,10 @@ if __name__ == "__main__":
         poa_solver_threads_per_worker=1,
 
         # Step toggles. Turn expensive stages off when reusing previous outputs.
-        run_scenario_generation=False,
-        run_heuristic_labels=False,
-        run_feature_building=False,
-        run_nn_training=False,
+        run_scenario_generation=True,
+        run_heuristic_labels=True,
+        run_feature_building=True,
+        run_nn_training=True,
         run_tightening=True,
         tightening_flags={
             "primal_big_m": True,

@@ -61,6 +61,7 @@ class FullPipelineConfig:
     # Shared / common
     # -----------------------------------------------------------------------
     case: str = "base_test_case"
+    case_label: str = ""
     synthetic_time_steps: int | None = 24
     synthetic_seed: int = 1
     poa_seed: int = 2
@@ -723,7 +724,7 @@ if __name__ == "__main__":
         device=None,
         nn_final_activation="linear",
 
-        horizon=4,
+        horizon=8,
         solver_name="gurobi",
         preprocessing_time_limit=200,
         epsilon=1e-6,
@@ -733,26 +734,27 @@ if __name__ == "__main__":
         poa_context_num_scenarios=1,
         poa_objective_mode="piecewise_mccormick",
         poa_mccormick_PoA_bounds=(1.0, 20.0),
-        poa_mccormick_num_pieces=100,
+        poa_mccormick_num_pieces=50,
         poa_time_limit=None,
 
         poa_worst_case_regime_name="poa_worst_case",
-        poa_worst_case_n_scenarios=5,
+        poa_worst_case_n_scenarios=10,
+
         etas=[0.0] + np.logspace(-2, 0.5, 10).tolist() + [10.0],
         dro_wasserstein_epsilon=2000,
-        ambiguity_kappa=0.1,
+        ambiguity_kappa=0.25,
         dro_tightening_eta=0.0,
         dro_objective_mode="piecewise_mccormick",
         dro_mccormick_PoA_bounds=(1.0, 20.0),
-        dro_mccormick_num_pieces=100,
+        dro_mccormick_num_pieces=50,
         dro_time_limit=None,
 
         # Stage toggles — flip to False to reuse existing artifacts.
-        run_scenario_generation=False,
-        run_heuristic_labels=False,
-        run_feature_building=False,
-        run_nn_training=False,
-        run_poa_tightening=False,
+        run_scenario_generation=True,
+        run_heuristic_labels=True,
+        run_feature_building=True,
+        run_nn_training=True,
+        run_poa_tightening=True,
         poa_tightening_flags={
             "primal_big_m": True,
             "relu_bounds": True,

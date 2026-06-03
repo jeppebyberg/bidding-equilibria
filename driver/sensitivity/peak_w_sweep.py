@@ -152,12 +152,12 @@ base_config = BaseConfig(
     synthetic_time_steps=24,
     synthetic_seed=1,
     poa_seed=1,
-    synthetic_num_scenarios=500,
+    synthetic_num_scenarios=1000,
     ambiguity_set_config_path="config/ambiguity_set_config.yaml",  # overridden per run
     ambiguity_set_config_name="base_test_case",                    # overridden per run
     bid_tolerance=1e-2,
 
-    hidden_layers=[4, 8],
+    hidden_layers=[8, 8],
     learning_rate=1e-3,
     batch_size=32,
     num_epochs=500,
@@ -175,7 +175,7 @@ base_config = BaseConfig(
     poa_context_num_scenarios=1,
     poa_objective_mode="piecewise_mccormick",
     poa_mccormick_PoA_bounds=(1.0, 10.0),
-    poa_mccormick_num_pieces=50,
+    poa_mccormick_num_pieces=100,
 
     poa_worst_case_n_scenarios=10,
     etas=[0.0] + np.logspace(-2, 0.5, 10).tolist() + [10.0],
@@ -184,7 +184,7 @@ base_config = BaseConfig(
     dro_tightening_eta=0.0,
     dro_objective_mode="piecewise_mccormick",
     dro_mccormick_PoA_bounds=(1.0, 10.0),
-    dro_mccormick_num_pieces=50,
+    dro_mccormick_num_pieces=100,
 
     run_scenario_generation=True,
     run_heuristic_labels=True,

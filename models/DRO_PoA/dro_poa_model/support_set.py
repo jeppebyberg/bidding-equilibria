@@ -15,6 +15,21 @@ def _ar1_kappa(num_time_steps: int, joint_coverage: float = 0.99) -> float:
     return float(_norm.ppf((1.0 + joint_coverage ** (1.0 / num_time_steps)) / 2.0))
 
 
+def _level_scale(rho: float, t: int) -> float:
+    """Time-varying level-band scale factor (multiples of innovation sigma).
+
+    scale(t) = min( (1-rho^{t+1})/(1-rho),  1/sqrt(1-rho^2) )
+
+    At t=0 this equals 1 (innovation sigma only); it grows until it reaches the
+    stationary bound 1/sqrt(1-rho^2) and stays flat.  Because rho is fixed per
+    DRO solve, scale(t) is a plain Python float, keeping level-band constraints
+    linear in sigma_D / sigma_W.  Matches PoA support_set.py exactly.
+    """
+    cumulative = (1.0 - rho ** (t + 1)) / (1.0 - rho)
+    stationary = 1.0 / np.sqrt(1.0 - rho ** 2)
+    return min(cumulative, stationary)
+
+
 class DROWassersteinSupportSet:
     """Support set U for the Wasserstein DRO inner problem.
 
@@ -79,7 +94,7 @@ class DROWassersteinSupportSet:
         kappa_ar1 = _ar1_kappa(self.num_time_steps, coverage)
         level_coverage = float(getattr(self, "level_coverage", None) or coverage)
         kappa_lvl_D = _ar1_kappa(self.num_time_steps, level_coverage)
-        sigma_bar_D_scale = 1.0 / np.sqrt(1.0 - self.demand_rho_fixed ** 2)
+        demand_scales = [_level_scale(self.demand_rho_fixed, t) for t in range(self.num_time_steps)]
 
         def _ar1_ref_D(m, t: int) -> object:
             return (
@@ -118,11 +133,11 @@ class DROWassersteinSupportSet:
 
         def demand_level_lower_rule(m, k, t):
             ref = self.demand_D_ref * m.mu_D * self.demand_shape[int(t)]
-            return m.D[k, t] >= ref - kappa_lvl_D * self.demand_D_ref * m.sigma_D * sigma_bar_D_scale
+            return m.D[k, t] >= ref - kappa_lvl_D * self.demand_D_ref * m.sigma_D * demand_scales[int(t)]
 
         def demand_level_upper_rule(m, k, t):
             ref = self.demand_D_ref * m.mu_D * self.demand_shape[int(t)]
-            return m.D[k, t] <= ref + kappa_lvl_D * self.demand_D_ref * m.sigma_D * sigma_bar_D_scale
+            return m.D[k, t] <= ref + kappa_lvl_D * self.demand_D_ref * m.sigma_D * demand_scales[int(t)]
 
         m.demand_ar1_t0_up = Constraint(m.scenarios, rule=demand_ar1_t0_up_rule)
         m.demand_ar1_t0_down = Constraint(m.scenarios, rule=demand_ar1_t0_down_rule)
@@ -155,7 +170,7 @@ class DROWassersteinSupportSet:
         kappa_ar1 = _ar1_kappa(self.num_time_steps, coverage)
         level_coverage = float(getattr(self, "level_coverage", None) or coverage)
         kappa_lvl_W = _ar1_kappa(self.num_time_steps, level_coverage)
-        sigma_bar_W_scale = 1.0 / np.sqrt(1.0 - self.wind_rho_fixed ** 2)
+        wind_scales = [_level_scale(self.wind_rho_fixed, t) for t in range(self.num_time_steps)]
 
         def _ar1_ref_W(m, i: int, t: int) -> object:
             return (
@@ -210,12 +225,12 @@ class DROWassersteinSupportSet:
         def wind_level_lower_rule(m, k, i, t):
             cap_i = self.static_physical_capacity[int(i)]
             ref = cap_i * m.mu_W * self.wind_shape[int(t)]
-            return _P_total(m, k, i, t) >= ref - kappa_lvl_W * cap_i * m.sigma_W * sigma_bar_W_scale
+            return _P_total(m, k, i, t) >= ref - kappa_lvl_W * cap_i * m.sigma_W * wind_scales[int(t)]
 
         def wind_level_upper_rule(m, k, i, t):
             cap_i = self.static_physical_capacity[int(i)]
             ref = cap_i * m.mu_W * self.wind_shape[int(t)]
-            return _P_total(m, k, i, t) <= ref + kappa_lvl_W * cap_i * m.sigma_W * sigma_bar_W_scale
+            return _P_total(m, k, i, t) <= ref + kappa_lvl_W * cap_i * m.sigma_W * wind_scales[int(t)]
 
         m.conventional_capacity = Constraint(
             m.scenarios, m.conventional_blocks, m.time_steps, rule=conventional_capacity_rule

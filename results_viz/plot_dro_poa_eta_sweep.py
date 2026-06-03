@@ -82,6 +82,7 @@ def _summary_record(path: Path, result: dict[str, Any]) -> dict[str, Any]:
         "source_dir": str(path.parent),
         "source_mtime": path.stat().st_mtime,
         "reference_case": result.get("reference_case"),
+        "case_label": result.get("case_label", ""),
         "regime_set": result.get("regime_set"),
         "regime_name": result.get("regime_name"),
         "num_time_steps": result.get("num_time_steps"),

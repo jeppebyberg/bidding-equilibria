@@ -6,19 +6,43 @@ from typing import List, Dict, Any, Tuple
 from pathlib import Path
 
 DEFAULT_REFERENCE_CASES_PATH = Path(__file__).resolve().parents[1] / "reference_cases.yaml"
+_SENSITIVITY_STUDIES_DIR = Path(__file__).resolve().parents[1] / "sensitivity_studies"
 
-def load_test_case(case_name: str, case_path: str | Path = DEFAULT_REFERENCE_CASES_PATH) -> Dict[str, Any]:
-    """Load test case from reference cases YAML file"""
-    case_path = Path(case_path)
-    with case_path.open("r", encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
-    
-    case_data = data.get(case_name)
-    
-    if not case_data:
-        raise ValueError(f"Case '{case_name}' not found in {case_path}")
-    
-    return case_data
+
+def _reference_case_search_paths(explicit: Path | None) -> list[Path]:
+    """Return ordered list of YAML files to search for a case name.
+
+    If an explicit path is given, only that file is searched.
+    Otherwise: reference_cases.yaml first, then every *.yaml under
+    config/sensitivity_studies/ so that sensitivity cases are found
+    automatically without modifying reference_cases.yaml.
+    """
+    if explicit is not None:
+        return [explicit]
+    paths = [DEFAULT_REFERENCE_CASES_PATH]
+    if _SENSITIVITY_STUDIES_DIR.exists():
+        paths.extend(sorted(_SENSITIVITY_STUDIES_DIR.glob("*.yaml")))
+    return paths
+
+
+def load_test_case(case_name: str, case_path: str | Path | None = None) -> Dict[str, Any]:
+    """Load test case from reference cases YAML file.
+
+    Searches reference_cases.yaml first, then config/sensitivity_studies/*.yaml.
+    Pass an explicit case_path to restrict the search to one file.
+    """
+    explicit = Path(case_path) if case_path is not None else None
+    for path in _reference_case_search_paths(explicit):
+        if not path.exists():
+            continue
+        with path.open("r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        case_data = data.get(case_name)
+        if case_data:
+            return case_data
+
+    searched = [str(p) for p in _reference_case_search_paths(explicit)]
+    raise ValueError(f"Case '{case_name}' not found in: {', '.join(searched)}")
 
 def get_demand(case_name: str) -> float:
     """Get demand from base case"""
