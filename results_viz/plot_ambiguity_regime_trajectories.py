@@ -160,6 +160,56 @@ def _ar1_tube_wind_bands(
     return reference - hw, reference + hw
 
 
+def _cumulative_demand_bands(
+    reference: np.ndarray,
+    D_ref: float,
+    sigma_D: float,
+    rho_D: float,
+    kappa: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Cumulative AR(1) band: half-width = kappa * D_ref * sigma_D * (1 - rho^{t+1}) / (1 - rho)."""
+    T = len(reference)
+    hw = np.array([kappa * D_ref * sigma_D * (1.0 - rho_D**(t+1)) / (1.0 - rho_D) for t in range(T)])
+    return reference - hw, reference + hw
+
+
+def _stationary_demand_bands(
+    reference: np.ndarray,
+    D_ref: float,
+    sigma_D: float,
+    rho_D: float,
+    kappa: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Stationary AR(1) band: half-width = kappa * D_ref * sigma_D / sqrt(1 - rho^2)."""
+    hw = kappa * D_ref * sigma_D / np.sqrt(1.0 - rho_D**2)
+    return reference - hw, reference + hw
+
+
+def _cumulative_wind_bands(
+    reference: np.ndarray,
+    capacity: float,
+    sigma_W: float,
+    rho_W: float,
+    kappa: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Cumulative AR(1) band for wind."""
+    T = len(reference)
+    hw = np.array([kappa * capacity * sigma_W * (1.0 - rho_W**(t+1)) / (1.0 - rho_W) for t in range(T)])
+    return reference - hw, reference + hw
+
+
+def _stationary_wind_bands(
+    reference: np.ndarray,
+    capacity: float,
+    sigma_W: float,
+    rho_W: float,
+    kappa: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Stationary AR(1) band for wind."""
+    hw = kappa * capacity * sigma_W / np.sqrt(1.0 - rho_W**2)
+    return reference - hw, reference + hw
+
+
 def _demand_ar1_contained(
     demand: np.ndarray,
     D_ref: float,
@@ -237,7 +287,7 @@ def plot_ambiguity_regime_trajectories(
 
     # AR(1) tube params (optional: only available in results built after the tube refactor).
     params = _get_ambiguity_params(results)
-    kappa_ar1 = _ar1_kappa(horizon - 1) if horizon > 1 else None
+    kappa_ar1 = _ar1_kappa(horizon) if horizon > 1 else None
 
     output_dir.mkdir(parents=True, exist_ok=True)
     fig, axes = plt.subplots(
@@ -248,23 +298,41 @@ def plot_ambiguity_regime_trajectories(
     )
     regime_label = _format_regime_label(selected_regime)
     title = f"Optimized Ambiguity Regime and Induced Support Bounds\n{regime_label}"
+    obj = results.get("objective") or {}
+    poa_ratio = obj.get("PoA_ratio")
+    c_eq = obj.get("C_eq")
+    c_opt = obj.get("C_opt")
+    if poa_ratio is not None and c_eq is not None and c_opt is not None:
+        title += (
+            f"\nPoA ratio = {float(poa_ratio):.4f}"
+            f"  |  C_eq = {float(c_eq):.1f},  C_opt = {float(c_opt):.1f}"
+        )
     if extra_title_line:
         title += f"\n{extra_title_line}"
     fig.suptitle(title, fontsize=12)
 
     # Demand subplot.
-    axes[0].fill_between(
-        time, demand_lower, demand_upper,
-        color="tab:blue", alpha=0.16, label="Level box (stationary sigma, 95% marginal)",
-    )
     if params is not None and kappa_ar1 is not None:
-        tube_lo, tube_hi = _ar1_tube_demand_bands(
-            demand_reference, params["D_ref"], params["sigma_D"], kappa_ar1
+        stat_lo, stat_hi = _stationary_demand_bands(
+            demand_reference, params["D_ref"], params["sigma_D"], params["rho_D"], kappa_ar1
+        )
+        cum_lo, cum_hi = _cumulative_demand_bands(
+            demand_reference, params["D_ref"], params["sigma_D"], params["rho_D"], kappa_ar1
         )
         axes[0].fill_between(
-            time, tube_lo, tube_hi,
-            color="tab:orange", alpha=0.30,
-            label=f"AR(1) tube (innovation sigma, 95% joint, kappa={kappa_ar1:.3f})",
+            time, stat_lo, stat_hi,
+            color="tab:blue", alpha=0.12,
+            label=f"Stationary bound (kappa={kappa_ar1:.3f}, scale=1/√(1−ρ²))",
+        )
+        axes[0].fill_between(
+            time, cum_lo, cum_hi,
+            color="tab:blue", alpha=0.30,
+            label="Cumulative AR(1) bound (grows from t=0)",
+        )
+    else:
+        axes[0].fill_between(
+            time, demand_lower, demand_upper,
+            color="tab:blue", alpha=0.16, label="Support bounds",
         )
     axes[0].plot(
         time, demand_reference,
@@ -286,17 +354,28 @@ def plot_ambiguity_regime_trajectories(
         gen_amb = wind_block[gen_name]
         gen_profile = _series(results["generators"][gen_name]["physical_capacity_profile"])
         wind_ref = _series(gen_amb["reference"])
-        axis.fill_between(
-            time, _series(gen_amb["lower"]), _series(gen_amb["upper"]),
-            color="tab:green", alpha=0.18, label="Level box (stationary sigma, 95% marginal)",
-        )
         if params is not None and kappa_ar1 is not None:
             cap = float(gen_amb.get("installed_capacity", 1.0))
-            tube_lo, tube_hi = _ar1_tube_wind_bands(wind_ref, cap, params["sigma_W"], kappa_ar1)
+            stat_lo, stat_hi = _stationary_wind_bands(
+                wind_ref, cap, params["sigma_W"], params["rho_W"], kappa_ar1
+            )
+            cum_lo, cum_hi = _cumulative_wind_bands(
+                wind_ref, cap, params["sigma_W"], params["rho_W"], kappa_ar1
+            )
             axis.fill_between(
-                time, tube_lo, tube_hi,
-                color="tab:orange", alpha=0.30,
-                label=f"AR(1) tube (innovation sigma, 95% joint, kappa={kappa_ar1:.3f})",
+                time, stat_lo, stat_hi,
+                color="tab:green", alpha=0.12,
+                label=f"Stationary bound (kappa={kappa_ar1:.3f}, scale=1/√(1−ρ²))",
+            )
+            axis.fill_between(
+                time, cum_lo, cum_hi,
+                color="tab:green", alpha=0.30,
+                label="Cumulative AR(1) bound (grows from t=0)",
+            )
+        else:
+            axis.fill_between(
+                time, _series(gen_amb["lower"]), _series(gen_amb["upper"]),
+                color="tab:green", alpha=0.18, label="Support bounds",
             )
         axis.plot(
             time, wind_ref,
@@ -768,9 +847,9 @@ def plot_fresh_scenario_innovations(
 def main() -> None:
     # Edit these paths/settings directly when running this script.
     result_paths: list[Path] = [
-        Path("results/temporary_poa_results/poa_optimization_T8_piecewise_mccormick.json"),
+        Path("results/sensitivity_pipeline/poa/poa_optimization_T8_piecewise_mccormick.json"),
     ]
-    results_dir = Path("results")
+    results_dir = Path("results/sensitivity_pipeline/poa")
     plot_all_matching_results = False
     output_dir = DEFAULT_OUTPUT_DIR
     show = False

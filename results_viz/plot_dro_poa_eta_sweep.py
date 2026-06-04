@@ -21,6 +21,7 @@ DEFAULT_OUTPUT_ROOT = Path("results_viz/figures/dro_poa_eta_sweep")
 METRIC_LABELS = {
     "average_poa_difference": "Average PoA difference",
     "average_poa_ratio": "Average PoA ratio",
+    "worst_case_expected_poa": "Worst-case expected PoA",
     "inner_objective": "DRO inner objective",
     "dro_objective_with_epsilon": "DRO objective + eta * epsilon",
     "average_wasserstein_distance": "Average Wasserstein distance",
@@ -99,6 +100,19 @@ def _summary_record(path: Path, result: dict[str, Any]) -> dict[str, Any]:
             result.get("average_wasserstein_distance")
         ),
     }
+    # Worst-case expected PoA = penalized inner objective + eta * achieved Wasserstein
+    # distance. The DRO inner objective is sup_Q E_Q[PoA] - eta * W, so adding back
+    # eta * W recovers the worst-case expected PoA E_Q*[PoA] that the envelope theorem
+    # makes concave and non-decreasing in the achieved radius. Plotting the raw inner
+    # objective instead shows the -eta * W term and looks non-concave.
+    inner = record["inner_objective"]
+    eta = record["eta"]
+    wass = record["average_wasserstein_distance"]
+    record["worst_case_expected_poa"] = (
+        inner + eta * wass
+        if inner is not None and eta is not None and wass is not None
+        else None
+    )
     solver = result.get("solver", {}) or {}
     record["solver_status"] = solver.get("status")
     record["solver_termination_condition"] = solver.get("termination_condition")
@@ -213,6 +227,7 @@ def write_summary_csv(records: list[dict[str, Any]], output_path: Path) -> Path:
         "eta",
         "average_poa_difference",
         "average_poa_ratio",
+        "worst_case_expected_poa",
         "inner_objective",
         "dro_objective_with_epsilon",
         "average_wasserstein_distance",
@@ -305,14 +320,12 @@ def plot_poa_eta_sweep(
 ) -> Path:
     grouped_records = _records_by_epsilon(records)
     output_dir.mkdir(parents=True, exist_ok=True)
-    fig, axes = plt.subplots(2, 1, figsize=(9.2, 8.0), sharex=True)
+    fig, ax = plt.subplots(figsize=(9.2, 5.2))
 
-    plotted_ratio = _plot_metric_by_epsilon(axes[0], grouped_records, "average_poa_ratio",
+    plotted_ratio = _plot_metric_by_epsilon(ax, grouped_records, "average_poa_ratio",
                                             epsilon_labels=epsilon_labels)
-    plotted_difference = _plot_metric_by_epsilon(axes[1], grouped_records, "average_poa_difference",
-                                                 epsilon_labels=epsilon_labels)
-    if not plotted_ratio and not plotted_difference:
-        raise ValueError("PoA ratio and PoA difference are missing for all epsilon curves.")
+    if not plotted_ratio:
+        raise ValueError("average_poa_ratio is missing for all epsilon curves.")
 
     # Log scale when eta spans more than one order of magnitude.
     all_etas = [
@@ -321,17 +334,16 @@ def plot_poa_eta_sweep(
         if r.get("eta") is not None and float(r["eta"]) > 0
     ]
     if all_etas and max(all_etas) / min(all_etas) > 20:
-        axes[1].set_xscale("log")
+        ax.set_xscale("log")
 
     # Reference line: competitive PoA ratio = 1.
-    if plotted_ratio:
-        axes[0].axhline(1.0, color="0.4", linewidth=1.2, linestyle="--", alpha=0.6,
-                        zorder=1, label="PoA ratio = 1 (competitive)")
+    ax.axhline(1.0, color="0.4", linewidth=1.2, linestyle="--", alpha=0.6,
+               zorder=1, label="PoA ratio = 1 (competitive)")
 
-    axes[0].set_title(f"DRO PoA η sweep  —  {regime_name}", fontsize=12)
-    axes[0].legend(loc="best", frameon=True, fontsize=9)
-    axes[0].set_ylabel(METRIC_LABELS["average_poa_ratio"])
-    axes[1].set_xlabel("η  (Wasserstein penalty)", fontsize=10)
+    ax.set_title(f"DRO PoA η sweep  —  {regime_name}", fontsize=12)
+    ax.legend(loc="best", frameon=True, fontsize=9)
+    ax.set_ylabel(METRIC_LABELS["average_poa_ratio"])
+    ax.set_xlabel("η  (Wasserstein penalty)", fontsize=10)
 
     horizon = records[0].get("num_time_steps")
     n_scenarios = records[0].get("num_empirical_scenarios")
@@ -343,9 +355,9 @@ def plot_poa_eta_sweep(
     n_epsilons = len(grouped_records)
     context_parts.append(f"{n_epsilons} ε curve{'s' if n_epsilons != 1 else ''}")
     if context_parts:
-        axes[1].text(
+        ax.text(
             0.01, 0.97, "  ".join(context_parts),
-            transform=axes[1].transAxes,
+            transform=ax.transAxes,
             fontsize=8.5, color="0.40", va="top",
             bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="0.75", alpha=0.85),
         )
@@ -363,11 +375,12 @@ def plot_poa_epsilon_frontier(
     records: list[dict[str, Any]],
     output_dir: Path,
     regime_name: str,
-    poa_metric: str = "inner_objective",
+    poa_metric: str = "worst_case_expected_poa",
     oos_mean_poa: float | None = None,
     oos_max_poa: float | None = None,
     show: bool = False,
     epsilon_labels: dict[float, str] | None = None,
+    filename_suffix: str = "",
 ) -> Path:
     """Plot worst-case PoA vs achieved Wasserstein distance.
 
@@ -462,7 +475,103 @@ def plot_poa_epsilon_frontier(
     ax.grid(True, alpha=0.25)
     fig.tight_layout()
 
-    output_path = output_dir / f"{regime_name}_poa_epsilon_frontier.png"
+    output_path = output_dir / f"{regime_name}_poa_epsilon_frontier{filename_suffix}.png"
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    if show:
+        plt.show()
+    plt.close(fig)
+    return output_path
+
+
+def plot_frontier_comparison(
+    records_by_label: dict[str, list[dict[str, Any]]],
+    output_path: Path,
+    poa_metric: str = "worst_case_expected_poa",
+    title: str = "PoA-epsilon frontier comparison",
+    show: bool = False,
+) -> Path:
+    """Overlay one PoA-epsilon frontier per setup on a single axis.
+
+    records_by_label maps a setup label (e.g. composition / study name) to its
+    eta-sweep records. One line per label, x = achieved Wasserstein distance,
+    y = poa_metric.
+    """
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(9.0, 6.0))
+
+    plotted = False
+    for label, records in records_by_label.items():
+        points = _extract_frontier(records, poa_metric)
+        if not points:
+            continue
+        ax.plot(
+            [p.eps for p in points], [p.poa for p in points],
+            "o-", linewidth=2.0, markersize=4.5, label=label,
+        )
+        plotted = True
+    if not plotted:
+        plt.close(fig)
+        raise ValueError("No frontier points available for any setup.")
+
+    ax.set_xlabel("Achieved Wasserstein distance (ε)", fontsize=10)
+    ax.set_ylabel(METRIC_LABELS.get(poa_metric, poa_metric), fontsize=10)
+    ax.set_title(title, fontsize=12)
+    ax.legend(loc="best", frameon=True, fontsize=9)
+    ax.grid(True, alpha=0.25)
+    ax.ticklabel_format(axis="both", style="plain", useOffset=False)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    if show:
+        plt.show()
+    plt.close(fig)
+    return output_path
+
+
+def plot_eta_sweep_comparison(
+    records_by_label: dict[str, list[dict[str, Any]]],
+    output_path: Path,
+    metric: str = "average_poa_ratio",
+    title: str = "Average PoA vs eta comparison",
+    show: bool = False,
+) -> Path:
+    """Overlay one (metric vs eta) curve per setup on a single axis."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(9.0, 6.0))
+
+    plotted = False
+    positive_etas: list[float] = []
+    for label, records in records_by_label.items():
+        pairs = sorted(
+            (
+                (float(r["eta"]), _as_optional_float(r.get(metric)))
+                for r in records
+                if r.get("eta") is not None
+            ),
+            key=lambda pair: pair[0],
+        )
+        etas = [eta for eta, value in pairs if value is not None]
+        values = [value for _eta, value in pairs if value is not None]
+        if not values:
+            continue
+        ax.plot(etas, values, "o-", linewidth=2.0, markersize=4.5, label=label)
+        positive_etas.extend(eta for eta in etas if eta > 0)
+        plotted = True
+    if not plotted:
+        plt.close(fig)
+        raise ValueError(f"No '{metric}' values available for any setup.")
+
+    if positive_etas and max(positive_etas) / min(positive_etas) > 20:
+        ax.set_xscale("log")
+    if metric == "average_poa_ratio":
+        ax.axhline(1.0, color="0.4", linewidth=1.2, linestyle="--", alpha=0.6,
+                   label="PoA ratio = 1 (competitive)")
+
+    ax.set_xlabel("η  (Wasserstein penalty)", fontsize=10)
+    ax.set_ylabel(METRIC_LABELS.get(metric, metric), fontsize=10)
+    ax.set_title(title, fontsize=12)
+    ax.legend(loc="best", frameon=True, fontsize=9)
+    ax.grid(True, alpha=0.25)
+    fig.tight_layout()
     fig.savefig(output_path, dpi=180, bbox_inches="tight")
     if show:
         plt.show()
@@ -692,9 +801,9 @@ def _demo_query_frontier(records: list[dict[str, Any]], regime_name: str) -> Non
         eps_min + 0.50 * (eps_max - eps_min),
         eps_min + 0.75 * (eps_max - eps_min),
     ]
-    print(f"\nFrontier queries for regime '{regime_name}' (inner_objective):")
+    print(f"\nFrontier queries for regime '{regime_name}' (worst_case_expected_poa):")
     for eps_q in queries:
-        result = query_frontier(records, eps_q)
+        result = query_frontier(records, eps_q, poa_metric="worst_case_expected_poa")
         print(f"  {result['message']}")
 
 
@@ -747,14 +856,14 @@ def _load_oos_poa_by_regime(
 
 def main() -> None:
     # Edit these paths/settings directly when running this script.
-    results_dir = DEFAULT_RESULTS_DIR
+    results_dir = Path("results/sensitivity_pipeline/dro")
     regime: str | None = None  # set to a regime name to plot only that one, or None for all
-    output_root = DEFAULT_OUTPUT_ROOT
+    output_root = Path("results_viz/figures/sensitivity_dro_poa_eta_sweep")
     include_archives = True
     show = False
     # Path to OOS evaluation results (produced by driver/run_oos_poa_evaluation.py).
     # Set to None to skip the OOS overlay entirely.
-    oos_results_path: Path | None = Path("results/oos_poa/oos_poa_results.json")
+    oos_results_path: Path | None = Path("results/oos_poa/sensitivity_pipeline/oos_poa_results.json")
 
     # Human-readable labels for epsilon_cap values shown in the plots.
     # Keys are the numeric epsilon_cap values stored in the result JSON.
@@ -799,7 +908,7 @@ def main() -> None:
             records=records,
             output_dir=output_dir,
             regime_name=regime_name,
-            poa_metric="inner_objective",
+            poa_metric="worst_case_expected_poa",
             oos_mean_poa=oos_poa_by_regime.get(regime_name, {}).get("mean"),
             oos_max_poa=oos_poa_by_regime.get(regime_name, {}).get("max"),
             show=show,

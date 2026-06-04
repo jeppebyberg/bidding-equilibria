@@ -39,6 +39,7 @@ from models.helper import (
 from models.DRO_PoA.dro_poa_model.mccormick import DROPoAMcCormick
 from models.DRO_PoA.dro_poa_model.nn_policy_embedding import DROPoAPolicyEmbedding
 from models.DRO_PoA.dro_poa_model.results import DROPoAResults
+from models.DRO_PoA.dro_poa_model.support_diagnostics import DROPoASupportDiagnostics
 from models.DRO_PoA.dro_poa_model.support_set import (
     DROWassersteinSupportSet,
     _ar1_kappa,
@@ -51,6 +52,7 @@ class DRO_PoAOptimization(
     DROPoATighteningReports,
     DROPoAMcCormick,
     DROWassersteinSupportSet,
+    DROPoASupportDiagnostics,
     DROPoAResults,
 ):
     """
@@ -77,6 +79,11 @@ class DRO_PoAOptimization(
     DEFAULT_PHI_UPPER = DEFAULT_PoA_UPPER
 
     normalization_epsilon = 1e-12
+    # Scenarios whose minimum achievable Wasserstein distance to the support set
+    # is at or below this tolerance are treated as inside the support set, so the
+    # nominal market state (W[k]=0) is feasible and the per-scenario objective
+    # term PoA[k] - eta * W[k] can be validly floored at 1.
+    SUPPORT_FLOOR_TOLERANCE = 1e-6
     allowed_objective_modes = {
         "difference",
         "mccormick",
@@ -962,299 +969,9 @@ class DRO_PoAOptimization(
         self._build_KKT_complementarity_equilibrium_constraints()
         self._build_KKT_complementarity_optimal_constraints()
         self._build_PoA_constraints()
+        self._build_support_floor_constraints()
 
-    # ------------------------------------------------------------------
-    # Support set
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _min_wasserstein_to_support_1d(
-        x_emp: "np.ndarray",
-        lb: "np.ndarray",
-        ub: "np.ndarray",
-        ar1_ref: "np.ndarray",
-        innov_margin: float,
-        rho: float,
-        t0_ref: float,
-    ) -> float:
-        """Min L1 distance from x_emp to the support set defined by pointwise
-        box bounds and AR1 innovation bounds, solved as a small LP.
-
-        ar1_ref[s] is the reference innovation for step s+1 (length T-1).
-        innov_margin is the scalar tolerance (same for all steps).
-        """
-        import numpy as np
-        from scipy.optimize import linprog
-
-        T = len(x_emp)
-        # Variables: [x[0..T-1], u[0..T-1]] where u[t] >= |x_emp[t] - x[t]|
-        c = np.zeros(2 * T)
-        c[T:] = 1.0
-
-        bounds = (
-            [(float(lb[t]), float(ub[t])) for t in range(T)]
-            + [(0.0, None)] * T
-        )
-
-        rows: list = []
-        rhs: list = []
-
-        # t=0 cold-start innovation band.
-        row_t0_up = np.zeros(2 * T)
-        row_t0_up[0] = 1.0
-        rows.append(row_t0_up)
-        rhs.append(t0_ref + innov_margin)
-
-        row_t0_dn = np.zeros(2 * T)
-        row_t0_dn[0] = -1.0
-        rows.append(row_t0_dn)
-        rhs.append(innov_margin - t0_ref)
-
-        # AR1 up:   x[t] - rho*x[t-1] <=  ar1_ref[t-1] + innov_margin
-        # AR1 down: x[t] - rho*x[t-1] >= ar1_ref[t-1] - innov_margin
-        #           <=> -x[t] + rho*x[t-1] <= innov_margin - ar1_ref[t-1]
-        for t in range(1, T):
-            row_up = np.zeros(2 * T)
-            row_up[t] = 1.0
-            row_up[t - 1] = -rho
-            rows.append(row_up)
-            rhs.append(ar1_ref[t - 1] + innov_margin)
-
-            row_dn = np.zeros(2 * T)
-            row_dn[t] = -1.0
-            row_dn[t - 1] = rho
-            rows.append(row_dn)
-            rhs.append(innov_margin - ar1_ref[t - 1])
-
-        # u[t] >= x_emp[t] - x[t]: -x[t] - u[t] <= -x_emp[t]
-        # u[t] >= x[t] - x_emp[t]:  x[t] - u[t] <=  x_emp[t]
-        for t in range(T):
-            row1 = np.zeros(2 * T)
-            row1[t] = -1.0
-            row1[T + t] = -1.0
-            rows.append(row1)
-            rhs.append(-x_emp[t])
-
-            row2 = np.zeros(2 * T)
-            row2[t] = 1.0
-            row2[T + t] = -1.0
-            rows.append(row2)
-            rhs.append(x_emp[t])
-
-        A_ub = np.vstack(rows)
-        b_ub = np.array(rhs)
-
-        result = linprog(c, A_ub=A_ub, b_ub=b_ub, bounds=bounds, method="highs")
-        if result.status == 0:
-            return float(result.fun)
-        return float("inf")
-
-    @staticmethod
-    def _min_wasserstein_to_wind_support(
-        empirical_profiles: "list[np.ndarray]",
-        lb_profiles: "list[np.ndarray]",
-        ub_profiles: "list[np.ndarray]",
-        ar1_refs: "list[np.ndarray]",
-        t0_refs: "list[float]",
-        innov_margins: "list[float]",
-        rho: float,
-    ) -> float:
-        """Min L1 distance from empirical wind profiles to the per-generator support."""
-        import numpy as np
-        from scipy.optimize import linprog
-
-        n_gen = len(empirical_profiles)
-        if n_gen == 0:
-            return 0.0
-        T = len(empirical_profiles[0])
-        n_x = n_gen * T
-        n_var = 2 * n_x
-        c = np.zeros(n_var)
-        c[n_x:] = 1.0
-
-        def x_idx(g: int, t: int) -> int:
-            return g * T + t
-
-        def u_idx(g: int, t: int) -> int:
-            return n_x + g * T + t
-
-        bounds = []
-        for g in range(n_gen):
-            bounds.extend(
-                (float(lb_profiles[g][t]), float(ub_profiles[g][t]))
-                for t in range(T)
-            )
-        bounds.extend([(0.0, None)] * n_x)
-
-        rows: list = []
-        rhs: list = []
-
-        for g in range(n_gen):
-            margin = float(innov_margins[g])
-
-            row_t0_up = np.zeros(n_var)
-            row_t0_up[x_idx(g, 0)] = 1.0
-            rows.append(row_t0_up)
-            rhs.append(float(t0_refs[g]) + margin)
-
-            row_t0_dn = np.zeros(n_var)
-            row_t0_dn[x_idx(g, 0)] = -1.0
-            rows.append(row_t0_dn)
-            rhs.append(margin - float(t0_refs[g]))
-
-            for t in range(1, T):
-                row_up = np.zeros(n_var)
-                row_up[x_idx(g, t)] = 1.0
-                row_up[x_idx(g, t - 1)] = -rho
-                rows.append(row_up)
-                rhs.append(float(ar1_refs[g][t - 1]) + margin)
-
-                row_dn = np.zeros(n_var)
-                row_dn[x_idx(g, t)] = -1.0
-                row_dn[x_idx(g, t - 1)] = rho
-                rows.append(row_dn)
-                rhs.append(margin - float(ar1_refs[g][t - 1]))
-
-            for t in range(T):
-                emp = float(empirical_profiles[g][t])
-
-                row1 = np.zeros(n_var)
-                row1[x_idx(g, t)] = -1.0
-                row1[u_idx(g, t)] = -1.0
-                rows.append(row1)
-                rhs.append(-emp)
-
-                row2 = np.zeros(n_var)
-                row2[x_idx(g, t)] = 1.0
-                row2[u_idx(g, t)] = -1.0
-                rows.append(row2)
-                rhs.append(emp)
-
-        A_ub = np.vstack(rows)
-        b_ub = np.array(rhs)
-        result = linprog(c, A_ub=A_ub, b_ub=b_ub, bounds=bounds, method="highs")
-        if result.status == 0:
-            return float(result.fun)
-        return float("inf")
-
-    def diagnose_empirical_support_set_violations(self) -> list[dict]:
-        """For each empirical scenario, compute the minimum achievable Wasserstein
-        distance and flag which support-set constraint families are violated.
-
-        This reveals the W-floor that high-eta runs cannot cross: if empirical_D[k]
-        or empirical_Pmax_phys[k] lies outside the support set, the optimizer cannot
-        set D[k,t] = empirical_D[k][t] and W[k] > 0 is unavoidable.
-
-        min_W_total is computed via LP to account for both pointwise and AR1
-        constraints jointly (pointwise-only projection would miss AR1 violations).
-
-        Returns a list of dicts, one per scenario.
-        """
-        import numpy as np
-
-        T = self.num_time_steps
-        D_ref = float(self.demand_D_ref)
-        coverage = float(
-            getattr(self, "ar1_coverage", DROWassersteinSupportSet.AR1_JOINT_COVERAGE)
-        )
-        kappa_ar1 = _ar1_kappa(T, coverage)
-        kappa_level = kappa_ar1
-
-        from config.scenarios.scenario_generator import ScenarioManager
-        demand_shape = ScenarioManager._build_demand_shape(T)
-        wind_shape = ScenarioManager._build_wind_shape(T, self.peak_W_fixed)
-
-        results = []
-        for k in range(self.num_empirical_scenarios):
-            D_emp = np.asarray(self.empirical_D[k], dtype=float)
-            D_ref_vec = D_ref * self.mu_D_fixed * demand_shape
-            stationary_std_D = self.sigma_D_fixed / np.sqrt(1.0 - self.demand_rho_fixed ** 2)
-            margin_D = kappa_level * D_ref * stationary_std_D
-
-            lb_D = np.maximum(D_ref_vec - margin_D, 0.0)
-            ub_D = D_ref_vec + margin_D
-
-            innov_margin_D = kappa_ar1 * D_ref * self.sigma_D_fixed
-            t0_ref_D = D_ref * self.mu_D_fixed * demand_shape[0]
-            ar1_ref_D = D_ref * self.mu_D_fixed * (
-                demand_shape[1:] - self.demand_rho_fixed * demand_shape[:-1]
-            )
-            t0_violation_D = int(abs(D_emp[0] - t0_ref_D) > innov_margin_D + 1e-9)
-            innov_D = D_emp[1:] - self.demand_rho_fixed * D_emp[:-1]
-            ar1_violations_D = int(np.sum(np.abs(innov_D - ar1_ref_D) > innov_margin_D + 1e-9))
-
-            min_W_demand = self._min_wasserstein_to_support_1d(
-                D_emp, lb_D, ub_D, ar1_ref_D, innov_margin_D, self.demand_rho_fixed, t0_ref_D
-            )
-
-            wind_emp_profiles = []
-            wind_lb_profiles = []
-            wind_ub_profiles = []
-            wind_ar1_refs = []
-            wind_t0_refs = []
-            wind_innov_margins = []
-            wind_ar1_violations = 0
-            wind_t0_violations = 0
-            wind_level_violations = 0
-            stationary_std_W = self.sigma_W_fixed / np.sqrt(1.0 - self.wind_rho_fixed ** 2)
-
-            for i in self.wind_physical_generator_ids:
-                cap = float(self.static_physical_capacity[int(i)])
-                P_emp = np.asarray(self.empirical_Pmax_phys[k][int(i)], dtype=float)
-                P_ref_vec = cap * self.mu_W_fixed * wind_shape
-                margin_W = kappa_level * cap * stationary_std_W
-                lb_W = np.maximum(P_ref_vec - margin_W, 0.0)
-                ub_W = np.minimum(P_ref_vec + margin_W, cap)
-
-                innov_margin_W = kappa_ar1 * cap * self.sigma_W_fixed
-                t0_ref_W = cap * self.mu_W_fixed * wind_shape[0]
-                ar1_ref_W = cap * self.mu_W_fixed * (
-                    wind_shape[1:] - self.wind_rho_fixed * wind_shape[:-1]
-                )
-                wind_t0_violations += int(abs(P_emp[0] - t0_ref_W) > innov_margin_W + 1e-9)
-                innov_W = P_emp[1:] - self.wind_rho_fixed * P_emp[:-1]
-                wind_ar1_violations += int(
-                    np.sum(np.abs(innov_W - ar1_ref_W) > innov_margin_W + 1e-9)
-                )
-                wind_level_violations += int(
-                    np.sum((P_emp < lb_W - 1e-9) | (P_emp > ub_W + 1e-9))
-                )
-
-                wind_emp_profiles.append(P_emp)
-                wind_lb_profiles.append(lb_W)
-                wind_ub_profiles.append(ub_W)
-                wind_ar1_refs.append(ar1_ref_W)
-                wind_t0_refs.append(t0_ref_W)
-                wind_innov_margins.append(innov_margin_W)
-
-            min_W_wind = self._min_wasserstein_to_wind_support(
-                wind_emp_profiles,
-                wind_lb_profiles,
-                wind_ub_profiles,
-                wind_ar1_refs,
-                wind_t0_refs,
-                wind_innov_margins,
-                self.wind_rho_fixed,
-            )
-
-            results.append({
-                "scenario_k": k,
-                "min_W_demand": min_W_demand,
-                "min_W_wind": min_W_wind,
-                "min_W_total": min_W_demand + min_W_wind,
-                "coverage": coverage,
-                "kappa": kappa_ar1,
-                "demand_pointwise_violations": int(
-                    np.sum(D_emp < lb_D - 1e-9) + np.sum(D_emp > ub_D + 1e-9)
-                ),
-                "demand_t0_violations": t0_violation_D,
-                "demand_ar1_violations": ar1_violations_D,
-                "wind_level_violations": wind_level_violations,
-                "wind_t0_violations": wind_t0_violations,
-                "wind_ar1_violations": wind_ar1_violations,
-            })
-        return results
-
+    
     def _build_transport_constraints(self) -> None:
         m = self.model
 
@@ -2077,19 +1794,599 @@ class DRO_PoAOptimization(
             rule=upper_2_rule,
         )
 
+    def support_set_diagnostics(self, solver_name: str = "gurobi") -> list[dict]:
+        """Per-scenario support-set diagnostics, computed once and cached.
+
+        The diagnostic (minimum Wasserstein distance onto the support set, plus
+        per-family violation counts) does not depend on eta, so it is computed a
+        single time and reused -- both by the support-floor constraints and across
+        an eta sweep -- rather than re-solving the projection LPs for every eta.
+        """
+        if getattr(self, "_support_diagnostics_cache", None) is None:
+            self._support_diagnostics_cache = (
+                self.diagnose_empirical_support_set_violations(solver_name=solver_name)
+            )
+        return self._support_diagnostics_cache
+
+    def _build_support_floor_constraints(self) -> None:
+        """Floor the per-scenario objective term at 1 where W[k]=0 is feasible.
+
+        For empirical scenarios inside the Wasserstein support set (minimum
+        achievable transport distance <= SUPPORT_FLOOR_TOLERANCE, as reported by
+        DROPoASupportDiagnostics) the nominal market state W[k]=0 is feasible and
+        yields PoA[k] >= 1, so the per-scenario maximand PoA[k] - eta * W[k] is at
+        least 1.  Imposing this as a valid lower bound tightens the relaxation
+        without removing the optimum.  Scenarios outside the support set
+        (min_W_total > tolerance) are skipped because the floor need not hold
+        there (W[k] is forced strictly positive and the penalty -eta * W[k] can
+        pull the term below 1).
+
+        This constraint depends on eta, so update_eta() rebuilds it during an eta
+        sweep.  The set of floored scenarios is eta-independent, so it is created
+        once and kept; only the constraint coefficients change between etas.
+        """
+        m = self.model
+        diagnostics = self.support_set_diagnostics()
+        inside_support = [
+            int(row["scenario_k"])
+            for row in diagnostics
+            if float(row["min_W_total"]) <= self.SUPPORT_FLOOR_TOLERANCE
+        ]
+        self.support_floor_scenarios = inside_support
+        if not inside_support:
+            return
+
+        if not hasattr(m, "support_floor_scenario_set"):
+            m.support_floor_scenario_set = Set(initialize=inside_support)
+
+        def support_objective_floor_rule(m, k):
+            return m.PoA[k] - self.eta * m.wasserstein_distance[k] >= 1.0
+
+        m.support_objective_floor = Constraint(
+            m.support_floor_scenario_set, rule=support_objective_floor_rule
+        )
+
     # ------------------------------------------------------------------
-    # Policy constraints
+    # Solver
     # ------------------------------------------------------------------
 
-    def solve(self, time_limit: Optional[float] = None) -> Any:
+    def compute_empirical_mip_start(self) -> None:
+        """Seed Gurobi with the empirical trajectories (W[k]=0) as a MIP start.
+
+        When every empirical scenario lies inside the Wasserstein support set,
+        setting D[k,t] = empirical_D[k][t] and W[k] = 0 is feasible.  This method
+        computes the full variable assignment that corresponds to that point:
+
+          1. Evaluate the NN policies in numpy (forward pass on empirical features)
+             to get the equilibrium bids alpha[k,i,b,t] for NN-policy generators.
+             Non-NN generators use their true marginal cost.
+
+          2. Solve the equilibrium dispatch LP (bids as costs) and the optimal
+             dispatch LP (true costs) for each empirical scenario.  Both are small,
+             dense LPs solved in numpy/scipy with no Gurobi overhead.
+
+          3. Derive the KKT dual variables and complementarity binaries from the LP
+             primal/dual solution via complementary slackness.
+
+          4. Write every variable value into the Pyomo model.  Gurobi picks these
+             up automatically as a MIP start when solve() is called with
+             warmstart=True.
+
+        This gives Gurobi an incumbent immediately at the root node (objective
+        value = average PoA of the empirical dispatch), so it can start pruning
+        branches rather than spending time discovering a first feasible solution.
+        """
+        import numpy as np
+        from scipy.optimize import linprog
+
+        if not hasattr(self, "model"):
+            raise ValueError("Model is not built. Call build_model() first.")
+
+        m = self.model
+        T = self.num_time_steps
+        K = self.num_empirical_scenarios
+        breakpoints = (
+            list(self.mccormick_bounds["C_opt_breakpoints"])
+            if self.objective_mode == "piecewise_mccormick" and self.mccormick_bounds
+            else None
+        )
+        PoA_L = (
+            self.mccormick_bounds["PoA"][0]
+            if self.mccormick_bounds and "PoA" in self.mccormick_bounds
+            else 1.0
+        )
+
+        # ------------------------------------------------------------------
+        # Step 1: compute alpha[k,i,b,t] for all scenarios via numpy forward
+        # pass of the stored JSON weights. alpha is indexed by global block.
+        # ------------------------------------------------------------------
+        alpha_start: dict[tuple[int, int, int, int], float] = {}
+
+        for k in range(K):
+            D_emp = np.asarray(self.empirical_D[k], dtype=float)
+            Pmax_phys_emp = self.empirical_Pmax_phys[k]  # list[i] -> list[t]
+
+            # Wind capacity per block = physical capacity / number of local blocks.
+            Pmax_block_emp: dict[tuple[int, int], list[float]] = {}
+            for i in range(self.num_physical_generators):
+                n_local = len(self.local_blocks_by_generator[i])
+                for b in self.local_blocks_by_generator[i]:
+                    if i in self.wind_physical_generator_ids:
+                        Pmax_block_emp[(i, b)] = [
+                            float(Pmax_phys_emp[i][t]) / n_local for t in range(T)
+                        ]
+                    else:
+                        global_b = self.local_to_global_block[(i, b)]
+                        Pmax_block_emp[(i, b)] = [
+                            float(self.static_block_capacity[global_b])
+                        ] * T
+
+            for i in range(self.num_physical_generators):
+                generator_name = self.physical_generator_names[i]
+                if i not in self.nn_policy_generator_ids:
+                    # Non-NN generator: bid = true marginal cost, constant over time.
+                    for b in self.local_blocks_by_generator[i]:
+                        global_b = self.local_to_global_block[(i, b)]
+                        cost = float(self.block_cost_vector[global_b])
+                        for t in range(T):
+                            alpha_start[(k, i, b, t)] = cost
+                    continue
+
+                # NN generator: evaluate the network in numpy.
+                policy = self.nn_policies[generator_name]
+                feature_columns = policy["feature_columns"]
+                layers = policy["layers"]
+                target_map = policy["target_map"]  # maps output index -> (i, b)
+
+                # Precompute total wind capacity per time step.
+                total_wind = np.array([
+                    sum(
+                        float(Pmax_phys_emp[j][t])
+                        for j in self.wind_physical_generator_ids
+                    )
+                    for t in range(T)
+                ])
+
+                for t in range(T):
+                    previous_t = T - 1 if t == 0 else t - 1
+                    next_t = 0 if t == T - 1 else t + 1
+
+                    raw_features: dict[str, float] = {
+                        "demand": float(D_emp[t]),
+                        "previous_demand": float(D_emp[previous_t]),
+                        "next_demand": float(D_emp[next_t]),
+                        "total_wind_generation_capacity": float(total_wind[t]),
+                        "previous_wind_generation_capacity": float(total_wind[previous_t]),
+                        "next_wind_generation_capacity": float(total_wind[next_t]),
+                        "residual_demand": float(D_emp[t]) - float(total_wind[t]),
+                        "previous_residual_demand": float(D_emp[previous_t]) - float(total_wind[previous_t]),
+                        "next_residual_demand": float(D_emp[next_t]) - float(total_wind[next_t]),
+                        "total_demand_over_horizon": float(D_emp.sum()),
+                        "total_wind_over_horizon": float(total_wind.sum()),
+                        "total_residual_over_horizon": float((D_emp - total_wind).sum()),
+                    }
+
+                    # Normalize using the stored min/max stats (same as MILP embedding).
+                    features = np.array([
+                        (raw_features[f] - self._nn_feature_bounds(generator_name, f)[0])
+                        / max(
+                            self._nn_feature_bounds(generator_name, f)[1]
+                            - self._nn_feature_bounds(generator_name, f)[0],
+                            self.normalization_epsilon,
+                        )
+                        for f in feature_columns
+                    ], dtype=float)
+
+                    # Forward pass: alternating Linear + ReLU layers.
+                    x = features
+                    for layer in layers:
+                        layer_type = str(layer.get("type", "")).lower()
+                        if layer_type == "linear":
+                            W = np.asarray(layer["weight"], dtype=float)
+                            b_vec = np.asarray(layer["bias"], dtype=float)
+                            x = W @ x + b_vec
+                        elif layer_type == "relu":
+                            x = np.maximum(x, 0.0)
+
+                    # Map outputs back to (i, b) block bids.
+                    for output_idx, (i_out, b_out) in enumerate(target_map):
+                        alpha_start[(k, i, b_out, t)] = float(x[output_idx])
+
+        # ------------------------------------------------------------------
+        # Step 2 & 3: for each scenario, solve the equilibrium and optimal
+        # dispatch LPs and derive KKT dual variables + complementarity binaries.
+        # ------------------------------------------------------------------
+
+        def _solve_dispatch_lp(
+            bids_ib: dict[tuple[int, int], list[float]],
+            Pmax_block: dict[tuple[int, int], list[float]],
+            demand: list[float],
+            p_init_i: list[float],
+        ) -> dict[str, Any]:
+            """Solve one scenario's intertemporal economic dispatch LP.
+
+            Variables: P[i,b,t] stacked as a flat vector.  Returns the primal
+            dispatch, the clearing price (shadow price of power balance), and the
+            upper/lower/ramp dual variables, all needed to set KKT start values.
+            """
+            pairs = list(self.generator_block_pairs)
+            n_blocks = len(pairs)
+            n_var = n_blocks * T
+
+            # Index helpers.
+            def x_idx(ib_pos: int, t: int) -> int:
+                return ib_pos * T + t
+
+            # Objective: sum_t sum_{i,b} bid[i,b,t] * P[i,b,t].
+            c_obj = np.zeros(n_var)
+            for pos, (i, b) in enumerate(pairs):
+                for t in range(T):
+                    c_obj[x_idx(pos, t)] = float(bids_ib[(i, b)][t])
+
+            # Variable bounds: 0 <= P[i,b,t] <= Pmax_block[i,b][t].
+            bounds = [
+                (0.0, float(Pmax_block[(i, b)][t]))
+                for (i, b) in pairs
+                for t in range(T)
+            ]
+
+            # Equality constraints: power balance sum_{i,b} P[i,b,t] = D[t].
+            n_eq = T
+            A_eq = np.zeros((n_eq, n_var))
+            b_eq = np.zeros(n_eq)
+            for t in range(T):
+                for pos, (i, b) in enumerate(pairs):
+                    A_eq[t, x_idx(pos, t)] = 1.0
+                b_eq[t] = float(demand[t])
+
+            # Inequality constraints: ramp up/down.
+            # For t=0: P_total[i,t=0] - p_init[i] <= ramp_up[i]
+            #          p_init[i] - P_total[i,t=0] <= ramp_down[i]
+            # For t>0: P_total[i,t] - P_total[i,t-1] <= ramp_up[i]
+            #          P_total[i,t-1] - P_total[i,t] <= ramp_down[i]
+            ramp_rows: list[np.ndarray] = []
+            ramp_rhs: list[float] = []
+            for i in range(self.num_physical_generators):
+                blocks_i = self.local_blocks_by_generator[i]
+                for t in range(T):
+                    row_up = np.zeros(n_var)
+                    row_dn = np.zeros(n_var)
+                    for b in blocks_i:
+                        pos = pairs.index((i, b))
+                        row_up[x_idx(pos, t)] = 1.0
+                        row_dn[x_idx(pos, t)] = -1.0
+                    if t == 0:
+                        ramp_rows.append(row_up)
+                        ramp_rhs.append(float(self.ramp_vector_up[i]) + float(p_init_i[i]))
+                        ramp_rows.append(row_dn)
+                        ramp_rhs.append(float(self.ramp_vector_down[i]) - float(p_init_i[i]))
+                    else:
+                        for b in blocks_i:
+                            pos = pairs.index((i, b))
+                            row_up[x_idx(pos, t - 1)] = -1.0
+                            row_dn[x_idx(pos, t - 1)] = 1.0
+                        ramp_rows.append(row_up)
+                        ramp_rhs.append(float(self.ramp_vector_up[i]))
+                        ramp_rows.append(row_dn)
+                        ramp_rhs.append(float(self.ramp_vector_down[i]))
+
+            A_ub = np.vstack(ramp_rows) if ramp_rows else np.zeros((0, n_var))
+            b_ub = np.array(ramp_rhs)
+
+            result = linprog(
+                c_obj, A_ub=A_ub, b_ub=b_ub,
+                A_eq=A_eq, b_eq=b_eq,
+                bounds=bounds, method="highs",
+                options={"presolve": True},
+            )
+
+            P_flat = result.x if result.x is not None else np.zeros(n_var)
+
+            # Dual variables: lambda (power balance), mu_upper/lower (capacity),
+            # mu_ramp_up/down (ramp). highs returns marginals via ineqlin/eqlin.
+            lam = np.zeros(T)
+            if result.eqlin is not None and result.eqlin.marginals is not None:
+                # scipy sign: dual of min c^T x s.t. A_eq x = b_eq is the
+                # negated shadow price (reduced cost convention). Negate to get
+                # the conventional lambda (shadow price of demand >= 0).
+                lam = -np.asarray(result.eqlin.marginals, dtype=float)
+
+            mu_upper: dict[tuple[int, int, int], float] = {}
+            mu_lower: dict[tuple[int, int, int], float] = {}
+            for pos, (i, b) in enumerate(pairs):
+                for t in range(T):
+                    p_val = float(P_flat[x_idx(pos, t)])
+                    p_max = float(Pmax_block[(i, b)][t])
+                    # Complementary slackness: mu_upper > 0 iff P = Pmax.
+                    mu_upper[(i, b, t)] = max(0.0, float(bids_ib[(i, b)][t]) - float(lam[t]))
+                    mu_lower[(i, b, t)] = max(0.0, float(lam[t]) - float(bids_ib[(i, b)][t]))
+                    # Zero out whichever dual is not active at the solution.
+                    if p_val < p_max - 1e-8:
+                        mu_upper[(i, b, t)] = 0.0
+                    if p_val > 1e-8:
+                        mu_lower[(i, b, t)] = 0.0
+
+            # Ramp duals: one per (i, t) including t=0.
+            mu_ramp_up: dict[tuple[int, int], float] = {}
+            mu_ramp_down: dict[tuple[int, int], float] = {}
+            for i in range(self.num_physical_generators):
+                blocks_i = self.local_blocks_by_generator[i]
+                for t in range(T + 1):
+                    mu_ramp_up[(i, t)] = 0.0
+                    mu_ramp_down[(i, t)] = 0.0
+
+            # Ramp inequality duals from scipy (ineqlin.marginals, row-aligned to
+            # the A_ub we built: 2 rows per (i,t) in order [ramp_up, ramp_down]).
+            if result.ineqlin is not None and result.ineqlin.marginals is not None:
+                ineq_duals = np.asarray(result.ineqlin.marginals, dtype=float)
+                row = 0
+                for i in range(self.num_physical_generators):
+                    for t in range(T):
+                        mu_ramp_up[(i, t)] = max(0.0, -float(ineq_duals[row]))
+                        mu_ramp_down[(i, t)] = max(0.0, -float(ineq_duals[row + 1]))
+                        row += 2
+
+            return {
+                "P_flat": P_flat,
+                "lambda": lam,
+                "mu_upper": mu_upper,
+                "mu_lower": mu_lower,
+                "mu_ramp_up": mu_ramp_up,
+                "mu_ramp_down": mu_ramp_down,
+                "pairs": pairs,
+            }
+
+        for k in range(K):
+            D_emp = np.asarray(self.empirical_D[k], dtype=float)
+            Pmax_phys_emp = self.empirical_Pmax_phys[k]
+
+            # Block capacities at the empirical point (W[k]=0 => empirical values).
+            Pmax_block_emp = {}
+            for i in range(self.num_physical_generators):
+                n_local = len(self.local_blocks_by_generator[i])
+                for b in self.local_blocks_by_generator[i]:
+                    if i in self.wind_physical_generator_ids:
+                        Pmax_block_emp[(i, b)] = [
+                            float(Pmax_phys_emp[i][t]) / n_local for t in range(T)
+                        ]
+                    else:
+                        global_b = self.local_to_global_block[(i, b)]
+                        Pmax_block_emp[(i, b)] = [
+                            float(self.static_block_capacity[global_b])
+                        ] * T
+
+            # Bids for the equilibrium dispatch.
+            alpha_ib: dict[tuple[int, int], list[float]] = {}
+            for i in range(self.num_physical_generators):
+                for b in self.local_blocks_by_generator[i]:
+                    alpha_ib[(i, b)] = [alpha_start[(k, i, b, t)] for t in range(T)]
+
+            # True marginal costs for the optimal dispatch.
+            costs_ib: dict[tuple[int, int], list[float]] = {}
+            for i in range(self.num_physical_generators):
+                for b in self.local_blocks_by_generator[i]:
+                    global_b = self.local_to_global_block[(i, b)]
+                    costs_ib[(i, b)] = [float(self.block_cost_vector[global_b])] * T
+
+            p_init_k = self.p_init[k]
+            eq_sol = _solve_dispatch_lp(alpha_ib, Pmax_block_emp, D_emp.tolist(), p_init_k)
+            opt_sol = _solve_dispatch_lp(costs_ib, Pmax_block_emp, D_emp.tolist(), p_init_k)
+
+            pairs = eq_sol["pairs"]
+
+            # ------------------------------------------------------------------
+            # Step 4: write all variable values into the Pyomo model.
+            # ------------------------------------------------------------------
+
+            # Transport/support variables: empirical point has W[k]=0.
+            m.wasserstein_distance[k].set_value(0.0)
+            for t in range(T):
+                m.D[k, t].set_value(float(D_emp[t]))
+                m.D_transport_abs_deviation[k, t].set_value(0.0)
+                m.D_abs_deviation[k, t].set_value(0.0)
+            for i in range(self.num_physical_generators):
+                for b in self.local_blocks_by_generator[i]:
+                    for t in range(T):
+                        m.P_max_block[k, i, b, t].set_value(float(Pmax_block_emp[(i, b)][t]))
+                for t in range(T):
+                    m.P_max_phys_transport_abs_deviation[k, i, t].set_value(0.0)
+                    if i in self.wind_physical_generator_ids:
+                        m.P_max_phys_abs_deviation[k, i, t].set_value(0.0)
+
+            # Regime-fixing variables: set to their fixed values.
+            m.mu_D.set_value(float(self.mu_D_fixed))
+            m.sigma_D.set_value(float(self.sigma_D_fixed))
+            m.mu_W.set_value(float(self.mu_W_fixed))
+            m.sigma_W.set_value(float(self.sigma_W_fixed))
+            m.rho_D.set_value(float(self.demand_rho_fixed))
+            m.rho_W.set_value(float(self.wind_rho_fixed))
+            m.peak_W.set_value(float(self.peak_W_fixed))
+
+            # Equilibrium dispatch, bids, duals, and binaries.
+            P_eq_flat = eq_sol["P_flat"]
+            lam_eq = eq_sol["lambda"]
+            for t in range(T):
+                m.lambda_eq[k, t].set_value(float(lam_eq[t]))
+            for i in range(self.num_physical_generators):
+                m.mu_ramp_up_eq[k, i, T].set_value(0.0)
+                m.mu_ramp_down_eq[k, i, T].set_value(0.0)
+            for pos, (i, b) in enumerate(pairs):
+                for t in range(T):
+                    p_val = float(P_eq_flat[pos * T + t])
+                    p_max = float(Pmax_block_emp[(i, b)][t])
+                    m.P_eq[k, i, b, t].set_value(p_val)
+                    m.alpha[k, i, b, t].set_value(alpha_start[(k, i, b, t)])
+                    m.mu_upper_eq[k, i, b, t].set_value(eq_sol["mu_upper"][(i, b, t)])
+                    m.mu_lower_eq[k, i, b, t].set_value(eq_sol["mu_lower"][(i, b, t)])
+                    # z_upper_eq[k,i,b,t]=1 means the upper capacity bound is active.
+                    m.z_upper_eq[k, i, b, t].set_value(1 if p_val >= p_max - 1e-8 else 0)
+                    m.z_lower_eq[k, i, b, t].set_value(1 if p_val <= 1e-8 else 0)
+            for i in range(self.num_physical_generators):
+                for t in range(T):
+                    m.mu_ramp_up_eq[k, i, t].set_value(eq_sol["mu_ramp_up"][(i, t)])
+                    m.mu_ramp_down_eq[k, i, t].set_value(eq_sol["mu_ramp_down"][(i, t)])
+                    # z_ramp_up_eq[k,i,t]=1 means the ramp-up constraint is active.
+                    p_total_t = sum(
+                        float(P_eq_flat[pairs.index((i, b)) * T + t])
+                        for b in self.local_blocks_by_generator[i]
+                    )
+                    p_total_prev = (
+                        float(p_init_k[i]) if t == 0
+                        else sum(
+                            float(P_eq_flat[pairs.index((i, b)) * T + t - 1])
+                            for b in self.local_blocks_by_generator[i]
+                        )
+                    )
+                    ramp_up_slack = float(self.ramp_vector_up[i]) - (p_total_t - p_total_prev)
+                    ramp_dn_slack = float(self.ramp_vector_down[i]) - (p_total_prev - p_total_t)
+                    m.z_ramp_up_eq[k, i, t].set_value(1 if ramp_up_slack <= 1e-8 else 0)
+                    m.z_ramp_down_eq[k, i, t].set_value(1 if ramp_dn_slack <= 1e-8 else 0)
+
+            # Optimal dispatch, duals, and binaries (same structure, true costs).
+            P_opt_flat = opt_sol["P_flat"]
+            lam_opt = opt_sol["lambda"]
+            for t in range(T):
+                m.lambda_opt[k, t].set_value(float(lam_opt[t]))
+            for i in range(self.num_physical_generators):
+                m.mu_ramp_up_opt[k, i, T].set_value(0.0)
+                m.mu_ramp_down_opt[k, i, T].set_value(0.0)
+            for pos, (i, b) in enumerate(pairs):
+                for t in range(T):
+                    p_val = float(P_opt_flat[pos * T + t])
+                    p_max = float(Pmax_block_emp[(i, b)][t])
+                    m.P_opt[k, i, b, t].set_value(p_val)
+                    m.mu_upper_opt[k, i, b, t].set_value(opt_sol["mu_upper"][(i, b, t)])
+                    m.mu_lower_opt[k, i, b, t].set_value(opt_sol["mu_lower"][(i, b, t)])
+                    m.z_upper_opt[k, i, b, t].set_value(1 if p_val >= p_max - 1e-8 else 0)
+                    m.z_lower_opt[k, i, b, t].set_value(1 if p_val <= 1e-8 else 0)
+            for i in range(self.num_physical_generators):
+                for t in range(T):
+                    m.mu_ramp_up_opt[k, i, t].set_value(opt_sol["mu_ramp_up"][(i, t)])
+                    m.mu_ramp_down_opt[k, i, t].set_value(opt_sol["mu_ramp_down"][(i, t)])
+                    p_total_t = sum(
+                        float(P_opt_flat[pairs.index((i, b)) * T + t])
+                        for b in self.local_blocks_by_generator[i]
+                    )
+                    p_total_prev = (
+                        float(p_init_k[i]) if t == 0
+                        else sum(
+                            float(P_opt_flat[pairs.index((i, b)) * T + t - 1])
+                            for b in self.local_blocks_by_generator[i]
+                        )
+                    )
+                    ramp_up_slack = float(self.ramp_vector_up[i]) - (p_total_t - p_total_prev)
+                    ramp_dn_slack = float(self.ramp_vector_down[i]) - (p_total_prev - p_total_t)
+                    m.z_ramp_up_opt[k, i, t].set_value(1 if ramp_up_slack <= 1e-8 else 0)
+                    m.z_ramp_down_opt[k, i, t].set_value(1 if ramp_dn_slack <= 1e-8 else 0)
+
+            # Costs and PoA.
+            c_eq_val = float(sum(
+                self.block_cost_vector[self.local_to_global_block[(i, b)]]
+                * float(P_eq_flat[pairs.index((i, b)) * T + t])
+                for (i, b) in pairs for t in range(T)
+            ))
+            c_opt_val = float(sum(
+                self.block_cost_vector[self.local_to_global_block[(i, b)]]
+                * float(P_opt_flat[pairs.index((i, b)) * T + t])
+                for (i, b) in pairs for t in range(T)
+            ))
+            poa_val = float(c_eq_val / c_opt_val) if c_opt_val > 1e-12 else PoA_L
+            m.C_eq[k].set_value(c_eq_val)
+            m.C_opt[k].set_value(c_opt_val)
+            m.PoA[k].set_value(poa_val)
+
+            # McCormick/piecewise-McCormick auxiliary variables.
+            if self.objective_mode == "mccormick":
+                m.z_mccormick_product[k].set_value(c_eq_val)
+            elif self.objective_mode == "piecewise_mccormick" and breakpoints is not None:
+                # Find which piece c_opt_val falls in.
+                active_piece = len(breakpoints) - 2  # default: last piece
+                for p_idx in range(len(breakpoints) - 1):
+                    if breakpoints[p_idx] <= c_opt_val <= breakpoints[p_idx + 1]:
+                        active_piece = p_idx
+                        break
+                m.z_mccormick_product[k].set_value(c_eq_val)
+                for p_idx in range(len(breakpoints) - 1):
+                    is_active = int(p_idx == active_piece)
+                    m.mccormick_piece_active[k, p_idx].set_value(is_active)
+                    m.C_opt_piece[k, p_idx].set_value(c_opt_val if is_active else 0.0)
+                    m.PoA_piece[k, p_idx].set_value(poa_val if is_active else 0.0)
+                    m.z_mccormick_piece[k, p_idx].set_value(
+                        poa_val * c_opt_val if is_active else 0.0
+                    )
+
+    def attach_persistent_solver(self) -> Any:
+        """Create a persistent Gurobi solver and load the model into it once.
+
+        This is the setup step for an eta sweep: the model is loaded a single
+        time, after which update_eta() pushes only the eta-dependent objective and
+        support-floor constraints to the live solver instead of rebuilding and
+        re-loading the whole model for every eta.
+        """
         if not hasattr(self, "model"):
             raise ValueError("Model is not built. Call build_model() first.")
         solver = SolverFactory("gurobi_persistent")
         solver.set_instance(self.model)
         solver.options["IntFeasTol"] = 1e-8
+        self._persistent_solver = solver
+
+        # Provide Gurobi with a feasible starting point: the empirical trajectories
+        # (W[k]=0) dispatched under the NN bids.  This gives an immediate incumbent
+        # at the root node so Gurobi starts pruning rather than searching.
+        self.compute_empirical_mip_start()
+
+        return solver
+
+    def update_eta(self, eta: float) -> None:
+        """Re-point the eta-dependent parts of the model at a new eta, in place.
+
+        Only the objective term -eta * W[k] and the support-floor constraints
+        PoA[k] - eta * W[k] >= 1 depend on eta; everything else (support set, KKT,
+        ReLU embedding, McCormick) is unchanged.  When a persistent solver is
+        attached, the rebuilt objective and constraints are pushed to it so an eta
+        sweep reuses the already-loaded model.
+        """
+        self.eta = float(eta)
+        m = self.model
+        solver = getattr(self, "_persistent_solver", None)
+
+        # Rebuild the eta-dependent objective.
+        m.del_component(m.objective)
+        self._build_objective()
+        if solver is not None:
+            solver.set_objective(m.objective)
+
+        # Rebuild the eta-dependent support-floor constraints.  The floored-
+        # scenario set is unchanged, so only the Constraint component is dropped
+        # and recreated; support_floor_scenario_set is left in place.
+        previous_floor = (
+            list(m.support_objective_floor.values())
+            if hasattr(m, "support_objective_floor")
+            else []
+        )
+        if hasattr(m, "support_objective_floor"):
+            m.del_component(m.support_objective_floor)
+        self._build_support_floor_constraints()
+        if solver is not None:
+            for constraint_data in previous_floor:
+                solver.remove_constraint(constraint_data)
+            if hasattr(m, "support_objective_floor"):
+                for constraint_data in m.support_objective_floor.values():
+                    solver.add_constraint(constraint_data)
+
+    def solve(self, time_limit: Optional[float] = None, warm_start: bool = False) -> Any:
+        if not hasattr(self, "model"):
+            raise ValueError("Model is not built. Call build_model() first.")
+        solver = getattr(self, "_persistent_solver", None)
+        if solver is None:
+            solver = self.attach_persistent_solver()
         if time_limit is not None:
             solver.options["TimeLimit"] = float(time_limit)
-        self.solver_results = solver.solve(tee=True, load_solutions=False)
+        # warm_start=True hands Gurobi the variable values currently loaded in the
+        # model (the previous eta's optimum) as a MIP-start incumbent.
+        self.solver_results = solver.solve(
+            tee=True, load_solutions=False, warmstart=warm_start
+        )
         termination = self.solver_results.solver.termination_condition
         if termination == TerminationCondition.infeasible:
             from pyomo.contrib.iis import write_iis

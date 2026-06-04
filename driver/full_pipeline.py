@@ -50,9 +50,38 @@ from driver.DRO_PoA_pipeline import (
     run_dro_tightening_for_regime,
     run_support_calibration,
 )
+from driver.visualization_pipeline import (
+    plot_base_poa_stage,
+    plot_dro_stage,
+    plot_nn_policy_stage,
+    run_oos_evaluation_stage,
+)
 
 # AR(1) parameter columns present in the scenarios_df / scenarios.csv.
 _REGIME_PARAM_COLUMNS = ("mu_D", "rho_D", "sigma_D", "mu_W", "rho_W", "sigma_W", "peak_W")
+
+
+def default_eta_grid() -> list[float]:
+    """Wasserstein-penalty (eta) grid for the DRO sweep — 12 points.
+
+    Log-spaced across eta, which concentrates points at small eta where the
+    achieved Wasserstein distance (epsilon) moves fastest, and thins them toward
+    the SAA end (large eta) where epsilon saturates near zero:
+
+      - 0.0                    : fully robust anchor (largest achieved epsilon).
+      - logspace(-2.5, 0.5, 15): geometric sweep from eta=0.01 to ~3.16 through
+                                 the knee; dense at the low-eta / steep end.
+      - 10.0                   : SAA end anchor (epsilon -> 0).
+
+    A previous attempt at a hand-tuned grid with a dense geometric core in
+    [0.05, 1.0] starved the steep robust tail (long bare segment at high
+    epsilon) and piled most points at epsilon ~ 0, because the knee actually
+    lands below eta ~ 0.2.  Log spacing avoids both failure modes.
+
+    The exact eta->epsilon map is case/horizon dependent; re-check the sweep
+    once and widen the logspace exponents if the knee lands elsewhere.
+    """
+    return [0.0] + np.logspace(-2.5, 0.5, 15).tolist() + [10.0]
 
 
 @dataclass
@@ -76,16 +105,17 @@ class FullPipelineConfig:
     nn_feature_columns: list[str] = field(
         default_factory=lambda: [
             "demand",
-            "total_wind_generation_capacity",
-            "total_generation_capacity",
-            "residual_demand",
-            "previous_generation_capacity",
             "previous_demand",
-            "next_generation_capacity",
             "next_demand",
-            "own_generation_capacity",
-            "previous_own_generation_capacity",
-            "next_own_generation_capacity",
+            "total_wind_generation_capacity",
+            "previous_wind_generation_capacity",
+            "next_wind_generation_capacity",
+            "residual_demand",
+            "previous_residual_demand",
+            "next_residual_demand",
+            "total_demand_over_horizon",
+            "total_wind_over_horizon",
+            "total_residual_over_horizon",
         ]
     )
     per_generator_normalization: bool = True
@@ -94,12 +124,19 @@ class FullPipelineConfig:
     batch_size: int = 32
     num_epochs: int = 500
     weight_decay: float = 0.0
-    test_size: float = 0.2
+    val_size: float = 0.15
+    test_size: float = 0.15
     random_state: int = 42
     patience: int | None = 50
     min_delta: float = 1e-6
     device: str | None = None
     nn_final_activation: str = "linear"
+    # ReduceLROnPlateau scheduler on validation loss (set use_lr_scheduler=False
+    # to keep a constant learning rate).
+    use_lr_scheduler: bool = True
+    lr_scheduler_factor: float = 0.5
+    lr_scheduler_patience: int = 20
+    lr_scheduler_min_lr: float = 1e-6
 
     horizon: int = 8
     nn_policy_generators: list[str] = field(default_factory=list)
@@ -123,7 +160,8 @@ class FullPipelineConfig:
         default_factory=lambda: {k: True for k in POA_TIGHTENING_FLAGS}
     )
     run_poa_optimization: bool = True
-    poa_result_dir: Path = Path("results/sensitivity_pipeline/poa")
+    # Rooted under results/<case>/poa in __post_init__ when left as None.
+    poa_result_dir: Path | None = None
 
     # -----------------------------------------------------------------------
     # DRO-specific
@@ -136,9 +174,7 @@ class FullPipelineConfig:
     # Regime set name written to the runtime YAML.
     poa_regime_set: str = "sensitivity_runtime"
 
-    etas: list[float] = field(
-        default_factory=lambda: [0.0] + np.logspace(-2, 0.5, 10).tolist() + [10.0]
-    )
+    etas: list[float] = field(default_factory=default_eta_grid)
     dro_wasserstein_epsilon: float = 2000.0
     ambiguity_kappa: float = 0.3
     dro_tightening_eta: float = 0.0
@@ -173,6 +209,8 @@ class FullPipelineConfig:
     # -----------------------------------------------------------------------
     # Step toggles
     # -----------------------------------------------------------------------
+    # When True, render training diagnostic plots after NN training completes.
+    plot_results_along_the_way: bool = False
     run_scenario_generation: bool = True
     run_heuristic_labels: bool = True
     run_feature_building: bool = True
@@ -181,26 +219,48 @@ class FullPipelineConfig:
     # -----------------------------------------------------------------------
     # Output paths
     # -----------------------------------------------------------------------
-    synthetic_scenario_dir: Path = Path(
-        "results/sensitivity_pipeline/synthetic_scenarios"
-    )
-    poa_scenario_dir: Path = Path("results/sensitivity_pipeline/poa_scenarios")
-    dro_scenario_dir: Path = Path("results/sensitivity_pipeline/dro_scenarios")
-    heuristic_results_path: Path = Path(
-        "results/sensitivity_pipeline/merit_order_results.json"
-    )
-    raw_feature_dir: Path = Path("results/sensitivity_pipeline/features/raw")
-    normalized_feature_dir: Path = Path("results/sensitivity_pipeline/features/normalized")
-    model_dir: Path = Path("results/sensitivity_pipeline/trained_models")
-    training_result_dir: Path = Path("results/sensitivity_pipeline/training_results")
-    dro_result_dir: Path = Path("results/sensitivity_pipeline/dro")
-    dro_result_archive_dir: Path = Path("results/sensitivity_pipeline/dro/old_results")
-    runtime_config_path: Path = Path(
-        "results/sensitivity_pipeline/runtime_regime_definitions.yaml"
-    )
-    support_calibration_report_path: Path = Path(
-        "results/sensitivity_pipeline/support_calibration.json"
-    )
+    # Left as None so __post_init__ can root every artifact under
+    # results/<case>/...  Set any of these explicitly to override one path.
+    synthetic_scenario_dir: Path | None = None
+    poa_scenario_dir: Path | None = None
+    dro_scenario_dir: Path | None = None
+    heuristic_results_path: Path | None = None
+    raw_feature_dir: Path | None = None
+    normalized_feature_dir: Path | None = None
+    model_dir: Path | None = None
+    training_result_dir: Path | None = None
+    dro_result_dir: Path | None = None
+    dro_result_archive_dir: Path | None = None
+    runtime_config_path: Path | None = None
+    support_calibration_report_path: Path | None = None
+    # Root for all pipeline-triggered figures (training, NN policy, base PoA,
+    # DRO). Defaults to results/<case>/figures; sensitivity sweeps point it at
+    # each composition's own folder.
+    figures_dir: Path | None = None
+
+    def __post_init__(self) -> None:
+        # Root all unset output paths under results/<case>/ so every artifact for
+        # a run (data, models, figures) lives together with that case.
+        root = Path("results") / self.case
+        path_defaults: dict[str, Path] = {
+            "figures_dir": root / "figures",
+            "poa_result_dir": root / "poa",
+            "synthetic_scenario_dir": root / "synthetic_scenarios",
+            "poa_scenario_dir": root / "poa_scenarios",
+            "dro_scenario_dir": root / "dro_scenarios",
+            "heuristic_results_path": root / "merit_order_results.json",
+            "raw_feature_dir": root / "features" / "raw",
+            "normalized_feature_dir": root / "features" / "normalized",
+            "model_dir": root / "trained_models",
+            "training_result_dir": root / "training_results",
+            "dro_result_dir": root / "dro",
+            "dro_result_archive_dir": root / "dro" / "old_results",
+            "runtime_config_path": root / "runtime_regime_definitions.yaml",
+            "support_calibration_report_path": root / "support_calibration.json",
+        }
+        for name, default_path in path_defaults.items():
+            if getattr(self, name) is None:
+                setattr(self, name, default_path)
 
 
 # ---------------------------------------------------------------------------
@@ -339,6 +399,9 @@ def main(config: FullPipelineConfig) -> None:
     else:
         print("\nWARNING: no trained model files found — nn_policy_generators unchanged.")
 
+    if config.plot_results_along_the_way:
+        plot_nn_policy_stage(pipeline_config)
+
     # Stage 2: base PoA analysis -----------------------------------------------
     if config.run_poa_tightening or config.run_poa_optimization:
         load_or_generate_scenarios(
@@ -356,6 +419,9 @@ def main(config: FullPipelineConfig) -> None:
 
     if config.run_poa_optimization:
         run_final_poa(pipeline_config)
+
+    if config.plot_results_along_the_way:
+        plot_base_poa_stage(pipeline_config)
 
     # Stage 3: bridge — extract regime from optimized PoA state ----------------
     regime_params = extract_poa_regime_params(
@@ -388,6 +454,12 @@ def main(config: FullPipelineConfig) -> None:
         summary_path = dro_config.dro_result_dir / "eta_sweep_summary.json"
         write_json(summary_path, sweep_summary)
         print(f"\nSaved DRO eta-sweep summary: {summary_path}")
+
+    if config.plot_results_along_the_way:
+        # Auto-run OOS evaluation so the DRO frontier plots get OOS overlays,
+        # then render the eta sweep / frontier with and without OOS.
+        oos_results_path = run_oos_evaluation_stage(config, dro_config, regime_names)
+        plot_dro_stage(config, dro_config, regime_names, oos_results_path)
 
     print("\nSensitivity pipeline complete.")
 
@@ -528,12 +600,17 @@ def build_poa_config(config: FullPipelineConfig) -> PoAPipelineConfig:
         batch_size=config.batch_size,
         num_epochs=config.num_epochs,
         weight_decay=config.weight_decay,
+        val_size=config.val_size,
         test_size=config.test_size,
         random_state=config.random_state,
         patience=config.patience,
         min_delta=config.min_delta,
         device=config.device,
         nn_final_activation=config.nn_final_activation,
+        use_lr_scheduler=config.use_lr_scheduler,
+        lr_scheduler_factor=config.lr_scheduler_factor,
+        lr_scheduler_patience=config.lr_scheduler_patience,
+        lr_scheduler_min_lr=config.lr_scheduler_min_lr,
         horizon=config.horizon,
         ambiguity_set_config_path=config.ambiguity_set_config_path,
         ambiguity_set_config_name=config.ambiguity_set_config_name,
@@ -547,6 +624,7 @@ def build_poa_config(config: FullPipelineConfig) -> PoAPipelineConfig:
         epsilon=config.epsilon,
         poa_parallel_workers=config.poa_parallel_workers,
         poa_solver_threads_per_worker=config.poa_solver_threads_per_worker,
+        plot_results_along_the_way=config.plot_results_along_the_way,
         run_scenario_generation=config.run_scenario_generation,
         run_heuristic_labels=config.run_heuristic_labels,
         run_feature_building=config.run_feature_building,
@@ -564,6 +642,7 @@ def build_poa_config(config: FullPipelineConfig) -> PoAPipelineConfig:
         model_dir=config.model_dir,
         training_result_dir=config.training_result_dir,
         poa_result_dir=config.poa_result_dir,
+        figures_dir=config.figures_dir,
     )
 
 
@@ -593,6 +672,7 @@ def build_dro_config(config: FullPipelineConfig) -> DROPoAPipelineConfig:
         batch_size=config.batch_size,
         num_epochs=config.num_epochs,
         weight_decay=config.weight_decay,
+        val_size=config.val_size,
         test_size=config.test_size,
         random_state=config.random_state,
         patience=config.patience,
@@ -700,29 +780,35 @@ if __name__ == "__main__":
 
         nn_feature_columns=[
             "demand",
-            "total_wind_generation_capacity",
-            "total_generation_capacity",
-            "residual_demand",
-            "previous_generation_capacity",
             "previous_demand",
-            "next_generation_capacity",
             "next_demand",
-            "own_generation_capacity",
-            "previous_own_generation_capacity",
-            "next_own_generation_capacity",
+            "total_wind_generation_capacity",
+            "previous_wind_generation_capacity",
+            "next_wind_generation_capacity",
+            "residual_demand",
+            "previous_residual_demand",
+            "next_residual_demand",
+            "total_demand_over_horizon",
+            "total_wind_over_horizon",
+            "total_residual_over_horizon",
         ],
         per_generator_normalization=True,
         hidden_layers=[8, 8],
         learning_rate=1e-3,
         batch_size=64,
         num_epochs=500,
-        weight_decay=0.0,
-        test_size=0.2,
+        weight_decay=0.01,
+        val_size=0.15,
+        test_size=0.15,
         random_state=42,
-        patience=500,
+        patience=100,
         min_delta=1e-6,
         device=None,
         nn_final_activation="linear",
+        use_lr_scheduler=True,
+        lr_scheduler_factor=0.5,
+        lr_scheduler_patience=20,
+        lr_scheduler_min_lr=1e-6,
 
         horizon=8,
         solver_name="gurobi",
@@ -740,7 +826,7 @@ if __name__ == "__main__":
         poa_worst_case_regime_name="poa_worst_case",
         poa_worst_case_n_scenarios=10,
 
-        etas=[0.0] + np.logspace(-2, 0.5, 10).tolist() + [10.0],
+        etas=default_eta_grid(),
         dro_wasserstein_epsilon=2000,
         ambiguity_kappa=0.25,
         dro_tightening_eta=0.0,
@@ -750,11 +836,12 @@ if __name__ == "__main__":
         dro_time_limit=None,
 
         # Stage toggles — flip to False to reuse existing artifacts.
-        run_scenario_generation=True,
-        run_heuristic_labels=True,
-        run_feature_building=True,
-        run_nn_training=True,
-        run_poa_tightening=True,
+        plot_results_along_the_way=True,
+        run_scenario_generation=False,
+        run_heuristic_labels=False,
+        run_feature_building=False,
+        run_nn_training=False,
+        run_poa_tightening=False,
         poa_tightening_flags={
             "primal_big_m": True,
             "relu_bounds": True,
@@ -763,8 +850,8 @@ if __name__ == "__main__":
             "dual_big_m": True,
             "optimal_cost_bounds": True,
         },
-        run_poa_optimization=True,
-        run_dro_tightening=True,
+        run_poa_optimization=False,
+        run_dro_tightening=False,
         dro_tightening_flags={
             "primal_big_m": True,
             "relu_bounds": True,

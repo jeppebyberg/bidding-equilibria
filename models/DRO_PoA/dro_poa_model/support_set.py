@@ -139,6 +139,9 @@ class DROWassersteinSupportSet:
             ref = self.demand_D_ref * m.mu_D * self.demand_shape[int(t)]
             return m.D[k, t] <= ref + kappa_lvl_D * self.demand_D_ref * m.sigma_D * demand_scales[int(t)]
 
+        def demand_reference_feasibility_rule(m, t):
+            return self.demand_D_ref * m.mu_D * self.demand_shape[int(t)] >= 0
+
         m.demand_ar1_t0_up = Constraint(m.scenarios, rule=demand_ar1_t0_up_rule)
         m.demand_ar1_t0_down = Constraint(m.scenarios, rule=demand_ar1_t0_down_rule)
         m.demand_ar1_up_constraints = Constraint(
@@ -155,6 +158,9 @@ class DROWassersteinSupportSet:
         )
         m.demand_level_upper_constraints = Constraint(
             m.scenarios, m.time_steps, rule=demand_level_upper_rule
+        )
+        m.demand_reference_feasibility = Constraint(
+            m.time_steps, rule=demand_reference_feasibility_rule
         )
 
     # ------------------------------------------------------------------

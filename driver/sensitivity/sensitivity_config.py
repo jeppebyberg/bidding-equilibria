@@ -75,7 +75,7 @@ class BaseConfig:
     # Scenario generation
     synthetic_time_steps: int | None = 24
     synthetic_seed: int = 1
-    poa_seed: int = 1
+    poa_seed: int = 2
     synthetic_num_scenarios: int = 1000
     ambiguity_set_config_path: str = "config/ambiguity_set_config.yaml"
     ambiguity_set_config_name: str = "base_test_case"
@@ -85,33 +85,44 @@ class BaseConfig:
     nn_feature_columns: list[str] = field(default_factory=lambda: [
         "demand",
         "total_wind_generation_capacity",
-        "total_generation_capacity",
         "residual_demand",
-        "previous_generation_capacity",
         "previous_demand",
-        "next_generation_capacity",
+        "previous_wind_generation_capacity",
+        "previous_residual_demand",
         "next_demand",
-        "own_generation_capacity",
-        "previous_own_generation_capacity",
-        "next_own_generation_capacity",
+        "next_wind_generation_capacity",
+        "next_residual_demand",
+        "total_demand_over_horizon",
+        "total_wind_over_horizon",
+        "total_residual_over_horizon",
     ])
     per_generator_normalization: bool = True
 
     # NN architecture
-    hidden_layers: list[int] = field(default_factory=lambda: [4, 8])
+    hidden_layers: list[int] = field(default_factory=lambda: [8, 8])
     learning_rate: float = 1e-3
-    batch_size: int = 32
+    batch_size: int = 64
     num_epochs: int = 500
     weight_decay: float = 0.0
-    test_size: float = 0.2
+    val_size: float = 0.15
+    test_size: float = 0.15
     random_state: int = 42
-    patience: int | None = 50
+    patience: int | None = 500
     min_delta: float = 1e-6
     device: str | None = None
     nn_final_activation: str = "linear"
+    # ReduceLROnPlateau scheduler on validation loss (set use_lr_scheduler=False
+    # to keep a constant learning rate).
+    use_lr_scheduler: bool = True
+    lr_scheduler_factor: float = 0.5
+    lr_scheduler_patience: int = 20
+    lr_scheduler_min_lr: float = 1e-6
 
     # NN training gate: only train generators with more accepted label changes.
-    nn_training_min_label_changes: int | None = 100
+    nn_training_min_label_changes: int | None = 50
+
+    # When True, render training diagnostic plots after NN training completes.
+    plot_results_along_the_way: bool = False
 
     # Solver
     horizon: int = 8
@@ -124,7 +135,7 @@ class BaseConfig:
     # PoA
     poa_context_num_scenarios: int = 1
     poa_objective_mode: str = "piecewise_mccormick"
-    poa_mccormick_PoA_bounds: tuple[float, float] | None = (1.0, 10.0)
+    poa_mccormick_PoA_bounds: tuple[float, float] | None = (1.0, 20.0)
     poa_mccormick_num_pieces: int = 50
     poa_time_limit: int | None = None
 
@@ -136,10 +147,10 @@ class BaseConfig:
         default_factory=lambda: [0.0] + np.logspace(-2, 0.5, 10).tolist() + [10.0]
     )
     dro_wasserstein_epsilon: float = 2000.0
-    ambiguity_kappa: float = 0.3
+    ambiguity_kappa: float = 0.25
     dro_tightening_eta: float = 0.0
     dro_objective_mode: str = "piecewise_mccormick"
-    dro_mccormick_PoA_bounds: tuple[float, float] | None = (1.0, 10.0)
+    dro_mccormick_PoA_bounds: tuple[float, float] | None = (1.0, 20.0)
     dro_mccormick_num_pieces: int = 50
     dro_time_limit: int | None = None
 
@@ -386,6 +397,7 @@ def build_composition_sensitivity_config(
     config.dro_result_archive_dir = comp_dir / "dro" / "old_results"
     config.runtime_config_path = comp_dir / "runtime_regime_definitions.yaml"
     config.support_calibration_report_path = comp_dir / "support_calibration.json"
+    config.figures_dir = comp_dir / "figures"
 
     if nn_policy_generators is not None:
         config.nn_policy_generators = nn_policy_generators
@@ -394,6 +406,56 @@ def build_composition_sensitivity_config(
         setattr(config, key, value)
 
     return config
+
+
+def _plot_sweep_comparison(sweep: CompositionSweepConfig) -> None:
+    """Overlay every composition's DRO frontier and PoA-vs-eta on shared axes.
+
+    One line per composition (labeled by its case label / name), saved under
+    <result_root>/<study_name>/figures/.
+    """
+    from results_viz.plot_dro_poa_eta_sweep import (
+        discover_regime_names,
+        load_eta_sweep_records,
+        plot_eta_sweep_comparison,
+        plot_frontier_comparison,
+    )
+
+    records_by_label: dict[str, list[dict[str, Any]]] = {}
+    for spec in sweep.compositions:
+        dro_dir = sweep.result_root / sweep.study_name / spec.case_name / "dro"
+        regimes = discover_regime_names(dro_dir)
+        for regime_name in regimes:
+            try:
+                records = load_eta_sweep_records(dro_dir, regime_name, include_archives=True)
+            except FileNotFoundError:
+                continue
+            base_label = getattr(spec, "label", "") or spec.case_name
+            label = base_label if len(regimes) == 1 else f"{base_label} [{regime_name}]"
+            records_by_label[label] = records
+
+    study_dir = sweep.result_root / sweep.study_name
+    if not records_by_label:
+        print(f"[plot] No DRO sweep records found for comparison under {study_dir}")
+        return
+
+    out_dir = study_dir / "figures"
+    suffix = f"study '{sweep.study_name}'"
+    try:
+        frontier_path = plot_frontier_comparison(
+            records_by_label,
+            out_dir / "frontier_comparison.png",
+            title=f"PoA-epsilon frontier comparison — {suffix}",
+        )
+        eta_path = plot_eta_sweep_comparison(
+            records_by_label,
+            out_dir / "average_poa_vs_eta_comparison.png",
+            metric="average_poa_ratio",
+            title=f"Average PoA vs eta comparison — {suffix}",
+        )
+        print(f"[plot] Saved sweep comparison figures:\n  {frontier_path}\n  {eta_path}")
+    except ValueError as exc:
+        print(f"[plot] Skipping sweep comparison: {exc}")
 
 
 def run_composition_sweep(sweep: CompositionSweepConfig) -> None:
@@ -427,6 +489,12 @@ def run_composition_sweep(sweep: CompositionSweepConfig) -> None:
 
         config = build_composition_sensitivity_config(spec, sweep)
         run_pipeline(config)
+
+    if sweep.base_config.plot_results_along_the_way:
+        print(f"\n{sep}")
+        print("  Building cross-composition comparison plots")
+        print(f"{sep}")
+        _plot_sweep_comparison(sweep)
 
     print(f"\n{sep}")
     print(f"  Sweep complete.  Results: {sweep.result_root / sweep.study_name}")

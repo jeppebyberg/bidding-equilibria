@@ -106,12 +106,17 @@ class PoAPipelineConfig:
     nn_feature_columns: list[str] = field(
         default_factory=lambda: [
             "demand",
-            "total_generation_capacity",
-            "residual_demand",
-            "next_generation_capacity",
+            "previous_demand",
             "next_demand",
-            "own_generation_capacity",
-            "next_own_generation_capacity",
+            "total_wind_generation_capacity",
+            "previous_wind_generation_capacity",
+            "next_wind_generation_capacity",
+            "residual_demand",
+            "previous_residual_demand",
+            "next_residual_demand",
+            "total_demand_over_horizon",
+            "total_wind_over_horizon",
+            "total_residual_over_horizon",
         ]
     )
     per_generator_normalization: bool = True
@@ -120,12 +125,19 @@ class PoAPipelineConfig:
     batch_size: int = 64
     num_epochs: int = 500
     weight_decay: float = 0.0
-    test_size: float = 0.2
+    val_size: float = 0.15
+    test_size: float = 0.15
     random_state: int = 42
     patience: int | None = 50
     min_delta: float = 1e-6
     device: str | None = None
     nn_final_activation: str = "linear"
+    # ReduceLROnPlateau scheduler on validation loss (set use_lr_scheduler=False
+    # to keep a constant learning rate).
+    use_lr_scheduler: bool = True
+    lr_scheduler_factor: float = 0.5
+    lr_scheduler_patience: int = 20
+    lr_scheduler_min_lr: float = 1e-6
 
     # PoA parameters. The uncertainty set is induced by ambiguity_set_config_name
     # in config/ambiguity_set_config.yaml. The generated PoA context
@@ -156,6 +168,9 @@ class PoAPipelineConfig:
     poa_parallel_workers: int = 1
     poa_solver_threads_per_worker: int | None = None
 
+    # When True, render training diagnostic plots after NN training completes.
+    plot_results_along_the_way: bool = False
+
     # Step toggles. Turn expensive stages off when reusing previous outputs.
     run_scenario_generation: bool = True
     run_heuristic_labels: bool = True
@@ -182,6 +197,8 @@ class PoAPipelineConfig:
     model_dir: Path = Path("models/neural_network/training/trained_models")
     training_result_dir: Path = Path("models/neural_network/training/training_results")
     poa_result_dir: Path = Path("results")
+    # Figures root; None falls back to results/<case>/figures (see plotting code).
+    figures_dir: Path | None = None
 
     @property
     def nn_normalization_stats_path(self) -> Path:
@@ -384,12 +401,17 @@ def train_policies(config: PoAPipelineConfig) -> Path:
         batch_size=config.batch_size,
         num_epochs=config.num_epochs,
         weight_decay=config.weight_decay,
+        val_size=config.val_size,
         test_size=config.test_size,
         random_state=config.random_state,
         patience=config.patience,
         min_delta=config.min_delta,
         device=config.device,
         final_activation=config.nn_final_activation,
+        use_lr_scheduler=config.use_lr_scheduler,
+        lr_scheduler_factor=config.lr_scheduler_factor,
+        lr_scheduler_patience=config.lr_scheduler_patience,
+        lr_scheduler_min_lr=config.lr_scheduler_min_lr,
     )
 
     all_csv_paths = find_generator_feature_files(config.normalized_feature_dir)
@@ -421,7 +443,8 @@ def train_policies(config: PoAPipelineConfig) -> Path:
         print(
             f"{policy_data.generator_name}: rows={policy_data.num_rows}, "
             f"features={policy_data.input_dim}, targets={policy_data.output_dim}, "
-            f"best_test_loss={history['best_test_loss']:.8g}, model={result['model_path']}"
+            f"best_val_loss={history['best_val_loss']:.8g}, "
+            f"final_test_loss={history['final_test_loss']:.8g}, model={result['model_path']}"
         )
 
     summary_path = config.training_result_dir / "training_summary.json"
@@ -429,7 +452,32 @@ def train_policies(config: PoAPipelineConfig) -> Path:
     elapsed = time.perf_counter() - start
     print(f"\nSaved training summary to {summary_path}")
     print(f"NN training runtime: {elapsed:.2f} seconds")
+
+    if getattr(config, "plot_results_along_the_way", False):
+        plot_training_results(config)
+
     return summary_path
+
+def plot_training_results(config: PoAPipelineConfig) -> Path:
+    """Render training diagnostics (loss curves, val-vs-test) for this run.
+
+    Figures land under results/<case>/figures/training_results/plots so they sit
+    alongside the other pipeline-triggered plots for the same case.
+    """
+    # Imported lazily so the heavy matplotlib import is only paid when plotting.
+    from models.neural_network.training.visualize_training import (
+        main as visualize_training_main,
+    )
+
+    figures_dir = config.figures_dir or Path("results") / config.case / "figures"
+    plot_dir = Path(figures_dir) / "training_results" / "plots"
+    visualize_training_main(
+        model_dir=config.model_dir,
+        result_dir=config.training_result_dir,
+        plot_dir=plot_dir,
+    )
+    print(f"Saved training plots to {plot_dir}")
+    return plot_dir
 
 def find_generator_feature_files(feature_dir: Path) -> list[Path]:
     if not feature_dir.exists():
@@ -930,16 +978,17 @@ if __name__ == "__main__":
         # Neural-network feature and training parameters.
         nn_feature_columns=[
             "demand",
-            "total_wind_generation_capacity",
-            "total_generation_capacity",
-            "residual_demand",
-            "previous_generation_capacity",
             "previous_demand",
-            "next_generation_capacity",
             "next_demand",
-            "own_generation_capacity",
-            "previous_own_generation_capacity",
-            "next_own_generation_capacity",
+            "total_wind_generation_capacity",
+            "previous_wind_generation_capacity",
+            "next_wind_generation_capacity",
+            "residual_demand",
+            "previous_residual_demand",
+            "next_residual_demand",
+            "total_demand_over_horizon",
+            "total_wind_over_horizon",
+            "total_residual_over_horizon",
         ],
 
         per_generator_normalization=True,
@@ -948,12 +997,17 @@ if __name__ == "__main__":
         batch_size=32,
         num_epochs=500,
         weight_decay=0.0,
-        test_size=0.2,
+        val_size=0.15,
+        test_size=0.15,
         random_state=42,
         patience=50,
         min_delta=1e-6,
         device=None,
         nn_final_activation="linear",
+        use_lr_scheduler=True,
+        lr_scheduler_factor=0.5,
+        lr_scheduler_patience=20,
+        lr_scheduler_min_lr=1e-6,
 
         # PoA parameters.
         horizon=8,

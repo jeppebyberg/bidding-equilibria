@@ -142,8 +142,8 @@ class PoASupportSet:
         def demand_budget_rule(m):
             return sum(m.D_abs_deviation[t] for t in m.time_steps) <= m.demand_budget_expr
 
-        def demand_feasibility_rule(m, t):
-            return m.demand_lower[t] >= 0
+        def demand_reference_feasibility_rule(m, t):
+            return m.demand_reference[t] >= 0
 
         self.model.demand_ar1_t0_up = Constraint(rule=demand_ar1_t0_up_rule)
         self.model.demand_ar1_t0_down = Constraint(rule=demand_ar1_t0_down_rule)
@@ -154,7 +154,7 @@ class PoASupportSet:
         self.model.demand_abs_deviation_pos_constraints = Constraint(self.model.time_steps, rule=demand_abs_deviation_pos_rule)
         self.model.demand_abs_deviation_neg_constraints = Constraint(self.model.time_steps, rule=demand_abs_deviation_neg_rule)
         self.model.demand_budget_constraint = Constraint(rule=demand_budget_rule)
-        self.model.demand_lower_feasibility = Constraint(self.model.time_steps, rule=demand_feasibility_rule)
+        self.model.demand_reference_feasibility = Constraint(self.model.time_steps, rule=demand_reference_feasibility_rule)
 
     def _build_support_set_wind(self) -> None:
         m = self.model

@@ -176,6 +176,40 @@ class ReLUBoundsComputer(PoATighteningMain):
             return total_generation_bounds()
         if feature_name == "residual_demand":
             return residual_demand_bounds()
+        if feature_name in {
+            "previous_wind_generation_capacity",
+            "next_wind_generation_capacity",
+        }:
+            return total_wind_bounds()
+        if feature_name in {
+            "previous_residual_demand",
+            "next_residual_demand",
+        }:
+            return residual_demand_bounds()
+        if feature_name in {
+            "total_demand_over_horizon",
+            "total_wind_over_horizon",
+            "total_residual_over_horizon",
+        }:
+            # Horizon aggregate = sum over all time steps. The global
+            # reference-tight per-step interval bounds every time step, so the
+            # sum is contained in num_time_steps x that interval (valid outer
+            # bound; intentionally conservative).
+            horizon = int(self.num_time_steps)
+            if feature_name == "total_demand_over_horizon":
+                step_lower, step_upper = demand_bounds()
+                label = "total demand over horizon"
+            elif feature_name == "total_wind_over_horizon":
+                step_lower, step_upper = total_wind_bounds()
+                label = "total wind over horizon"
+            else:
+                step_lower, step_upper = residual_demand_bounds()
+                label = "total residual over horizon"
+            return self._validate_nn_interval(
+                horizon * step_lower,
+                horizon * step_upper,
+                label,
+            )
         if feature_name in {"previous_generation_capacity", "next_generation_capacity"}:
             return total_generation_bounds()
         if feature_name in {"previous_demand", "next_demand"}:
@@ -287,7 +321,11 @@ class ReLUBoundsComputer(PoATighteningMain):
     ) -> str:
         if feature_name in {"demand", "previous_demand", "next_demand"}:
             return self._demand_feature_bound_source()
-        if feature_name == "total_wind_generation_capacity":
+        if feature_name in {
+            "total_wind_generation_capacity",
+            "previous_wind_generation_capacity",
+            "next_wind_generation_capacity",
+        }:
             return self._total_wind_feature_bound_source()
         if feature_name in {
             "total_generation_capacity",
@@ -298,7 +336,17 @@ class ReLUBoundsComputer(PoATighteningMain):
             if wind_source == "fixed_zero":
                 return "fixed_static_capacity"
             return wind_source
-        if feature_name == "residual_demand":
+        if feature_name in {
+            "residual_demand",
+            "previous_residual_demand",
+            "next_residual_demand",
+        }:
+            return self.AMBIGUITY_TIMEWISE_SOURCE
+        if feature_name == "total_demand_over_horizon":
+            return self._demand_feature_bound_source()
+        if feature_name == "total_wind_over_horizon":
+            return self._total_wind_feature_bound_source()
+        if feature_name == "total_residual_over_horizon":
             return self.AMBIGUITY_TIMEWISE_SOURCE
         if feature_name in {
             "own_generation_capacity",

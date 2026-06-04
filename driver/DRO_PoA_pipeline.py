@@ -94,12 +94,17 @@ class DROPoAPipelineConfig:
     nn_feature_columns: list[str] = field(
         default_factory=lambda: [
             "demand",
-            "total_generation_capacity",
-            "residual_demand",
-            "next_generation_capacity",
+            "previous_demand",
             "next_demand",
-            "own_generation_capacity",
-            "next_own_generation_capacity",
+            "total_wind_generation_capacity",
+            "previous_wind_generation_capacity",
+            "next_wind_generation_capacity",
+            "residual_demand",
+            "previous_residual_demand",
+            "next_residual_demand",
+            "total_demand_over_horizon",
+            "total_wind_over_horizon",
+            "total_residual_over_horizon",
         ]
     )
     per_generator_normalization: bool = True
@@ -108,12 +113,19 @@ class DROPoAPipelineConfig:
     batch_size: int = 64
     num_epochs: int = 500
     weight_decay: float = 0.0
-    test_size: float = 0.2
+    val_size: float = 0.15
+    test_size: float = 0.15
     random_state: int = 42
     patience: int | None = 50
     min_delta: float = 1e-6
     device: str | None = None
     nn_final_activation: str = "linear"
+    # ReduceLROnPlateau scheduler on validation loss (set use_lr_scheduler=False
+    # to keep a constant learning rate).
+    use_lr_scheduler: bool = True
+    lr_scheduler_factor: float = 0.5
+    lr_scheduler_patience: int = 20
+    lr_scheduler_min_lr: float = 1e-6
 
     # DRO parameters.
     horizon: int = 8
@@ -154,6 +166,9 @@ class DROPoAPipelineConfig:
     support_calibration_report_path: Path = Path(
         "results/full_pipeline_DRO/support_calibration.json"
     )
+
+    # When True, render training diagnostic plots after NN training completes.
+    plot_results_along_the_way: bool = False
 
     # Step toggles.
     run_scenario_generation: bool = True
@@ -717,8 +732,7 @@ def print_tightening_plan(
     print("  Note: this support-tightening report is reused for every eta in the regime.")
 
 def _print_wasserstein_floor_diagnostic(
-    config: DROPoAPipelineConfig,
-    scenarios: dict[str, Any],
+    rows: list[dict[str, Any]],
     regime_name: str,
 ) -> None:
     """Print the minimum achievable Wasserstein distance for each empirical scenario.
@@ -726,9 +740,11 @@ def _print_wasserstein_floor_diagnostic(
     If all values are 0, the support set is properly enforced and W→0 is feasible
     at sufficiently high eta.  Non-zero values mean the empirical scenario lies
     outside the support set and W cannot reach 0 regardless of eta.
+
+    ``rows`` is the (eta-independent) diagnostic from
+    DROPoASupportDiagnostics.diagnose_empirical_support_set_violations, passed in
+    so it can be computed once per regime and reused across the eta sweep.
     """
-    optimizer = build_dro_optimizer(config, scenarios, regime_name, eta=0.0)
-    rows = optimizer.diagnose_empirical_support_set_violations()
     any_violation = any(row["min_W_total"] > 1e-9 for row in rows)
     print(f"\n  Wasserstein floor diagnostic (regime '{regime_name}'):")
     for row in rows:
@@ -769,16 +785,73 @@ def run_dro_eta_sweep(
                 "Expected DRO regime-wide tightening report not found for "
                 f"regime '{regime_name}': {tightening_report_path}"
             )
-        _print_wasserstein_floor_diagnostic(config, scenarios, regime_name)
-        for eta in config.etas:
-            result_path = run_final_dro_for_eta(
+        summaries.extend(
+            run_dro_eta_path_for_regime(
                 config=config,
                 scenarios=scenarios,
                 regime_name=regime_name,
-                eta=float(eta),
                 tightening_report_path=tightening_report_path,
             )
-            summaries.append(load_result_summary(result_path))
+        )
+    return summaries
+
+
+def run_dro_eta_path_for_regime(
+    config: DROPoAPipelineConfig,
+    scenarios: dict[str, Any],
+    regime_name: str,
+    tightening_report_path: Path,
+) -> list[dict[str, Any]]:
+    """Solve the full eta path for one regime, reusing a single persistent model.
+
+    Every eta shares the same model structure -- only the objective term
+    -eta * W[k] and the support-floor constraints PoA[k] - eta * W[k] >= 1 depend
+    on eta -- so the model is built and loaded into Gurobi once, then updated in
+    place per eta (see DRO_PoAOptimization.update_eta).
+
+    The etas are solved from HIGH to LOW on purpose.  The support-floor constraint
+    only loosens as eta decreases, so the optimum at one eta stays feasible at the
+    next (lower) eta and is handed to Gurobi as a warm-start incumbent.  Solving
+    low-to-high could hand the solver an infeasible start.
+    """
+    # Unique etas, highest first.  The first solve is cold; each later solve warm
+    # starts from the previous (higher-eta) optimum.
+    descending_etas = sorted({float(eta) for eta in config.etas}, reverse=True)
+
+    # Build the model once for this regime (using the highest eta), apply the
+    # regime-wide tightening, and load everything into the persistent solver.
+    optimizer = build_dro_optimizer(config, scenarios, regime_name, eta=descending_etas[0])
+    optimizer.load_regime_wide_tightening_report(tightening_report_path)
+    optimizer.build_model()
+    applied_stats = optimizer.apply_regime_wide_tightening_to_model()
+    optimizer.attach_persistent_solver()
+
+    # The support diagnostic is eta-independent; print the cached result once
+    # (the cache was populated while building the support-floor constraints).
+    _print_wasserstein_floor_diagnostic(optimizer.support_set_diagnostics(), regime_name)
+
+    summaries: list[dict[str, Any]] = []
+    for position, eta in enumerate(descending_etas):
+        is_first_solve = position == 0
+        if not is_first_solve:
+            # Step the already-loaded model down to the next (lower) eta.
+            optimizer.update_eta(eta)
+        result_path = solve_and_save_dro_for_eta(
+            optimizer=optimizer,
+            config=config,
+            regime_name=regime_name,
+            eta=eta,
+            applied_stats=applied_stats,
+            tightening_report_path=tightening_report_path,
+            warm_start=not is_first_solve,
+        )
+        summaries.append(load_result_summary(result_path))
+
+    # Report in ascending eta order so the summary reads naturally, independent of
+    # the high-to-low solve order.
+    summaries.sort(
+        key=lambda summary: float(summary["eta"]) if summary.get("eta") is not None else float("inf")
+    )
     return summaries
 
 
@@ -813,27 +886,32 @@ def _available_archive_path(path: Path) -> Path:
             return candidate
         suffix += 1
 
-def run_final_dro_for_eta(
+def solve_and_save_dro_for_eta(
+    optimizer: DRO_PoAOptimization,
     config: DROPoAPipelineConfig,
-    scenarios: dict[str, Any],
     regime_name: str,
     eta: float,
+    applied_stats: dict[str, Any],
     tightening_report_path: Path,
+    warm_start: bool,
 ) -> Path:
-    optimizer = build_dro_optimizer(config, scenarios, regime_name, eta)
+    """Solve one eta on an already-built optimizer and save its results.
+
+    The optimizer is built, tightened, and loaded into the persistent solver once
+    per regime by run_dro_eta_path_for_regime; this function only runs the solve
+    (optionally warm-started from the previous eta) and writes the result.
+    """
     result_path = dro_result_path(config, regime_name, eta)
 
     start = time.perf_counter()
-    optimizer.load_regime_wide_tightening_report(tightening_report_path)
-    optimizer.build_model()
-    applied_stats = optimizer.apply_regime_wide_tightening_to_model()
-    optimizer.solve(time_limit=config.dro_time_limit)
+    optimizer.solve(time_limit=config.dro_time_limit, warm_start=warm_start)
     output_path = optimizer.save_results(result_path)
     elapsed = time.perf_counter() - start
 
     print(f"\nDRO PoA optimization complete: {output_path}")
     print(f"  Regime: {regime_name}")
     print(f"  Eta: {eta}")
+    print(f"  Warm-started from previous eta: {warm_start}")
     print(f"  Objective mode: {optimizer.objective_mode}")
     if optimizer.objective_mode != "difference":
         summary = optimizer.solution_summary()
@@ -1083,16 +1161,17 @@ if __name__ == "__main__":
         # Neural-network feature and training parameters.
         nn_feature_columns=[
             "demand",
-            "total_wind_generation_capacity",
-            "total_generation_capacity",
-            "residual_demand",
-            "previous_generation_capacity",
             "previous_demand",
-            "next_generation_capacity",
             "next_demand",
-            "own_generation_capacity",
-            "previous_own_generation_capacity",
-            "next_own_generation_capacity",
+            "total_wind_generation_capacity",
+            "previous_wind_generation_capacity",
+            "next_wind_generation_capacity",
+            "residual_demand",
+            "previous_residual_demand",
+            "next_residual_demand",
+            "total_demand_over_horizon",
+            "total_wind_over_horizon",
+            "total_residual_over_horizon",
         ],
         per_generator_normalization=True,
         hidden_layers=[8, 8],
@@ -1100,12 +1179,17 @@ if __name__ == "__main__":
         batch_size=64,
         num_epochs=500,
         weight_decay=0.0,
-        test_size=0.2,
+        val_size=0.15,
+        test_size=0.15,
         random_state=42,
         patience=50,
         min_delta=1e-6,
         device=None,
         nn_final_activation="linear",
+        use_lr_scheduler=True,
+        lr_scheduler_factor=0.5,
+        lr_scheduler_patience=20,
+        lr_scheduler_min_lr=1e-6,
 
         # DRO parameters.
         horizon=8,

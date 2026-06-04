@@ -280,14 +280,31 @@ class DROPoAPolicyEmbedding:
             return total_capacity(t)
         if feature_name == "residual_demand":
             return m.D[k, t] - total_wind_capacity(t)
-        if feature_name == "previous_generation_capacity":
-            return total_capacity(previous_t)
         if feature_name == "previous_demand":
             return m.D[k, previous_t]
-        if feature_name == "next_generation_capacity":
-            return total_capacity(next_t)
+        if feature_name == "previous_wind_generation_capacity":
+            return total_wind_capacity(previous_t)
+        if feature_name == "previous_residual_demand":
+            return m.D[k, previous_t] - total_wind_capacity(previous_t)
+        if feature_name == "previous_generation_capacity":  # legacy
+            return total_capacity(previous_t)
         if feature_name == "next_demand":
             return m.D[k, next_t]
+        if feature_name == "next_wind_generation_capacity":
+            return total_wind_capacity(next_t)
+        if feature_name == "next_residual_demand":
+            return m.D[k, next_t] - total_wind_capacity(next_t)
+        if feature_name == "next_generation_capacity":  # legacy
+            return total_capacity(next_t)
+        if feature_name == "total_demand_over_horizon":
+            return sum(m.D[k, time_idx] for time_idx in range(self.num_time_steps))
+        if feature_name == "total_wind_over_horizon":
+            return sum(total_wind_capacity(time_idx) for time_idx in range(self.num_time_steps))
+        if feature_name == "total_residual_over_horizon":
+            return sum(
+                m.D[k, time_idx] - total_wind_capacity(time_idx)
+                for time_idx in range(self.num_time_steps)
+            )
         if feature_name == "own_generation_capacity":
             return own_capacity(t)
         if feature_name == "previous_own_generation_capacity":

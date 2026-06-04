@@ -195,16 +195,37 @@ def _build_market_features(
                 if phys.startswith("W") or "wind" in phys.lower():
                     wind_cap[s, t] += cap
 
+    previous_wind = np.roll(wind_cap, 1, axis=1)
+    next_wind = np.roll(wind_cap, -1, axis=1)
+    previous_demand = np.roll(demand, 1, axis=1)
+    next_demand = np.roll(demand, -1, axis=1)
+    # Horizon aggregates: per-scenario sums broadcast back across every time step.
+    total_demand_horizon = np.broadcast_to(
+        demand.sum(axis=1, keepdims=True), demand.shape
+    ).copy()
+    total_wind_horizon = np.broadcast_to(
+        wind_cap.sum(axis=1, keepdims=True), wind_cap.shape
+    ).copy()
     return {
+        # Current period
         "demand": demand,
-        "total_generation_capacity": total_cap,
         "total_wind_generation_capacity": wind_cap,
+        "total_generation_capacity": total_cap,           # legacy
         "residual_demand": demand - wind_cap,
-        # np.roll with shift=1 gives previous (circular), shift=-1 gives next
-        "previous_generation_capacity": np.roll(total_cap, 1, axis=1),
-        "previous_demand": np.roll(demand, 1, axis=1),
-        "next_generation_capacity": np.roll(total_cap, -1, axis=1),
-        "next_demand": np.roll(demand, -1, axis=1),
+        # Previous period
+        "previous_demand": previous_demand,
+        "previous_wind_generation_capacity": previous_wind,
+        "previous_residual_demand": previous_demand - previous_wind,
+        "previous_generation_capacity": np.roll(total_cap, 1, axis=1),  # legacy
+        # Next period
+        "next_demand": next_demand,
+        "next_wind_generation_capacity": next_wind,
+        "next_residual_demand": next_demand - next_wind,
+        "next_generation_capacity": np.roll(total_cap, -1, axis=1),     # legacy
+        # Horizon aggregates
+        "total_demand_over_horizon": total_demand_horizon,
+        "total_wind_over_horizon": total_wind_horizon,
+        "total_residual_over_horizon": total_demand_horizon - total_wind_horizon,
     }
 
 
@@ -543,18 +564,18 @@ def save_oos_results(results: list[dict[str, Any]], output_path: Path) -> None:
 if __name__ == "__main__":
     # ── Configuration ────────────────────────────────────────────────────────
     CASE = "base_test_case"
-    SOURCE_REGIME_CONFIG = Path("config/regime_definitions.yaml")
-    SOURCE_REGIME_SET = "PoA_analysis"
-    REGIME_NAMES = ["normal", "normal_peak_shift_wind", "high_demand", "high_demand_peak_shift_wind"]           # regimes to evaluate; extend as needed
+    SOURCE_REGIME_CONFIG = Path("results/sensitivity_pipeline/runtime_regime_definitions.yaml")
+    SOURCE_REGIME_SET = "sensitivity_runtime"
+    REGIME_NAMES = ["poa_worst_case"]
     HORIZON = 8
-    MODEL_DIR = Path("models/neural_network/training/trained_models")
+    MODEL_DIR = Path("results/sensitivity_pipeline/trained_models")
     NORM_STATS_PATH = Path(
-        "models/neural_network/features/generated/normalized/min_max_stats.json"
+        "results/sensitivity_pipeline/features/normalized/min_max_stats.json"
     )
-    NN_POLICY_GENERATORS = ["G1", "W2", "W3"]
-    N_SCENARIOS = 1000
-    SEED = 999                          # different from poa_seed=1 used in training
-    OUTPUT_DIR = Path("results/oos_poa")
+    NN_POLICY_GENERATORS = ["G1", "G2", "W3"]
+    N_SCENARIOS = 200
+    SEED = 999                          # different from poa_seed=1/2 used in training/DRO
+    OUTPUT_DIR = Path("results/oos_poa/sensitivity_pipeline")
     # ─────────────────────────────────────────────────────────────────────────
 
     all_results: list[dict[str, Any]] = []
@@ -591,7 +612,7 @@ if __name__ == "__main__":
         plot_poa_epsilon_frontier,
     )
 
-    dro_results_dir = Path("results/dro_poa")
+    dro_results_dir = Path("results/sensitivity_pipeline/dro")
     print()
     for result in all_results:
         reg = result["regime_name"]

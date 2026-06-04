@@ -512,30 +512,41 @@ def print_bid_error_summary(
 # ---------------------------------------------------------------------------
 
 
-def main() -> None:
-    # ---- Paths ----------------------------------------------------------------
-    result_json_path = ROOT / "results/merit_order_best_response_results.json"
-    scenarios_csv_path = ROOT / "results/full_pipeline/synthetic_scenarios/scenarios.csv"
-    normalized_csv_dir = ROOT / "models/neural_network/features/generated/normalized"
-    model_dir = ROOT / "models/neural_network/training/trained_models"
-    output_dir = ROOT / "models/neural_network/tests/figures"
+def generate_merit_order_figures(
+    result_json_path: Path,
+    scenarios_csv_path: Path,
+    normalized_csv_dir: Path,
+    model_dir: Path,
+    output_dir: Path,
+    nn_generator_names: list[str] | None = None,
+    n_merit_scenarios: int = 2,
+    merit_time_steps: list[int] | None = None,
+    sample_seed: int = 1,
+    show: bool = False,
+) -> list[Path]:
+    """Generate merit-order and prediction-scatter figures for trained NN policies.
 
-    # ---- Settings -------------------------------------------------------------
-    # Which generators have trained NN policies (auto-detected from model_dir).
-    nn_generator_names: list[str] | None = None  # None = auto-detect all *.pt files
-
-    # Number of test scenarios to sample for the merit order grid.
-    N_MERIT_SCENARIOS = 2
-    # Time steps to show for each sampled scenario.
-    MERIT_TIME_STEPS = [0, 4, 12]
-    # RNG seed for sampling scenarios.
-    SAMPLE_SEED = 1
-    # Whether to display figures interactively (False = save only).
-    SHOW = False
+    All paths are explicit so the pipeline can route outputs to a per-run folder.
+    Returns the list of saved figure paths.
+    """
+    result_json_path = Path(result_json_path)
+    scenarios_csv_path = Path(scenarios_csv_path)
+    normalized_csv_dir = Path(normalized_csv_dir)
+    model_dir = Path(model_dir)
+    output_dir = Path(output_dir)
+    if merit_time_steps is None:
+        merit_time_steps = [0, 4, 12]
 
     # ---- Load data ------------------------------------------------------------
     result = _load_result_json(result_json_path)
     scenarios_df = _load_scenarios_df(scenarios_csv_path)
+    num_time_steps = int(result["num_time_steps"])
+    # Keep only time steps that exist in this result's horizon.
+    merit_time_steps = sorted({t for t in merit_time_steps if 0 <= t < num_time_steps})
+    if not merit_time_steps:
+        merit_time_steps = list(range(min(3, num_time_steps)))
+
+    saved_paths: list[Path] = []
 
     # Auto-detect NN generators from trained model files.
     if nn_generator_names is None:
@@ -545,7 +556,6 @@ def main() -> None:
         )
     print(f"NN policy generators: {nn_generator_names}")
 
-    # Load all NN policies.
     nn_policies: dict[str, NNPolicy] = {}
     for gen_name in nn_generator_names:
         try:
@@ -557,7 +567,6 @@ def main() -> None:
     if not nn_policies:
         raise RuntimeError("No trained NN policies found. Run the NN training pipeline first.")
 
-    # Load normalized CSVs for all NN-policy generators.
     normalized_dfs: dict[str, pd.DataFrame] = {}
     for gen_name in nn_policies:
         csv_path = normalized_csv_dir / f"{gen_name}_features_normalized.csv"
@@ -565,8 +574,6 @@ def main() -> None:
             raise FileNotFoundError(f"Normalized features not found: {csv_path}")
         normalized_dfs[gen_name] = pd.read_csv(csv_path)
 
-    # Identify test scenarios (using the same split as training).
-    # Use the first NN-policy generator's metadata to get split params.
     first_gen = next(iter(nn_policies))
     first_meta = json.loads((model_dir / f"{first_gen}_policy_metadata.json").read_text())
     test_scenarios = get_test_scenarios(
@@ -576,36 +583,58 @@ def main() -> None:
     )
     print(f"Test scenarios: {len(test_scenarios)} / {result['num_scenarios']} total")
 
-    # ---- Print bid error summary ----------------------------------------------
     print_bid_error_summary(nn_policies, normalized_dfs, test_scenarios)
 
-    # ---- Figure 1: one merit order figure per sampled scenario ---------------
-    rng = np.random.default_rng(SAMPLE_SEED)
+    rng = np.random.default_rng(sample_seed)
     sampled_scenarios = sorted(
-        rng.choice(test_scenarios, size=min(N_MERIT_SCENARIOS, len(test_scenarios)), replace=False)
+        rng.choice(test_scenarios, size=min(n_merit_scenarios, len(test_scenarios)), replace=False)
     )
     for s_id in sampled_scenarios:
         p1 = make_scenario_figure(
             scenario_id=int(s_id),
-            time_steps=MERIT_TIME_STEPS,
+            time_steps=merit_time_steps,
             result=result,
             scenarios_df=scenarios_df,
             normalized_dfs=normalized_dfs,
             nn_policies=nn_policies,
             output_path=output_dir / f"nn_policy_merit_order_scenario_{s_id}.png",
-            show=SHOW,
+            show=show,
         )
         print(f"Saved merit order figure:  {p1}")
+        saved_paths.append(p1)
 
-    # ---- Figure 2: scatter plot (NN pred vs labels, test set) ----------------
     p2 = make_scatter_figure(
         nn_policies=nn_policies,
         normalized_dfs=normalized_dfs,
         test_scenarios=test_scenarios,
         output_path=output_dir / "nn_policy_prediction_scatter.png",
-        show=SHOW,
+        show=show,
     )
     print(f"Saved scatter figure:      {p2}")
+    saved_paths.append(p2)
+    return saved_paths
+
+
+def main() -> None:
+    # ---- Paths ----------------------------------------------------------------
+    result_json_path = ROOT / "results/merit_order_best_response_results.json"
+    scenarios_csv_path = ROOT / "results/full_pipeline/synthetic_scenarios/scenarios.csv"
+    normalized_csv_dir = ROOT / "models/neural_network/features/generated/normalized"
+    model_dir = ROOT / "models/neural_network/training/trained_models"
+    output_dir = ROOT / "models/neural_network/tests/figures"
+
+    generate_merit_order_figures(
+        result_json_path=result_json_path,
+        scenarios_csv_path=scenarios_csv_path,
+        normalized_csv_dir=normalized_csv_dir,
+        model_dir=model_dir,
+        output_dir=output_dir,
+        nn_generator_names=None,  # auto-detect all *.pt files
+        n_merit_scenarios=2,
+        merit_time_steps=[0, 4, 12],
+        sample_seed=1,
+        show=False,
+    )
 
 
 if __name__ == "__main__":
