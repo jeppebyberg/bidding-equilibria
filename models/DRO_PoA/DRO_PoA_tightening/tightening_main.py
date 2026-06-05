@@ -625,6 +625,52 @@ class DROPoATighteningMain:
         }
         return self._save_json(payload, output_path)
 
+    def run_essential_bounds(
+        self,
+        previous_paths: Optional[dict[str, str | Path]] = None,
+        output_paths: Optional[dict[str, str | Path]] = None,
+        solver_name: str = "gurobi",
+        time_limit: Optional[float] = None,
+        tee: bool = False,
+        solver_threads: Optional[int] = None,
+    ) -> Path:
+        """Always (re)compute primal_big_m and optimal_cost_bounds.
+
+        Used when full DRO tightening is disabled but the McCormick C_opt envelope
+        still needs valid denominator bounds. Existing reports for the remaining
+        stages (relu/alpha/slack/dual) are reused when present; otherwise they are
+        left empty, and the final DRO solve falls back to its internal loose
+        defaults for them. Unlike ``run_all`` this bypasses the inter-stage
+        ``_require_*`` guards, which only make sense for a full tightening pass.
+        """
+        from models.DRO_PoA.DRO_PoA_tightening.compute_optimal_cost_bounds import (
+            DROOptimalCostBoundsComputer,
+        )
+        from models.DRO_PoA.DRO_PoA_tightening.compute_primal_big_m import DROPrimalBigMComputer
+
+        previous_paths = self._resolve_output_paths(previous_paths)
+        output_paths = self._resolve_output_paths(output_paths)
+
+        # Preserve any previously tightened non-essential stages in the final report.
+        for stage_name in ("relu_bounds", "alpha_bounds", "slack_binary_fix", "dual_big_m"):
+            previous_path = Path(previous_paths[stage_name])
+            if previous_path.exists():
+                self._load_previous_stage(stage_name, previous_path)
+
+        primal_stage = self._as_stage(DROPrimalBigMComputer)
+        primal_stage.run_primal_big_m(output_path=output_paths["primal_big_m"])
+
+        optimal_cost_stage = self._as_stage(DROOptimalCostBoundsComputer)
+        optimal_cost_stage.run_optimal_cost_bounds(
+            output_path=output_paths["optimal_cost_bounds"],
+            solver_name=solver_name,
+            time_limit=time_limit,
+            tee=tee,
+            solver_threads=solver_threads,
+        )
+
+        return self.save_final_report(output_paths["final"])
+
     def run_all(
         self,
         run_primal_big_m: bool = True,

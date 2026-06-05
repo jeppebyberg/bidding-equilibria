@@ -168,7 +168,14 @@ def load_eta_sweep_records(
 ) -> list[dict[str, Any]]:
     records = []
     for path in _candidate_result_paths(results_dir, regime_name, include_archives):
-        result = _load_json(path)
+        try:
+            result = _load_json(path)
+        except json.JSONDecodeError as exc:
+            warnings.warn(
+                f"Skipping malformed DRO PoA result JSON at {path}: {exc}",
+                stacklevel=2,
+            )
+            continue
         if result.get("regime_name") not in (None, regime_name):
             continue
         record = _summary_record(path, result)
@@ -369,7 +376,6 @@ def plot_poa_eta_sweep(
         plt.show()
     plt.close(fig)
     return output_path
-
 
 def plot_poa_epsilon_frontier(
     records: list[dict[str, Any]],

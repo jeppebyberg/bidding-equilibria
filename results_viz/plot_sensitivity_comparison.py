@@ -66,6 +66,11 @@ def _extract_curve_label(case_name: str) -> str:
     if cnt_match:
         return f"{cnt_match.group('nw')}W + {cnt_match.group('nc')}C"
 
+    # Generic ``...NW_NC`` suffix (e.g. ``test_3W_1C``).
+    suffix_match = re.search(r"(?P<nw>\d+)W_(?P<nc>\d+)C", case_name)
+    if suffix_match:
+        return f"{suffix_match.group('nw')}W + {suffix_match.group('nc')}C"
+
     return case_name
 
 
@@ -76,6 +81,9 @@ def _case_sort_key(case_name: str) -> tuple[float, str]:
     cnt_match = re.match(r"comp_(?P<nw>\d+)W", case_name)
     if cnt_match:
         return (float(cnt_match.group("nw")), case_name)
+    suffix_match = re.search(r"(?P<nw>\d+)W_\d+C", case_name)
+    if suffix_match:
+        return (float(suffix_match.group("nw")), case_name)
     return (0.0, case_name)
 
 

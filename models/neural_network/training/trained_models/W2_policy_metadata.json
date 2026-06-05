@@ -1,37 +1,46 @@
 {
   "generator_name": "W2",
-  "input_dim": 11,
+  "input_dim": 12,
   "output_dim": 1,
   "feature_columns": [
     "demand",
-    "total_wind_generation_capacity",
-    "total_generation_capacity",
-    "residual_demand",
-    "previous_generation_capacity",
     "previous_demand",
-    "next_generation_capacity",
     "next_demand",
-    "own_generation_capacity",
-    "previous_own_generation_capacity",
-    "next_own_generation_capacity"
+    "total_wind_generation_capacity",
+    "previous_wind_generation_capacity",
+    "next_wind_generation_capacity",
+    "residual_demand",
+    "previous_residual_demand",
+    "next_residual_demand",
+    "total_demand_over_horizon",
+    "total_wind_over_horizon",
+    "total_residual_over_horizon"
   ],
   "target_columns": [
     "target_bid_W2_B1"
   ],
   "hidden_layers": [
-    4,
+    8,
     8
   ],
   "activation": "relu",
   "final_activation": "linear",
-  "train_size": 9600,
-  "test_size": 2400,
-  "test_fraction": 0.2,
-  "num_epochs_trained": 112,
-  "best_epoch": 62,
-  "best_test_loss": 1.5231335719173937e-05,
+  "train_size": 816,
+  "val_size": 192,
+  "val_fraction": 0.15,
+  "test_size": 192,
+  "test_fraction": 0.15,
+  "num_epochs_trained": 139,
+  "best_epoch": 89,
+  "best_val_loss": 1.0618245861830171e-06,
+  "final_test_loss": 7.411913713895046e-07,
   "learning_rate": 0.001,
   "batch_size": 32,
   "weight_decay": 0.0,
-  "random_state": 42
+  "random_state": 42,
+  "use_lr_scheduler": true,
+  "lr_scheduler_factor": 0.5,
+  "lr_scheduler_patience": 20,
+  "lr_scheduler_min_lr": 1e-06,
+  "final_learning_rate": 0.001
 }

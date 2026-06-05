@@ -6,6 +6,9 @@ from typing import Any, Optional
 import numpy as np
 
 
+_DEPRECATED_TIGHTENING_REPORT_KEYS = ("aggregate_" "dual_bounds",)
+
+
 class PoATighteningReports:
     tightening_report_components = frozenset(
         {
@@ -16,7 +19,6 @@ class PoATighteningReports:
             "fixed_binaries",
             "tight_big_m",
             "lambda_bounds",
-            "aggregate_dual_bounds",
             "optimal_cost_bounds",
         }
     )
@@ -28,7 +30,6 @@ class PoATighteningReports:
             "alpha_bounds": False,
             "tight_big_m": False,
             "lambda_bounds": False,
-            "aggregate_dual_bounds": False,
             "optimal_cost_bounds": False,
             "primal_big_m": False,
             "notes": [],
@@ -41,33 +42,6 @@ class PoATighteningReports:
         notes = self.default_bounds_used.setdefault("notes", [])
         if note not in notes:
             notes.append(note)
-
-    @staticmethod
-    def _contains_deprecated_aggregate_dual_bounds(
-        payload: Any,
-        parent_key: Optional[str] = None,
-    ) -> bool:
-        if isinstance(payload, dict):
-            if parent_key == "default_bounds_used":
-                return False
-            if "aggregate_dual_bounds" in payload:
-                return True
-            return any(
-                PoATighteningReports._contains_deprecated_aggregate_dual_bounds(
-                    value,
-                    str(key),
-                )
-                for key, value in payload.items()
-            )
-        if isinstance(payload, list):
-            return any(
-                PoATighteningReports._contains_deprecated_aggregate_dual_bounds(
-                    value,
-                    parent_key,
-                )
-                for value in payload
-            )
-        return False
 
     @staticmethod
     def _optional_float_bound(payload: Any) -> Optional[float]:
@@ -128,14 +102,13 @@ class PoATighteningReports:
         self.lambda_eq_bounds: dict[int, tuple[float, float]] = {}
         self.lambda_opt_bounds: dict[int, tuple[float, float]] = {}
         self._loaded_bounds_prepared = False
-        self._loaded_bounds_source_signature: tuple[int, int, int, int] | None = None
+        self._loaded_bounds_source_signature: tuple[int, int, int] | None = None
 
-    def _loaded_bound_source_signature(self) -> tuple[int, int, int, int]:
+    def _loaded_bound_source_signature(self) -> tuple[int, int, int]:
         return (
             id(getattr(self, "primal_big_m", None)),
             id(getattr(self, "tight_big_m", None)),
             id(getattr(self, "lambda_bounds", None)),
-            id(getattr(self, "aggregate_dual_bounds", None)),
         )
 
     def _ensure_loaded_bounds_prepared(self) -> None:
@@ -241,7 +214,6 @@ class PoATighteningReports:
             "fixed_binaries",
             "tight_big_m",
             "lambda_bounds",
-            "aggregate_dual_bounds",
             "optimal_cost_bounds",
             "optimal_cost_bound_optimization_results",
         }
@@ -340,43 +312,6 @@ class PoATighteningReports:
             }
         return self._loosen_lower_upper_bounds_recursively(template, lower, upper)
 
-    def build_default_aggregate_dual_bounds_report(
-        self,
-        template_report: Optional[dict[str, Any]] = None,
-        upper: Optional[float] = None,
-    ) -> dict[str, Any]:
-        upper = float(self.default_aggregate_dual_upper if upper is None else upper)
-        template = self._template_section(template_report, "aggregate_dual_bounds")
-        if not template and getattr(self, "aggregate_dual_bounds", None):
-            template = copy.deepcopy(self.aggregate_dual_bounds)
-        if not template:
-            return {
-                bound_key: {
-                    side: {
-                        str(int(t)): {
-                            "tight_big_m": upper,
-                            "side": side,
-                            "constraint_type": constraint_type,
-                            "source": "default_loose_bounds",
-                        }
-                        for t in range(self.num_time_steps)
-                    }
-                    for side in ("eq", "opt")
-                }
-                for constraint_type, bound_key in (
-                    ("upper", "mu_max_sum_ub"),
-                    ("lower", "mu_min_sum_ub"),
-                    ("ramp_up", "mu_ramp_up_sum_ub"),
-                    ("ramp_down", "mu_ramp_down_sum_ub"),
-                )
-            }
-        return self._replace_numeric_bounds_recursively(
-            template,
-            {"tight_big_m", "big_m", "upper", "upper_bound", "ub", "bound", "value"},
-            upper,
-            replace_plain_numbers=False,
-        )
-
     def build_default_optimal_cost_bounds_report(
         self,
         template_report: Optional[dict[str, Any]] = None,
@@ -397,24 +332,6 @@ class PoATighteningReports:
                 "source": "default_loose_bounds",
             }
         return self._loosen_lower_upper_bounds_recursively(template, lower, upper)
-
-    @staticmethod
-    def _remove_aggregate_dual_bound_payload(
-        report: dict[str, Any],
-    ) -> dict[str, Any]:
-        filtered_report = copy.deepcopy(report)
-        filtered_report.pop("aggregate_dual_bounds", None)
-        aggregate_keys = {
-            "mu_max_sum_ub",
-            "mu_min_sum_ub",
-            "mu_ramp_up_sum_ub",
-            "mu_ramp_down_sum_ub",
-        }
-        tight_big_m = filtered_report.get("tight_big_m")
-        if isinstance(tight_big_m, dict):
-            for key in aggregate_keys:
-                tight_big_m.pop(key, None)
-        return filtered_report
 
     @classmethod
     def _normalize_tightening_report_components(
@@ -458,8 +375,8 @@ class PoATighteningReports:
             filtered_report.pop("tight_big_m", None)
         if "lambda_bounds" not in enabled_components:
             filtered_report.pop("lambda_bounds", None)
-        if "aggregate_dual_bounds" not in enabled_components:
-            filtered_report = cls._remove_aggregate_dual_bound_payload(filtered_report)
+        for deprecated_key in _DEPRECATED_TIGHTENING_REPORT_KEYS:
+            filtered_report.pop(deprecated_key, None)
         if "optimal_cost_bounds" not in enabled_components:
             filtered_report.pop("optimal_cost_bounds", None)
             filtered_report.pop("optimal_cost_bound_optimization_results", None)
@@ -473,7 +390,6 @@ class PoATighteningReports:
         use_fixed_binaries: bool = True,
         use_tight_big_m: bool = True,
         use_lambda_bounds: bool = True,
-        use_aggregate_dual_bounds: bool = True,
         use_optimal_cost_bounds: bool = True,
     ) -> dict[str, Any]:
         enabled_components = set(cls.tightening_report_components)
@@ -485,8 +401,6 @@ class PoATighteningReports:
             enabled_components.discard("tight_big_m")
         if not use_lambda_bounds:
             enabled_components.discard("lambda_bounds")
-        if not use_aggregate_dual_bounds:
-            enabled_components.discard("aggregate_dual_bounds")
         if not use_optimal_cost_bounds:
             enabled_components.discard("optimal_cost_bounds")
         return cls._filter_tightening_report_components(report, enabled_components)
@@ -503,11 +417,8 @@ class PoATighteningReports:
             merged_report = copy.deepcopy(getattr(self, "tightening_report", {}) or {})
             merged_report.update(loaded_report)
             loaded_report = merged_report
-        if self._contains_deprecated_aggregate_dual_bounds(loaded_report):
-            raise ValueError(
-                "Loaded tightening report contains deprecated aggregate_dual_bounds. "
-                "Recompute dual Big-M tightening with componentwise bounds only."
-            )
+        for deprecated_key in _DEPRECATED_TIGHTENING_REPORT_KEYS:
+            loaded_report.pop(deprecated_key, None)
 
         self.tightening_report = loaded_report
         if report_path is not None:
@@ -560,7 +471,6 @@ class PoATighteningReports:
         use_fixed_binaries: bool = True,
         use_tight_big_m: bool = True,
         use_lambda_bounds: bool = True,
-        use_aggregate_dual_bounds: bool = True,
         use_optimal_cost_bounds: bool = True,
     ) -> dict[str, Any]:
         """
@@ -577,11 +487,6 @@ class PoATighteningReports:
             raise FileNotFoundError(f"Tightening report not found: {path}")
         with path.open("r", encoding="utf-8") as file_handle:
             report = json.load(file_handle)
-        if self._contains_deprecated_aggregate_dual_bounds(report):
-            raise ValueError(
-                "Loaded tightening report contains deprecated aggregate_dual_bounds. "
-                "Recompute dual Big-M tightening with componentwise bounds only."
-            )
 
         if components is None:
             report = self._filter_tightening_report_sections(
@@ -590,7 +495,6 @@ class PoATighteningReports:
                 use_fixed_binaries=use_fixed_binaries,
                 use_tight_big_m=use_tight_big_m,
                 use_lambda_bounds=use_lambda_bounds,
-                use_aggregate_dual_bounds=use_aggregate_dual_bounds,
                 use_optimal_cost_bounds=use_optimal_cost_bounds,
             )
         else:
@@ -609,7 +513,6 @@ class PoATighteningReports:
         include_alpha_bounds: bool = False,
         include_tight_big_m: bool = True,
         include_lambda_bounds: bool = False,
-        include_aggregate_dual_bounds: bool = False,
         include_optimal_cost_bounds: Optional[bool] = None,
         overwrite_existing: bool = False,
     ) -> dict[str, Any]:
@@ -631,12 +534,15 @@ class PoATighteningReports:
         default_report = copy.deepcopy(getattr(self, "tightening_report", {}) or {})
         template_report = template_report or default_report
 
-        if overwrite_existing or not default_report.get("primal_big_m"):
-            default_report["primal_big_m"] = compute_primal_big_m_bounds(self)
-            self._mark_default_bound_used(
-                "primal_big_m",
-                "Analytic primal Big-M defaults were used for model construction.",
-            )
+        # primal_big_m always runs (analytic) and is applied to self immediately so
+        # the optimal-cost-bound solve below can build its KKT complementarity model.
+        default_report["primal_big_m"] = compute_primal_big_m_bounds(self)
+        self.primal_big_m = default_report["primal_big_m"]
+        self._loaded_bounds_prepared = False
+        self._mark_default_bound_used(
+            "primal_big_m",
+            "Analytic primal Big-M values were computed for model construction.",
+        )
 
         if include_nn_relu_bounds and (
             overwrite_existing or not (default_report.get("nn_relu_bounds_report") or self.nn_relu_bounds)
@@ -683,31 +589,21 @@ class PoATighteningReports:
                     "Default loose lambda bounds were used.",
                 )
 
-        if include_aggregate_dual_bounds and (
-            overwrite_existing or not default_report.get("aggregate_dual_bounds")
-        ):
-            aggregate_report = self.build_default_aggregate_dual_bounds_report(
-                template_report
+        # optimal_cost_bounds always runs via the real optimal-dispatch KKT solve so
+        # the McCormick C_opt envelope has valid, tight denominator bounds. The
+        # solved range is pushed straight into mccormick_bounds (and breakpoints),
+        # which is what build_model() reads for the C_opt variable bounds.
+        if include_optimal_cost_bounds:
+            optimal_cost_report = self._solve_optimal_cost_bounds_report()
+            default_report["optimal_cost_bounds"] = optimal_cost_report
+            self._apply_optimal_cost_bounds_to_mccormick(
+                float(optimal_cost_report["lower"]),
+                float(optimal_cost_report["upper"]),
             )
-            if aggregate_report:
-                default_report["aggregate_dual_bounds"] = aggregate_report
-                self._mark_default_bound_used(
-                    "aggregate_dual_bounds",
-                    "Default loose aggregate dual bounds were used.",
-                )
-
-        if include_optimal_cost_bounds and (
-            overwrite_existing or not default_report.get("optimal_cost_bounds")
-        ):
-            optimal_cost_report = self.build_default_optimal_cost_bounds_report(
-                template_report
+            self._mark_default_bound_used(
+                "optimal_cost_bounds",
+                "Optimal-cost bounds were computed via the optimal-dispatch KKT solve.",
             )
-            if optimal_cost_report:
-                default_report["optimal_cost_bounds"] = optimal_cost_report
-                self._mark_default_bound_used(
-                    "optimal_cost_bounds",
-                    "Default loose optimal-cost bounds were used.",
-                )
 
         self.load_tightening_report_data(
             default_report,
@@ -716,6 +612,59 @@ class PoATighteningReports:
             merge_existing=False,
         )
         return default_report
+
+    def _solve_optimal_cost_bounds_report(
+        self,
+        solver_name: str = "gurobi",
+        time_limit: Optional[float] = None,
+        tee: bool = False,
+        solver_threads: Optional[int] = None,
+    ) -> dict[str, Any]:
+        """Solve the optimal-dispatch KKT problem for true C_opt bounds.
+
+        Requires self.primal_big_m to be populated (the bound model embeds the
+        primal complementarity Big-M constants). The computer builds its model on
+        self.tightening_model, leaving self.model untouched.
+        """
+        from models.PoA.PoA_tightening.compute_optimal_cost_bounds import (
+            OptimalCostBoundsComputer,
+        )
+
+        stage = OptimalCostBoundsComputer.__new__(OptimalCostBoundsComputer)
+        stage.poa = self
+        stage.tightening_data = {}
+        stage.stage_reports = {}
+        bound_report = stage.compute_optimal_cost_bounds(
+            solver_name=solver_name,
+            time_limit=time_limit,
+            tee=tee,
+            solver_threads=solver_threads,
+        )
+        c_opt = bound_report["C_opt"]
+        return {
+            "lower": float(c_opt["lower"]),
+            "upper": float(c_opt["upper"]),
+            "raw_lower": c_opt.get("raw_lower"),
+            "raw_upper": c_opt.get("raw_upper"),
+            "source": "computed_optimal_dispatch_kkt_bounds",
+        }
+
+    def _apply_optimal_cost_bounds_to_mccormick(
+        self,
+        lower: float,
+        upper: float,
+    ) -> None:
+        """Push solved C_opt bounds into mccormick_bounds and rebuild breakpoints."""
+        if getattr(self, "mccormick_bounds", None) is None:
+            return
+        self.mccormick_bounds["C_opt"] = (float(lower), float(upper))
+        if self.objective_mode == "piecewise_mccormick":
+            num_pieces = int(self.mccormick_bounds.get("num_pieces", 0))
+            if num_pieces >= 2:
+                step = (float(upper) - float(lower)) / num_pieces
+                self.mccormick_bounds["C_opt_breakpoints"] = [
+                    float(lower) + step * idx for idx in range(num_pieces + 1)
+                ]
 
     def _indexed_numeric_entries(
         self,
@@ -884,22 +833,55 @@ class PoATighteningReports:
             prepared[index] = max(0.0, min(float(default_bound), float(parsed[index])))
         return prepared
 
+    def _bid_implied_lambda_bounds(self, lambda_name: str) -> tuple[float, float]:
+        """Clearing-price (lambda) bounds derived from the effective bid range.
+
+        The marginal clearing price equals the marginal block's bid, shifted by
+        ramp-dual contributions. We bound lambda by the effective bid range and
+        widen it outward by LAMBDA_RAMP_SAFETY_FACTOR to absorb the ramp duals:
+
+            lower = min_bid - sf * |min_bid|
+            upper = max_bid + sf * |max_bid|
+
+        For lambda_opt the bids are the true marginal costs.
+        For lambda_eq the bids are the alpha bounds: min/max over all loaded
+        alpha_bounds entries (tightened OBBT when available, else loose defaults).
+        """
+        sf = float(getattr(self, "LAMBDA_RAMP_SAFETY_FACTOR", 0.10))
+        if lambda_name == "lambda_opt":
+            costs = [float(c) for c in self.block_cost_vector]
+            min_bid, max_bid = min(costs), max(costs)
+        else:
+            loaded_alpha = getattr(self, "alpha_bounds", None) or {}
+            if loaded_alpha:
+                min_bid = min(float(v["lower"]) for v in loaded_alpha.values())
+                max_bid = max(float(v["upper"]) for v in loaded_alpha.values())
+            else:
+                min_bid = float(self.default_alpha_lower)
+                max_bid = float(self.default_alpha_upper)
+        lower = min_bid - sf * abs(min_bid)
+        upper = max_bid + sf * abs(max_bid)
+        if lower >= upper:
+            lower, upper = min_bid - 1.0, max_bid + 1.0
+        return (lower, upper)
+
     def _prepare_lambda_bounds(
         self,
         lambda_name: str,
     ) -> dict[int, tuple[float, float]]:
+        # Clearing-price bounds track the effective bid range (alpha + true costs)
+        # widened for ramp duals, rather than fixed loose constants.
+        dyn_lower, dyn_upper = self._bid_implied_lambda_bounds(lambda_name)
         entries = (getattr(self, "lambda_bounds", {}) or {}).get(lambda_name, {}) or {}
         if not entries:
             if self.use_default_bounds:
                 self._mark_default_bound_used(
                     "lambda_bounds",
-                    "Default loose lambda bounds were used where no tightened values were loaded.",
+                    "Bid-implied lambda bounds (alpha + true costs, ramp safety "
+                    "factor) were used where no tightened values were loaded.",
                 )
             return {
-                int(t): (
-                    float(self.default_lambda_lower),
-                    float(self.default_lambda_upper),
-                )
+                int(t): (dyn_lower, dyn_upper)
                 for t in range(self.num_time_steps)
             }
         if not isinstance(entries, dict):
@@ -923,8 +905,8 @@ class PoATighteningReports:
                     f"Invalid lambda bounds '{lambda_name}' for time {t}. "
                     "Expected finite 'lower' and 'upper' entries."
                 )
-            lower = max(float(self.default_lambda_lower), float(lower))
-            upper = min(float(self.default_lambda_upper), float(upper))
+            lower = max(dyn_lower, float(lower))
+            upper = min(dyn_upper, float(upper))
             if lower > upper:
                 raise ValueError(
                     f"Invalid lambda bounds '{lambda_name}' for time {t}: "
@@ -1197,93 +1179,6 @@ class PoATighteningReports:
 
         return None
 
-    @staticmethod
-    def _aggregate_dual_bound_key_candidates(
-        generic_key: str,
-        side: str,
-        dual_name: str,
-    ) -> tuple[str, ...]:
-        root = (
-            generic_key[: -len("_sum_ub")]
-            if generic_key.endswith("_sum_ub")
-            else generic_key
-        )
-        dual_root = dual_name
-        for suffix in ("_eq", "_opt"):
-            if dual_root.endswith(suffix):
-                dual_root = dual_root[: -len(suffix)]
-
-        aliases = {
-            "mu_max_sum_ub": ("mu_upper_sum_ub", "mu_upper_bound_sum_ub"),
-            "mu_min_sum_ub": ("mu_lower_sum_ub", "mu_lower_bound_sum_ub"),
-            "mu_ramp_up_sum_ub": ("rho_up_sum_ub",),
-            "mu_ramp_down_sum_ub": ("rho_down_sum_ub",),
-        }
-        candidates = (
-            f"{dual_name}_sum_ub",
-            f"{dual_root}_{side}_sum_ub",
-            f"{root}_{side}_sum_ub",
-            f"{dual_root}_sum_ub",
-            generic_key,
-            *aliases.get(generic_key, ()),
-        )
-        return tuple(dict.fromkeys(candidates))
-
-    def _aggregate_dual_sum_upper_bound(
-        self,
-        generic_key: str,
-        side: str,
-        time_idx: int,
-        dual_name: str,
-    ) -> Optional[float]:
-        """
-        Return an optional aggregate dual sum bound for one KKT side and time.
-
-        The tightening report is intentionally permissive about where these
-        values live so older reports remain valid and newer reports can store
-        them either in a dedicated `aggregate_dual_bounds` block or alongside
-        other dual Big-M data.
-        """
-        report = getattr(self, "tightening_report", {}) or {}
-        source_payloads: list[Any] = [
-            getattr(self, "aggregate_dual_bounds", {}) or {},
-        ]
-        if isinstance(report, dict):
-            source_payloads.extend(
-                [
-                    report.get("aggregate_dual_bounds", {}) or {},
-                    report,
-                ]
-            )
-        source_payloads.append(getattr(self, "tight_big_m", {}) or {})
-
-        support_dual_bounds = self.ambiguity_set_config.get("dual_bounds", {})
-        source_payloads.extend(
-            [
-                self.ambiguity_set_config.get("aggregate_dual_bounds", {}),
-                support_dual_bounds.get("aggregate_dual_bounds", {})
-                if isinstance(support_dual_bounds, dict)
-                else {},
-                support_dual_bounds,
-                self.ambiguity_set_config,
-            ]
-        )
-
-        for payload in source_payloads:
-            if not isinstance(payload, dict):
-                continue
-            for key in self._aggregate_dual_bound_key_candidates(
-                generic_key,
-                side,
-                dual_name,
-            ):
-                if key not in payload:
-                    continue
-                bound = self._lookup_optional_time_bound(payload[key], side, time_idx)
-                if bound is not None:
-                    return bound
-        return None
-
     def apply_tightened_bounds_to_model(
         self,
         report: Optional[dict[str, Any]] = None,
@@ -1292,7 +1187,6 @@ class PoATighteningReports:
         apply_dual_bounds: bool = True,
         apply_lambda_bounds: Optional[bool] = None,
         apply_dual_big_m_bounds: Optional[bool] = None,
-        apply_aggregate_dual_bounds: Optional[bool] = None,
     ) -> dict[str, int]:
         """
         Apply a tightening report to the already-built PoA model.

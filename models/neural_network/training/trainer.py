@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import copy
 import json
+import random
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+import numpy as np
 import torch
 from torch import nn
 
@@ -42,6 +44,12 @@ def train_generator_policy(
     config: BiddingPolicyTrainingConfig,
 ) -> dict[str, Any]:
     """Train, save, and export a bidding policy network for one generator."""
+    # Seed Python/NumPy/PyTorch global RNGs so weight initialization (and any
+    # other global-RNG consumer) is reproducible. Without this, identical data
+    # and config still produce different trained models, making two runs
+    # impossible to compare. The data split is already deterministic via the
+    # sklearn random_state inside load_generator_policy_data.
+    _set_reproducible_seeds(config.random_state)
     policy_data = load_generator_policy_data(
         csv_path=csv_path,
         val_size=config.val_size,
@@ -128,6 +136,15 @@ def train_generator_policy(
         "policy_data": policy_data,
         "history": history,
     }
+
+def _set_reproducible_seeds(seed: int) -> None:
+    """Seed Python, NumPy, and PyTorch (CPU and CUDA) global RNGs."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
 
 def _fit_model(
     model: BiddingPolicyNetwork,

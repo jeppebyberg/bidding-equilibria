@@ -12,6 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from config.scenarios.scenario_generator import ScenarioManager
+from models.helper import sanitize_for_json
 from models.neural_network.features import NeuralNetworkFeatureBuilder
 from models.neural_network.training.trainer import (
     BiddingPolicyTrainingConfig,
@@ -935,7 +936,7 @@ def run_final_poa(config: PoAPipelineConfig) -> Path:
 def write_json(path: Path, payload: Any) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as file_handle:
-        json.dump(payload, file_handle, indent=2)
+        json.dump(sanitize_for_json(payload), file_handle, indent=2)
     return path
 
 def ensure_primal_big_m_in_report(path: Path, optimizer: PoAOptimization) -> bool:
@@ -969,7 +970,7 @@ if __name__ == "__main__":
         poa_seed=2,
 
         # Scenario counts for ambiguity-set draws.
-        synthetic_num_scenarios=1000,
+        synthetic_num_scenarios=50,
         poa_context_num_scenarios=1,
 
         # Heuristic synthetic-label generation.
@@ -1010,7 +1011,7 @@ if __name__ == "__main__":
         lr_scheduler_min_lr=1e-6,
 
         # PoA parameters.
-        horizon=8,
+        horizon=4,
         ambiguity_set_config_path="config/ambiguity_set_config.yaml",
         ambiguity_set_config_name="base_test_case",
         nn_policy_generators=["G1", "W2", "W3"],

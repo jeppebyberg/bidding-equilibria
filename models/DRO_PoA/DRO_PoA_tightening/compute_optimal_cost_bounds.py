@@ -73,66 +73,80 @@ class DROOptimalCostBoundsComputer(DROPoATighteningMain):
         if getattr(dro, "tightening_report", None) or getattr(dro, "primal_big_m", None):
             dro._prepare_loaded_bounds()
 
-        self.model = ConcreteModel()
-        self._build_index_sets()
-        m = self.model
+        # Build the bound model as `dro.tightening_model` so the optimizer's main
+        # MPEC `dro.model` is never overwritten -- this matters when these bounds
+        # are solved from inside build_model() via ensure_default_bounds_available().
+        # The shared dro `_build_*` helpers write to `dro.model`, so it is
+        # temporarily pointed at the bound model and restored in the finally block.
+        saved_model = dro.__dict__.get("model", None)
+        dro.tightening_model = ConcreteModel()
+        dro.model = dro.tightening_model
+        try:
+            self._build_index_sets()
+            m = self.model
 
-        dro._build_regime_variables()
-        m.D = Var(m.scenarios, m.time_steps, domain=NonNegativeReals)
-        m.P_max_block = Var(
-            m.scenarios,
-            m.generator_blocks,
-            m.time_steps,
-            domain=NonNegativeReals,
-        )
-        dro._build_optimal_variables()
-        dro._build_complementarity_optimal_variables()
-        dro._build_support_set()
-        dro._build_lower_level_optimal_constraints()
-        dro._build_KKT_stationarity_optimal_constraints()
-        dro._build_KKT_complementarity_optimal_constraints()
+            dro._build_regime_variables()
+            m.D = Var(m.scenarios, m.time_steps, domain=NonNegativeReals)
+            m.P_max_block = Var(
+                m.scenarios,
+                m.generator_blocks,
+                m.time_steps,
+                domain=NonNegativeReals,
+            )
+            dro._build_optimal_variables()
+            dro._build_complementarity_optimal_variables()
+            dro._build_support_set()
+            dro._build_lower_level_optimal_constraints()
+            dro._build_KKT_stationarity_optimal_constraints()
+            dro._build_KKT_complementarity_optimal_constraints()
 
-        # Replace the fixed p_init in the initial ramp constraints with a free
-        # decision variable so the model jointly optimises the generation at t=0
-        # (i.e. p_init = economic dispatch at the first time step).  This removes
-        # the artificial floor/ceiling imposed by the regime's deterministic p_init
-        # and gives the true support-set-wide C_opt bounds.
-        m.del_component(m.ramp_up_initial_opt)
-        m.del_component(m.ramp_down_initial_opt)
-        m.p_init_free = Var(
-            m.physical_generators,
-            domain=NonNegativeReals,
-            bounds=lambda _, i: (0.0, dro.static_physical_capacity[int(i)]),
-        )
-
-        def ramp_up_initial_free_rule(m, k, i):
-            return (
-                sum(m.P_opt[k, i, b, 0] for b in dro.local_blocks_by_generator[int(i)])
-                - m.p_init_free[i]
-                <= dro.ramp_vector_up[int(i)]
+            # Replace the fixed p_init in the initial ramp constraints with a free
+            # decision variable so the model jointly optimises the generation at t=0
+            # (i.e. p_init = economic dispatch at the first time step).  This removes
+            # the artificial floor/ceiling imposed by the regime's deterministic p_init
+            # and gives the true support-set-wide C_opt bounds.
+            m.del_component(m.ramp_up_initial_opt)
+            m.del_component(m.ramp_down_initial_opt)
+            m.p_init_free = Var(
+                m.physical_generators,
+                domain=NonNegativeReals,
+                bounds=lambda _, i: (0.0, dro.static_physical_capacity[int(i)]),
             )
 
-        def ramp_down_initial_free_rule(m, k, i):
-            return (
-                -sum(m.P_opt[k, i, b, 0] for b in dro.local_blocks_by_generator[int(i)])
-                + m.p_init_free[i]
-                <= dro.ramp_vector_down[int(i)]
+            def ramp_up_initial_free_rule(m, k, i):
+                return (
+                    sum(m.P_opt[k, i, b, 0] for b in dro.local_blocks_by_generator[int(i)])
+                    - m.p_init_free[i]
+                    <= dro.ramp_vector_up[int(i)]
+                )
+
+            def ramp_down_initial_free_rule(m, k, i):
+                return (
+                    -sum(m.P_opt[k, i, b, 0] for b in dro.local_blocks_by_generator[int(i)])
+                    + m.p_init_free[i]
+                    <= dro.ramp_vector_down[int(i)]
+                )
+
+            m.ramp_up_initial_opt = Constraint(
+                m.scenarios, m.physical_generators, rule=ramp_up_initial_free_rule
+            )
+            m.ramp_down_initial_opt = Constraint(
+                m.scenarios, m.physical_generators, rule=ramp_down_initial_free_rule
             )
 
-        m.ramp_up_initial_opt = Constraint(
-            m.scenarios, m.physical_generators, rule=ramp_up_initial_free_rule
-        )
-        m.ramp_down_initial_opt = Constraint(
-            m.scenarios, m.physical_generators, rule=ramp_down_initial_free_rule
-        )
+            m.C_opt = Var(m.scenarios, domain=Reals)
 
-        m.C_opt = Var(m.scenarios, domain=Reals)
+            def cost_opt_rule(m, k):
+                return m.C_opt[k] == self._optimal_cost_expression(m, int(k))
 
-        def cost_opt_rule(m, k):
-            return m.C_opt[k] == self._optimal_cost_expression(m, int(k))
-
-        m.cost_definition_opt = Constraint(m.scenarios, rule=cost_opt_rule)
-        return m
+            m.cost_definition_opt = Constraint(m.scenarios, rule=cost_opt_rule)
+            tightening_model = dro.tightening_model
+        finally:
+            if saved_model is not None:
+                dro.model = saved_model
+            else:
+                dro.__dict__.pop("model", None)
+        return tightening_model
 
     def _solve_bound(
         self,

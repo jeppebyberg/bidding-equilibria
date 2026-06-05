@@ -99,9 +99,20 @@ def load_generator_policy_data(
     val_dataset = _to_tensor_dataset(val_df, feature_columns, target_columns)
     test_dataset = _to_tensor_dataset(test_df, feature_columns, target_columns)
 
+    # Seed the train loader's shuffle with its own generator so batch order is
+    # reproducible and independent of how much global RNG state model init has
+    # consumed before iteration starts.
+    train_generator = torch.Generator()
+    train_generator.manual_seed(random_state)
+
     return BiddingPolicyData(
         generator_name=generator_name,
-        train_loader=DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle_train),
+        train_loader=DataLoader(
+            train_dataset,
+            batch_size=batch_size,
+            shuffle=shuffle_train,
+            generator=train_generator,
+        ),
         val_loader=DataLoader(val_dataset, batch_size=batch_size, shuffle=False),
         test_loader=DataLoader(test_dataset, batch_size=batch_size, shuffle=False),
         feature_columns=feature_columns,

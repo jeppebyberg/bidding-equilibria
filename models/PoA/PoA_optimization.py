@@ -17,6 +17,7 @@ from config.scenarios.scenario_generator import ScenarioManager
 from models.helper import (
     block_cost_vector,
     block_structure_from_dataframes,
+    gurobi_log_filter,
     infer_num_time_steps,
     is_wind_generator_name,
     ramp_vectors,
@@ -45,14 +46,23 @@ class PoAOptimization(
 
     normalization_epsilon = 1e-12
     DEFAULT_LOOSE_RELU_BOUND = 1e4
-    DEFAULT_LOOSE_ALPHA_LOWER = 0.0
+    # alpha (bids) is domain=Reals: strategic/NN bids may be negative, so the loose
+    # lower bound must be a valid outer bound, not 0. A 0 lower bound invalidly
+    # clamps bids to non-negative and suppresses the true worst-case PoA.
+    DEFAULT_LOOSE_ALPHA_LOWER = -1e4
     DEFAULT_LOOSE_ALPHA_UPPER = 1e4
     DEFAULT_LOOSE_DUAL_BIG_M = 1e6
-    DEFAULT_LOOSE_LAMBDA_LOWER = 0
+    # lambda_eq is the Reals dual of the power-balance equality; with negative bids
+    # the marginal block can set a negative clearing price, so the loose lower bound
+    # must allow negatives. There is no lambda tightening stage, so this default is
+    # used in every run. Kept symmetric with the upper price scale.
+    DEFAULT_LOOSE_LAMBDA_LOWER = -80
     DEFAULT_LOOSE_LAMBDA_UPPER = 80
-    DEFAULT_LOOSE_AGGREGATE_DUAL_UPPER = 1e8
+    # Outward margin applied to the bid-implied clearing-price (lambda) bounds to
+    # absorb ramp-dual contributions; see _bid_implied_lambda_bounds.
+    LAMBDA_RAMP_SAFETY_FACTOR = 0.10
     DEFAULT_LOOSE_C_OPT_LOWER = 1e-3
-    DEFAULT_LOOSE_C_OPT_UPPER = 1e8
+    DEFAULT_LOOSE_C_OPT_UPPER = 10000
     DEFAULT_PoA_LOWER = 1.0
     DEFAULT_PoA_UPPER = 10.0
 
@@ -83,7 +93,6 @@ class PoAOptimization(
         default_dual_big_m: float = DEFAULT_LOOSE_DUAL_BIG_M,
         default_lambda_lower: float = DEFAULT_LOOSE_LAMBDA_LOWER,
         default_lambda_upper: float = DEFAULT_LOOSE_LAMBDA_UPPER,
-        default_aggregate_dual_upper: float = DEFAULT_LOOSE_AGGREGATE_DUAL_UPPER,
         default_c_opt_lower: float = DEFAULT_LOOSE_C_OPT_LOWER,
         default_c_opt_upper: float = DEFAULT_LOOSE_C_OPT_UPPER,
         default_PoA_lower: float = DEFAULT_PoA_LOWER,
@@ -107,7 +116,6 @@ class PoAOptimization(
         self.default_dual_big_m = float(default_dual_big_m)
         self.default_lambda_lower = float(default_lambda_lower)
         self.default_lambda_upper = float(default_lambda_upper)
-        self.default_aggregate_dual_upper = float(default_aggregate_dual_upper)
         self.default_c_opt_lower = float(default_c_opt_lower)
         self.default_c_opt_upper = float(default_c_opt_upper)
         self.default_PoA_lower = float(default_PoA_lower)
@@ -128,7 +136,6 @@ class PoAOptimization(
         self.nn_bound_warnings: list[str] = []
         self.primal_big_m: dict[str, dict[str, Any]] = {}
         self.tight_big_m: dict[str, dict[str, Any]] = {}
-        self.aggregate_dual_bounds: dict[str, Any] = {}
         self.lambda_bounds: dict[str, Any] = {}
         self.optimal_cost_bounds: dict[str, Any] = {}
         self.optimal_cost_bound_optimization_results: dict[str, Any] = {}
@@ -905,128 +912,6 @@ class PoAOptimization(
         self.model.ramp_down_initial_complementarity_opt = Constraint(self.model.physical_generators, rule=ramp_down_initial_complementarity_opt_rule)
 
     # ------------------------------------------------------------------
-    # Aggregate dual-bound valid inequalities
-    # ------------------------------------------------------------------
-
-    aggregate_dual_bound_component_names = (
-        "aggregate_mu_max_bound",
-        "aggregate_mu_min_bound",
-        "aggregate_mu_ramp_up_bound",
-        "aggregate_mu_ramp_down_bound",
-    )
-
-    def _build_aggregate_dual_bound_constraints(self) -> int:
-        """
-        Add optional aggregate dual-bound inequalities.
-
-        Componentwise dual Big-M values are safe but rectangular: each
-        individual maximum may come from a different support-set trajectory. The
-        aggregate inequalities tighten that artificial feasible space by
-        limiting jointly attainable sums of dual variables without changing the
-        KKT stationarity or complementarity equations themselves.
-        """
-        m = self.model
-        if not hasattr(m, "kkt_sides"):
-            m.kkt_sides = Set(initialize=("eq", "opt"))
-
-        def dual_component(side: str, constraint_type: str) -> Any:
-            return getattr(
-                m,
-                {
-                    ("eq", "upper"): "mu_upper_eq",
-                    ("eq", "lower"): "mu_lower_eq",
-                    ("eq", "ramp_up"): "mu_ramp_up_eq",
-                    ("eq", "ramp_down"): "mu_ramp_down_eq",
-                    ("opt", "upper"): "mu_upper_opt",
-                    ("opt", "lower"): "mu_lower_opt",
-                    ("opt", "ramp_up"): "mu_ramp_up_opt",
-                    ("opt", "ramp_down"): "mu_ramp_down_opt",
-                }[(side, constraint_type)],
-            )
-
-        def dual_name(side: str, constraint_type: str) -> str:
-            return {
-                ("eq", "upper"): "mu_upper_eq",
-                ("eq", "lower"): "mu_lower_eq",
-                ("eq", "ramp_up"): "mu_ramp_up_eq",
-                ("eq", "ramp_down"): "mu_ramp_down_eq",
-                ("opt", "upper"): "mu_upper_opt",
-                ("opt", "lower"): "mu_lower_opt",
-                ("opt", "ramp_up"): "mu_ramp_up_opt",
-                ("opt", "ramp_down"): "mu_ramp_down_opt",
-            }[(side, constraint_type)]
-
-        def aggregate_bound(side: str, constraint_type: str, t: int) -> Optional[float]:
-            key = {
-                "upper": "mu_max_sum_ub",
-                "lower": "mu_min_sum_ub",
-                "ramp_up": "mu_ramp_up_sum_ub",
-                "ramp_down": "mu_ramp_down_sum_ub",
-            }[constraint_type]
-            return self._aggregate_dual_sum_upper_bound(
-                key,
-                side,
-                int(t),
-                dual_name(side, constraint_type),
-            )
-
-        def capacity_sum_rule(constraint_type: str):
-            def rule(model, side, t):
-                side = str(side)
-                bound = aggregate_bound(side, constraint_type, int(t))
-                if bound is None:
-                    return Constraint.Skip
-                mu = dual_component(side, constraint_type)
-                return sum(mu[i, b, t] for (i, b) in model.generator_blocks) <= bound
-
-            return rule
-
-        def ramp_sum_rule(constraint_type: str):
-            def rule(model, side, t):
-                side = str(side)
-                bound = aggregate_bound(side, constraint_type, int(t))
-                if bound is None:
-                    return Constraint.Skip
-                mu = dual_component(side, constraint_type)
-                return sum(mu[i, t] for i in model.physical_generators) <= bound
-
-            return rule
-
-        m.aggregate_mu_max_bound = Constraint(
-            m.kkt_sides,
-            m.time_steps,
-            rule=capacity_sum_rule("upper"),
-        )
-        m.aggregate_mu_min_bound = Constraint(
-            m.kkt_sides,
-            m.time_steps,
-            rule=capacity_sum_rule("lower"),
-        )
-        m.aggregate_mu_ramp_up_bound = Constraint(
-            m.kkt_sides,
-            m.time_steps,
-            rule=ramp_sum_rule("ramp_up"),
-        )
-        m.aggregate_mu_ramp_down_bound = Constraint(
-            m.kkt_sides,
-            m.time_steps,
-            rule=ramp_sum_rule("ramp_down"),
-        )
-
-        return sum(
-            len(getattr(m, component_name))
-            for component_name in self.aggregate_dual_bound_component_names
-        )
-
-    def _refresh_aggregate_dual_bound_constraints(self) -> int:
-        if not hasattr(self, "model"):
-            raise ValueError("Model is not built. Call build_model() first.")
-        for component_name in self.aggregate_dual_bound_component_names:
-            if hasattr(self.model, component_name):
-                self.model.del_component(component_name)
-        return self._build_aggregate_dual_bound_constraints()
-
-    # ------------------------------------------------------------------
     # PoA constraints
     # ------------------------------------------------------------------
 
@@ -1072,11 +957,12 @@ class PoAOptimization(
     def solve(self, time_limit: Optional[float] = None) -> Any:
         if not hasattr(self, "model"):
             raise ValueError("Model is not built. Call build_model() first.")
-        solver = SolverFactory("gurobi")
+        solver = SolverFactory("gurobi_direct")
         solver.options["IntFeasTol"] = 1e-8
         if time_limit is not None:
             solver.options["TimeLimit"] = float(time_limit)
-        self.solver_results = solver.solve(self.model, tee=True)
+        with gurobi_log_filter(solver):
+            self.solver_results = solver.solve(self.model, tee=False)
         return self.solver_results
 
 if __name__ == "__main__":

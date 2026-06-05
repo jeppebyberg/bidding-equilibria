@@ -831,11 +831,14 @@ def run_dro_eta_path_for_regime(
     _print_wasserstein_floor_diagnostic(optimizer.support_set_diagnostics(), regime_name)
 
     summaries: list[dict[str, Any]] = []
+    eta_count = len(descending_etas)
     for position, eta in enumerate(descending_etas):
         is_first_solve = position == 0
         if not is_first_solve:
             # Step the already-loaded model down to the next (lower) eta.
             optimizer.update_eta(eta)
+        # Every solve warm starts: the first from the empirical MIP start populated
+        # by attach_persistent_solver, each later one from the previous eta's optimum.
         result_path = solve_and_save_dro_for_eta(
             optimizer=optimizer,
             config=config,
@@ -843,7 +846,9 @@ def run_dro_eta_path_for_regime(
             eta=eta,
             applied_stats=applied_stats,
             tightening_report_path=tightening_report_path,
-            warm_start=not is_first_solve,
+            from_empirical_start=is_first_solve,
+            eta_index=position + 1,
+            eta_count=eta_count,
         )
         summaries.append(load_result_summary(result_path))
 
@@ -886,6 +891,32 @@ def _available_archive_path(path: Path) -> Path:
             return candidate
         suffix += 1
 
+def _print_dro_solve_banner(
+    regime_name: str,
+    eta: float,
+    eta_index: int | None,
+    eta_count: int | None,
+    objective_mode: str,
+    from_empirical_start: bool,
+) -> None:
+    """Print a clear header before the Gurobi log so each solve is identifiable.
+
+    The Gurobi solver output (tee=True) is otherwise an undifferentiated wall of
+    text; this banner labels which regime/eta/objective is being solved.
+    """
+    progress = (
+        f" [{eta_index}/{eta_count}]"
+        if eta_index is not None and eta_count is not None
+        else ""
+    )
+    start_kind = (
+        "empirical MIP start" if from_empirical_start else "warm start (previous eta)"
+    )
+    print("\n" + "=" * 78)
+    print(f"SOLVING DRO PoA{progress}  |  regime: {regime_name}  |  eta: {float(eta):.6g}")
+    print(f"  objective mode: {objective_mode}  |  start: {start_kind}")
+    print("=" * 78)
+
 def solve_and_save_dro_for_eta(
     optimizer: DRO_PoAOptimization,
     config: DROPoAPipelineConfig,
@@ -893,25 +924,37 @@ def solve_and_save_dro_for_eta(
     eta: float,
     applied_stats: dict[str, Any],
     tightening_report_path: Path,
-    warm_start: bool,
+    from_empirical_start: bool,
+    eta_index: int | None = None,
+    eta_count: int | None = None,
 ) -> Path:
     """Solve one eta on an already-built optimizer and save its results.
 
     The optimizer is built, tightened, and loaded into the persistent solver once
     per regime by run_dro_eta_path_for_regime; this function only runs the solve
-    (optionally warm-started from the previous eta) and writes the result.
+    and writes the result.  The solve always warm starts: from the empirical MIP
+    start on the first eta, or from the previous eta's optimum afterwards.
     """
     result_path = dro_result_path(config, regime_name, eta)
 
+    _print_dro_solve_banner(
+        regime_name=regime_name,
+        eta=eta,
+        eta_index=eta_index,
+        eta_count=eta_count,
+        objective_mode=optimizer.objective_mode,
+        from_empirical_start=from_empirical_start,
+    )
+
     start = time.perf_counter()
-    optimizer.solve(time_limit=config.dro_time_limit, warm_start=warm_start)
+    optimizer.solve(time_limit=config.dro_time_limit, warm_start=True)
     output_path = optimizer.save_results(result_path)
     elapsed = time.perf_counter() - start
 
     print(f"\nDRO PoA optimization complete: {output_path}")
     print(f"  Regime: {regime_name}")
     print(f"  Eta: {eta}")
-    print(f"  Warm-started from previous eta: {warm_start}")
+    print(f"  Start: {'empirical MIP start' if from_empirical_start else 'previous eta'}")
     print(f"  Objective mode: {optimizer.objective_mode}")
     if optimizer.objective_mode != "difference":
         summary = optimizer.solution_summary()
@@ -1055,7 +1098,6 @@ def build_dro_optimizer(
     )
     return optimizer
 
-
 def resolved_stage_paths(
     paths: dict[str, str | Path],
     regime_name: str,
@@ -1065,7 +1107,6 @@ def resolved_stage_paths(
         stage_name: str(path_template).format(regime_name=regime_name)
         for stage_name, path_template in merged.items()
     }
-
 
 def eta_label(eta: float) -> str:
     return f"{float(eta):.8g}".replace("-", "m").replace(".", "p")

@@ -1,8 +1,16 @@
 from __future__ import annotations
 
 import ast
+import atexit
+import os
+import re
+import sys
+import tempfile
+import threading
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Iterator, Mapping, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -395,3 +403,274 @@ def wind_generator_config_value(
         generator_names,
         default,
     )
+
+
+# ---------------------------------------------------------------------------
+# JSON serialization helpers
+# ---------------------------------------------------------------------------
+
+def sanitize_for_json(obj: Any) -> Any:
+    """Recursively replace non-finite floats (NaN, Inf) with None.
+
+    Python's json.dump writes NaN and Infinity as bare tokens by default
+    (allow_nan=True), which is not valid JSON and causes parse errors in strict
+    readers.  Call this before json.dump to produce a valid file.
+    """
+    import math
+    if isinstance(obj, float):
+        return None if not math.isfinite(obj) else obj
+    if isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [sanitize_for_json(v) for v in obj]
+    return obj
+
+
+# ---------------------------------------------------------------------------
+# Gurobi log filtering
+#
+# Gurobi writes its log to the C-level stdout via a callback, so Python-level
+# redirect_stdout cannot intercept it.  Instead, we set solver.options["LogFile"]
+# to a temp file and tail that file live with a background thread, forwarding
+# only the lines we care about (solve progress) and dropping bookkeeping noise
+# (model statistics, presolve, cutting-plane summary, etc.).
+#
+# Usage -- simple single solve (e.g. PoAOptimization):
+#
+#     with gurobi_log_filter(solver):
+#         solver.solve(model, tee=False)
+#
+# Usage -- persistent solver across an eta sweep (e.g. DRO_PoAOptimization).
+# Pass the same log_path and pos_holder on every call so the tail continues
+# from where it left off rather than replaying the whole file:
+#
+#     if not hasattr(self, "_gurobi_log_pos"):
+#         self._gurobi_log_path = None
+#         self._gurobi_log_pos = {"pos": 0}
+#
+#     with gurobi_log_filter(solver, self._gurobi_log_path, self._gurobi_log_pos) as path:
+#         self._gurobi_log_path = path
+#         solver.solve(tee=False, ...)
+# ---------------------------------------------------------------------------
+
+# Lines whose stripped prefix matches any of these are suppressed.
+_GUROBI_LOG_DROP_PREFIXES = (
+    # Parameter / model setup
+    "Set parameter",
+    "Non-default parameters:",
+    "IntFeasTol",
+    "LogFile",
+    "Optimize a model with",
+    "Model fingerprint:",
+    "Model has",
+    "Variable types:",
+    "Coefficient statistics:",
+    "Matrix range",
+    "Objective range",
+    "Bounds range",
+    "RHS range",
+    "Warning: Model contains large matrix",
+    "Consider reformulating",
+    "to avoid numerical issues",
+    # Presolve / concurrent LP
+    "Presolve removed",
+    "Presolve time:",
+    "Presolved:",
+    "Root relaxation presolved:",
+    "Deterministic concurrent LP optimizer",
+    "Concurrent LP optimizer",
+    "Showing primal log only",
+    "Showing dual log only",
+    "LogToConsole",
+    "Concurrent spin time:",
+    "Solved with dual simplex",
+    "Solved with barrier",
+    "Solved with primal simplex",
+    "Extra simplex iterations after uncrush",
+    # Post-solve statistics
+    "Cutting planes:",
+    "Learned:",
+    "Gomory:",
+    "Cover:",
+    "Implied bound:",
+    "Clique:",
+    "MIR:",
+    "Flow cover:",
+    "GUB cover:",
+    "Zero half:",
+    "RLT:",
+    "Relax-and-lift:",
+    "BQP:",
+    "StrongCG:",
+    "Mod-K:",
+    "Network:",
+    "Explored",
+    "Thread count was",
+    "Solution count",
+)
+
+# B&B node-table rows end with e.g. "1649%     -    3s"; this pattern does not
+# appear anywhere else in the Gurobi log.
+_NODE_DATA_ROW_RE = re.compile(r"\d+%\s+[\d\-]+\s+\d+s\s*$")
+
+# Temp log files registered here are removed at interpreter exit (Windows keeps
+# them open while Gurobi is running, so we cannot delete mid-solve).
+_TEMP_GUROBI_LOG_PATHS: set[str] = set()
+
+
+def _cleanup_temp_gurobi_logs() -> None:
+    for path in list(_TEMP_GUROBI_LOG_PATHS):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+atexit.register(_cleanup_temp_gurobi_logs)
+
+
+def _should_drop_gurobi_line(line: str) -> bool:
+    stripped = line.strip()
+    return any(stripped.startswith(prefix) for prefix in _GUROBI_LOG_DROP_PREFIXES)
+
+
+def _is_node_data_row(line: str) -> bool:
+    return bool(_NODE_DATA_ROW_RE.search(line))
+
+
+def _is_incumbent_row(line: str) -> bool:
+    return bool(line) and not line[0].isspace() and _is_node_data_row(line)
+
+
+def _tail_gurobi_log(
+    path: str,
+    line_filter: Callable[[str], bool],
+    pos_holder: dict,
+    stop_event: threading.Event,
+    poll_interval: float = 0.05,
+    node_print_every: int = 10,
+) -> None:
+    """Tail a growing Gurobi log file, forwarding kept lines to stdout live.
+
+    Reads appended bytes on a short poll for near-real-time output.  Only complete
+    lines are emitted; a partial trailing line is buffered until its newline arrives
+    so the prefix filter never sees a fragment.  ``pos_holder['pos']`` carries the
+    read offset across solves that share one log file.
+
+    Blank lines are collapsed to at most one consecutive blank so the output stays
+    compact.  B&B node-table rows are thinned to every ``node_print_every`` rows;
+    incumbent/heuristic rows (starting with a flag letter like H or *) are always
+    printed so every new solution is visible.
+    """
+    buffer = ""
+    consecutive_blank = 0
+    node_row_count = 0
+
+    def _drop(line: str) -> bool:
+        try:
+            return line_filter(line)
+        except Exception:
+            return False
+
+    def _emit(line: str, out_parts: list) -> None:
+        nonlocal consecutive_blank
+        if not line.strip():
+            consecutive_blank += 1
+            if consecutive_blank <= 1:
+                out_parts.append(line)
+        else:
+            consecutive_blank = 0
+            out_parts.append(line)
+
+    def process(final: bool = False) -> None:
+        nonlocal buffer, node_row_count
+        try:
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8", errors="replace") as handle:
+                    handle.seek(pos_holder["pos"])
+                    buffer += handle.read()
+                    pos_holder["pos"] = handle.tell()
+        except OSError:
+            return
+
+        out_parts: list[str] = []
+        while "\n" in buffer:
+            line, buffer = buffer.split("\n", 1)
+            full = line + "\n"
+            if _drop(full):
+                continue
+            if _is_node_data_row(full):
+                node_row_count += 1
+                if (
+                    node_row_count == 1
+                    or node_row_count % node_print_every == 0
+                    or _is_incumbent_row(full)
+                ):
+                    _emit(full, out_parts)
+            else:
+                _emit(full, out_parts)
+
+        if final and buffer:
+            if not _drop(buffer):
+                if _is_node_data_row(buffer):
+                    node_row_count += 1
+                    if (
+                        node_row_count == 1
+                        or node_row_count % node_print_every == 0
+                        or _is_incumbent_row(buffer)
+                    ):
+                        _emit(buffer, out_parts)
+                else:
+                    _emit(buffer, out_parts)
+            buffer = ""
+
+        if out_parts:
+            sys.stdout.write("".join(out_parts))
+            sys.stdout.flush()
+
+    while not stop_event.is_set():
+        process()
+        time.sleep(poll_interval)
+    process(final=True)
+
+
+@contextmanager
+def gurobi_log_filter(
+    solver: Any,
+    log_path: Optional[str] = None,
+    pos_holder: Optional[dict] = None,
+    node_print_every: int = 10,
+) -> Iterator[str]:
+    """Context manager: route the Gurobi log through a line filter and tail live.
+
+    Sets ``solver.options["LogFile"]`` to ``log_path`` (or a fresh temp file when
+    ``log_path`` is None), starts a background tail thread that forwards kept lines
+    to stdout, and cleans up on exit.
+
+    Yields the log file path used for this solve so callers can persist it across
+    calls (persistent-solver eta sweep).  Pass the same ``log_path`` and
+    ``pos_holder`` dict on every subsequent call to continue tailing from where the
+    previous solve left off rather than replaying the full file.
+    """
+    if log_path is None:
+        handle_fd, log_path = tempfile.mkstemp(prefix="gurobi_", suffix=".log")
+        os.close(handle_fd)
+        _TEMP_GUROBI_LOG_PATHS.add(log_path)
+    if pos_holder is None:
+        pos_holder = {"pos": 0}
+
+    solver.options["LogFile"] = log_path
+
+    stop_event = threading.Event()
+    tail_thread = threading.Thread(
+        target=_tail_gurobi_log,
+        args=(log_path, _should_drop_gurobi_line, pos_holder, stop_event),
+        kwargs={"node_print_every": node_print_every},
+        daemon=True,
+    )
+    tail_thread.start()
+    try:
+        yield log_path
+    finally:
+        stop_event.set()
+        tail_thread.join()

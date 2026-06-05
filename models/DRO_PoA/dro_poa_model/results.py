@@ -7,13 +7,17 @@ from typing import Any, Optional
 import numpy as np
 from pyomo.environ import value
 
+from models.helper import sanitize_for_json
+
 
 class DROPoAResults:
     def _safe_value(self, expr: Any) -> Optional[float]:
+        import math
         raw_value = value(expr, exception=False)
         if raw_value is None:
             return None
-        return float(raw_value)
+        f = float(raw_value)
+        return f if math.isfinite(f) else None
 
     def _profile_values(self, var: Any, *leading_indices: int) -> list[Optional[float]]:
         return [
@@ -262,7 +266,7 @@ class DROPoAResults:
             raise ValueError("output_path must end with .json or have no suffix")
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", encoding="utf-8") as file_handle:
-            json.dump(results, file_handle, indent=2)
+            json.dump(sanitize_for_json(results), file_handle, indent=2)
         return path
 
     def solution_summary(self) -> dict[str, Any]:

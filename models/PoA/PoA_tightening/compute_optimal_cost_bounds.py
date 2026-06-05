@@ -55,21 +55,37 @@ class OptimalCostBoundsComputer(PoATighteningMain):
         This intentionally excludes equilibrium-side constraints, bidding-policy
         constraints, neural-network variables, PoA objective/linking constraints,
         and aggregate dual valid inequalities.
+
+        The bound model is built as ``poa.tightening_model`` so the optimizer's
+        main MPEC ``poa.model`` is never overwritten -- this matters when these
+        bounds are solved from inside build_model() via
+        ensure_default_bounds_available(). The shared poa ``_build_*`` helpers
+        write to ``poa.model``, so it is temporarily pointed at the bound model
+        and restored in the finally block.
         """
         self.poa._ensure_loaded_bounds_prepared()
-        self.model = ConcreteModel()
-        self._build_index_sets()
-        self._build_PoA_variables()
-        self._build_optimal_variables()
-        self._build_complementarity_optimal_variables()
-        self._build_support_set()
-        self._build_lower_level_optimal_constraints()
-        self._build_KKT_stationarity_optimal_constraints()
-        self._build_KKT_complementarity_optimal_constraints()
-        self.model.cost_definition_opt = Constraint(
-            expr=self.model.C_opt == self.poa._get_optimal_cost_expression(self.model)
-        )
-        return self.model
+        saved_model = self.poa.__dict__.get("model", None)
+        self.poa.tightening_model = ConcreteModel()
+        self.poa.model = self.poa.tightening_model
+        try:
+            self._build_index_sets()
+            self._build_PoA_variables()
+            self._build_optimal_variables()
+            self._build_complementarity_optimal_variables()
+            self._build_support_set()
+            self._build_lower_level_optimal_constraints()
+            self._build_KKT_stationarity_optimal_constraints()
+            self._build_KKT_complementarity_optimal_constraints()
+            self.model.cost_definition_opt = Constraint(
+                expr=self.model.C_opt == self.poa._get_optimal_cost_expression(self.model)
+            )
+            tightening_model = self.poa.tightening_model
+        finally:
+            if saved_model is not None:
+                self.poa.model = saved_model
+            else:
+                self.poa.__dict__.pop("model", None)
+        return tightening_model
 
     def _solve_bound(
         self,

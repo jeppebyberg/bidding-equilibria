@@ -860,7 +860,7 @@ if __name__ == "__main__":
             "dual_big_m": True,
             "optimal_cost_bounds": True,
         },
-        run_dro_optimization=True,
+        run_dro_optimization=False,
         archive_existing_dro_results=True,
     )
 

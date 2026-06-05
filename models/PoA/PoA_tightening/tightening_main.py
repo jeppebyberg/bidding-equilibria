@@ -17,22 +17,6 @@ DEFAULT_TIGHTENING_OUTPUT_PATHS: dict[str, str] = {
     "final": "results/poa_tightening/final_tightening_report.json",
 }
 
-
-def _contains_aggregate_dual_bounds(payload: Any, parent_key: str | None = None) -> bool:
-    if isinstance(payload, dict):
-        if parent_key == "default_bounds_used":
-            return False
-        if "aggregate_dual_bounds" in payload:
-            return True
-        return any(
-            _contains_aggregate_dual_bounds(value, str(key))
-            for key, value in payload.items()
-        )
-    if isinstance(payload, list):
-        return any(_contains_aggregate_dual_bounds(value, parent_key) for value in payload)
-    return False
-
-
 class PoATighteningMain:
     """Shared orchestrator for the staged PoA tightening workflow."""
 
@@ -125,11 +109,6 @@ class PoATighteningMain:
     def _merge_report(self, report: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(report, dict):
             raise ValueError("Tightening report payload must be a dictionary")
-        if _contains_aggregate_dual_bounds(report):
-            raise ValueError(
-                "Loaded tightening report contains deprecated aggregate_dual_bounds. "
-                "Recompute dual Big-M tightening with componentwise bounds only."
-            )
 
         self.tightening_data.setdefault("metadata", {}).update(report.get("metadata", {}) or {})
 

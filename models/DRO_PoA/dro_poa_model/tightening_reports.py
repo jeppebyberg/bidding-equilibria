@@ -27,6 +27,95 @@ class DROPoATighteningReports:
         if note not in notes:
             notes.append(note)
 
+    def ensure_default_bounds_available(
+        self,
+        include_optimal_cost_bounds: Optional[bool] = None,
+        solver_name: str = "gurobi",
+        time_limit: Optional[float] = None,
+        tee: bool = False,
+        solver_threads: Optional[int] = None,
+    ) -> None:
+        """Self-provide model-construction bounds when no tightening report is loaded.
+
+        Mirrors the PoA model: primal_big_m is always recomputed (analytic) and
+        optimal_cost_bounds is always recomputed via the real optimal-dispatch KKT
+        solve, so the McCormick C_opt envelope has valid, tight denominator bounds.
+        The remaining stages (ReLU/alpha/dual Big-M/lambda) fall back to the
+        internal loose defaults applied by _prepare_loaded_bounds and the apply step.
+        """
+        from models.DRO_PoA.DRO_PoA_tightening.compute_primal_big_m import (
+            compute_primal_big_m_bounds,
+        )
+
+        include_optimal_cost_bounds = (
+            self.objective_mode in {"mccormick", "piecewise_mccormick"}
+            if include_optimal_cost_bounds is None
+            else bool(include_optimal_cost_bounds)
+        )
+
+        # primal_big_m always runs (analytic) and is applied immediately so the
+        # optimal-cost-bound solve below can build its KKT complementarity model.
+        self.primal_big_m = compute_primal_big_m_bounds(self)
+        self._loaded_bounds_prepared = False
+        self._mark_default_bound_used(
+            "primal_big_m",
+            "Analytic primal Big-M values were computed for model construction.",
+        )
+
+        # optimal_cost_bounds always runs via the real optimal-dispatch KKT solve;
+        # _set_optimal_cost_bounds_from_report pushes the range into mccormick_bounds.
+        if include_optimal_cost_bounds:
+            optimal_cost_report = self._solve_optimal_cost_bounds_report(
+                solver_name=solver_name,
+                time_limit=time_limit,
+                tee=tee,
+                solver_threads=solver_threads,
+            )
+            self._set_optimal_cost_bounds_from_report(
+                {"optimal_cost_bounds": optimal_cost_report}
+            )
+            self._mark_default_bound_used(
+                "optimal_cost_bounds",
+                "Optimal-cost bounds were computed via the optimal-dispatch KKT solve.",
+            )
+
+        self._prepare_loaded_bounds()
+
+    def _solve_optimal_cost_bounds_report(
+        self,
+        solver_name: str = "gurobi",
+        time_limit: Optional[float] = None,
+        tee: bool = False,
+        solver_threads: Optional[int] = None,
+    ) -> dict[str, Any]:
+        """Solve the DRO optimal-dispatch KKT problem for true C_opt bounds.
+
+        Requires self.primal_big_m to be populated. The computer builds its model
+        on self.tightening_model, leaving self.model untouched.
+        """
+        from models.DRO_PoA.DRO_PoA_tightening.compute_optimal_cost_bounds import (
+            DROOptimalCostBoundsComputer,
+        )
+
+        stage = DROOptimalCostBoundsComputer.__new__(DROOptimalCostBoundsComputer)
+        stage.poa = self
+        stage.tightening_data = {}
+        stage.stage_reports = {}
+        bound_report = stage.compute_optimal_cost_bounds(
+            solver_name=solver_name,
+            time_limit=time_limit,
+            tee=tee,
+            solver_threads=solver_threads,
+        )
+        c_opt = bound_report["C_opt"]
+        return {
+            "lower": float(c_opt["lower"]),
+            "upper": float(c_opt["upper"]),
+            "raw_lower": c_opt.get("raw_lower"),
+            "raw_upper": c_opt.get("raw_upper"),
+            "source": "computed_optimal_dispatch_kkt_bounds",
+        }
+
     @staticmethod
     def _json_key(indices: tuple[int, ...]) -> str:
         return ",".join(str(int(index)) for index in indices)
@@ -444,9 +533,44 @@ class DROPoATighteningReports:
             )
         return prepared
 
+    def _bid_implied_lambda_bounds(self, lambda_name: str) -> tuple[float, float]:
+        """Clearing-price (lambda) bounds derived from the effective bid range.
+
+        The marginal clearing price equals the marginal block's bid, shifted by
+        ramp-dual contributions. We bound lambda by the effective bid range and
+        widen it outward by LAMBDA_RAMP_SAFETY_FACTOR to absorb the ramp duals:
+
+            lower = min_bid - sf * |min_bid|
+            upper = max_bid + sf * |max_bid|
+
+        For lambda_opt the bids are the true marginal costs.
+        For lambda_eq the bids are the alpha bounds: min/max over all loaded
+        alpha_bounds entries (tightened OBBT when available, else loose defaults).
+        """
+        sf = float(getattr(self, "LAMBDA_RAMP_SAFETY_FACTOR", 0.10))
+        if lambda_name == "lambda_opt":
+            costs = [float(c) for c in self.block_cost_vector]
+            min_bid, max_bid = min(costs), max(costs)
+        else:
+            loaded_alpha = getattr(self, "alpha_bounds", None) or {}
+            if loaded_alpha:
+                min_bid = min(float(v["lower"]) for v in loaded_alpha.values())
+                max_bid = max(float(v["upper"]) for v in loaded_alpha.values())
+            else:
+                min_bid = float(self.default_alpha_lower)
+                max_bid = float(self.default_alpha_upper)
+        lower = min_bid - sf * abs(min_bid)
+        upper = max_bid + sf * abs(max_bid)
+        if lower >= upper:
+            lower, upper = min_bid - 1.0, max_bid + 1.0
+        return (lower, upper)
+
     def _prepare_lambda_bounds(self, lambda_name: str) -> dict[Any, tuple[float, float]]:
+        # Clearing-price bounds track the effective bid range (alpha + true costs)
+        # widened for ramp duals, rather than fixed loose constants.
+        dyn_lower, dyn_upper = self._bid_implied_lambda_bounds(lambda_name)
         return {
-            int(t): (float(self.default_lambda_lower), float(self.default_lambda_upper))
+            int(t): (dyn_lower, dyn_upper)
             for t in range(self.num_time_steps)
         }
 
