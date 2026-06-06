@@ -4,7 +4,7 @@ from typing import Any, Optional
 
 from pyomo.environ import value
 
-from models.helper import sanitize_for_json
+from models.helper import build_solver_summary, sanitize_for_json
 
 
 class PoAResults:
@@ -274,12 +274,7 @@ class PoAResults:
                 "blocks": block_results,
             }
 
-        solver_summary: dict[str, Any] = {}
-        if hasattr(self, "solver_results"):
-            solver_summary = {
-                "status": str(self.solver_results.solver.status),
-                "termination_condition": str(self.solver_results.solver.termination_condition),
-            }
+        solver_summary = build_solver_summary(self)
 
         try:
             dual_bound_activity = self.check_dual_bound_activity()

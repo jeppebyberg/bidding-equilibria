@@ -1932,11 +1932,13 @@ class DRO_PoAOptimization(
             self._gurobi_log_path = None
             self._gurobi_log_pos = {"pos": 0}
 
+        start = time.perf_counter()
         with gurobi_log_filter(solver, self._gurobi_log_path, self._gurobi_log_pos) as log_path:
             self._gurobi_log_path = log_path
             self.solver_results = solver.solve(
                 tee=False, load_solutions=False, warmstart=warm_start
             )
+        self.solve_wall_time_seconds = time.perf_counter() - start
 
         termination = self.solver_results.solver.termination_condition
         if termination == TerminationCondition.infeasible:

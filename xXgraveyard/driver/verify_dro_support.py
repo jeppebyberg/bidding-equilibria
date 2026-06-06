@@ -13,7 +13,7 @@ Check 4 — Innovation-stack and fleet-stack corner tests: trajectories that sta
            reject them.
 
 Usage:
-    .venv/Scripts/python.exe driver_tmp/verify_dro_support.py
+    .venv/Scripts/python.exe driver/verify_dro_support.py
 """
 from __future__ import annotations
 

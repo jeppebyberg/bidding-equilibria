@@ -11,7 +11,7 @@ from models.PoA.PoA_tightening.compute_primal_big_m import (
 
 
 def main() -> None:
-    from driver.PoA_pipeline import PoAPipelineConfig, build_poa_tightening
+    from xXgraveyard.driver.PoA_pipeline import PoAPipelineConfig, build_poa_tightening
 
     config = PoAPipelineConfig(run_tightening=False)
     stage = build_poa_tightening(config, PrimalBigMComputer)

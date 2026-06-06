@@ -54,16 +54,6 @@ def get_demand(case_name: str) -> float:
     else:
         raise ValueError("No demand information found in case")
 
-def get_time_steps(case_name: str) -> int:
-    """Get time steps from base case"""
-    test_case = load_test_case(case_name=case_name)
-    
-    if "time_steps" in test_case:
-        time_steps_list = test_case.get("time_steps")
-        return time_steps_list[0] if isinstance(time_steps_list, list) else time_steps_list
-    else:
-        raise ValueError("No time steps information found in case")
-
 def get_generators(case_name: str) -> List[Dict[str, Any]]:
     """Get generator data from test case"""
     test_case = load_test_case(case_name=case_name)
@@ -183,31 +173,16 @@ def normalize_generators(generators: List[Dict[str, Any]]) -> Dict[str, Any]:
         },
     }
 
-def load_setup_data(case_name: str = "test_case") -> Tuple[int, List[float], List[float], List[float], float, List[Dict[str, Any]], List[Dict[str, Any]]]:
-    """
-    Load complete base case data including players for a given case name
-
-    Parameters
-    ----------
-    case_name : str
-        Name of the base case to load (must match a key in reference_cases.yaml)
-    
-    Returns
-    -------
-    tuple
-        (num_generators, pmax_list, pmin_list, cost_vector, demand, generators, players)
-    """
-    # Load generators, demand, and players
+def load_setup_data(case_name: str = "test_case") -> Tuple[int, List[float], List[float], List[float], List[float], List[float], float, List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Load complete base case data for a given case name."""
     generators = get_generators(case_name=case_name)
     demand = get_demand(case_name=case_name)
     players = get_players(case_name=case_name)
-    time_steps = get_time_steps(case_name=case_name)
-    
+
     normalized = normalize_generators(generators)
     physical_generators = normalized["physical_generators"]
     num_generators = len(physical_generators)
 
-    # Extract generator data into arrays
     pmax_list = [gen["pmax"] for gen in physical_generators]
     pmin_list = [gen["pmin"] for gen in physical_generators]
     cost_vector = [
@@ -216,20 +191,5 @@ def load_setup_data(case_name: str = "test_case") -> Tuple[int, List[float], Lis
     ]
     r_rates_up_list = [gen["ramp_up"] for gen in physical_generators]
     r_rates_down_list = [gen["ramp_down"] for gen in physical_generators]
-    
-    return num_generators, pmax_list, pmin_list, cost_vector, r_rates_up_list, r_rates_down_list, demand, generators, players, time_steps
 
-if __name__ == "__main__":
-    # Example usage - load complete data including players
-    num_generators, pmax, pmin, cost, r_rates_up, r_rates_down, demand, generators, players, time_steps = load_setup_data("test_case_bidding_blocks")
-    print("Number of generators:", num_generators)
-    print("Pmax:", pmax)
-    print("Pmin:", pmin)
-    print("Cost:", cost)
-    print("R_rates_up:", r_rates_up)
-    print("R_rates_down:", r_rates_down)
-    print("Demand:", demand)
-    print("Time steps:", time_steps)
-    # print("Generators:", generators)
-    # print("\nPlayers:", players)
-    print(f"\nLoaded {num_generators} generators and {len(players)} players") 
+    return num_generators, pmax_list, pmin_list, cost_vector, r_rates_up_list, r_rates_down_list, demand, generators, players

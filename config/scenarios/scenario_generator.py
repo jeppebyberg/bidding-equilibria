@@ -6,15 +6,12 @@ import ast
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 import yaml
 from scipy.stats import norm as _norm
-
-import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
 
 
 if __package__ in {None, ""}:
@@ -57,7 +54,6 @@ class ScenarioManager:
 			demand,
 			generators,
 			players,
-			time_steps,
 		) = load_setup_data(self.base_case_reference)
 
 		self.base_case = {
@@ -71,7 +67,6 @@ class ScenarioManager:
 			"cost_vector": [float(v) for v in cost_vector],
 			"r_rates_up_list": [float(v) for v in r_rates_up_list],
 			"r_rates_down_list": [float(v) for v in r_rates_down_list],
-			"time_steps": int(time_steps),
 		}
 		self.normalized_generators = normalize_generators(self.base_case["generators"])
 		self.physical_generators = self.normalized_generators["physical_generators"]
@@ -82,9 +77,6 @@ class ScenarioManager:
 		self.physical_to_blocks = self.normalized_generators["physical_to_blocks"]
 
 		self.players_config = self.base_case["players"]
-
-		if self.base_case["time_steps"] <= 0:
-			raise ValueError(f"time_steps must be positive, got {self.base_case['time_steps']}")
 
 		self.wind_generator_indices = [
 			i
@@ -764,191 +756,6 @@ class ScenarioManager:
 	def get_players_config(self) -> List[Dict[str, Any]]:
 		return self.players_config
 
-	def plot_shape_functions_by_regime(
-		self,
-		regime_config_path: Optional[str] = None,
-		regime_set: Optional[str] = None,
-		title: str = "Deterministic Shape Functions",
-		figsize: Tuple[float, float] = (11.0, 7.0),
-		save_path: Optional[str] = None,
-		show: bool = True,
-	):
-		"""Plot the mean-one deterministic demand and wind multiplier profiles."""
-		config = self.load_regime_configuration(regime_config_path=regime_config_path, regime_set=regime_set)
-
-		horizon = self.base_case["time_steps"]
-		time_index = range(horizon)
-		demand_shape = self._build_demand_shape(horizon)
-
-		peak_hours = sorted({float(regime.peak_W) for regime in config["regimes"]})
-
-		fig, axes = plt.subplots(
-			nrows=2,
-			ncols=1,
-			figsize=figsize,
-			sharex=True,
-		)
-
-		axes[0].plot(
-			time_index,
-			demand_shape,
-			linewidth=2.2,
-			label=f"h_D",
-		)
-		axes[0].axhline(1.0, color="black", linewidth=1.0, linestyle="--", alpha=0.55)
-		axes[0].set_title("Demand Shape")
-		axes[0].set_ylabel("Multiplier")
-		axes[0].grid(True, alpha=0.25)
-		axes[0].legend(loc="best")
-
-		cmap = plt.get_cmap("tab10")
-		for idx, peak_hour in enumerate(peak_hours):
-			wind_shape = self._build_wind_shape(horizon, peak_hour)
-			axes[1].plot(
-				time_index,
-				wind_shape,
-				linewidth=2.2,
-				color=cmap(idx % cmap.N),
-				label=f"h_W peak={peak_hour:g}",
-			)
-
-		axes[1].axhline(1.0, color="black", linewidth=1.0, linestyle="--", alpha=0.55)
-		axes[1].set_title("Wind Shape")
-		axes[1].set_xlabel("Time")
-		axes[1].set_ylabel("Multiplier")
-		axes[1].grid(True, alpha=0.25)
-		axes[1].legend(loc="best")
-
-		fig.suptitle(f"{title}")
-		fig.tight_layout(rect=[0.0, 0.0, 1.0, 0.95])
-
-		if save_path:
-			save_target = Path(save_path)
-			save_target.parent.mkdir(parents=True, exist_ok=True)
-			fig.savefig(save_target, dpi=200, bbox_inches="tight")
-
-		if show:
-			plt.show()
-
-		plt.close(fig)
-
-		return fig, axes
-
-	def plot_generation_cost_curves(
-		self,
-		generator_names: Optional[List[str]] = None,
-		generator_type: Literal["all", "conventional", "wind"] = "all",
-		cost_kind: Literal["total", "marginal"] = "total",
-		title: Optional[str] = None,
-		figsize: Tuple[float, float] = (10.0, 6.0),
-		save_path: Optional[str] = None,
-		show: bool = True,
-	):
-		"""Plot production cost curves for physical generators.
-
-		``cost_kind="total"`` plots cumulative variable cost C(p). For
-		multi-block generators this is a piecewise-linear curve built from
-		the bidding blocks. ``cost_kind="marginal"`` plots the corresponding
-		block marginal-cost step curve.
-		"""
-		if cost_kind not in {"total", "marginal"}:
-			raise ValueError("cost_kind must be either 'total' or 'marginal'")
-		if generator_type not in {"all", "conventional", "wind"}:
-			raise ValueError("generator_type must be one of: 'all', 'conventional', 'wind'")
-
-		if generator_names is None:
-			selected_generators = list(self.physical_generators)
-			if generator_type == "conventional":
-				selected_generators = [gen for gen in selected_generators if not bool(gen["is_wind"])]
-			elif generator_type == "wind":
-				selected_generators = [gen for gen in selected_generators if bool(gen["is_wind"])]
-			selected_names = [gen["physical_name"] for gen in selected_generators]
-		else:
-			selected_names = [str(name) for name in generator_names]
-
-		unknown = [name for name in selected_names if name not in self.physical_generator_names]
-		if unknown:
-			raise ValueError(f"Unknown physical generators: {unknown}")
-		if not selected_names:
-			raise ValueError(f"No generators match generator_type='{generator_type}'")
-
-		fig, ax = plt.subplots(figsize=figsize)
-		cmap = plt.get_cmap("tab10")
-
-		for gen_idx, generator_name in enumerate(selected_names):
-			generator = next(
-				gen for gen in self.physical_generators
-				if gen["physical_name"] == generator_name
-			)
-			blocks = sorted(generator["blocks"], key=lambda block: int(block["block_id"]))
-			if not blocks:
-				continue
-
-			color = cmap(gen_idx % cmap.N)
-			if cost_kind == "total":
-				production = [0.0]
-				total_cost = [0.0]
-				cumulative_quantity = 0.0
-				cumulative_cost = 0.0
-
-				for block in blocks:
-					cumulative_quantity += float(block["pmax"])
-					cumulative_cost += float(block["pmax"]) * float(block["cost"])
-					production.append(cumulative_quantity)
-					total_cost.append(cumulative_cost)
-
-				ax.plot(
-					production,
-					total_cost,
-					marker="o",
-					linewidth=2.0,
-					color=color,
-					label=generator_name,
-				)
-			else:
-				x_values: List[float] = []
-				y_values: List[float] = []
-				cumulative_quantity = 0.0
-
-				for block in blocks:
-					next_quantity = cumulative_quantity + float(block["pmax"])
-					marginal_cost = float(block["cost"])
-					x_values.extend([cumulative_quantity, next_quantity])
-					y_values.extend([marginal_cost, marginal_cost])
-					cumulative_quantity = next_quantity
-
-				ax.step(
-					x_values,
-					y_values,
-					where="post",
-					linewidth=2.0,
-					color=color,
-					label=generator_name,
-				)
-
-		default_title = (
-			"Generation Total Cost Curves"
-			if cost_kind == "total"
-			else "Generation Marginal Cost Curves"
-		)
-		ax.set_title(title or default_title)
-		ax.set_xlabel("Production (MW)")
-		ax.set_ylabel("Total variable cost" if cost_kind == "total" else "Marginal cost")
-		ax.grid(True, alpha=0.25)
-		ax.legend(title="Generator", loc="best")
-
-		if save_path:
-			save_target = Path(save_path)
-			save_target.parent.mkdir(parents=True, exist_ok=True)
-			fig.savefig(save_target, dpi=200, bbox_inches="tight")
-
-		if show:
-			plt.show()
-
-		plt.close(fig)
-
-		return fig, ax
-
 	@staticmethod
 	def _profile_to_float_list(profile_raw: Any, expected_horizon: int) -> List[float]:
 		"""Convert profile payload to a numeric list and validate horizon length."""
@@ -965,258 +772,6 @@ class ScenarioManager:
 			)
 
 		return profile
-
-	def plot_demand_profiles_by_regime(
-		self,
-		scenarios_df: pd.DataFrame,
-		title: str = "Demand Profiles by Regime",
-		max_profiles_per_regime: Optional[int] = None,
-		show_regime_mean: bool = True,
-		alpha: float = 0.25,
-		line_width: float = 1.0,
-		mean_line_width: float = 2.5,
-		figsize: Tuple[float, float] = (11.0, 6.0),
-		random_state: Optional[int] = None,
-		save_path: Optional[str] = None,
-		show: bool = True,
-	):
-		"""Plot demand profiles and color them by regime.
-
-		Args:
-			scenarios_df: DataFrame from create_scenario_set_from_regimes.
-			title: Plot title.
-			max_profiles_per_regime: Optional cap on plotted trajectories per regime.
-			show_regime_mean: If True, draw one bold mean line per regime.
-			alpha: Transparency for individual profiles.
-			line_width: Width for individual profiles.
-			mean_line_width: Width for regime mean lines.
-			figsize: Matplotlib figure size.
-			random_state: Optional seed when down-sampling profiles.
-			save_path: Optional figure output path.
-			show: If True, call plt.show().
-
-		Returns:
-			(fig, ax, regime_colors)
-		"""
-		if "regime" not in scenarios_df.columns:
-			raise ValueError("scenarios_df must include a 'regime' column")
-		if "demand_profile" not in scenarios_df.columns:
-			raise ValueError("scenarios_df must include a 'demand_profile' column")
-
-		horizon = self.base_case["time_steps"]
-		regimes = sorted(scenarios_df["regime"].dropna().astype(str).unique().tolist())
-		if not regimes:
-			raise ValueError("No regimes found in scenarios_df['regime']")
-
-		rng = np.random.default_rng(random_state)
-		cmap = plt.get_cmap("tab10")
-		regime_colors = {regime: cmap(i % cmap.N) for i, regime in enumerate(regimes)}
-
-		fig, ax = plt.subplots(figsize=figsize)
-		legend_handles: List[Line2D] = []
-
-		for regime in regimes:
-			regime_df = scenarios_df[scenarios_df["regime"].astype(str) == regime]
-			if regime_df.empty:
-				continue
-
-			indices = regime_df.index.to_list()
-			if max_profiles_per_regime is not None and max_profiles_per_regime > 0 and len(indices) > max_profiles_per_regime:
-				indices = rng.choice(indices, size=max_profiles_per_regime, replace=False).tolist()
-
-			profiles: List[np.ndarray] = []
-			for idx in indices:
-				profile = self._profile_to_float_list(scenarios_df.at[idx, "demand_profile"], expected_horizon=horizon)
-				profile_np = np.array(profile, dtype=float)
-				profiles.append(profile_np)
-				ax.plot(
-					range(horizon),
-					profile_np,
-					color=regime_colors[regime],
-					alpha=alpha,
-					linewidth=line_width,
-				)
-
-			if show_regime_mean and profiles:
-				mean_profile = np.mean(np.vstack(profiles), axis=0)
-				ax.plot(
-					range(horizon),
-					mean_profile,
-					color=regime_colors[regime],
-					linewidth=mean_line_width,
-				)
-
-			legend_handles.append(
-				Line2D(
-					[0],
-					[0],
-					color=regime_colors[regime],
-					lw=mean_line_width,
-					label=f"{regime} (n={len(regime_df)})",
-				)
-			)
-
-		ax.set_title(title)
-		ax.set_xlabel("Time")
-		ax.set_ylabel("Demand")
-		ax.grid(True, alpha=0.25)
-		ax.legend(handles=legend_handles, title="Regime", loc="best")
-
-		if save_path:
-			save_target = Path(save_path)
-			save_target.parent.mkdir(parents=True, exist_ok=True)
-			fig.savefig(save_target, dpi=200, bbox_inches="tight")
-
-		if show:
-			plt.show()
-
-		plt.close(fig)
-
-		return fig, ax, regime_colors
-
-	def plot_wind_profiles_by_regime(
-		self,
-		scenarios_df: pd.DataFrame,
-		title: str = "Wind Profiles by Regime",
-		wind_generators: Optional[List[str]] = None,
-		max_profiles_per_regime: Optional[int] = None,
-		show_regime_mean: bool = True,
-		alpha: float = 0.22,
-		line_width: float = 0.9,
-		mean_line_width: float = 2.2,
-		figsize_per_generator: Tuple[float, float] = (11.0, 3.2),
-		random_state: Optional[int] = None,
-		save_path: Optional[str] = None,
-		show: bool = True,
-	):
-		"""Plot wind profiles for each wind generator and color scenarios by regime.
-
-		Args:
-			scenarios_df: DataFrame from create_scenario_set_from_regimes.
-			title: Figure title.
-			wind_generators: Optional subset of wind generator names (e.g. ["W3", "W4"]).
-			max_profiles_per_regime: Optional cap on trajectories per regime and generator.
-			show_regime_mean: If True, draw one bold mean line per regime on each subplot.
-			alpha: Transparency for individual profiles.
-			line_width: Width for individual profiles.
-			mean_line_width: Width for regime mean lines.
-			figsize_per_generator: (width, height) used per subplot row.
-			random_state: Optional seed when down-sampling profiles.
-			save_path: Optional output path for the figure.
-			show: If True, call plt.show().
-
-		Returns:
-			(fig, axes, regime_colors)
-		"""
-		if "regime" not in scenarios_df.columns:
-			raise ValueError("scenarios_df must include a 'regime' column")
-
-
-		all_wind_generators = [
-			block["block_name"]
-			for block in self.blocks
-			if bool(block["is_wind"])
-		]
-
-		if wind_generators is None:
-			wind_generators = all_wind_generators
-
-		if not wind_generators:
-			raise ValueError("No wind generators available for plotting")
-
-		for wind_name in wind_generators:
-			if wind_name not in all_wind_generators:
-				raise ValueError(f"Unknown wind generator '{wind_name}'. Available: {all_wind_generators}")
-			profile_col = f"{wind_name}_profile"
-			if profile_col not in scenarios_df.columns:
-				raise ValueError(f"Missing column '{profile_col}' in scenarios_df")
-
-		horizon = self.base_case["time_steps"]
-		regimes = sorted(scenarios_df["regime"].dropna().astype(str).unique().tolist())
-		if not regimes:
-			raise ValueError("No regimes found in scenarios_df['regime']")
-
-		rng = np.random.default_rng(random_state)
-		cmap = plt.get_cmap("tab10")
-		regime_colors = {regime: cmap(i % cmap.N) for i, regime in enumerate(regimes)}
-
-		fig_width = float(figsize_per_generator[0])
-		fig_height = float(figsize_per_generator[1]) * len(wind_generators)
-		fig, axes = plt.subplots(
-			nrows=len(wind_generators),
-			ncols=1,
-			figsize=(fig_width, fig_height),
-			sharex=True,
-		)
-		if len(wind_generators) == 1:
-			axes = [axes]
-
-		for ax, wind_name in zip(axes, wind_generators):
-			profile_col = f"{wind_name}_profile"
-
-			for regime in regimes:
-				regime_df = scenarios_df[scenarios_df["regime"].astype(str) == regime]
-				if regime_df.empty:
-					continue
-
-				indices = regime_df.index.to_list()
-				if max_profiles_per_regime is not None and max_profiles_per_regime > 0 and len(indices) > max_profiles_per_regime:
-					indices = rng.choice(indices, size=max_profiles_per_regime, replace=False).tolist()
-
-				profiles: List[np.ndarray] = []
-				for idx in indices:
-					profile = self._profile_to_float_list(scenarios_df.at[idx, profile_col], expected_horizon=horizon)
-					profile_np = np.array(profile, dtype=float)
-					profiles.append(profile_np)
-					ax.plot(
-						range(horizon),
-						profile_np,
-						color=regime_colors[regime],
-						alpha=alpha,
-						linewidth=line_width,
-					)
-
-				if show_regime_mean and profiles:
-					mean_profile = np.mean(np.vstack(profiles), axis=0)
-					ax.plot(
-						range(horizon),
-						mean_profile,
-						color=regime_colors[regime],
-						linewidth=mean_line_width,
-					)
-
-			ax.set_title(f"{wind_name} Wind Profile")
-			ax.set_ylabel("MW")
-			ax.grid(True, alpha=0.25)
-
-		axes[-1].set_xlabel("Time")
-		fig.suptitle(title)
-
-		counts_by_regime = scenarios_df["regime"].astype(str).value_counts().to_dict()
-		legend_handles = [
-			Line2D(
-				[0],
-				[0],
-				color=regime_colors[regime],
-				lw=mean_line_width,
-				label=f"{regime} (n={counts_by_regime.get(regime, 0)})",
-			)
-			for regime in regimes
-		]
-		fig.legend(handles=legend_handles, title="Regime", loc="upper right")
-		fig.tight_layout(rect=[0.0, 0.0, 0.88, 0.96])
-
-		if save_path:
-			save_target = Path(save_path)
-			save_target.parent.mkdir(parents=True, exist_ok=True)
-			fig.savefig(save_target, dpi=200, bbox_inches="tight")
-
-		if show:
-			plt.show()
-
-		plt.close(fig)
-
-		return fig, axes, regime_colors
 
 	def create_scenario_set_from_regimes(
 		self,
@@ -1449,8 +1004,6 @@ if __name__ == "__main__":
 	manager = ScenarioManager(base_case_reference="base_test_case")
 	regime_yaml = ScenarioManager.DEFAULT_REGIME_CONFIG_PATH
 	ambiguity_yaml = ScenarioManager.AMBIGUITY_CONFIG_PATH
-	make_plots = True
-
 	regime_scenario_set = manager.create_scenario_set_from_regimes(
 		regime_config_path=str(regime_yaml),
 		regime_set="policy_training",
@@ -1465,56 +1018,3 @@ if __name__ == "__main__":
 		seed=42,
 	)
 	print(ambiguity_scenario_set["description_text"])
-
-	if make_plots:
-		scenarios_df = regime_scenario_set["scenarios_df"]
-		ambiguity_scenarios_df = ambiguity_scenario_set["scenarios_df"]
-		manager.plot_shape_functions_by_regime(
-			str(regime_yaml),
-			regime_set="policy_training",
-			title="Deterministic Shape Functions",
-			save_path="setup_viz/shape_functions_by_regime.png",
-			show=False,
-		)
-		manager.plot_demand_profiles_by_regime(
-			scenarios_df,
-			title="Sampled Demand Profiles by Regime",
-			max_profiles_per_regime=100,
-			alpha=0.05,
-			show_regime_mean=True,
-			save_path="setup_viz/demand_profiles_by_regime.png",
-			show=False,
-		)
-		manager.plot_wind_profiles_by_regime(
-			scenarios_df,
-			title="Sampled Wind Profiles by Regime",
-			max_profiles_per_regime=100,
-			alpha=0.05,
-			show_regime_mean=True,
-			save_path="setup_viz/wind_profiles_by_regime.png",
-			show=False,
-		)
-		manager.plot_demand_profiles_by_regime(
-			ambiguity_scenarios_df,
-			title="Demand Profiles from Ambiguity Set",
-			max_profiles_per_regime=None,
-			alpha=0.08,
-			show_regime_mean=True,
-			save_path="setup_viz/ambiguity_set_demand_profiles.png",
-			show=True,
-		)
-		manager.plot_wind_profiles_by_regime(
-			ambiguity_scenarios_df,
-			title="Wind Profiles from Ambiguity Set",
-			max_profiles_per_regime=None,
-			alpha=0.08,
-			show_regime_mean=True,
-			save_path="setup_viz/ambiguity_set_wind_profiles.png",
-			show=True,
-		)
-		manager.plot_generation_cost_curves(
-			title="Generation Cost Curves for Test Case with Bidding Blocks",
-			save_path="setup_viz/generation_cost_curves.png",
-			generator_type="conventional",
-			show=False,
-		)

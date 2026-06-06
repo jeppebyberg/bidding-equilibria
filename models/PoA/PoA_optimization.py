@@ -961,8 +961,10 @@ class PoAOptimization(
         solver.options["IntFeasTol"] = 1e-8
         if time_limit is not None:
             solver.options["TimeLimit"] = float(time_limit)
+        start = time.perf_counter()
         with gurobi_log_filter(solver):
             self.solver_results = solver.solve(self.model, tee=False)
+        self.solve_wall_time_seconds = time.perf_counter() - start
         return self.solver_results
 
 if __name__ == "__main__":

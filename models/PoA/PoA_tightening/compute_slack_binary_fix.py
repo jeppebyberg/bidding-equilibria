@@ -456,13 +456,14 @@ class SlackBinaryFixComputer(PoATighteningMain):
                         tuple(result["index"]),
                     )
                     result_by_task[record_key] = result
-                    print(
-                        f"[Slack OBBT done {completed}/{total_programs}] "
-                        f"side={result['side']}, constraint={result['constraint_type']}, "
-                        f"index={result['index']} -> {result['minimum_slack']} "
-                        f"({result['termination_condition']})",
-                        flush=True,
-                    )
+                    _tc = result["termination_condition"]
+                    if completed % 50 == 0 or completed == total_programs or "infeasible" in str(_tc).lower():
+                        print(
+                            f"[Slack OBBT done {completed}/{total_programs}] "
+                            f"side={result['side']}, constraint={result['constraint_type']}, "
+                            f"index={result['index']} -> {result['minimum_slack']} ({_tc})",
+                            flush=True,
+                        )
 
             for side, constraint_type, index in tasks:
                 record_key = (side, constraint_type, index)
@@ -505,12 +506,6 @@ class SlackBinaryFixComputer(PoATighteningMain):
             }
 
         for program_number, (side, constraint_type, index) in enumerate(tasks, start=1):
-            print(
-                f"[Slack OBBT {program_number}/{total_programs}] "
-                f"minimize slack side={side}, constraint={constraint_type}, "
-                f"index={index}",
-                flush=True,
-            )
             m = self._build_side_kkt_model_for_slack_fixing(
                 side=side,
                 alpha_bounds=alpha_bounds,
@@ -552,6 +547,9 @@ class SlackBinaryFixComputer(PoATighteningMain):
                 "termination_condition": str(termination),
                 "result_classification": result_classification,
             }
+            _tc = str(termination)
+            if program_number % 50 == 0 or program_number == total_programs or "infeasible" in _tc.lower():
+                print(f"[Slack OBBT {program_number}/{total_programs}] side={side}, constraint={constraint_type}, index={index} -> {minimum_slack} ({_tc})", flush=True)
             if is_inactive:
                 var_name = self._binary_name(side, constraint_type)
                 fixed_binaries.setdefault(var_name, {})[self._json_key(index)] = {

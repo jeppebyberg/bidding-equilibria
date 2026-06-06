@@ -7,7 +7,7 @@ from typing import Any, Optional
 import numpy as np
 from pyomo.environ import value
 
-from models.helper import sanitize_for_json
+from models.helper import build_solver_summary, sanitize_for_json
 
 
 class DROPoAResults:
@@ -196,14 +196,7 @@ class DROPoAResults:
                 }
             )
 
-        solver_summary: dict[str, Any] = {}
-        if hasattr(self, "solver_results"):
-            solver_summary = {
-                "status": str(self.solver_results.solver.status),
-                "termination_condition": str(
-                    self.solver_results.solver.termination_condition
-                ),
-            }
+        solver_summary = build_solver_summary(self)
 
         dro_objective_with_epsilon = (
             inner_objective + self.eta * self.epsilon
@@ -310,14 +303,7 @@ class DROPoAResults:
             sum(m.wasserstein_distance[k] for k in m.scenarios)
             / self.num_empirical_scenarios
         )
-        solver_summary: dict[str, Any] = {}
-        if hasattr(self, "solver_results"):
-            solver_summary = {
-                "status": str(self.solver_results.solver.status),
-                "termination_condition": str(
-                    self.solver_results.solver.termination_condition
-                ),
-            }
+        solver_summary = build_solver_summary(self)
         return {
             "reference_case": self.reference_case,
             "regime_set": self.regime_set,

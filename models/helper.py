@@ -427,6 +427,84 @@ def sanitize_for_json(obj: Any) -> Any:
 
 
 # ---------------------------------------------------------------------------
+# Solve instrumentation (computation time and variable counts)
+# ---------------------------------------------------------------------------
+
+
+def count_integer_variables(model: Any) -> dict[str, int]:
+    """Count discrete decision variables in a Pyomo model.
+
+    Binary variables are counted separately from general integers. The ``free``
+    counts exclude variables fixed by tightening (e.g. ReLU binaries pinned
+    active/inactive); the free binary count is what actually drives MILP
+    branch-and-bound difficulty.
+    """
+    from pyomo.environ import Var
+
+    num_binary = num_binary_fixed = 0
+    num_integer = num_integer_fixed = 0
+    num_continuous = 0
+    for var_data in model.component_data_objects(Var, active=True):
+        if var_data.is_binary():
+            num_binary += 1
+            if var_data.fixed:
+                num_binary_fixed += 1
+        elif var_data.is_integer():
+            num_integer += 1
+            if var_data.fixed:
+                num_integer_fixed += 1
+        else:
+            num_continuous += 1
+
+    num_discrete_total = num_binary + num_integer
+    num_discrete_fixed = num_binary_fixed + num_integer_fixed
+    return {
+        "num_binary_variables": num_binary,
+        "num_binary_variables_fixed": num_binary_fixed,
+        "num_binary_variables_free": num_binary - num_binary_fixed,
+        "num_integer_variables": num_integer,
+        "num_integer_variables_fixed": num_integer_fixed,
+        "num_integer_variables_free": num_integer - num_integer_fixed,
+        "num_discrete_variables_total": num_discrete_total,
+        "num_discrete_variables_free": num_discrete_total - num_discrete_fixed,
+        "num_continuous_variables": num_continuous,
+    }
+
+
+def build_solver_summary(optimizer: Any) -> dict[str, Any]:
+    """Build the ``solver`` results block: status, solve time, variable counts.
+
+    Reads ``solver_results`` and ``solve_wall_time_seconds`` (set by the solve
+    method) plus the live Pyomo ``model`` off ``optimizer``. Every field is
+    optional so the summary degrades gracefully if a solve was skipped.
+    """
+    summary: dict[str, Any] = {}
+
+    solver_results = getattr(optimizer, "solver_results", None)
+    if solver_results is not None:
+        summary["status"] = str(solver_results.solver.status)
+        summary["termination_condition"] = str(solver_results.solver.termination_condition)
+        for attr in ("wallclock_time", "time"):
+            reported = getattr(solver_results.solver, attr, None)
+            if reported is not None:
+                try:
+                    summary["solver_reported_time_seconds"] = float(reported)
+                except (TypeError, ValueError):
+                    pass
+                break
+
+    wall_time = getattr(optimizer, "solve_wall_time_seconds", None)
+    if wall_time is not None:
+        summary["wall_time_seconds"] = float(wall_time)
+
+    model = getattr(optimizer, "model", None)
+    if model is not None:
+        summary["variable_counts"] = count_integer_variables(model)
+
+    return summary
+
+
+# ---------------------------------------------------------------------------
 # Gurobi log filtering
 #
 # Gurobi writes its log to the C-level stdout via a callback, so Python-level

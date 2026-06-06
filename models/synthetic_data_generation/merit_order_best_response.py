@@ -84,7 +84,7 @@ class MeritOrderHeuristic:
         self.history: List[Dict[str, Any]] = []
         self.results: Optional[Dict[str, Any]] = None
 
-        self._log_availability_interpretation()
+        # self._log_availability_interpretation()
 
     def _initialize_block_structure(self) -> None:
         block_structure = block_structure_from_dataframes(self.scenarios_df, self.ramps_df)
@@ -390,6 +390,8 @@ class MeritOrderHeuristic:
         baseline_profits = self.compute_all_player_profits(block_dispatches, prices)
 
         for scenario_id in range(self.num_scenarios):
+            if (scenario_id + 1) % 100 == 0 or scenario_id == 0:
+                print(f"  Heuristic scenario {scenario_id + 1} / {self.num_scenarios}")
             for time_id in range(self.num_time_steps):
                 merit_order = self.build_merit_order(
                     scenario_id,
@@ -506,12 +508,8 @@ class MeritOrderHeuristic:
                     self._apply_update(current_bids, update)
                     self.history.append(update)
                     updated_names.append(block.block_name)
-                print(
-                    f"  Updated s={scenario_id} t={time_id}: "
-                    f"{', '.join(updated_names)} bids -> {candidate_bid:.4f}"
-                )
 
-        print(f"One-pass heuristic applied {sum(1 for row in self.history if row.get('accepted'))} bid updates.")
+        print(f"  Heuristic scenario {self.num_scenarios} / {self.num_scenarios}")
         self.results = self.get_results(
             current_bids,
             dispatches=dispatches,

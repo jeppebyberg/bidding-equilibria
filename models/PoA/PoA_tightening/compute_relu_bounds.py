@@ -628,13 +628,14 @@ class ReLUBoundsComputer(PoATighteningMain):
         current = int(getattr(self, "_relu_bound_log_count", 0)) + 1
         self._relu_bound_log_count = current
         total = getattr(self, "_relu_bound_log_total", "?")
-        action = "minimize" if bound_name == "lower" else "maximize"
-        print(
-            f"[ReLU done {current}/{total}] {action} "
-            f"relu_z({generator_name}, {int(time_idx)}, {int(linear_idx)}, "
-            f"{int(neuron_idx)}) -> {bound_value} ({termination_condition})",
-            flush=True,
-        )
+        if current % 50 == 0 or current == total or "infeasible" in str(termination_condition).lower():
+            action = "minimize" if bound_name == "lower" else "maximize"
+            print(
+                f"[ReLU done {current}/{total}] {action} "
+                f"relu_z({generator_name}, {int(time_idx)}, {int(linear_idx)}, "
+                f"{int(neuron_idx)}) -> {bound_value} ({termination_condition})",
+                flush=True,
+            )
 
     def compute_first_layer_preactivation_bounds(
         self,

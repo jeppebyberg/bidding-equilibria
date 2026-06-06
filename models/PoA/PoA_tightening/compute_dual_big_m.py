@@ -404,11 +404,6 @@ class DualBigMComputer(PoATighteningMain):
             binary_name = self._binary_name(side, constraint_type)
             key = self._json_key(index)
             if key in fixed_binaries.get(binary_name, {}):
-                print(
-                    f"[Dual Big-M skip] side={side}, constraint={constraint_type}, "
-                    f"index={index}, binary={binary_name} fixed to 0",
-                    flush=True,
-                )
                 tight_big_m.setdefault(dual_name, {})[key] = {
                     "tight_big_m": 0.0,
                     "fixed_by_slack": True,
@@ -451,12 +446,14 @@ class DualBigMComputer(PoATighteningMain):
                         tuple(result["index"]),
                     )
                     result_by_task[record_key] = result
-                    print(
-                        f"[Dual Big-M done {completed}/{total_programs}] "
-                        f"maximize {result['dual_name']}{result['index']} -> "
-                        f"{result['tight_big_m']} ({result['termination_condition']})",
-                        flush=True,
-                    )
+                    _tc = result["termination_condition"]
+                    if completed % 50 == 0 or completed == total_programs or "infeasible" in str(_tc).lower():
+                        print(
+                            f"[Dual Big-M done {completed}/{total_programs}] "
+                            f"maximize {result['dual_name']}{result['index']} -> "
+                            f"{result['tight_big_m']} ({_tc})",
+                            flush=True,
+                        )
 
             for side, constraint_type, index in pending_dual_tasks:
                 result = result_by_task[(side, constraint_type, index)]
@@ -475,12 +472,6 @@ class DualBigMComputer(PoATighteningMain):
                 dual_name = self._dual_name(side, constraint_type)
 
                 program_number += 1
-                print(
-                    f"[Dual Big-M {program_number}/{total_programs}] "
-                    f"maximize {dual_name}{index} for side={side}, "
-                    f"constraint={constraint_type}",
-                    flush=True,
-                )
                 m = self._build_side_kkt_model_for_dual_big_m(
                     side=side,
                     alpha_bounds=alpha_bounds,
@@ -505,12 +496,15 @@ class DualBigMComputer(PoATighteningMain):
                     dual_value=dual_bound,
                     solved=solved,
                 )
+                _tc = str(results.solver.termination_condition)
                 tight_big_m.setdefault(dual_name, {})[self._json_key(index)] = {
                     "tight_big_m": dual_bound,
                     "fixed_by_slack": False,
-                    "termination_condition": str(results.solver.termination_condition),
+                    "termination_condition": _tc,
                     **diagnostics,
                 }
+                if program_number % 50 == 0 or program_number == total_programs or "infeasible" in _tc.lower():
+                    print(f"[Dual Big-M {program_number}/{total_programs}] maximize {dual_name}{index} -> {dual_bound} ({_tc})", flush=True)
 
         self.tight_big_m = tight_big_m
         return {
