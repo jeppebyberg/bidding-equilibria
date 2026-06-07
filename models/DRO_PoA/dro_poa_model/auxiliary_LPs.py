@@ -18,7 +18,10 @@ from pyomo.environ import (
     value,
 )
 
-from models.DRO_PoA.dro_poa_model.support_set import DROWassersteinSupportSet, _ar1_kappa
+from models.DRO_PoA.dro_poa_model.support_set import (
+    DROWassersteinSupportSet,
+    support_tube_parameters,
+)
 
 
 class DROPoASupportDiagnostics:
@@ -51,8 +54,18 @@ class DROPoASupportDiagnostics:
             getattr(self, "ar1_coverage", None)
             or DROWassersteinSupportSet.AR1_JOINT_COVERAGE
         )
-        kappa_ar1 = _ar1_kappa(T, coverage)
-        kappa_level = kappa_ar1
+        # Build the diagnostic tube from the SAME parameters as the model support
+        # set (support_set.py), so "inside support per diagnostic" means W=0 is
+        # feasible in the model. kappa_ar1 (innovation) and kappa_lvl (level) are
+        # rho-independent; only the level scales differ between demand and wind.
+        ar1_cov = getattr(self, "ar1_coverage", None)
+        lvl_cov = getattr(self, "level_coverage", None)
+        kappa_ar1, kappa_lvl, demand_scales = support_tube_parameters(
+            T, self.demand_rho_fixed, ar1_cov, lvl_cov
+        )
+        _, _, wind_scales = support_tube_parameters(
+            T, self.wind_rho_fixed, ar1_cov, lvl_cov
+        )
 
         demand_shape = np.asarray(self.demand_shape, dtype=float)
         wind_shape = np.asarray(self.wind_shape, dtype=float)
@@ -61,8 +74,9 @@ class DROPoASupportDiagnostics:
         for k in range(self.num_empirical_scenarios):
             D_emp = np.asarray(self.empirical_D[k], dtype=float)
             D_ref_vec = D_ref * self.mu_D_fixed * demand_shape
-            stationary_std_D = self.sigma_D_fixed / np.sqrt(1.0 - self.demand_rho_fixed ** 2)
-            margin_D = kappa_level * D_ref * stationary_std_D
+            # Time-varying level band: kappa_lvl * D_ref * sigma_D * _level_scale(rho, t),
+            # matching support_set.py (scale 1.0 at t=0, growing to the stationary bound).
+            margin_D = kappa_lvl * D_ref * self.sigma_D_fixed * np.asarray(demand_scales)
 
             lb_D = np.maximum(D_ref_vec - margin_D, 0.0)
             ub_D = D_ref_vec + margin_D
@@ -91,13 +105,12 @@ class DROPoASupportDiagnostics:
             wind_ar1_violations = 0
             wind_t0_violations = 0
             wind_level_violations = 0
-            stationary_std_W = self.sigma_W_fixed / np.sqrt(1.0 - self.wind_rho_fixed ** 2)
 
             for i in self.wind_physical_generator_ids:
                 cap = float(self.static_physical_capacity[int(i)])
                 P_emp = np.asarray(self.empirical_Pmax_phys[k][int(i)], dtype=float)
                 P_ref_vec = cap * self.mu_W_fixed * wind_shape
-                margin_W = kappa_level * cap * stationary_std_W
+                margin_W = kappa_lvl * cap * self.sigma_W_fixed * np.asarray(wind_scales)
                 lb_W = np.maximum(P_ref_vec - margin_W, 0.0)
                 ub_W = np.minimum(P_ref_vec + margin_W, cap)
 

@@ -5,8 +5,11 @@ every other setting comes from PROJECT_CONFIG. A run whose result-affecting
 setup is identical to the base case (i.e. the run whose hidden_layers equal the
 base-case default) copies the base-case results instead of recomputing them.
 
-Run:
+Run full study:
   .\\.venv\\Scripts\\python.exe -m driver.sensitivity.hidden_layers_sweep
+
+Run DRO only (for specific configs, assumes trained policies and PoA regimes exist):
+  .\\.venv\\Scripts\\python.exe -m driver.sensitivity.hidden_layers_sweep --dro-only
 """
 
 from __future__ import annotations
@@ -70,6 +73,49 @@ def run() -> dict[str, Any]:
     return run_sensitivity_study(build_study())
 
 
+def run_dro_only(
+    layer_configs: list[list[int]] | None = None,
+    run_tightening: bool = True,
+) -> dict[str, Any]:
+    """Run only the DRO analysis (block4) for the given hidden-layer configs.
+
+    Assumes trained policies and PoA runtime regimes already exist in the
+    sensitivity run directories.  Tightening is re-run by default so the
+    calibrated support-set coverage is picked up; set run_tightening=False to
+    reuse existing tightening reports.
+
+    Args:
+        layer_configs: list of hidden-layer specs to process.
+                       Defaults to [[4, 4, 4], [8, 8, 8]].
+        run_tightening: whether to redo the DRO tightening stages.
+    """
+    targets = layer_configs if layer_configs is not None else [[4, 4, 4], [8, 8, 8]]
+    study = SensitivityStudy(
+        name=STUDY_NAME,
+        result_root=Path("results/sensitivity_studies"),
+        blocks=("block4",),
+        runs=[
+            SensitivityRun(
+                name=run_name(layers),
+                overrides={
+                    "hidden_layers": layers,
+                    "run_dro_tightening": run_tightening,
+                    "run_dro_optimization": True,
+                    "archive_existing_dro_results": True,
+                },
+                label=run_label(layers),
+            )
+            for layers in targets
+        ],
+        reuse_base_case_results=False,
+    )
+    return run_sensitivity_study(study)
+
+
 if __name__ == "__main__":
-    preview()
-    run()
+    import sys
+    if "--dro-only" in sys.argv:
+        run_dro_only()
+    else:
+        preview()
+        run()

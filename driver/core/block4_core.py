@@ -26,6 +26,7 @@ from models.DRO_PoA.DRO_PoA_tightening.tightening_main import (
 from models.DRO_PoA.dro_poa_model.support_set import (
     DROWassersteinSupportSet,
     _ar1_kappa as _dro_ar1_kappa,
+    _level_scale as _dro_level_scale,
 )
 
 DRO_TIGHTENING_STAGE_ORDER = (
@@ -94,6 +95,13 @@ class DROPoAPipelineConfig:
     poa_parallel_workers: int = 1
     poa_solver_threads_per_worker: int | None = None
     ar1_coverage: float | None = None
+    calibrate_support_coverage: bool = True
+    support_coverage_grid: list[float] = field(
+        default_factory=lambda: [0.90, 0.95, 0.99, 0.999, 0.9999, 0.99999]
+    )
+    support_calibration_report_path: Path | None = None
+    support_verify_num_draws: int = 2000
+    support_verify_seed: int = 77777
     plot_results_along_the_way: bool = False
     run_scenario_generation: bool = True
     run_heuristic_labels: bool = True
@@ -178,6 +186,15 @@ def build_dro_config(config: ProjectConfig) -> DROPoAPipelineConfig:
         poa_parallel_workers=config.poa_parallel_workers,
         poa_solver_threads_per_worker=config.poa_solver_threads_per_worker,
         ar1_coverage=config.ar1_coverage,
+        calibrate_support_coverage=config.calibrate_support_coverage,
+        support_coverage_grid=list(config.support_coverage_grid),
+        support_calibration_report_path=(
+            Path(config.support_calibration_report_path)
+            if config.support_calibration_report_path is not None
+            else None
+        ),
+        support_verify_num_draws=config.support_verify_num_draws,
+        support_verify_seed=config.support_verify_seed,
         run_scenario_generation=False,
         run_heuristic_labels=False,
         run_feature_building=False,
@@ -216,6 +233,7 @@ def validate_scenarios_within_wasserstein_support(
     manager: ScenarioManager,
     horizon: int,
     ar1_coverage: float,
+    _verbose: bool = True,
 ) -> dict[str, Any]:
     kappa = _dro_ar1_kappa(horizon, ar1_coverage)
     scenarios_df = scenarios["scenarios_df"].copy().reset_index(drop=True)
@@ -245,7 +263,10 @@ def validate_scenarios_within_wasserstein_support(
         demand = np.asarray(_profile_values(row["demand_profile"], horizon), dtype=float)
         demand_ref = demand_ref_scalar * mu_D * demand_shape
         demand_threshold = kappa * demand_ref_scalar * sigma_D
-        demand_level_threshold = demand_threshold / np.sqrt(1.0 - rho_D ** 2)
+        # Time-varying level margin: kappa * sigma * _level_scale(rho, t), matching the model.
+        demand_level_margins = demand_threshold * np.array(
+            [_dro_level_scale(rho_D, t) for t in range(horizon)]
+        )
         if abs(demand[0] - demand_ref[0]) > demand_threshold + 1e-9:
             rejected_reasons[int(scenario_idx)] = "demand_innov_t0"
             continue
@@ -257,10 +278,11 @@ def validate_scenarios_within_wasserstein_support(
             if bool(np.any(np.abs(innov) > demand_threshold + 1e-9)):
                 rejected_reasons[int(scenario_idx)] = "demand_innov"
                 continue
-        if bool(np.any(np.abs(demand - demand_ref) > demand_level_threshold + 1e-9)):
+        if bool(np.any(np.abs(demand - demand_ref) > demand_level_margins + 1e-9)):
             rejected_reasons[int(scenario_idx)] = "demand_level"
             continue
 
+        wind_level_scales = np.array([_dro_level_scale(rho_W, t) for t in range(horizon)])
         for generator in wind_generators:
             generator_name = str(generator["physical_name"])
             capacity = float(generator["pmax"])
@@ -272,7 +294,7 @@ def validate_scenarios_within_wasserstein_support(
 
             wind_ref = capacity * mu_W * wind_shape
             wind_threshold = kappa * capacity * sigma_W
-            wind_level_threshold = wind_threshold / np.sqrt(1.0 - rho_W ** 2)
+            wind_level_margins = wind_threshold * wind_level_scales
             if abs(wind[0] - wind_ref[0]) > wind_threshold + 1e-9:
                 rejected_reasons[int(scenario_idx)] = f"wind_{generator_name}_innov_t0"
                 break
@@ -284,15 +306,16 @@ def validate_scenarios_within_wasserstein_support(
                 if bool(np.any(np.abs(innov) > wind_threshold + 1e-9)):
                     rejected_reasons[int(scenario_idx)] = f"wind_{generator_name}_innov"
                     break
-            if bool(np.any(np.abs(wind - wind_ref) > wind_level_threshold + 1e-9)):
+            if bool(np.any(np.abs(wind - wind_ref) > wind_level_margins + 1e-9)):
                 rejected_reasons[int(scenario_idx)] = f"wind_{generator_name}_level"
                 break
 
     if not rejected_reasons:
-        print(
-            "DRO support validation: 0 empirical scenarios dropped "
-            f"(coverage={ar1_coverage}, kappa={kappa:.4f})."
-        )
+        if _verbose:
+            print(
+                "DRO support validation: 0 empirical scenarios dropped "
+                f"(coverage={ar1_coverage}, kappa={kappa:.4f})."
+            )
         return scenarios
 
     total = len(scenarios_df)
@@ -300,13 +323,14 @@ def validate_scenarios_within_wasserstein_support(
     reason_counts: dict[str, int] = {}
     for reason in rejected_reasons.values():
         reason_counts[reason] = reason_counts.get(reason, 0) + 1
-    print(
-        "DRO support validation: "
-        f"{len(rejected)}/{total} empirical scenarios outside support bands "
-        f"(coverage={ar1_coverage}, kappa={kappa:.4f}); dropping them."
-    )
-    for reason, count in sorted(reason_counts.items()):
-        print(f"  {reason}: {count}")
+    if _verbose:
+        print(
+            "DRO support validation: "
+            f"{len(rejected)}/{total} empirical scenarios outside support bands "
+            f"(coverage={ar1_coverage}, kappa={kappa:.4f}); dropping them."
+        )
+        for reason, count in sorted(reason_counts.items()):
+            print(f"  {reason}: {count}")
     valid_idx = [idx for idx in range(total) if idx not in set(rejected)]
     if not valid_idx:
         raise RuntimeError(
@@ -314,6 +338,63 @@ def validate_scenarios_within_wasserstein_support(
             "Increase ar1_coverage or loosen the support configuration."
         )
     return {**scenarios, "scenarios_df": scenarios_df.iloc[valid_idx].reset_index(drop=True)}
+
+
+def calibrate_ar1_coverage_from_scenarios(
+    scenarios: dict[str, Any],
+    manager: ScenarioManager,
+    horizon: int,
+    coverage_grid: list[float],
+    report_path: "Path | None" = None,
+) -> tuple[float, dict[str, Any]]:
+    """Find the smallest coverage in coverage_grid at which ALL empirical scenarios
+    lie inside the AR(1) support tube (innovation + time-varying level bands).
+
+    Returns (chosen_coverage, report_dict). Raises RuntimeError if no grid value
+    achieves 0 outside scenarios. Saves a JSON report to report_path if given.
+    """
+    sorted_grid = sorted(coverage_grid)
+    per_coverage_outside: dict[str, int] = {}
+    chosen: float | None = None
+
+    for coverage in sorted_grid:
+        validated = validate_scenarios_within_wasserstein_support(
+            scenarios=scenarios,
+            manager=manager,
+            horizon=horizon,
+            ar1_coverage=coverage,
+            _verbose=False,
+        )
+        n_outside = len(scenarios["scenarios_df"]) - len(validated["scenarios_df"])
+        per_coverage_outside[str(coverage)] = n_outside
+        if n_outside == 0:
+            chosen = coverage
+            break
+
+    if chosen is None:
+        raise RuntimeError(
+            "No coverage in support_coverage_grid achieves 0 scenarios outside the "
+            f"support tube. Grid: {sorted_grid}. Outside counts: {per_coverage_outside}. "
+            "Extend support_coverage_grid or relax the ambiguity-set configuration."
+        )
+
+    report: dict[str, Any] = {
+        "chosen_coverage": chosen,
+        "chosen_kappa": _dro_ar1_kappa(horizon, chosen),
+        "n_empirical_scenarios": len(scenarios["scenarios_df"]),
+        "per_coverage_outside": per_coverage_outside,
+        "coverage_grid": sorted_grid,
+    }
+    print(
+        f"[support calibration] coverage={chosen}  "
+        f"kappa={report['chosen_kappa']:.4f}  "
+        f"(first grid level with 0/{report['n_empirical_scenarios']} scenarios outside)"
+    )
+    if report_path is not None:
+        Path(report_path).parent.mkdir(parents=True, exist_ok=True)
+        with Path(report_path).open("w", encoding="utf-8") as fh:
+            json.dump(report, fh, indent=2)
+    return chosen, report
 
 
 def load_dro_scenario_data(config: DROPoAPipelineConfig) -> dict[str, Any]:
@@ -330,11 +411,29 @@ def load_dro_scenario_data(config: DROPoAPipelineConfig) -> dict[str, Any]:
         seed=config.poa_seed,
         enforce_support_set=False,
     )
-    ar1_coverage = float(
-        config.ar1_coverage
-        if config.ar1_coverage is not None
-        else DROWassersteinSupportSet.AR1_JOINT_COVERAGE
-    )
+
+    if config.ar1_coverage is not None:
+        ar1_coverage = float(config.ar1_coverage)
+    elif config.calibrate_support_coverage:
+        ar1_coverage, _ = calibrate_ar1_coverage_from_scenarios(
+            scenarios=scenarios,
+            manager=scenario_manager,
+            horizon=config.horizon,
+            coverage_grid=list(config.support_coverage_grid),
+            report_path=config.support_calibration_report_path,
+        )
+        # Propagate the calibrated value so tightening and optimisation use it.
+        # Also update the class-level default so any call site that reads
+        # DROWassersteinSupportSet.AR1_JOINT_COVERAGE as a fallback gets the
+        # calibrated value rather than the hard-coded 0.99.
+        config.ar1_coverage = ar1_coverage
+        DROWassersteinSupportSet.AR1_JOINT_COVERAGE = ar1_coverage
+    else:
+        raise ValueError(
+            "ar1_coverage is not set and calibrate_support_coverage=False. "
+            "Either provide ar1_coverage explicitly or set calibrate_support_coverage=True."
+        )
+
     scenarios = validate_scenarios_within_wasserstein_support(
         scenarios=scenarios,
         manager=scenario_manager,

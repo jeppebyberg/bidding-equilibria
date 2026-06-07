@@ -63,7 +63,7 @@ class PoASupportSet:
 
         # One Sidak-corrected kappa for all T innovation constraints (t=0 cold-start +
         # t=1..T-1 AR(1) tube) and for the level box.  Matches DRO formulation exactly.
-        kappa = _ar1_kappa(self.num_time_steps)  # joint 99 % over T constraints
+        kappa = _ar1_kappa(self.num_time_steps)  # joint 95 % over T constraints
 
         # Precompute time-varying scale factors (pure Python floats; rho is fixed).
         # scale(t) = min((1-rho^{t+1})/(1-rho), 1/sqrt(1-rho^2))
@@ -88,7 +88,10 @@ class PoASupportSet:
         )
 
         m.demand_budget_expr = Expression(
-            rule=lambda _: self.ambiguity_kappa * sum(m.demand_reference[t] for t in m.time_steps)
+            rule=lambda _: self.ambiguity_kappa * sum(
+                m.demand_upper[t] - m.demand_reference[t]
+                for t in m.time_steps
+            )
         )
 
         def demand_lower_rule(m, t):
@@ -190,7 +193,10 @@ class PoASupportSet:
 
         m.wind_budget_expr = Expression(
             m.wind_physical_generators,
-            rule=lambda _, i: self.ambiguity_kappa * sum(m.wind_reference[i, t] for t in m.time_steps)
+            rule=lambda _, i: self.ambiguity_kappa * sum(
+                kappa * self.static_physical_capacity[int(i)] * m.sigma_W * wind_scales[int(t)]
+                for t in m.time_steps
+            )
         )
 
         def conventional_capacity_rule(m, i, b, t):

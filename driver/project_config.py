@@ -20,18 +20,17 @@ PROJECT_CONFIG = ProjectConfig(
 
     allow_wind_to_play = False,
 
-    # Locked base-case NN training setup (the "better model": lower validation
-    # loss than batch_size=32 / lr_scheduler_patience=25). See the base-case
-    # fingerprint at results/base_case/config_fingerprint.json.
     batch_size = 16,
     lr_scheduler_patience = 20,
 
     plot_results_along_the_way = True,
-    run_scenario_generation = True,
-    run_heuristic_labels = True,
-    run_feature_building = True,
-    run_nn_training = True,
-    run_poa_tightening = True,
+    run_scenario_generation = False,
+    run_heuristic_labels = False,
+    run_feature_building = False,
+    run_nn_training = False,
+    run_poa_tightening = False,
+
+    ambiguity_kappa = 0.25,
 
     poa_tightening_flags = {
         "relu_bounds": True,
@@ -40,7 +39,7 @@ PROJECT_CONFIG = ProjectConfig(
         "dual_big_m": True,
     },
 
-    run_poa_optimization = True,
+    run_poa_optimization = False,
 
     run_dro_tightening = True,
 
@@ -54,10 +53,10 @@ PROJECT_CONFIG = ProjectConfig(
     run_dro_optimization = True,
 
     poa_mccormick_num_pieces = 50,
-    poa_mccormick_PoA_bounds = (1.0, 20.0),
+    poa_mccormick_PoA_bounds = (1.0, 10.0),
 
     dro_mccormick_num_pieces = 50,
-    dro_mccormick_PoA_bounds = (1.0, 20.0),
+    dro_mccormick_PoA_bounds = (1.0, 10.0),
 )
 
 def load_project_config() -> ProjectConfig:

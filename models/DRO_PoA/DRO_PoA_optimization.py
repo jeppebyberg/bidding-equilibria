@@ -1044,16 +1044,6 @@ class DRO_PoAOptimization(
             rule=wasserstein_distance_rule,
         )
 
-        # Hard Wasserstein ball constraint: W[k] <= epsilon for every scenario.
-        # Without this, only the Lagrangian penalty (eta * W) is active, which
-        # cannot drive W to zero when the PoA landscape has discontinuities
-        # (bid-stack switches create arbitrarily steep gradients at finite eta).
-        # At epsilon = 0 this forces W = 0, recovering the nominal PoA.
-        def wasserstein_ball_rule(m, k):
-            return m.wasserstein_distance[k] <= 0.0
-
-        # m.wasserstein_ball = Constraint(m.scenarios, rule=wasserstein_ball_rule)
-
     # ------------------------------------------------------------------
     # Lower level equilibrium and optimality constraints
     # ------------------------------------------------------------------

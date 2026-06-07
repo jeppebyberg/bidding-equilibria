@@ -146,7 +146,7 @@ class ProjectConfig:
     support_verify_seed: int = 77777
     support_verify_num_draws: int = 2000
     support_coverage_grid: list[float] = field(
-        default_factory=lambda: [0.90, 0.95, 0.99, 0.999, 0.9999]
+        default_factory=lambda: [0.90, 0.95, 0.99, 0.999, 0.9999, 0.99999]
     )
     ar1_coverage: float | None = None
     run_dro_tightening: bool = False
