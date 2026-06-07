@@ -25,7 +25,7 @@ from driver.sensitivity.sensitivity_config import (
 
 STUDY_NAME = "hidden_layers_sweep"
 
-HIDDEN_LAYER_SETUPS: list[list[int]] = [[4, 4], [8, 4], [4, 8], [8, 8]]
+HIDDEN_LAYER_SETUPS: list[list[int]] = [[4, 4], [8, 4], [4, 8], [8, 8], [4, 4, 4], [8, 8, 8]]
 
 
 def run_name(hidden_layers: list[int]) -> str:

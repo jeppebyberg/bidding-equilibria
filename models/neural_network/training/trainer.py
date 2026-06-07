@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 import random
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -81,7 +82,9 @@ def train_generator_policy(
         f"batch size {config.batch_size}, and {config.num_epochs} epochs."
     )
 
+    training_start = time.perf_counter()
     history = _fit_model(model, policy_data, config, selected_device)
+    history["training_time_seconds"] = time.perf_counter() - training_start
 
     model_dir_path = Path(model_dir)
     result_dir_path = Path(result_dir)
@@ -123,6 +126,7 @@ def train_generator_policy(
         "best_val_loss": history["best_val_loss"],
         "final_test_loss": history["final_test_loss"],
         "best_epoch": history["best_epoch"],
+        "training_time_seconds": history["training_time_seconds"],
         "model_path": str(model_path),
         "metadata_path": str(metadata_path),
         "history_path": str(history_path),
@@ -328,6 +332,7 @@ def _build_metadata(
         "best_epoch": history["best_epoch"],
         "best_val_loss": history["best_val_loss"],
         "final_test_loss": history["final_test_loss"],
+        "training_time_seconds": history.get("training_time_seconds"),
         "learning_rate": config.learning_rate,
         "batch_size": config.batch_size,
         "weight_decay": config.weight_decay,
