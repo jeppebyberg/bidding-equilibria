@@ -198,11 +198,6 @@ class DROPoAResults:
 
         solver_summary = build_solver_summary(self)
 
-        dro_objective_with_epsilon = (
-            inner_objective + self.eta * self.epsilon
-            if inner_objective is not None
-            else None
-        )
         return {
             "reference_case": self.reference_case,
             "case_label": getattr(self, "case_label", ""),
@@ -225,7 +220,6 @@ class DROPoAResults:
                 self.optimal_cost_bound_optimization_results
             ),
             "inner_objective": inner_objective,
-            "dro_objective_with_epsilon": dro_objective_with_epsilon,
             "average_poa_difference": average_poa,
             "average_poa_ratio": average_poa_ratio,
             "average_relaxed_PoA": average_relaxed_PoA,
@@ -325,11 +319,6 @@ class DROPoAResults:
                 self.optimal_cost_bound_optimization_results
             ),
             "inner_objective": inner_objective,
-            "dro_objective_with_epsilon": (
-                inner_objective + self.eta * self.epsilon
-                if inner_objective is not None
-                else None
-            ),
             "average_poa_difference": average_poa,
             "average_poa_ratio": average_poa_ratio,
             "average_relaxed_PoA": average_relaxed_PoA,

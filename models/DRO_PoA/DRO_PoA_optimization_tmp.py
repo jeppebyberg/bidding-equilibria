@@ -936,33 +936,21 @@ class DRO_PoAOptimization(
     def _build_difference_objective(self) -> None:
         m = self.model
         m.objective = Objective(
-            expr=sum(
-                m.PoA[k] - self.eta * m.wasserstein_distance[k]
-                for k in m.scenarios
-            )
-            / self.num_empirical_scenarios,
+            expr=sum(m.PoA[k] for k in m.scenarios) / self.num_empirical_scenarios,
             sense=maximize,
         )
 
     def _build_mccormick_objective(self) -> None:
         m = self.model
         m.objective = Objective(
-            expr=sum(
-                m.PoA[k] - self.eta * m.wasserstein_distance[k]
-                for k in m.scenarios
-            )
-            / self.num_empirical_scenarios,
+            expr=sum(m.PoA[k] for k in m.scenarios) / self.num_empirical_scenarios,
             sense=maximize,
         )
 
     def _build_piecewise_mccormick_objective(self) -> None:
         m = self.model
         m.objective = Objective(
-            expr=sum(
-                m.PoA[k] - self.eta * m.wasserstein_distance[k]
-                for k in m.scenarios
-            )
-            / self.num_empirical_scenarios,
+            expr=sum(m.PoA[k] for k in m.scenarios) / self.num_empirical_scenarios,
             sense=maximize,
         )
 
@@ -1044,6 +1032,15 @@ class DRO_PoAOptimization(
         m.wasserstein_distance_definition = Constraint(
             m.scenarios,
             rule=wasserstein_distance_rule,
+        )
+
+        # Aggregate Wasserstein budget: (1/|K|) * sum_k W[k] <= epsilon (eq. 11b).
+        m.wasserstein_budget = Constraint(
+            expr=(
+                sum(m.wasserstein_distance[k] for k in m.scenarios)
+                / self.num_empirical_scenarios
+                <= self.epsilon
+            )
         )
 
     # ------------------------------------------------------------------
@@ -1807,21 +1804,14 @@ class DRO_PoAOptimization(
         return self._support_diagnostics_cache
 
     def _build_support_floor_constraints(self) -> None:
-        """Floor the per-scenario objective term at 1 where W[k]=0 is feasible.
+        """Floor PoA[k] >= 1 for scenarios inside the Wasserstein support set.
 
-        For empirical scenarios inside the Wasserstein support set (minimum
-        achievable transport distance <= SUPPORT_FLOOR_TOLERANCE, as reported by
-        DROPoASupportDiagnostics) the nominal market state W[k]=0 is feasible and
-        yields PoA[k] >= 1, so the per-scenario maximand PoA[k] - eta * W[k] is at
-        least 1.  Imposing this as a valid lower bound tightens the relaxation
-        without removing the optimum.  Scenarios outside the support set
-        (min_W_total > tolerance) are skipped because the floor need not hold
-        there (W[k] is forced strictly positive and the penalty -eta * W[k] can
-        pull the term below 1).
+        For empirical scenarios inside the support set (minimum achievable transport
+        distance <= SUPPORT_FLOOR_TOLERANCE) the nominal state W[k]=0 is feasible,
+        so PoA[k] >= 1 is a valid and tightening lower bound. Scenarios outside the
+        support set are skipped (W[k] is forced strictly positive there).
 
-        This constraint depends on eta, so update_eta() rebuilds it during an eta
-        sweep.  The set of floored scenarios is eta-independent, so it is created
-        once and kept; only the constraint coefficients change between etas.
+        This constraint does not depend on epsilon and is built once.
         """
         m = self.model
         diagnostics = self.support_set_diagnostics()
@@ -1838,7 +1828,7 @@ class DRO_PoAOptimization(
             m.support_floor_scenario_set = Set(initialize=inside_support)
 
         def support_objective_floor_rule(m, k):
-            return m.PoA[k] - self.eta * m.wasserstein_distance[k] >= 1.0
+            return m.PoA[k] >= 1.0
 
         m.support_objective_floor = Constraint(
             m.support_floor_scenario_set, rule=support_objective_floor_rule
@@ -1851,10 +1841,10 @@ class DRO_PoAOptimization(
     def attach_persistent_solver(self) -> Any:
         """Create a persistent Gurobi solver and load the model into it once.
 
-        This is the setup step for an eta sweep: the model is loaded a single
-        time, after which update_eta() pushes only the eta-dependent objective and
-        support-floor constraints to the live solver instead of rebuilding and
-        re-loading the whole model for every eta.
+        This is the setup step for an epsilon sweep: the model is loaded a single
+        time, after which update_epsilon() pushes only the epsilon-dependent
+        wasserstein_budget constraint to the live solver instead of rebuilding and
+        re-loading the whole model for every epsilon.
         """
         if not hasattr(self, "model"):
             raise ValueError("Model is not built. Call build_model() first.")
@@ -1870,42 +1860,38 @@ class DRO_PoAOptimization(
 
         return solver
 
-    def update_eta(self, eta: float) -> None:
-        """Re-point the eta-dependent parts of the model at a new eta, in place.
+    def update_epsilon(self, epsilon: float) -> None:
+        """Re-point the epsilon-dependent Wasserstein budget constraint at a new epsilon.
 
-        Only the objective term -eta * W[k] and the support-floor constraints
-        PoA[k] - eta * W[k] >= 1 depend on eta; everything else (support set, KKT,
-        ReLU embedding, McCormick) is unchanged.  When a persistent solver is
-        attached, the rebuilt objective and constraints are pushed to it so an eta
-        sweep reuses the already-loaded model.
+        Only the aggregate budget (1/|K|) * sum_k W[k] <= epsilon depends on
+        epsilon; the objective and all other constraints are unchanged.  When a
+        persistent solver is attached, the rebuilt constraint is pushed to it so an
+        epsilon sweep reuses the already-loaded model.
         """
-        self.eta = float(eta)
+        self.epsilon = float(epsilon)
         m = self.model
         solver = getattr(self, "_persistent_solver", None)
 
-        # Rebuild the eta-dependent objective.
-        m.del_component(m.objective)
-        self._build_objective()
-        if solver is not None:
-            solver.set_objective(m.objective)
-
-        # Rebuild the eta-dependent support-floor constraints.  The floored-
-        # scenario set is unchanged, so only the Constraint component is dropped
-        # and recreated; support_floor_scenario_set is left in place.
-        previous_floor = (
-            list(m.support_objective_floor.values())
-            if hasattr(m, "support_objective_floor")
+        previous_budget = (
+            list(m.wasserstein_budget.values())
+            if hasattr(m, "wasserstein_budget")
             else []
         )
-        if hasattr(m, "support_objective_floor"):
-            m.del_component(m.support_objective_floor)
-        self._build_support_floor_constraints()
+        if hasattr(m, "wasserstein_budget"):
+            m.del_component(m.wasserstein_budget)
+
+        m.wasserstein_budget = Constraint(
+            expr=(
+                sum(m.wasserstein_distance[k] for k in m.scenarios)
+                / self.num_empirical_scenarios
+                <= self.epsilon
+            )
+        )
         if solver is not None:
-            for constraint_data in previous_floor:
+            for constraint_data in previous_budget:
                 solver.remove_constraint(constraint_data)
-            if hasattr(m, "support_objective_floor"):
-                for constraint_data in m.support_objective_floor.values():
-                    solver.add_constraint(constraint_data)
+            for constraint_data in m.wasserstein_budget.values():
+                solver.add_constraint(constraint_data)
 
     def solve(self, time_limit: Optional[float] = None, warm_start: bool = False) -> Any:
         if not hasattr(self, "model"):
@@ -1956,8 +1942,7 @@ if __name__ == "__main__":
     regime_set = "PoA_analysis"
     regime_name = "normal"
     seed = 1
-    eta = 0.5
-    epsilon = 0.0
+    epsilon = 0.0  # Wasserstein radius; sweep over this
     horizon = 4
 
     scenario_manager = ScenarioManager(case)
@@ -1977,7 +1962,6 @@ if __name__ == "__main__":
         regime_config_path="config/regime_definitions.yaml",
         regime_set=regime_set,
         regime_name=regime_name,
-        eta=eta,
         epsilon=epsilon,
         nn_model_dir=None,
         reference_case=case,
@@ -2004,7 +1988,6 @@ if __name__ == "__main__":
 
     print("\nDRO PoA solve complete")
     print(f"  Regime: {regime_set}/{regime_name}")
-    print(f"  Eta: {eta}")
     print(f"  Epsilon: {epsilon}")
     print(f"  Results: {result_path}")
     print(f"  Runtime: {elapsed:.2f} seconds")

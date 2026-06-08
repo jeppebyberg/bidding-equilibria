@@ -482,6 +482,14 @@ class DROPoATighteningReports:
                 )
         return prepared
 
+    # Minimum fraction of default_bound that an OBBT-derived tight_big_m must
+    # reach before it is applied.  Results below this floor (when not confirmed
+    # by a primal slack argument) are treated as structurally unreliable: the
+    # single-scenario OBBT does not include the adversarial support_objective_floor
+    # constraint, so it can claim M=0 for lower-bound duals when the DRO model
+    # actually requires M > 0 in adversarially-forced high-PoA scenarios.
+    _DUAL_BIG_M_OBBT_MIN_FRACTION: float = 1e-3
+
     def _prepare_dual_big_m(
         self,
         dual_name: str,
@@ -498,6 +506,27 @@ class DROPoATighteningReports:
             (len(expected_indices[0]), len(expected_indices[0]) + 1),
             f"{expected_key_format} or k,{expected_key_format}",
         )
+        # Build a companion map that records whether each entry was confirmed by
+        # a primal slack argument (fixed_by_slack=True) or came from the OBBT.
+        # The OBBT uses a single-scenario model without adversarial constraints,
+        # which can underestimate the bound for lower-bound duals.
+        fixed_by_slack_map: dict[tuple[int, ...], bool] = {}
+        if isinstance(entries, dict):
+            for raw_key, details in entries.items():
+                if isinstance(details, dict):
+                    idx = self._parse_json_index(str(raw_key))
+                    fixed_by_slack_map[idx] = bool(details.get("fixed_by_slack", False))
+
+        min_obbt_bound = float(default_bound) * self._DUAL_BIG_M_OBBT_MIN_FRACTION
+
+        def _safe_bound(index: tuple[int, ...], tight_val: float) -> float:
+            fbs = fixed_by_slack_map.get(index, False)
+            if not fbs and tight_val < min_obbt_bound:
+                # OBBT result is suspiciously small; revert to the default bound
+                # to avoid artificial infeasibility in the DRO adversarial model.
+                return float(default_bound)
+            return max(0.0, min(float(default_bound), tight_val))
+
         prepared: dict[tuple[int, ...], float] = {}
         has_scenario_keys = any(len(index) == len(expected_indices[0]) + 1 for index in parsed)
         for regime_index in expected_indices:
@@ -510,12 +539,8 @@ class DROPoATighteningReports:
                             scenario_index,
                             f"k,{expected_key_format}",
                         )
-                    prepared[scenario_index] = max(
-                        0.0,
-                        min(
-                            float(default_bound),
-                            float(parsed[scenario_index]),
-                        ),
+                    prepared[scenario_index] = _safe_bound(
+                        scenario_index, float(parsed[scenario_index])
                     )
                 continue
             if regime_index not in parsed:
@@ -524,12 +549,8 @@ class DROPoATighteningReports:
                     regime_index,
                     expected_key_format,
                 )
-            prepared[regime_index] = max(
-                0.0,
-                min(
-                    float(default_bound),
-                    float(parsed[regime_index]),
-                ),
+            prepared[regime_index] = _safe_bound(
+                regime_index, float(parsed[regime_index])
             )
         return prepared
 
