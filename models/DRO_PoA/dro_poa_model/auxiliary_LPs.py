@@ -301,6 +301,190 @@ class DROPoAMIPStart:
         KKT multiplier is mu = max(0, -dual[row]).
     """
 
+    def audit_point_feasibility(
+        self,
+        tol: float = 1e-6,
+        top: int = 40,
+    ) -> list[dict[str, Any]]:
+        """Report which loaded bounds/constraints the current point violates.
+
+        Assumes ``self.model`` has variable values populated (e.g. via
+        compute_empirical_mip_start, which writes the empirical W=0 point).  Scans
+        every variable bound and every active constraint and returns the worst
+        violations sorted by magnitude, naming the Pyomo component and index --
+        far more actionable than Gurobi's anonymous ``xNNNNN`` from an IIS.
+
+        A violation here on the empirical point means a tightened bound is invalid
+        (too tight) and cuts off the genuine equilibrium, which manifests as a
+        provably infeasible MILP at solve time.
+        """
+        m = self.model
+        violations: list[dict[str, Any]] = []
+        unevaluable: dict[str, int] = {}
+
+        for var in m.component_objects(Var, active=True):
+            for index in var:
+                var_data = var[index]
+                point = var_data.value
+                if point is None:
+                    continue
+                lb = var_data.lb
+                ub = var_data.ub
+                if lb is not None and point < lb - tol:
+                    violations.append({
+                        "kind": "var_lb",
+                        "name": var_data.name,
+                        "value": float(point),
+                        "bound": float(lb),
+                        "violation": float(lb - point),
+                    })
+                if ub is not None and point > ub + tol:
+                    violations.append({
+                        "kind": "var_ub",
+                        "name": var_data.name,
+                        "value": float(point),
+                        "bound": float(ub),
+                        "violation": float(point - ub),
+                    })
+
+        for con in m.component_objects(Constraint, active=True):
+            for index in con:
+                con_data = con[index]
+                if not con_data.active:
+                    continue
+                body = value(con_data.body, exception=False)
+                if body is None:
+                    base_name = con_data.parent_component().name
+                    unevaluable[base_name] = unevaluable.get(base_name, 0) + 1
+                    continue
+                lower = value(con_data.lower, exception=False) if con_data.lower is not None else None
+                upper = value(con_data.upper, exception=False) if con_data.upper is not None else None
+                if lower is not None and body < lower - tol:
+                    violations.append({
+                        "kind": "constraint_lower",
+                        "name": con_data.name,
+                        "value": float(body),
+                        "bound": float(lower),
+                        "violation": float(lower - body),
+                    })
+                if upper is not None and body > upper + tol:
+                    violations.append({
+                        "kind": "constraint_upper",
+                        "name": con_data.name,
+                        "value": float(body),
+                        "bound": float(upper),
+                        "violation": float(body - upper),
+                    })
+
+        violations.sort(key=lambda entry: entry["violation"], reverse=True)
+        print(
+            f"Empirical-point feasibility audit: {len(violations)} violation(s) "
+            f"at tol={tol:g}"
+        )
+        if unevaluable:
+            skipped_total = sum(unevaluable.values())
+            print(
+                f"  WARNING: {skipped_total} constraint(s) skipped (unset variables) "
+                f"in: {', '.join(sorted(unevaluable))}"
+            )
+        for entry in violations[: int(top)]:
+            print(
+                f"  [{entry['kind']}] {entry['name']}: value={entry['value']:.6g} "
+                f"bound={entry['bound']:.6g} violation={entry['violation']:.3g}"
+            )
+        return violations
+
+    def write_empirical_nn_embedding(self) -> int:
+        """Write the true NN forward pass into the embedding variables.
+
+        compute_empirical_mip_start sets alpha to the numpy forward pass but leaves
+        nn_input/nn_z/nn_h/nn_delta/nn_output unset, so audit_point_feasibility
+        cannot evaluate the ReLU-embedding constraints (the prime suspect for an
+        over-tight bound).  This populates them with the exact forward-pass values
+        (z = Wx+b, h = relu(z), delta = 1[z>0]) so the audit covers them.  Returns
+        the number of (k, generator, t) forward passes written.
+        """
+        m = self.model
+        if not hasattr(m, "nn_output") or not self.nn_policy_generator_ids:
+            return 0
+        T = self.num_time_steps
+        written = 0
+        for k in range(self.num_empirical_scenarios):
+            D_emp = np.asarray(self.empirical_D[k], dtype=float)
+            Pmax_phys_emp = self.empirical_Pmax_phys[k]
+            total_wind = np.array([
+                sum(float(Pmax_phys_emp[j][t]) for j in self.wind_physical_generator_ids)
+                for t in range(T)
+            ])
+            for i in self.nn_policy_generator_ids:
+                generator_name = self.physical_generator_names[i]
+                policy = self.nn_policies[generator_name]
+                feature_columns = policy["feature_columns"]
+                layers = policy["layers"]
+                num_linear = sum(
+                    1 for layer in layers if str(layer.get("type", "")).lower() == "linear"
+                )
+                for t in range(T):
+                    previous_t = T - 1 if t == 0 else t - 1
+                    next_t = 0 if t == T - 1 else t + 1
+                    raw_features = {
+                        "demand": float(D_emp[t]),
+                        "previous_demand": float(D_emp[previous_t]),
+                        "next_demand": float(D_emp[next_t]),
+                        "total_wind_generation_capacity": float(total_wind[t]),
+                        "previous_wind_generation_capacity": float(total_wind[previous_t]),
+                        "next_wind_generation_capacity": float(total_wind[next_t]),
+                        "residual_demand": float(D_emp[t]) - float(total_wind[t]),
+                        "previous_residual_demand": float(D_emp[previous_t]) - float(total_wind[previous_t]),
+                        "next_residual_demand": float(D_emp[next_t]) - float(total_wind[next_t]),
+                        "total_demand_over_horizon": float(D_emp.sum()),
+                        "total_wind_over_horizon": float(total_wind.sum()),
+                        "total_residual_over_horizon": float((D_emp - total_wind).sum()),
+                    }
+                    features = np.array([
+                        (raw_features[f] - self._nn_feature_bounds(generator_name, f)[0])
+                        / max(
+                            self._nn_feature_bounds(generator_name, f)[1]
+                            - self._nn_feature_bounds(generator_name, f)[0],
+                            self.normalization_epsilon,
+                        )
+                        for f in feature_columns
+                    ], dtype=float)
+                    for f_idx, feature_value in enumerate(features):
+                        if (k, i, t, f_idx) in m.nn_input:
+                            m.nn_input[k, i, t, f_idx].set_value(float(feature_value))
+
+                    x = features
+                    linear_idx = 0
+                    for layer in layers:
+                        layer_type = str(layer.get("type", "")).lower()
+                        if layer_type != "linear":
+                            continue
+                        weight = np.asarray(layer["weight"], dtype=float)
+                        bias = np.asarray(layer["bias"], dtype=float)
+                        z = weight @ x + bias
+                        is_final = linear_idx == num_linear - 1
+                        if is_final:
+                            for node, z_node in enumerate(z):
+                                if (k, i, t, node) in m.nn_output:
+                                    m.nn_output[k, i, t, node].set_value(float(z_node))
+                            x = z
+                        else:
+                            h = np.maximum(z, 0.0)
+                            for node, z_node in enumerate(z):
+                                if (k, i, t, linear_idx, node) in m.nn_z:
+                                    m.nn_z[k, i, t, linear_idx, node].set_value(float(z_node))
+                                if (k, i, t, linear_idx, node) in m.nn_h:
+                                    m.nn_h[k, i, t, linear_idx, node].set_value(float(h[node]))
+                                if (k, i, t, linear_idx, node) in m.nn_delta:
+                                    m.nn_delta[k, i, t, linear_idx, node].set_value(
+                                        1 if z_node > 0.0 else 0
+                                    )
+                            x = h
+                        linear_idx += 1
+                    written += 1
+        return written
+
     def compute_empirical_mip_start(self, solver_name: str = "gurobi") -> None:
         """Build the empirical-trajectory point and load it as a Gurobi MIP start."""
         if not hasattr(self, "model"):

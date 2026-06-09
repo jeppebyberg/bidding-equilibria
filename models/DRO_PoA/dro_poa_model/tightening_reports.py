@@ -915,13 +915,21 @@ class DROPoATighteningReports:
                 for scenario_key in scenario_keys:
                     k, time_idx, linear_idx, node = scenario_key
                     index = (int(k), i, int(time_idx), int(linear_idx), int(node))
+                    status = str(bounds.get("status", "ambiguous")).lower()
+                    z_lb, z_ub, h_lb, h_ub = self._clamp_relu_bounds_to_status(
+                        status,
+                        float(bounds["L"]),
+                        float(bounds["U"]),
+                        float(bounds["h_lower"]),
+                        float(bounds["h_upper"]),
+                    )
                     if index in m.nn_z:
-                        m.nn_z[index].setlb(float(bounds["L"]))
-                        m.nn_z[index].setub(float(bounds["U"]))
+                        m.nn_z[index].setlb(z_lb)
+                        m.nn_z[index].setub(z_ub)
                         stats["z_bounds_applied"] += 1
                     if index in m.nn_h:
-                        m.nn_h[index].setlb(float(bounds["h_lower"]))
-                        m.nn_h[index].setub(float(bounds["h_upper"]))
+                        m.nn_h[index].setlb(h_lb)
+                        m.nn_h[index].setub(h_ub)
                         stats["h_bounds_applied"] += 1
                     if index not in m.nn_delta:
                         continue

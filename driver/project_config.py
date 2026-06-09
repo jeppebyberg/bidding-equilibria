@@ -16,7 +16,7 @@ from driver.core.block0_core import ProjectConfig
 PROJECT_CONFIG = ProjectConfig(
     case_label = "base_case",
     synthetic_labels_target=25000,
-    horizon = 8,
+    horizon = 6,
 
     allow_wind_to_play = False,
 

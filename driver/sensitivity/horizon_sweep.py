@@ -30,7 +30,7 @@ study = SensitivityStudy(
     },
     runs=[
         SensitivityRun("T4", {"horizon": 4}),
-        SensitivityRun("T8", {"horizon": 8}),
+        SensitivityRun("T6", {"horizon": 8}),
         SensitivityRun("T12", {"horizon": 12}),
     ],
 )

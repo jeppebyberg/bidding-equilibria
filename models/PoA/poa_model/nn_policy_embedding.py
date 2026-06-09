@@ -439,6 +439,24 @@ class PoAPolicyEmbedding:
             return 0.0
         return (raw - feature_min) / denominator
 
+    @staticmethod
+    def _clamp_relu_bounds_to_status(
+        status: str, L: float, U: float, h_lower: float, h_upper: float
+    ) -> tuple[float, float, float, float]:
+        """Clamp OBBT-derived ReLU bounds to be consistent with the classified status.
+
+        OBBT can return tiny positive L/U for inactive nodes when network weights are
+        near machine precision (e.g. ~1e-40), which would impose a positive floor on h
+        and conflict with the h == 0 constraint added for inactive nodes.  The same
+        fallback logic mirrors _DUAL_BIG_M_OBBT_MIN_FRACTION in _prepare_dual_big_m.
+        """
+        if status == "inactive":
+            safe_u = min(U, 0.0)
+            return min(L, safe_u), safe_u, 0.0, 0.0
+        if status == "active":
+            return max(L, 0.0), U, max(h_lower, 0.0), h_upper
+        return L, U, h_lower, h_upper  # ambiguous: Big-M values, keep as-is
+
     def _build_policy_constraints(self) -> None:
         def true_cost_alpha_rule(m, i, b, t):
             if int(i) in self.nn_policy_generator_ids:
@@ -534,10 +552,18 @@ class PoAPolicyEmbedding:
                 index = (i, int(t), int(linear_idx), int(node))
                 if index not in m.nn_z:
                     continue
-                m.nn_z[index].setlb(float(bounds["L"]))
-                m.nn_z[index].setub(float(bounds["U"]))
-                m.nn_h[index].setlb(float(bounds["h_lower"]))
-                m.nn_h[index].setub(float(bounds["h_upper"]))
+                status = str(bounds.get("status", "ambiguous")).lower()
+                z_lb, z_ub, h_lb, h_ub = self._clamp_relu_bounds_to_status(
+                    status,
+                    float(bounds["L"]),
+                    float(bounds["U"]),
+                    float(bounds["h_lower"]),
+                    float(bounds["h_upper"]),
+                )
+                m.nn_z[index].setlb(z_lb)
+                m.nn_z[index].setub(z_ub)
+                m.nn_h[index].setlb(h_lb)
+                m.nn_h[index].setub(h_ub)
 
         for i in self.nn_policy_generator_ids:
             generator_name = self.physical_generator_names[i]
@@ -653,18 +679,25 @@ class PoAPolicyEmbedding:
                     int(linear_idx),
                     int(node),
                 )
+                status = str(bounds.get("status", "")).lower()
+                z_lb, z_ub, h_lb, h_ub = self._clamp_relu_bounds_to_status(
+                    status,
+                    float(bounds["L"]),
+                    float(bounds["U"]),
+                    float(bounds["h_lower"]),
+                    float(bounds["h_upper"]),
+                )
                 if hasattr(m, "nn_z") and index in m.nn_z:
-                    m.nn_z[index].setlb(float(bounds["L"]))
-                    m.nn_z[index].setub(float(bounds["U"]))
+                    m.nn_z[index].setlb(z_lb)
+                    m.nn_z[index].setub(z_ub)
                     stats["z_bounds_applied"] += 1
                 if hasattr(m, "nn_h") and index in m.nn_h:
-                    m.nn_h[index].setlb(float(bounds["h_lower"]))
-                    m.nn_h[index].setub(float(bounds["h_upper"]))
+                    m.nn_h[index].setlb(h_lb)
+                    m.nn_h[index].setub(h_ub)
                     stats["h_bounds_applied"] += 1
                 if not hasattr(m, "nn_delta") or index not in m.nn_delta:
                     continue
 
-                status = str(bounds.get("status", "")).lower()
                 if status == "inactive":
                     m.nn_delta[index].fix(0)
                     stats["delta_fixed_inactive"] += 1

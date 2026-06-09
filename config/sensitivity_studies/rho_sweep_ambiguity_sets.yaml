@@ -1,0 +1,142 @@
+default_ambiguity_set: rho_neg0p75
+ambiguity_sets:
+  rho_neg0p75:
+    description: 'Rho sensitivity: rho_fixed = -0.75.'
+    demand:
+      mu:
+        min: 0.75
+        max: 1.25
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: -0.75
+    wind:
+      mu:
+        min: 0.25
+        max: 0.75
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: -0.75
+      tau_fixed: 14
+    kappa: 0.3
+  rho_neg0p25:
+    description: 'Rho sensitivity: rho_fixed = -0.25.'
+    demand:
+      mu:
+        min: 0.75
+        max: 1.25
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: -0.25
+    wind:
+      mu:
+        min: 0.25
+        max: 0.75
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: -0.25
+      tau_fixed: 14
+    kappa: 0.3
+  rho_pos0p00:
+    description: 'Rho sensitivity: rho_fixed = 0.00.'
+    demand:
+      mu:
+        min: 0.75
+        max: 1.25
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.0
+    wind:
+      mu:
+        min: 0.25
+        max: 0.75
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.0
+      tau_fixed: 14
+    kappa: 0.3
+  rho_pos0p25:
+    description: 'Rho sensitivity: rho_fixed = 0.25.'
+    demand:
+      mu:
+        min: 0.75
+        max: 1.25
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.25
+    wind:
+      mu:
+        min: 0.25
+        max: 0.75
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.25
+      tau_fixed: 14
+    kappa: 0.3
+  rho_pos0p50:
+    description: 'Rho sensitivity: rho_fixed = 0.50.'
+    demand:
+      mu:
+        min: 0.75
+        max: 1.25
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.5
+    wind:
+      mu:
+        min: 0.25
+        max: 0.75
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.5
+      tau_fixed: 14
+    kappa: 0.3
+  rho_pos0p75:
+    description: 'Rho sensitivity: rho_fixed = 0.75.'
+    demand:
+      mu:
+        min: 0.75
+        max: 1.25
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.75
+    wind:
+      mu:
+        min: 0.25
+        max: 0.75
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.75
+      tau_fixed: 14
+    kappa: 0.3
+  rho_pos0p90:
+    description: 'Rho sensitivity: rho_fixed = 0.90.'
+    demand:
+      mu:
+        min: 0.75
+        max: 1.25
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.9
+    wind:
+      mu:
+        min: 0.25
+        max: 0.75
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.9
+      tau_fixed: 14
+    kappa: 0.3

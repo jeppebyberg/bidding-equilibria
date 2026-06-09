@@ -623,6 +623,49 @@ def plot_dro_stage(
 
         _guard(f"DRO plots for regime '{regime_name}'", _run)
 
+    # Perturbed-distribution visualizations (fan, summary, transport scatter)
+    _guard(
+        "DRO perturbed distribution plots",
+        plot_dro_perturbed_distribution_stage,
+        config=config,
+        dro_config=dro_config,
+        regime_names=names,
+        results_dir=results_dir,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Stage: DRO perturbed distribution (fan, summary, transport scatter)
+# ---------------------------------------------------------------------------
+
+def plot_dro_perturbed_distribution_stage(
+    config: Any,
+    dro_config: Any,
+    regime_names: list[str],
+    results_dir: Path,
+) -> None:
+    from results_viz.plot_dro_perturbed_distribution import plot_dro_perturbed_distribution
+
+    out_root = figures_root(config) / "dro_perturbed_distribution"
+
+    for regime_name in regime_names:
+        regime_dir = results_dir / regime_name
+        if not regime_dir.exists():
+            print(f"[plot] Skipping perturbed distribution for '{regime_name}': "
+                  f"directory not found at {regime_dir}")
+            continue
+
+        def _run(regime_name: str = regime_name, regime_dir: Path = regime_dir) -> None:
+            plot_dro_perturbed_distribution(
+                regime_dir=regime_dir,
+                output_dir=out_root,
+                show=False,
+            )
+            print(f"[plot] Saved perturbed distribution figures for '{regime_name}' "
+                  f"to {out_root / regime_name}")
+
+        _guard(f"DRO perturbed distribution for '{regime_name}'", _run)
+
 
 # ---------------------------------------------------------------------------
 # Stage: cross-run sensitivity comparison (after a whole study completes)

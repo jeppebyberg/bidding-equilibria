@@ -41,9 +41,8 @@ from models.DRO_PoA.dro_poa_model.support_set import DROWassersteinSupportSet
 CASE = "base_test_case"
 REGIME_SET = "sensitivity_runtime"
 REGIME_NAME = "poa_worst_case"
-HORIZON = 8
+HORIZON = 6
 SEED = 2
-AR1_COVERAGE = 0.99
 AMBIGUITY_KAPPA = 0.25
 
 RUNTIME_CONFIG = Path("results/base_case/runtime_regime_definitions.yaml")
@@ -52,6 +51,19 @@ TIGHTENING_REPORT = Path(
 )
 MODEL_DIR = Path("results/base_case/trained_models")
 NORM_STATS = Path("results/base_case/features/normalized/min_max_stats.json")
+SUPPORT_CALIBRATION = Path("results/base_case/support_calibration.json")
+
+# AR(1) support coverage: load the value the eta pipeline calibrated to (block4)
+# so both formulations use the same support tube, falling back to 0.99 if the
+# calibration report is absent.
+def _load_ar1_coverage(report_path: Path, default: float = 0.99) -> float:
+    if not report_path.exists():
+        return default
+    with report_path.open("r", encoding="utf-8") as fh:
+        return float(json.load(fh).get("chosen_coverage", default))
+
+
+AR1_COVERAGE = _load_ar1_coverage(SUPPORT_CALIBRATION)
 
 OUTPUT_DIR = Path("results/base_case_tmp")
 RESULTS_DIR = OUTPUT_DIR / "epsilon_sweep"
@@ -62,12 +74,14 @@ N_EPSILONS = 15
 EPSILON_MAX = 150.0
 EPSILON_GRID = np.linspace(0.0, EPSILON_MAX, N_EPSILONS).tolist()
 
-# McCormick objective bounds (from existing tightening report)
-C_OPT_BOUNDS = (145.53, 4728.53)
-POA_BOUNDS = (1.0, 20.0)
+# McCormick objective bounds. PoA bounds are fixed; the C_opt envelope is loaded
+# from the tightening report at solve time (see build_optimizer) so the epsilon
+# sweep uses the same C_opt bounds as the eta pipeline (block4) instead of a
+# hardcoded pair.
+POA_BOUNDS = (1.0, 10.0)
 NUM_PIECES = 50
 
-SOLVER_TIME_LIMIT = 400  # seconds per solve
+SOLVER_TIME_LIMIT = None  # seconds per solve
 
 
 # ---------------------------------------------------------------------------
@@ -76,6 +90,54 @@ SOLVER_TIME_LIMIT = 400  # seconds per solve
 
 def epsilon_label(eps: float) -> str:
     return f"{eps:.6g}".replace("-", "m").replace(".", "p")
+
+
+def _set_poa_upper_cut(optimizer: DRO_PoAOptimization, upper_bound: float) -> None:
+    """Add/replace an average-PoA upper bound constraint in the live persistent model.
+
+    After the eps=EPSILON_MAX solve, calling this caps the LP relaxation at
+    upper_bound, bringing Gurobi's BestBd down from the loose variable bound (10)
+    to the actual optimum of the loosest problem.
+    """
+    from pyomo.environ import Constraint as _Constraint
+    m = optimizer.model
+    solver = optimizer._persistent_solver
+    K = optimizer.num_empirical_scenarios
+
+    if hasattr(m, "poa_upper_cut"):
+        for c in m.poa_upper_cut.values():
+            solver.remove_constraint(c)
+        m.del_component(m.poa_upper_cut)
+
+    # Small margin so the cut doesn't exclude the optimal point itself.
+    m.poa_upper_cut = _Constraint(
+        expr=sum(m.PoA[k] for k in m.scenarios) / K <= upper_bound + 1e-4
+    )
+    for c in m.poa_upper_cut.values():
+        solver.add_constraint(c)
+    print(f"  PoA upper cut added: avg PoA <= {upper_bound + 1e-4:.6g}")
+
+
+def load_c_opt_bounds(report_path: Path) -> tuple[float, float]:
+    """Load the C_opt McCormick envelope from a tightening report.
+
+    Mirrors block4_core.load_dro_optimal_cost_bounds so the epsilon sweep uses the
+    same C_opt bounds as the eta pipeline (block4) rather than a hardcoded pair.
+    """
+    if not report_path.exists():
+        raise FileNotFoundError(
+            f"Tightening report not found: {report_path}. Run the base_case "
+            "pipeline (block4) before the epsilon sweep."
+        )
+    with report_path.open("r", encoding="utf-8") as fh:
+        report = json.load(fh)
+    bounds = report.get("optimal_cost_bounds", {}) or {}
+    if "C_opt" in bounds and isinstance(bounds.get("C_opt"), dict):
+        bounds = bounds["C_opt"] or {}
+    lower, upper = bounds.get("lower"), bounds.get("upper")
+    if lower is None or upper is None:
+        raise ValueError(f"optimal_cost_bounds missing lower/upper in {report_path}")
+    return (float(lower), float(upper))
 
 
 def result_path(eps: float) -> Path:
@@ -114,6 +176,10 @@ def build_optimizer(scenarios: dict[str, Any]) -> DRO_PoAOptimization:
     print(f"\nDiscovered policy generators: {nn_generators}")
     norm_stats = str(NORM_STATS) if NORM_STATS.exists() else None
 
+    c_opt_bounds = load_c_opt_bounds(TIGHTENING_REPORT)
+    print(f"  PoA bounds:    {POA_BOUNDS}")
+    print(f"  C_opt bounds:  {c_opt_bounds}  (from {TIGHTENING_REPORT})")
+
     return DRO_PoAOptimization(
         scenarios_df=scenarios["scenarios_df"],
         costs_df=scenarios["costs_df"],
@@ -122,7 +188,7 @@ def build_optimizer(scenarios: dict[str, Any]) -> DRO_PoAOptimization:
         regime_config_path=str(RUNTIME_CONFIG),
         regime_set=REGIME_SET,
         regime_name=REGIME_NAME,
-        epsilon=EPSILON_GRID[0],
+        epsilon=0.0,
         nn_model_dir=str(MODEL_DIR) if nn_generators else None,
         nn_normalization_stats_path=norm_stats,
         nn_policy_generators=nn_generators,
@@ -131,7 +197,7 @@ def build_optimizer(scenarios: dict[str, Any]) -> DRO_PoAOptimization:
         objective_mode="piecewise_mccormick",
         mccormick_bounds={
             "PoA": POA_BOUNDS,
-            "C_opt": C_OPT_BOUNDS,
+            "C_opt": c_opt_bounds,
             "num_pieces": NUM_PIECES,
         },
         ambiguity_kappa=AMBIGUITY_KAPPA,
@@ -181,6 +247,7 @@ def make_figures(summaries: list[dict[str, Any]]) -> None:
 
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 
+    summaries = sorted(summaries, key=lambda s: s["epsilon"])
     epsilons = [s["epsilon"] for s in summaries]
     avg_poa = [s["average_poa_ratio"] for s in summaries]
     avg_w = [s["average_wasserstein"] for s in summaries]
@@ -289,6 +356,8 @@ def run_epsilon_sweep() -> list[dict[str, Any]]:
     print(f"  Regime: {REGIME_SET}/{REGIME_NAME}")
     print(f"  Horizon: T={HORIZON}")
     print(f"  Epsilon grid: {len(EPSILON_GRID)} points in [0, {EPSILON_MAX:.1f}]")
+    print(f"  Solve order: eps=0 (lower bound), eps={EPSILON_MAX:.1f} (upper bound), "
+          f"then interior descending")
     print(f"  Output: {OUTPUT_DIR}")
     print("=" * 70)
 
@@ -308,23 +377,42 @@ def run_epsilon_sweep() -> list[dict[str, Any]]:
     print("\nAttaching persistent solver...")
     optimizer.attach_persistent_solver()
 
+    # Solve order: eps=0 first (lower bound), eps=EPSILON_MAX second (upper bound),
+    # then interior points descending.  The eps=0 solution is feasible for all
+    # larger epsilon (W[k]=0 satisfies any budget), so its objective value is a
+    # valid Gurobi Cutoff for every subsequent solve.
+    interior = sorted([e for e in EPSILON_GRID if 0.0 < e < EPSILON_MAX], reverse=True)
+    ordered_epsilons = [0.0, EPSILON_MAX] + interior
+    n = len(ordered_epsilons)
+
     summaries: list[dict[str, Any]] = []
     summary_path = OUTPUT_DIR / "epsilon_sweep_summary.json"
-    n = len(EPSILON_GRID)
+    lower_bound: Optional[float] = None
 
-    for idx, eps in enumerate(EPSILON_GRID):
-        is_first = idx == 0
+    for position, eps in enumerate(ordered_epsilons):
+        is_first = position == 0
+        label = (
+            "cold start — establishes lower bound" if is_first
+            else "warm start — establishes upper bound" if position == 1
+            else "warm start"
+        )
         print(f"\n{'=' * 60}")
-        print(f"  Epsilon {idx+1}/{n}: {eps:.4g}  ({'cold start' if is_first else 'warm start'})")
+        print(f"  Epsilon {position+1}/{n}: {eps:.4g}  ({label})")
         print(f"{'=' * 60}")
 
         if not is_first:
             optimizer.update_epsilon(eps)
 
+        # After eps=0 is solved its objective is a valid lower bound for every
+        # subsequent problem (feasible set only grows with epsilon).  Tell Gurobi
+        # not to pursue branches that can't beat it.
+        if lower_bound is not None:
+            optimizer._persistent_solver.options["Cutoff"] = lower_bound - 1e-4
+
         start = time.perf_counter()
         solver_result = optimizer.solve(
             time_limit=SOLVER_TIME_LIMIT,
-            warm_start=True,
+            warm_start=not is_first,
         )
         elapsed = time.perf_counter() - start
 
@@ -335,14 +423,19 @@ def run_epsilon_sweep() -> list[dict[str, Any]]:
         summary["termination"] = str(termination)
         summaries.append(summary)
 
+        if is_first and summary["objective"] is not None:
+            lower_bound = summary["objective"]
+            print(f"  Lower bound (Cutoff) set to: {lower_bound:.6g}")
+
+        if position == 1 and summary["objective"] is not None:
+            _set_poa_upper_cut(optimizer, summary["objective"])
+
         print(f"  Avg PoA ratio:    {summary['average_poa_ratio']}")
         print(f"  Avg Wasserstein:  {summary['average_wasserstein']}")
 
-        # Save full results per epsilon
         out_path = result_path(eps)
         optimizer.save_results(out_path)
 
-        # Save summary and figures incrementally so partial runs are useful
         save_json(summary_path, summaries)
         make_figures(summaries)
 

@@ -672,6 +672,47 @@ def run_dro_eta_sweep(
     return summaries
 
 
+def _snapshot_solution(optimizer: DRO_PoAOptimization) -> dict:
+    """Save all current model variable values so they can be restored as a warm start."""
+    from pyomo.environ import Var
+    return {
+        var_data: var_data.value
+        for var_data in optimizer.model.component_data_objects(Var, active=True)
+        if var_data.value is not None
+    }
+
+
+def _restore_solution(optimizer: DRO_PoAOptimization, snapshot: dict) -> None:
+    """Write a saved snapshot back into the model variables for warm-start reuse."""
+    for var_data, value in snapshot.items():
+        var_data.set_value(value)
+
+
+def _set_poa_upper_cut(optimizer: DRO_PoAOptimization, upper_bound: float) -> None:
+    """Add/replace an average-PoA upper bound constraint in the live persistent model.
+
+    After the eta_min=0 solve, calling this caps the LP relaxation at upper_bound,
+    bringing Gurobi's BestBd down from the loose variable bound (10) to the actual
+    optimum of the least-penalised problem for all subsequent higher-eta solves.
+    """
+    from pyomo.environ import Constraint as _Constraint
+    m = optimizer.model
+    solver = optimizer._persistent_solver
+    K = optimizer.num_empirical_scenarios
+
+    if hasattr(m, "poa_upper_cut"):
+        for c in m.poa_upper_cut.values():
+            solver.remove_constraint(c)
+        m.del_component(m.poa_upper_cut)
+
+    m.poa_upper_cut = _Constraint(
+        expr=sum(m.PoA[k] for k in m.scenarios) / K <= upper_bound + 1e-4
+    )
+    for c in m.poa_upper_cut.values():
+        solver.add_constraint(c)
+    print(f"  PoA upper cut added: avg PoA <= {upper_bound + 1e-4:.6g}")
+
+
 def run_dro_eta_path_for_regime(
     config: DROPoAPipelineConfig,
     scenarios: dict[str, Any],
@@ -685,36 +726,58 @@ def run_dro_eta_path_for_regime(
     on eta -- so the model is built and loaded into Gurobi once, then updated in
     place per eta (see DRO_PoAOptimization.update_eta).
 
-    The etas are solved from HIGH to LOW on purpose.  The support-floor constraint
-    only loosens as eta decreases, so the optimum at one eta stays feasible at the
-    next (lower) eta and is handed to Gurobi as a warm-start incumbent.  Solving
-    low-to-high could hand the solver an infeasible start.
-    """
-    # Unique etas, highest first.  The first solve is cold; each later solve warm
-    # starts from the previous (higher-eta) optimum.
-    descending_etas = sorted({float(eta) for eta in config.etas}, reverse=True)
+    Solve order: eta_max first (cold), then eta_min (warm), then interior descending.
 
-    # Build the model once for this regime (using the highest eta), apply the
-    # regime-wide tightening, and load everything into the persistent solver.
-    optimizer = build_dro_optimizer(config, scenarios, regime_name, eta=descending_etas[0])
+    eta_max is the most penalised/constrained problem and gives the lowest objective
+    value -- a valid Gurobi Cutoff for every subsequent solve (the feasible set only
+    grows as eta decreases, so every later optimum is >= the eta_max optimum).
+
+    eta_min=0 is the least penalised and gives the highest average PoA -- a valid
+    upper bound on m.PoA[k] for all higher-eta solves, which tightens Gurobi's LP
+    relaxation BestBd from the loose variable bound (10) down to the actual optimum.
+
+    Interior etas are then solved descending, each warm-starting from the previous.
+    """
+    unique_etas = sorted({float(eta) for eta in config.etas}, reverse=True)
+    eta_max = unique_etas[0]
+    eta_min = unique_etas[-1]
+
+    if len(unique_etas) == 1 or eta_max == eta_min:
+        # Single eta: no bounding strategy, just solve once.
+        ordered_etas = unique_etas
+    else:
+        # Solve order: [eta_max, eta_min, interior descending]
+        interior = unique_etas[1:-1]  # already descending, excluding endpoints
+        ordered_etas = [eta_max, eta_min] + interior
+
+    # Build the model once (at eta_max), apply tightening, load into persistent solver.
+    optimizer = build_dro_optimizer(config, scenarios, regime_name, eta=eta_max)
     optimizer.load_regime_wide_tightening_report(tightening_report_path)
     optimizer.build_model()
     applied_stats = optimizer.apply_regime_wide_tightening_to_model()
     optimizer.attach_persistent_solver()
 
-    # The support diagnostic is eta-independent; print the cached result once
-    # (the cache was populated while building the support-floor constraints).
     _print_wasserstein_floor_diagnostic(optimizer.support_set_diagnostics(), regime_name)
 
     summaries: list[dict[str, Any]] = []
-    eta_count = len(descending_etas)
-    for position, eta in enumerate(descending_etas):
-        is_first_solve = position == 0
+    eta_count = len(ordered_etas)
+    eta_max_snapshot: dict = {}
+
+    for position, eta in enumerate(ordered_etas):
+        is_first_solve = position == 0   # eta_max
+        is_second_solve = position == 1  # eta_min
+        is_interior = position >= 2
+
         if not is_first_solve:
-            # Step the already-loaded model down to the next (lower) eta.
             optimizer.update_eta(eta)
-        # Every solve warm starts: the first from the empirical MIP start populated
-        # by attach_persistent_solver, each later one from the previous eta's optimum.
+
+        # The first interior solve restores the eta_max snapshot to begin the
+        # descent from a feasible, empirically-grounded point (eta_min's solution
+        # can have large W[k] that violate the support floor at eta > 0).
+        # Subsequent interior solves chain from the previous one.
+        if position == 2 and eta_max_snapshot:
+            _restore_solution(optimizer, eta_max_snapshot)
+
         result_path = solve_and_save_dro_for_eta(
             optimizer=optimizer,
             config=config,
@@ -726,12 +789,32 @@ def run_dro_eta_path_for_regime(
             eta_index=position + 1,
             eta_count=eta_count,
         )
-        summaries.append(load_result_summary(result_path))
+        summary = load_result_summary(result_path)
+        summaries.append(summary)
 
-    # Report in ascending eta order so the summary reads naturally, independent of
-    # the high-to-low solve order.
+        if is_first_solve:
+            # Save eta_max solution for all interior warm starts.
+            eta_max_snapshot = _snapshot_solution(optimizer)
+            # eta_max objective is a valid lower bound for every later solve
+            # (feasible set only grows as eta decreases).
+            lb = optional_float(summary.get("inner_objective"))
+            if lb is not None:
+                optimizer._persistent_solver.options["Cutoff"] = lb - 1e-4
+                print(f"  Cutoff (lower bound) set to: {lb:.6g}")
+
+        if is_second_solve:
+            # eta=0 gives the highest reachable average PoA; cap m.PoA[k] so
+            # the LP relaxation BestBd reflects this rather than the loose
+            # variable bound (10).
+            ub = optional_float(summary.get("average_relaxed_PoA"))
+            if ub is None:
+                ub = optional_float(summary.get("inner_objective"))
+            if ub is not None:
+                _set_poa_upper_cut(optimizer, ub)
+
+    # Report in ascending eta order so the summary reads naturally.
     summaries.sort(
-        key=lambda summary: float(summary["eta"]) if summary.get("eta") is not None else float("inf")
+        key=lambda s: float(s["eta"]) if s.get("eta") is not None else float("inf")
     )
     return summaries
 
