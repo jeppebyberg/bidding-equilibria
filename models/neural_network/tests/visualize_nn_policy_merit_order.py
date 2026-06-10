@@ -21,6 +21,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -112,6 +115,64 @@ def predict_bids(policy: NNPolicy, feature_row: np.ndarray) -> np.ndarray:
     x = torch.tensor(feature_row.reshape(1, -1), dtype=torch.float32)
     with torch.no_grad():
         return policy.model(x).numpy()[0]
+
+
+def warn_if_label_artifacts_disagree(
+    result: dict[str, Any],
+    normalized_dfs: dict[str, pd.DataFrame],
+    nn_policies: dict[str, NNPolicy],
+    tolerance: float = 1e-8,
+    max_examples: int = 8,
+) -> None:
+    """Print a short warning if feature targets differ from result JSON labels."""
+    block_names: list[str] = result["block_names"]
+    final_bids = result["final_bids"]
+    mismatch_count = 0
+    examples: list[str] = []
+
+    for gen_name, policy in sorted(nn_policies.items()):
+        ndf = normalized_dfs.get(gen_name)
+        if ndf is None:
+            continue
+        for block_name, target_col in zip(policy.block_names, policy.target_columns):
+            if block_name not in block_names or target_col not in ndf.columns:
+                continue
+            block_idx = block_names.index(block_name)
+            cols = ["scenario_id", "time_id", target_col]
+            for _, row in ndf[cols].iterrows():
+                scenario_id = int(row["scenario_id"])
+                time_id = int(row["time_id"])
+                feature_value = float(row[target_col])
+                result_value = float(final_bids[scenario_id][block_idx][time_id])
+                if abs(feature_value - result_value) <= tolerance:
+                    continue
+                mismatch_count += 1
+                if len(examples) < max_examples:
+                    examples.append(
+                        f"    s={scenario_id}, t={time_id}, {block_name}: "
+                        f"feature target={feature_value:.6g}, "
+                        f"result JSON={result_value:.6g}"
+                    )
+
+    if mismatch_count == 0:
+        return
+
+    print(
+        "\nWARNING: feature target labels differ from "
+        "results['final_bids'] for loaded NN generators."
+    )
+    print(
+        "  The visualizer uses results['final_bids'] as the authoritative "
+        "ramp-constrained heuristic labels."
+    )
+    print(
+        "  Rebuild features and retrain policies before interpreting NN "
+        "prediction errors against the current heuristic labels."
+    )
+    print(f"  Mismatched rows: {mismatch_count}")
+    print("  Examples:")
+    for example in examples:
+        print(example)
 
 
 # ---------------------------------------------------------------------------
@@ -393,6 +454,7 @@ def make_scenario_figure(
 def make_scatter_figure(
     nn_policies: dict[str, NNPolicy],
     normalized_dfs: dict[str, pd.DataFrame],
+    result: dict[str, Any],
     test_scenarios: list[int],
     output_path: Path,
     show: bool = False,
@@ -412,10 +474,19 @@ def make_scatter_figure(
         with torch.no_grad():
             preds = policy.model(x).numpy()  # (N, output_dim)
 
-        for col_idx, (block, target_col) in enumerate(
+        for col_idx, (block, _target_col) in enumerate(
             zip(policy.block_names, policy.target_columns)
         ):
-            labels = test_rows[target_col].to_numpy(dtype=float)
+            if block not in result["block_names"]:
+                continue
+            block_idx = result["block_names"].index(block)
+            labels = np.array(
+                [
+                    float(result["final_bids"][int(row.scenario_id)][block_idx][int(row.time_id)])
+                    for row in test_rows.itertuples(index=False)
+                ],
+                dtype=float,
+            )
             block_preds = preds[:, col_idx]
             if block not in all_blocks:
                 all_blocks[block] = ([], [])
@@ -481,6 +552,7 @@ def make_scatter_figure(
 def print_bid_error_summary(
     nn_policies: dict[str, NNPolicy],
     normalized_dfs: dict[str, pd.DataFrame],
+    result: dict[str, Any],
     test_scenarios: list[int],
 ) -> None:
     """Print RMSE and MAE of NN predictions vs. label bids on the test set."""
@@ -495,10 +567,19 @@ def print_bid_error_summary(
         feat = torch.tensor(test_rows[policy.feature_columns].to_numpy(dtype=np.float32))
         with torch.no_grad():
             preds = policy.model(feat).numpy()
-        for col_idx, (block, target_col) in enumerate(
+        for col_idx, (block, _target_col) in enumerate(
             zip(policy.block_names, policy.target_columns)
         ):
-            labels = test_rows[target_col].to_numpy(dtype=float)
+            if block not in result["block_names"]:
+                continue
+            block_idx = result["block_names"].index(block)
+            labels = np.array(
+                [
+                    float(result["final_bids"][int(row.scenario_id)][block_idx][int(row.time_id)])
+                    for row in test_rows.itertuples(index=False)
+                ],
+                dtype=float,
+            )
             err = preds[:, col_idx] - labels
             rmse = float(np.sqrt(np.mean(err**2)))
             mae = float(np.mean(np.abs(err)))
@@ -565,6 +646,8 @@ def main() -> None:
             raise FileNotFoundError(f"Normalized features not found: {csv_path}")
         normalized_dfs[gen_name] = pd.read_csv(csv_path)
 
+    warn_if_label_artifacts_disagree(result, normalized_dfs, nn_policies)
+
     # Identify test scenarios (using the same split as training).
     # Use the first NN-policy generator's metadata to get split params.
     first_gen = next(iter(nn_policies))
@@ -577,7 +660,7 @@ def main() -> None:
     print(f"Test scenarios: {len(test_scenarios)} / {result['num_scenarios']} total")
 
     # ---- Print bid error summary ----------------------------------------------
-    print_bid_error_summary(nn_policies, normalized_dfs, test_scenarios)
+    print_bid_error_summary(nn_policies, normalized_dfs, result, test_scenarios)
 
     # ---- Figure 1: one merit order figure per sampled scenario ---------------
     rng = np.random.default_rng(SAMPLE_SEED)
@@ -601,6 +684,7 @@ def main() -> None:
     p2 = make_scatter_figure(
         nn_policies=nn_policies,
         normalized_dfs=normalized_dfs,
+        result=result,
         test_scenarios=test_scenarios,
         output_path=output_dir / "nn_policy_prediction_scatter.png",
         show=SHOW,
