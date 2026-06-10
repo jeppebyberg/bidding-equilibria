@@ -26,13 +26,17 @@ class NeuralNetworkFeatureBuilder:
 
     BASE_FEATURE_COLUMNS = [
         "demand",
-        "total_wind_generation_capacity",
-        "total_generation_capacity",
-        "residual_demand",
-        "previous_generation_capacity",
         "previous_demand",
-        "next_generation_capacity",
         "next_demand",
+        "total_wind_generation_capacity",
+        "previous_wind_generation_capacity",
+        "next_wind_generation_capacity",
+        "residual_demand",
+        "previous_residual_demand",
+        "next_residual_demand",
+        "total_demand_over_horizon",
+        "total_wind_over_horizon",
+        "total_residual_over_horizon",
     ]
     OWN_FEATURE_COLUMNS = [
         "own_generation_capacity",
@@ -41,18 +45,30 @@ class NeuralNetworkFeatureBuilder:
     ]
 
     SUPPORTED_FEATURE_COLUMNS = [
+        # Current-period features
         "demand",
         "total_wind_generation_capacity",
-        "total_generation_capacity",
+        "total_generation_capacity",       # legacy: collinear with wind when conv. cap. is fixed
         "residual_demand",
-        "previous_generation_capacity",
+        # Previous-period features
         "previous_demand",
-        "next_generation_capacity",
+        "previous_wind_generation_capacity",
+        "previous_residual_demand",
+        "previous_generation_capacity",    # legacy: encodes previous wind + constant
+        # Next-period features
         "next_demand",
+        "next_wind_generation_capacity",
+        "next_residual_demand",
+        "next_generation_capacity",        # legacy: encodes next wind + constant
+        # Horizon-aggregate features (scenario-level; constant across time steps)
+        "total_demand_over_horizon",
+        "total_wind_over_horizon",
+        "total_residual_over_horizon",
+        # Own-capacity features (constant for conventional generators)
         "own_generation_capacity",
         "previous_own_generation_capacity",
         "next_own_generation_capacity",
-        ]
+    ]
 
     def __init__(
         self,
@@ -349,6 +365,11 @@ class NeuralNetworkFeatureBuilder:
                 for time_id in range(self.num_time_steps)
             ]
 
+            # Horizon aggregates: scenario-level constants shared by every time step.
+            total_demand_over_horizon = float(sum(demand_profile))
+            total_wind_over_horizon = float(sum(total_wind_generation_capacity))
+            total_residual_over_horizon = total_demand_over_horizon - total_wind_over_horizon
+
             scenario_features: list[dict[str, float]] = []
             for time_id in range(self.num_time_steps):
                 previous_time_id = (time_id - 1) % self.num_time_steps
@@ -356,20 +377,35 @@ class NeuralNetworkFeatureBuilder:
                 demand = float(demand_profile[time_id])
                 wind_capacity = float(total_wind_generation_capacity[time_id])
                 generation_capacity = float(total_generation_capacity[time_id])
+                previous_wind = float(total_wind_generation_capacity[previous_time_id])
+                next_wind = float(total_wind_generation_capacity[next_time_id])
+                previous_demand = float(demand_profile[previous_time_id])
+                next_demand = float(demand_profile[next_time_id])
                 scenario_features.append(
                     {
+                        # Current period
                         "demand": demand,
                         "total_wind_generation_capacity": wind_capacity,
-                        "total_generation_capacity": generation_capacity,
+                        "total_generation_capacity": generation_capacity,  # legacy
                         "residual_demand": demand - wind_capacity,
-                        "previous_generation_capacity": float(
+                        # Previous period
+                        "previous_demand": previous_demand,
+                        "previous_wind_generation_capacity": previous_wind,
+                        "previous_residual_demand": previous_demand - previous_wind,
+                        "previous_generation_capacity": float(  # legacy
                             total_generation_capacity[previous_time_id]
                         ),
-                        "previous_demand": float(demand_profile[previous_time_id]),
-                        "next_generation_capacity": float(
+                        # Next period
+                        "next_demand": next_demand,
+                        "next_wind_generation_capacity": next_wind,
+                        "next_residual_demand": next_demand - next_wind,
+                        "next_generation_capacity": float(  # legacy
                             total_generation_capacity[next_time_id]
                         ),
-                        "next_demand": float(demand_profile[next_time_id]),
+                        # Horizon aggregates (same for every time step in a scenario)
+                        "total_demand_over_horizon": total_demand_over_horizon,
+                        "total_wind_over_horizon": total_wind_over_horizon,
+                        "total_residual_over_horizon": total_residual_over_horizon,
                     }
                 )
             features_by_scenario.append(scenario_features)
@@ -479,7 +515,7 @@ class NeuralNetworkFeatureBuilder:
 
     def _resolve_feature_columns(self, feature_columns: list[str] | None) -> list[str]:
         selected = (
-            self.BASE_FEATURE_COLUMNS + self.OWN_FEATURE_COLUMNS
+            list(self.BASE_FEATURE_COLUMNS)
             if feature_columns is None
             else list(feature_columns)
         )

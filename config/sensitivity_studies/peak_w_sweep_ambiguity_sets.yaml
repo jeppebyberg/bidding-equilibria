@@ -1,0 +1,82 @@
+default_ambiguity_set: peak_w_2
+ambiguity_sets:
+  peak_w_2:
+    description: 'Peak wind sensitivity: tau_fixed = 2.0 h.'
+    demand:
+      mu:
+        min: 0.75
+        max: 1.25
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.75
+    wind:
+      mu:
+        min: 0.25
+        max: 0.75
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.75
+      tau_fixed: 2.0
+    kappa: 0.3
+  peak_w_8:
+    description: 'Peak wind sensitivity: tau_fixed = 8.0 h.'
+    demand:
+      mu:
+        min: 0.75
+        max: 1.25
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.75
+    wind:
+      mu:
+        min: 0.25
+        max: 0.75
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.75
+      tau_fixed: 8.0
+    kappa: 0.3
+  peak_w_14:
+    description: 'Peak wind sensitivity: tau_fixed = 14.0 h.'
+    demand:
+      mu:
+        min: 0.75
+        max: 1.25
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.75
+    wind:
+      mu:
+        min: 0.25
+        max: 0.75
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.75
+      tau_fixed: 14.0
+    kappa: 0.3
+  peak_w_20:
+    description: 'Peak wind sensitivity: tau_fixed = 20.0 h.'
+    demand:
+      mu:
+        min: 0.75
+        max: 1.25
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.75
+    wind:
+      mu:
+        min: 0.25
+        max: 0.75
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.75
+      tau_fixed: 20.0
+    kappa: 0.3

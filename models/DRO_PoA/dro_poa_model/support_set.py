@@ -5,7 +5,7 @@ from pyomo.environ import Constraint
 from scipy.stats import norm as _norm
 
 
-def _ar1_kappa(num_time_steps: int, joint_coverage: float = 0.99) -> float:
+def _ar1_kappa(num_time_steps: int, joint_coverage: float) -> float:
     """Sidak-corrected kappa giving joint_coverage across num_time_steps i.i.d. innovations.
 
     Each per-step band is Phi^{-1}((1 + coverage^{1/T}) / 2) standard deviations wide,
@@ -18,16 +18,42 @@ def _ar1_kappa(num_time_steps: int, joint_coverage: float = 0.99) -> float:
 def _level_scale(rho: float, t: int) -> float:
     """Time-varying level-band scale factor (multiples of innovation sigma).
 
-    scale(t) = min( (1-rho^{t+1})/(1-rho),  1/sqrt(1-rho^2) )
+    scale(t) = min( (1-|rho|^{t+1})/(1-|rho|),  1/sqrt(1-rho^2) )
 
-    At t=0 this equals 1 (innovation sigma only); it grows until it reaches the
-    stationary bound 1/sqrt(1-rho^2) and stays flat.  Because rho is fixed per
-    DRO solve, scale(t) is a plain Python float, keeping level-band constraints
-    linear in sigma_D / sigma_W.  Matches PoA support_set.py exactly.
+    Uses |rho| in the cumulative term because the worst-case level deviation
+    satisfies |level_t| <= |rho|*|level_{t-1}| + |eps_t|, giving the geometric
+    sum (1-|rho|^{t+1})/(1-|rho|) regardless of sign.  For positive rho this
+    is identical to the previous formula; for negative rho the original formula
+    oscillated (e.g. 0.25 at t=1 for rho=-0.75) making the band too tight.
+    At t=0 this equals 1; it grows until it reaches 1/sqrt(1-rho^2) and stays flat.
     """
-    cumulative = (1.0 - rho ** (t + 1)) / (1.0 - rho)
+    abs_rho = abs(rho)
+    cumulative = (1.0 - abs_rho ** (t + 1)) / (1.0 - abs_rho)
     stationary = 1.0 / np.sqrt(1.0 - rho ** 2)
     return min(cumulative, stationary)
+
+
+def support_tube_parameters(
+    num_time_steps: int,
+    rho: float,
+    ar1_coverage: float | None = None,
+    level_coverage: float | None = None,
+) -> tuple[float, float, list[float]]:
+    """Resolve the AR(1) support-tube parameters shared by the model and diagnostic.
+
+    Returns ``(kappa_ar1, kappa_lvl, level_scales)`` where ``kappa_ar1`` is the
+    innovation-band multiplier, ``kappa_lvl`` the level-band multiplier, and
+    ``level_scales[t] = _level_scale(rho, t)``. Resolving coverage here (rather than
+    in two places) guarantees ``DROWassersteinSupportSet`` and
+    ``DROPoASupportDiagnostics`` build the identical tube, so "inside support per
+    diagnostic" means W=0 is feasible in the model.
+    """
+    coverage = float(ar1_coverage or DROWassersteinSupportSet.AR1_JOINT_COVERAGE)
+    kappa_ar1 = _ar1_kappa(num_time_steps, coverage)
+    resolved_level_coverage = float(level_coverage or coverage)
+    kappa_lvl = _ar1_kappa(num_time_steps, resolved_level_coverage)
+    level_scales = [_level_scale(rho, t) for t in range(num_time_steps)]
+    return kappa_ar1, kappa_lvl, level_scales
 
 
 class DROWassersteinSupportSet:
@@ -53,10 +79,13 @@ class DROWassersteinSupportSet:
     ------------------
     ``ar1_coverage`` on the instance overrides the class default AR1_JOINT_COVERAGE.
     ``level_coverage`` overrides the level-band kappa independently.
+    ``AR1_JOINT_COVERAGE`` is updated at runtime by the pipeline calibration step
+    (``calibrate_ar1_coverage_from_scenarios``) to the minimum coverage that
+    contains all empirical trajectories, so any remaining call sites that use
+    the class default automatically pick up the calibrated value.
     """
 
-    AR1_JOINT_COVERAGE: float = 0.99
-    LEVEL_JOINT_COVERAGE: float = 0.9999
+    AR1_JOINT_COVERAGE: float = 0.99  # updated at runtime by calibration
 
     # ------------------------------------------------------------------
     # Entry point
@@ -87,14 +116,12 @@ class DROWassersteinSupportSet:
 
     def _build_wasserstein_demand(self) -> None:
         m = self.model
-        coverage = float(
-            getattr(self, "ar1_coverage", None)
-            or DROWassersteinSupportSet.AR1_JOINT_COVERAGE
+        kappa_ar1, kappa_lvl_D, demand_scales = support_tube_parameters(
+            self.num_time_steps,
+            self.demand_rho_fixed,
+            getattr(self, "ar1_coverage", None),
+            getattr(self, "level_coverage", None),
         )
-        kappa_ar1 = _ar1_kappa(self.num_time_steps, coverage)
-        level_coverage = float(getattr(self, "level_coverage", None) or coverage)
-        kappa_lvl_D = _ar1_kappa(self.num_time_steps, level_coverage)
-        demand_scales = [_level_scale(self.demand_rho_fixed, t) for t in range(self.num_time_steps)]
 
         def _ar1_ref_D(m, t: int) -> object:
             return (
@@ -139,6 +166,9 @@ class DROWassersteinSupportSet:
             ref = self.demand_D_ref * m.mu_D * self.demand_shape[int(t)]
             return m.D[k, t] <= ref + kappa_lvl_D * self.demand_D_ref * m.sigma_D * demand_scales[int(t)]
 
+        def demand_reference_feasibility_rule(m, t):
+            return self.demand_D_ref * m.mu_D * self.demand_shape[int(t)] >= 0
+
         m.demand_ar1_t0_up = Constraint(m.scenarios, rule=demand_ar1_t0_up_rule)
         m.demand_ar1_t0_down = Constraint(m.scenarios, rule=demand_ar1_t0_down_rule)
         m.demand_ar1_up_constraints = Constraint(
@@ -156,6 +186,9 @@ class DROWassersteinSupportSet:
         m.demand_level_upper_constraints = Constraint(
             m.scenarios, m.time_steps, rule=demand_level_upper_rule
         )
+        m.demand_reference_feasibility = Constraint(
+            m.time_steps, rule=demand_reference_feasibility_rule
+        )
 
     # ------------------------------------------------------------------
     # Wind
@@ -163,14 +196,12 @@ class DROWassersteinSupportSet:
 
     def _build_wasserstein_wind(self) -> None:
         m = self.model
-        coverage = float(
-            getattr(self, "ar1_coverage", None)
-            or DROWassersteinSupportSet.AR1_JOINT_COVERAGE
+        kappa_ar1, kappa_lvl_W, wind_scales = support_tube_parameters(
+            self.num_time_steps,
+            self.wind_rho_fixed,
+            getattr(self, "ar1_coverage", None),
+            getattr(self, "level_coverage", None),
         )
-        kappa_ar1 = _ar1_kappa(self.num_time_steps, coverage)
-        level_coverage = float(getattr(self, "level_coverage", None) or coverage)
-        kappa_lvl_W = _ar1_kappa(self.num_time_steps, level_coverage)
-        wind_scales = [_level_scale(self.wind_rho_fixed, t) for t in range(self.num_time_steps)]
 
         def _ar1_ref_W(m, i: int, t: int) -> object:
             return (

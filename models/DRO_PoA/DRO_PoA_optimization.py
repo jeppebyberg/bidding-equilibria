@@ -32,6 +32,7 @@ from models.helper import (
     block_structure_from_dataframes,
     ensure_profile,
     find_demand_profile_column,
+    gurobi_log_filter,
     infer_num_time_steps,
     is_wind_generator_name,
     ramp_vectors,
@@ -39,6 +40,10 @@ from models.helper import (
 from models.DRO_PoA.dro_poa_model.mccormick import DROPoAMcCormick
 from models.DRO_PoA.dro_poa_model.nn_policy_embedding import DROPoAPolicyEmbedding
 from models.DRO_PoA.dro_poa_model.results import DROPoAResults
+from models.DRO_PoA.dro_poa_model.auxiliary_LPs import (
+    DROPoAMIPStart,
+    DROPoASupportDiagnostics,
+)
 from models.DRO_PoA.dro_poa_model.support_set import (
     DROWassersteinSupportSet,
     _ar1_kappa,
@@ -46,11 +51,14 @@ from models.DRO_PoA.dro_poa_model.support_set import (
 from models.DRO_PoA.dro_poa_model.tightening_reports import DROPoATighteningReports
 
 
+
 class DRO_PoAOptimization(
     DROPoAPolicyEmbedding,
     DROPoATighteningReports,
     DROPoAMcCormick,
     DROWassersteinSupportSet,
+    DROPoASupportDiagnostics,
+    DROPoAMIPStart,
     DROPoAResults,
 ):
     """
@@ -63,11 +71,21 @@ class DRO_PoAOptimization(
 
     normalization_epsilon = 1e-12
     DEFAULT_LOOSE_RELU_BOUND = 1e4
-    DEFAULT_LOOSE_ALPHA_LOWER = 0.0
+    # alpha (bids) is domain=Reals: strategic/NN bids may be negative, so the loose
+    # lower bound must be a valid outer bound, not 0. A 0 lower bound invalidly
+    # clamps bids to non-negative and suppresses the true worst-case PoA.
+    DEFAULT_LOOSE_ALPHA_LOWER = -1e4
     DEFAULT_LOOSE_ALPHA_UPPER = 1e4
     DEFAULT_LOOSE_DUAL_BIG_M = 1e6
-    DEFAULT_LOOSE_LAMBDA_LOWER = 0
-    DEFAULT_LOOSE_LAMBDA_UPPER = 1e4
+    # lambda_eq is the Reals dual of the power-balance equality; with negative bids
+    # the marginal block can set a negative clearing price, so the loose lower bound
+    # must allow negatives. There is no lambda tightening stage, so this default is
+    # used in every run. Kept symmetric with the upper price scale.
+    DEFAULT_LOOSE_LAMBDA_LOWER = -100
+    DEFAULT_LOOSE_LAMBDA_UPPER = 100
+    # Outward margin applied to the bid-implied clearing-price (lambda) bounds to
+    # absorb ramp-dual contributions; see _bid_implied_lambda_bounds.
+    LAMBDA_RAMP_SAFETY_FACTOR = 0.10
     DEFAULT_LOOSE_AGGREGATE_DUAL_UPPER = 1e8
     DEFAULT_LOOSE_C_OPT_LOWER = 1e-3
     DEFAULT_LOOSE_C_OPT_UPPER = 1e8
@@ -77,6 +95,11 @@ class DRO_PoAOptimization(
     DEFAULT_PHI_UPPER = DEFAULT_PoA_UPPER
 
     normalization_epsilon = 1e-12
+    # Scenarios whose minimum achievable Wasserstein distance to the support set
+    # is at or below this tolerance are treated as inside the support set, so the
+    # nominal market state (W[k]=0) is feasible and the per-scenario objective
+    # term PoA[k] - eta * W[k] can be validly floored at 1.
+    SUPPORT_FLOOR_TOLERANCE = 1e-6
     allowed_objective_modes = {
         "difference",
         "mccormick",
@@ -376,25 +399,6 @@ class DRO_PoAOptimization(
         selected["name"] = str(selected["name"])
         return selected
 
-    @staticmethod
-    def load_regime_scenarios(
-        reference_case: str = "base_test_case",
-        regime_config_path: str | Path = "config/regime_definitions.yaml",
-        regime_set: str = "PoA_analysis",
-        seed: Optional[int] = None,
-    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-        scenario_manager = ScenarioManager(reference_case)
-        scenario_set = scenario_manager.create_scenario_set_from_regimes(
-            regime_config_path=str(regime_config_path),
-            regime_set=regime_set,
-            seed=seed,
-        )
-        return (
-            scenario_set["scenarios_df"],
-            scenario_set["costs_df"],
-            scenario_set["ramps_df"],
-        )
-
     def _filter_scenarios_to_regime(
         self,
         scenarios_df: pd.DataFrame,
@@ -477,7 +481,9 @@ class DRO_PoAOptimization(
 
         Replaces the merit-order heuristic in compute_deterministic_p_init() with
         an exact LP.  Returns the same p_init row for every empirical scenario,
-        shaped [num_empirical_scenarios][num_physical_generators].
+        shaped [num_empirical_scenarios][num_physical_generators].  A single shared
+        p_init keeps the regime-wide (single-representative-scenario) tightening
+        valid for every empirical scenario.
         """
         from models.synthetic_data_generation.economic_dispatch_clean import EconomicDispatchModel
 
@@ -621,7 +627,16 @@ class DRO_PoAOptimization(
     # ------------------------------------------------------------------
 
     def build_model(self) -> None:
-        if getattr(self, "tightening_report", None):
+        if not getattr(self, "tightening_report", None) and getattr(
+            self,
+            "use_default_bounds",
+            False,
+        ):
+            # No tightening report loaded: self-provide model-construction bounds,
+            # always computing primal_big_m (analytic) and optimal_cost_bounds (real
+            # solve). Mirrors the PoA model fallback.
+            self.ensure_default_bounds_available()
+        elif getattr(self, "tightening_report", None):
             self._prepare_loaded_bounds()
         self.model = ConcreteModel()
 
@@ -962,299 +977,9 @@ class DRO_PoAOptimization(
         self._build_KKT_complementarity_equilibrium_constraints()
         self._build_KKT_complementarity_optimal_constraints()
         self._build_PoA_constraints()
+        self._build_support_floor_constraints()
 
-    # ------------------------------------------------------------------
-    # Support set
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _min_wasserstein_to_support_1d(
-        x_emp: "np.ndarray",
-        lb: "np.ndarray",
-        ub: "np.ndarray",
-        ar1_ref: "np.ndarray",
-        innov_margin: float,
-        rho: float,
-        t0_ref: float,
-    ) -> float:
-        """Min L1 distance from x_emp to the support set defined by pointwise
-        box bounds and AR1 innovation bounds, solved as a small LP.
-
-        ar1_ref[s] is the reference innovation for step s+1 (length T-1).
-        innov_margin is the scalar tolerance (same for all steps).
-        """
-        import numpy as np
-        from scipy.optimize import linprog
-
-        T = len(x_emp)
-        # Variables: [x[0..T-1], u[0..T-1]] where u[t] >= |x_emp[t] - x[t]|
-        c = np.zeros(2 * T)
-        c[T:] = 1.0
-
-        bounds = (
-            [(float(lb[t]), float(ub[t])) for t in range(T)]
-            + [(0.0, None)] * T
-        )
-
-        rows: list = []
-        rhs: list = []
-
-        # t=0 cold-start innovation band.
-        row_t0_up = np.zeros(2 * T)
-        row_t0_up[0] = 1.0
-        rows.append(row_t0_up)
-        rhs.append(t0_ref + innov_margin)
-
-        row_t0_dn = np.zeros(2 * T)
-        row_t0_dn[0] = -1.0
-        rows.append(row_t0_dn)
-        rhs.append(innov_margin - t0_ref)
-
-        # AR1 up:   x[t] - rho*x[t-1] <=  ar1_ref[t-1] + innov_margin
-        # AR1 down: x[t] - rho*x[t-1] >= ar1_ref[t-1] - innov_margin
-        #           <=> -x[t] + rho*x[t-1] <= innov_margin - ar1_ref[t-1]
-        for t in range(1, T):
-            row_up = np.zeros(2 * T)
-            row_up[t] = 1.0
-            row_up[t - 1] = -rho
-            rows.append(row_up)
-            rhs.append(ar1_ref[t - 1] + innov_margin)
-
-            row_dn = np.zeros(2 * T)
-            row_dn[t] = -1.0
-            row_dn[t - 1] = rho
-            rows.append(row_dn)
-            rhs.append(innov_margin - ar1_ref[t - 1])
-
-        # u[t] >= x_emp[t] - x[t]: -x[t] - u[t] <= -x_emp[t]
-        # u[t] >= x[t] - x_emp[t]:  x[t] - u[t] <=  x_emp[t]
-        for t in range(T):
-            row1 = np.zeros(2 * T)
-            row1[t] = -1.0
-            row1[T + t] = -1.0
-            rows.append(row1)
-            rhs.append(-x_emp[t])
-
-            row2 = np.zeros(2 * T)
-            row2[t] = 1.0
-            row2[T + t] = -1.0
-            rows.append(row2)
-            rhs.append(x_emp[t])
-
-        A_ub = np.vstack(rows)
-        b_ub = np.array(rhs)
-
-        result = linprog(c, A_ub=A_ub, b_ub=b_ub, bounds=bounds, method="highs")
-        if result.status == 0:
-            return float(result.fun)
-        return float("inf")
-
-    @staticmethod
-    def _min_wasserstein_to_wind_support(
-        empirical_profiles: "list[np.ndarray]",
-        lb_profiles: "list[np.ndarray]",
-        ub_profiles: "list[np.ndarray]",
-        ar1_refs: "list[np.ndarray]",
-        t0_refs: "list[float]",
-        innov_margins: "list[float]",
-        rho: float,
-    ) -> float:
-        """Min L1 distance from empirical wind profiles to the per-generator support."""
-        import numpy as np
-        from scipy.optimize import linprog
-
-        n_gen = len(empirical_profiles)
-        if n_gen == 0:
-            return 0.0
-        T = len(empirical_profiles[0])
-        n_x = n_gen * T
-        n_var = 2 * n_x
-        c = np.zeros(n_var)
-        c[n_x:] = 1.0
-
-        def x_idx(g: int, t: int) -> int:
-            return g * T + t
-
-        def u_idx(g: int, t: int) -> int:
-            return n_x + g * T + t
-
-        bounds = []
-        for g in range(n_gen):
-            bounds.extend(
-                (float(lb_profiles[g][t]), float(ub_profiles[g][t]))
-                for t in range(T)
-            )
-        bounds.extend([(0.0, None)] * n_x)
-
-        rows: list = []
-        rhs: list = []
-
-        for g in range(n_gen):
-            margin = float(innov_margins[g])
-
-            row_t0_up = np.zeros(n_var)
-            row_t0_up[x_idx(g, 0)] = 1.0
-            rows.append(row_t0_up)
-            rhs.append(float(t0_refs[g]) + margin)
-
-            row_t0_dn = np.zeros(n_var)
-            row_t0_dn[x_idx(g, 0)] = -1.0
-            rows.append(row_t0_dn)
-            rhs.append(margin - float(t0_refs[g]))
-
-            for t in range(1, T):
-                row_up = np.zeros(n_var)
-                row_up[x_idx(g, t)] = 1.0
-                row_up[x_idx(g, t - 1)] = -rho
-                rows.append(row_up)
-                rhs.append(float(ar1_refs[g][t - 1]) + margin)
-
-                row_dn = np.zeros(n_var)
-                row_dn[x_idx(g, t)] = -1.0
-                row_dn[x_idx(g, t - 1)] = rho
-                rows.append(row_dn)
-                rhs.append(margin - float(ar1_refs[g][t - 1]))
-
-            for t in range(T):
-                emp = float(empirical_profiles[g][t])
-
-                row1 = np.zeros(n_var)
-                row1[x_idx(g, t)] = -1.0
-                row1[u_idx(g, t)] = -1.0
-                rows.append(row1)
-                rhs.append(-emp)
-
-                row2 = np.zeros(n_var)
-                row2[x_idx(g, t)] = 1.0
-                row2[u_idx(g, t)] = -1.0
-                rows.append(row2)
-                rhs.append(emp)
-
-        A_ub = np.vstack(rows)
-        b_ub = np.array(rhs)
-        result = linprog(c, A_ub=A_ub, b_ub=b_ub, bounds=bounds, method="highs")
-        if result.status == 0:
-            return float(result.fun)
-        return float("inf")
-
-    def diagnose_empirical_support_set_violations(self) -> list[dict]:
-        """For each empirical scenario, compute the minimum achievable Wasserstein
-        distance and flag which support-set constraint families are violated.
-
-        This reveals the W-floor that high-eta runs cannot cross: if empirical_D[k]
-        or empirical_Pmax_phys[k] lies outside the support set, the optimizer cannot
-        set D[k,t] = empirical_D[k][t] and W[k] > 0 is unavoidable.
-
-        min_W_total is computed via LP to account for both pointwise and AR1
-        constraints jointly (pointwise-only projection would miss AR1 violations).
-
-        Returns a list of dicts, one per scenario.
-        """
-        import numpy as np
-
-        T = self.num_time_steps
-        D_ref = float(self.demand_D_ref)
-        coverage = float(
-            getattr(self, "ar1_coverage", DROWassersteinSupportSet.AR1_JOINT_COVERAGE)
-        )
-        kappa_ar1 = _ar1_kappa(T, coverage)
-        kappa_level = kappa_ar1
-
-        from config.scenarios.scenario_generator import ScenarioManager
-        demand_shape = ScenarioManager._build_demand_shape(T)
-        wind_shape = ScenarioManager._build_wind_shape(T, self.peak_W_fixed)
-
-        results = []
-        for k in range(self.num_empirical_scenarios):
-            D_emp = np.asarray(self.empirical_D[k], dtype=float)
-            D_ref_vec = D_ref * self.mu_D_fixed * demand_shape
-            stationary_std_D = self.sigma_D_fixed / np.sqrt(1.0 - self.demand_rho_fixed ** 2)
-            margin_D = kappa_level * D_ref * stationary_std_D
-
-            lb_D = np.maximum(D_ref_vec - margin_D, 0.0)
-            ub_D = D_ref_vec + margin_D
-
-            innov_margin_D = kappa_ar1 * D_ref * self.sigma_D_fixed
-            t0_ref_D = D_ref * self.mu_D_fixed * demand_shape[0]
-            ar1_ref_D = D_ref * self.mu_D_fixed * (
-                demand_shape[1:] - self.demand_rho_fixed * demand_shape[:-1]
-            )
-            t0_violation_D = int(abs(D_emp[0] - t0_ref_D) > innov_margin_D + 1e-9)
-            innov_D = D_emp[1:] - self.demand_rho_fixed * D_emp[:-1]
-            ar1_violations_D = int(np.sum(np.abs(innov_D - ar1_ref_D) > innov_margin_D + 1e-9))
-
-            min_W_demand = self._min_wasserstein_to_support_1d(
-                D_emp, lb_D, ub_D, ar1_ref_D, innov_margin_D, self.demand_rho_fixed, t0_ref_D
-            )
-
-            wind_emp_profiles = []
-            wind_lb_profiles = []
-            wind_ub_profiles = []
-            wind_ar1_refs = []
-            wind_t0_refs = []
-            wind_innov_margins = []
-            wind_ar1_violations = 0
-            wind_t0_violations = 0
-            wind_level_violations = 0
-            stationary_std_W = self.sigma_W_fixed / np.sqrt(1.0 - self.wind_rho_fixed ** 2)
-
-            for i in self.wind_physical_generator_ids:
-                cap = float(self.static_physical_capacity[int(i)])
-                P_emp = np.asarray(self.empirical_Pmax_phys[k][int(i)], dtype=float)
-                P_ref_vec = cap * self.mu_W_fixed * wind_shape
-                margin_W = kappa_level * cap * stationary_std_W
-                lb_W = np.maximum(P_ref_vec - margin_W, 0.0)
-                ub_W = np.minimum(P_ref_vec + margin_W, cap)
-
-                innov_margin_W = kappa_ar1 * cap * self.sigma_W_fixed
-                t0_ref_W = cap * self.mu_W_fixed * wind_shape[0]
-                ar1_ref_W = cap * self.mu_W_fixed * (
-                    wind_shape[1:] - self.wind_rho_fixed * wind_shape[:-1]
-                )
-                wind_t0_violations += int(abs(P_emp[0] - t0_ref_W) > innov_margin_W + 1e-9)
-                innov_W = P_emp[1:] - self.wind_rho_fixed * P_emp[:-1]
-                wind_ar1_violations += int(
-                    np.sum(np.abs(innov_W - ar1_ref_W) > innov_margin_W + 1e-9)
-                )
-                wind_level_violations += int(
-                    np.sum((P_emp < lb_W - 1e-9) | (P_emp > ub_W + 1e-9))
-                )
-
-                wind_emp_profiles.append(P_emp)
-                wind_lb_profiles.append(lb_W)
-                wind_ub_profiles.append(ub_W)
-                wind_ar1_refs.append(ar1_ref_W)
-                wind_t0_refs.append(t0_ref_W)
-                wind_innov_margins.append(innov_margin_W)
-
-            min_W_wind = self._min_wasserstein_to_wind_support(
-                wind_emp_profiles,
-                wind_lb_profiles,
-                wind_ub_profiles,
-                wind_ar1_refs,
-                wind_t0_refs,
-                wind_innov_margins,
-                self.wind_rho_fixed,
-            )
-
-            results.append({
-                "scenario_k": k,
-                "min_W_demand": min_W_demand,
-                "min_W_wind": min_W_wind,
-                "min_W_total": min_W_demand + min_W_wind,
-                "coverage": coverage,
-                "kappa": kappa_ar1,
-                "demand_pointwise_violations": int(
-                    np.sum(D_emp < lb_D - 1e-9) + np.sum(D_emp > ub_D + 1e-9)
-                ),
-                "demand_t0_violations": t0_violation_D,
-                "demand_ar1_violations": ar1_violations_D,
-                "wind_level_violations": wind_level_violations,
-                "wind_t0_violations": wind_t0_violations,
-                "wind_ar1_violations": wind_ar1_violations,
-            })
-        return results
-
+    
     def _build_transport_constraints(self) -> None:
         m = self.model
 
@@ -1320,16 +1045,6 @@ class DRO_PoAOptimization(
             m.scenarios,
             rule=wasserstein_distance_rule,
         )
-
-        # Hard Wasserstein ball constraint: W[k] <= epsilon for every scenario.
-        # Without this, only the Lagrangian penalty (eta * W) is active, which
-        # cannot drive W to zero when the PoA landscape has discontinuities
-        # (bid-stack switches create arbitrarily steep gradients at finite eta).
-        # At epsilon = 0 this forces W = 0, recovering the nominal PoA.
-        def wasserstein_ball_rule(m, k):
-            return m.wasserstein_distance[k] <= 0.0
-
-        # m.wasserstein_ball = Constraint(m.scenarios, rule=wasserstein_ball_rule)
 
     # ------------------------------------------------------------------
     # Lower level equilibrium and optimality constraints
@@ -2077,95 +1792,164 @@ class DRO_PoAOptimization(
             rule=upper_2_rule,
         )
 
+    def support_set_diagnostics(self, solver_name: str = "gurobi") -> list[dict]:
+        """Per-scenario support-set diagnostics, computed once and cached.
+
+        The diagnostic (minimum Wasserstein distance onto the support set, plus
+        per-family violation counts) does not depend on eta, so it is computed a
+        single time and reused -- both by the support-floor constraints and across
+        an eta sweep -- rather than re-solving the projection LPs for every eta.
+        """
+        if getattr(self, "_support_diagnostics_cache", None) is None:
+            self._support_diagnostics_cache = (
+                self.diagnose_empirical_support_set_violations(solver_name=solver_name)
+            )
+        return self._support_diagnostics_cache
+
+    def _build_support_floor_constraints(self) -> None:
+        """Floor the per-scenario objective term at 1 where W[k]=0 is feasible.
+
+        For empirical scenarios inside the Wasserstein support set (minimum
+        achievable transport distance <= SUPPORT_FLOOR_TOLERANCE, as reported by
+        DROPoASupportDiagnostics) the nominal market state W[k]=0 is feasible and
+        yields PoA[k] >= 1, so the per-scenario maximand PoA[k] - eta * W[k] is at
+        least 1.  Imposing this as a valid lower bound tightens the relaxation
+        without removing the optimum.  Scenarios outside the support set
+        (min_W_total > tolerance) are skipped because the floor need not hold
+        there (W[k] is forced strictly positive and the penalty -eta * W[k] can
+        pull the term below 1).
+
+        This constraint depends on eta, so update_eta() rebuilds it during an eta
+        sweep.  The set of floored scenarios is eta-independent, so it is created
+        once and kept; only the constraint coefficients change between etas.
+        """
+        m = self.model
+        diagnostics = self.support_set_diagnostics()
+        inside_support = [
+            int(row["scenario_k"])
+            for row in diagnostics
+            if float(row["min_W_total"]) <= self.SUPPORT_FLOOR_TOLERANCE
+        ]
+        self.support_floor_scenarios = inside_support
+        if not inside_support:
+            return
+
+        if not hasattr(m, "support_floor_scenario_set"):
+            m.support_floor_scenario_set = Set(initialize=inside_support)
+
+        def support_objective_floor_rule(m, k):
+            return m.PoA[k] - self.eta * m.wasserstein_distance[k] >= 1.0
+
+        m.support_objective_floor = Constraint(
+            m.support_floor_scenario_set, rule=support_objective_floor_rule
+        )
+
     # ------------------------------------------------------------------
-    # Policy constraints
+    # Solver
     # ------------------------------------------------------------------
 
-    def solve(self, time_limit: Optional[float] = None) -> Any:
+    def attach_persistent_solver(self) -> Any:
+        """Create a persistent Gurobi solver and load the model into it once.
+
+        This is the setup step for an eta sweep: the model is loaded a single
+        time, after which update_eta() pushes only the eta-dependent objective and
+        support-floor constraints to the live solver instead of rebuilding and
+        re-loading the whole model for every eta.
+        """
         if not hasattr(self, "model"):
             raise ValueError("Model is not built. Call build_model() first.")
         solver = SolverFactory("gurobi_persistent")
         solver.set_instance(self.model)
         solver.options["IntFeasTol"] = 1e-8
+        self._persistent_solver = solver
+
+        # Provide Gurobi with a feasible starting point: the empirical trajectories
+        # (W[k]=0) dispatched under the NN bids.  This gives an immediate incumbent
+        # at the root node so Gurobi starts pruning rather than searching.
+        self.compute_empirical_mip_start()
+
+        return solver
+
+    def update_eta(self, eta: float) -> None:
+        """Re-point the eta-dependent parts of the model at a new eta, in place.
+
+        Only the objective term -eta * W[k] and the support-floor constraints
+        PoA[k] - eta * W[k] >= 1 depend on eta; everything else (support set, KKT,
+        ReLU embedding, McCormick) is unchanged.  When a persistent solver is
+        attached, the rebuilt objective and constraints are pushed to it so an eta
+        sweep reuses the already-loaded model.
+        """
+        self.eta = float(eta)
+        m = self.model
+        solver = getattr(self, "_persistent_solver", None)
+
+        # Rebuild the eta-dependent objective.
+        m.del_component(m.objective)
+        self._build_objective()
+        if solver is not None:
+            solver.set_objective(m.objective)
+
+        # Rebuild the eta-dependent support-floor constraints.  The floored-
+        # scenario set is unchanged, so only the Constraint component is dropped
+        # and recreated; support_floor_scenario_set is left in place.
+        previous_floor = (
+            list(m.support_objective_floor.values())
+            if hasattr(m, "support_objective_floor")
+            else []
+        )
+        if hasattr(m, "support_objective_floor"):
+            m.del_component(m.support_objective_floor)
+        self._build_support_floor_constraints()
+        if solver is not None:
+            for constraint_data in previous_floor:
+                solver.remove_constraint(constraint_data)
+            if hasattr(m, "support_objective_floor"):
+                for constraint_data in m.support_objective_floor.values():
+                    solver.add_constraint(constraint_data)
+
+    def solve(self, time_limit: Optional[float] = None, warm_start: bool = False) -> Any:
+        if not hasattr(self, "model"):
+            raise ValueError("Model is not built. Call build_model() first.")
+        solver = getattr(self, "_persistent_solver", None)
+        if solver is None:
+            solver = self.attach_persistent_solver()
         if time_limit is not None:
             solver.options["TimeLimit"] = float(time_limit)
-        self.solver_results = solver.solve(tee=True, load_solutions=False)
+
+        # warm_start=True hands Gurobi the variable values as a MIP-start incumbent.
+        # The persistent model appends to one log file across the eta sweep;
+        # pos_holder tracks the read offset so the tail continues from where it
+        # left off rather than replaying the full file on every eta.
+        if not hasattr(self, "_gurobi_log_pos"):
+            self._gurobi_log_path = None
+            self._gurobi_log_pos = {"pos": 0}
+
+        start = time.perf_counter()
+        with gurobi_log_filter(solver, self._gurobi_log_path, self._gurobi_log_pos) as log_path:
+            self._gurobi_log_path = log_path
+            self.solver_results = solver.solve(
+                tee=False, load_solutions=False, warmstart=warm_start
+            )
+        self.solve_wall_time_seconds = time.perf_counter() - start
+
         termination = self.solver_results.solver.termination_condition
         if termination == TerminationCondition.infeasible:
-            from pyomo.contrib.iis import write_iis
-            iis_path = "infeasible.ilp"
-            write_iis(self.model, iis_path, solver="gurobi")
-            print(f"IIS written to {iis_path}")
+            # Computing an IIS on this MILP can take many minutes and, in an eta
+            # sweep, would fire on every infeasible eta. Default to a cheap log;
+            # set write_iis_on_infeasible=True to diagnose a single solve.
+            if getattr(self, "write_iis_on_infeasible", False):
+                from pyomo.contrib.iis import write_iis
+                iis_path = "infeasible.ilp"
+                write_iis(self.model, iis_path, solver="gurobi")
+                print(f"IIS written to {iis_path}")
+            else:
+                print(
+                    "DRO solve infeasible (IIS skipped; set "
+                    "optimizer.write_iis_on_infeasible=True to diagnose)."
+                )
         elif len(self.solver_results.solution) > 0:
             self.model.solutions.load_from(self.solver_results)
         return self.solver_results
-
-def load_regime_scenarios(
-    reference_case: str = "base_test_case",
-    regime_config_path: str | Path = "config/regime_definitions.yaml",
-    regime_set: str = "PoA_analysis",
-    seed: Optional[int] = None,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    return DRO_PoAOptimization.load_regime_scenarios(
-        reference_case=reference_case,
-        regime_config_path=regime_config_path,
-        regime_set=regime_set,
-        seed=seed,
-    )
-
-def run_eta_sweep_by_regime(
-    etas: list[float],
-    regimes: Optional[list[str]] = None,
-    scenarios_df: Optional[pd.DataFrame] = None,
-    costs_df: Optional[pd.DataFrame] = None,
-    ramps_df: Optional[pd.DataFrame] = None,
-    reference_case: str = "base_test_case",
-    regime_config_path: str | Path = "config/regime_definitions.yaml",
-    regime_set: str = "PoA_analysis",
-    epsilon: float = 0.0,
-    num_time_steps: Optional[int] = None,
-    seed: Optional[int] = None,
-    time_limit: Optional[float] = None,
-    objective_mode: str = "difference",
-    mccormick_bounds: Optional[dict[str, Any]] = None,
-) -> pd.DataFrame:
-    if scenarios_df is None or costs_df is None or ramps_df is None:
-        scenarios_df, costs_df, ramps_df = load_regime_scenarios(
-            reference_case=reference_case,
-            regime_config_path=regime_config_path,
-            regime_set=regime_set,
-            seed=seed,
-        )
-
-    if regimes is None:
-        if "regime" not in scenarios_df.columns:
-            raise ValueError("regimes must be provided when scenarios_df has no 'regime' column")
-        regimes = sorted(scenarios_df["regime"].dropna().astype(str).unique().tolist())
-
-    summaries: list[dict[str, Any]] = []
-    for regime_name in regimes:
-        for eta in etas:
-            optimizer = DRO_PoAOptimization(
-                scenarios_df=scenarios_df,
-                costs_df=costs_df,
-                ramps_df=ramps_df,
-                num_time_steps=num_time_steps,
-                regime_config_path=regime_config_path,
-                regime_set=regime_set,
-                regime_name=regime_name,
-                eta=float(eta),
-                epsilon=float(epsilon),
-                nn_model_dir=None,
-                reference_case=reference_case,
-                objective_mode=objective_mode,
-                mccormick_bounds=mccormick_bounds,
-            )
-            optimizer.build_model()
-            optimizer.solve(time_limit=time_limit)
-            summaries.append(optimizer.solution_summary())
-
-    return pd.DataFrame(summaries)
-
 
 if __name__ == "__main__":
     case = "base_test_case"

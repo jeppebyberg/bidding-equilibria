@@ -9,7 +9,11 @@ from models.DRO_PoA.DRO_PoA_tightening.tightening_main import (
     DEFAULT_DRO_TIGHTENING_OUTPUT_PATHS,
     DROPoATighteningMain,
 )
-from models.DRO_PoA.dro_poa_model.support_set import _ar1_kappa, _level_scale
+from models.DRO_PoA.dro_poa_model.support_set import (
+    DROWassersteinSupportSet,
+    _ar1_kappa,
+    _level_scale,
+)
 
 
 def _wind_physical_capacity_ub(optimizer: Any, physical_generator_idx: int, time_idx: int) -> float:
@@ -19,7 +23,8 @@ def _wind_physical_capacity_ub(optimizer: Any, physical_generator_idx: int, time
     if installed_capacity <= 0.0:
         return 0.0
     # Use the same kappa and time-varying scale as the support set level band.
-    kappa = _ar1_kappa(int(optimizer.num_time_steps))
+    coverage = getattr(optimizer, "ar1_coverage", None) or DROWassersteinSupportSet.AR1_JOINT_COVERAGE
+    kappa = _ar1_kappa(int(optimizer.num_time_steps), float(coverage))
     rho_W = float(optimizer.wind_rho_fixed)
     scale_t = _level_scale(rho_W, t)
     profile_upper = installed_capacity * (

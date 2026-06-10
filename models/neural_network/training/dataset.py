@@ -18,26 +18,34 @@ TARGET_COLUMN_PREFIX = "target_bid_"
 class BiddingPolicyData:
     generator_name: str
     train_loader: DataLoader
-    test_loader: DataLoader
+    val_loader: DataLoader   # used for early stopping / checkpoint selection
+    test_loader: DataLoader  # held-out; evaluated once after training
     feature_columns: list[str]
     target_columns: list[str]
     input_dim: int
     output_dim: int
     train_size: int
+    val_size: int
     test_size: int
     train_scenarios: list[int | str]
+    val_scenarios: list[int | str]
     test_scenarios: list[int | str]
     num_rows: int
 
 
 def load_generator_policy_data(
     csv_path: str | Path,
-    test_size: float = 0.2,
+    val_size: float = 0.15,
+    test_size: float = 0.15,
     random_state: int = 42,
     batch_size: int = 64,
     shuffle_train: bool = True,
 ) -> BiddingPolicyData:
-    """Load one generator CSV and return grouped train/test DataLoaders."""
+    """Load one generator CSV and return grouped train/val/test DataLoaders.
+
+    Splits are scenario-aware: whole scenarios stay in one partition.
+    val_loader is used for early stopping; test_loader is a true holdout.
+    """
     path = Path(csv_path)
     dataframe = pd.read_csv(path)
     generator_name = _infer_generator_name(dataframe, path)
@@ -46,27 +54,56 @@ def load_generator_policy_data(
     target_columns = identify_target_columns(dataframe)
     _validate_dataframe(dataframe, feature_columns, target_columns, path)
 
-    splitter = GroupShuffleSplit(
+    # First split: carve out held-out test set.
+    test_splitter = GroupShuffleSplit(
         n_splits=1,
         test_size=test_size,
         random_state=random_state,
     )
-    train_index, test_index = next(
-        splitter.split(dataframe, groups=dataframe["scenario_id"])
+    trainval_index, test_index = next(
+        test_splitter.split(dataframe, groups=dataframe["scenario_id"])
     )
-    train_df = dataframe.iloc[train_index].copy()
+    trainval_df = dataframe.iloc[trainval_index].copy()
     test_df = dataframe.iloc[test_index].copy()
 
+    # Second split: carve out validation set from the remaining train+val data.
+    val_fraction_of_trainval = val_size / (1.0 - test_size)
+    val_splitter = GroupShuffleSplit(
+        n_splits=1,
+        test_size=val_fraction_of_trainval,
+        random_state=random_state + 1,
+    )
+    train_index, val_index = next(
+        val_splitter.split(trainval_df, groups=trainval_df["scenario_id"])
+    )
+    train_df = trainval_df.iloc[train_index].copy()
+    val_df = trainval_df.iloc[val_index].copy()
+
     train_scenarios = _sorted_unique(train_df["scenario_id"])
+    val_scenarios = _sorted_unique(val_df["scenario_id"])
     test_scenarios = _sorted_unique(test_df["scenario_id"])
-    overlap = set(train_scenarios) & set(test_scenarios)
-    if overlap:
-        raise ValueError(
-            f"Train/test split leaked scenario_id groups for {path}: {sorted(overlap)}"
-        )
+
+    all_pairs = [
+        ("train", "val", train_scenarios, val_scenarios),
+        ("train", "test", train_scenarios, test_scenarios),
+        ("val", "test", val_scenarios, test_scenarios),
+    ]
+    for name_a, name_b, scenarios_a, scenarios_b in all_pairs:
+        overlap = set(scenarios_a) & set(scenarios_b)
+        if overlap:
+            raise ValueError(
+                f"{name_a}/{name_b} split leaked scenario_id groups for {path}: {sorted(overlap)}"
+            )
 
     train_dataset = _to_tensor_dataset(train_df, feature_columns, target_columns)
+    val_dataset = _to_tensor_dataset(val_df, feature_columns, target_columns)
     test_dataset = _to_tensor_dataset(test_df, feature_columns, target_columns)
+
+    # Seed the train loader's shuffle with its own generator so batch order is
+    # reproducible and independent of how much global RNG state model init has
+    # consumed before iteration starts.
+    train_generator = torch.Generator()
+    train_generator.manual_seed(random_state)
 
     return BiddingPolicyData(
         generator_name=generator_name,
@@ -74,15 +111,19 @@ def load_generator_policy_data(
             train_dataset,
             batch_size=batch_size,
             shuffle=shuffle_train,
+            generator=train_generator,
         ),
+        val_loader=DataLoader(val_dataset, batch_size=batch_size, shuffle=False),
         test_loader=DataLoader(test_dataset, batch_size=batch_size, shuffle=False),
         feature_columns=feature_columns,
         target_columns=target_columns,
         input_dim=len(feature_columns),
         output_dim=len(target_columns),
         train_size=len(train_df),
+        val_size=len(val_df),
         test_size=len(test_df),
         train_scenarios=train_scenarios,
+        val_scenarios=val_scenarios,
         test_scenarios=test_scenarios,
         num_rows=len(dataframe),
     )

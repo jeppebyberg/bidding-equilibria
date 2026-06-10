@@ -2,9 +2,6 @@ base_test_case:
   demand:
     - 100.0
 
-  time_steps:
-    - 24
-
   generators:
     - id: 0
       name: "G3"
@@ -64,7 +61,7 @@ base_test_case:
         - block_id: 0
           name: "W3_B1"
           pmax: 50.0
-          cost: 0.5
+          cost: 0.3
 
     - id: 4
       name: "W2"
@@ -76,7 +73,7 @@ base_test_case:
         - block_id: 0
           name: "W2_B1"
           pmax: 50.0
-          cost: 0.25
+          cost: 0.29
 
     - id: 5
       name: "W1"
@@ -88,7 +85,7 @@ base_test_case:
         - block_id: 0
           name: "W1_B1"
           pmax: 50.0
-          cost: 0.01
+          cost: 0.28
 
   players:
     - id: 0

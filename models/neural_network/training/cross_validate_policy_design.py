@@ -44,32 +44,33 @@ HIDDEN_LAYER_GRID = [
 SUPPORTED_FEATURE_COLUMNS = [
     "demand",
     "total_wind_generation_capacity",
-    "total_generation_capacity",
     "residual_demand",
-    "previous_generation_capacity",
     "previous_demand",
-    "next_generation_capacity",
+    "previous_wind_generation_capacity",
+    "previous_residual_demand",
     "next_demand",
-    "own_generation_capacity",
-    "previous_own_generation_capacity",
-    "next_own_generation_capacity",
+    "next_wind_generation_capacity",
+    "next_residual_demand",
+    "total_demand_over_horizon",
+    "total_wind_over_horizon",
+    "total_residual_over_horizon",
 ]
 
 FEATURE_SETS = {
     "temporal_system_state": [
         "demand",
         "residual_demand",
-        "previous_generation_capacity",
         "previous_demand",
-        "next_generation_capacity",
+        "previous_wind_generation_capacity",
         "next_demand",
+        "next_wind_generation_capacity",
     ],
     "compact": [
         "demand",
         "total_wind_generation_capacity",
         "residual_demand",
-        "next_generation_capacity",
         "next_demand",
+        "next_wind_generation_capacity",
     ],
     "full_supported": SUPPORTED_FEATURE_COLUMNS,
 }

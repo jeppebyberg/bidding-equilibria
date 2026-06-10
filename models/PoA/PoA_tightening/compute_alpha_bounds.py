@@ -252,13 +252,14 @@ class AlphaBoundsComputer(PoATighteningMain):
                     index = tuple(result["index"])
                     bound_name = str(result["bound_name"])
                     result_by_task[(index, bound_name)] = result
-                    action = "minimize" if bound_name == "lower" else "maximize"
-                    print(
-                        f"[Alpha done {completed}/{total_programs}] {action} "
-                        f"alpha{index} -> {result['value']} "
-                        f"({result['termination_condition']})",
-                        flush=True,
-                    )
+                    _tc = result["termination_condition"]
+                    if completed % 50 == 0 or completed == total_programs or "infeasible" in str(_tc).lower():
+                        action = "minimize" if bound_name == "lower" else "maximize"
+                        print(
+                            f"[Alpha done {completed}/{total_programs}] {action} "
+                            f"alpha{index} -> {result['value']} ({_tc})",
+                            flush=True,
+                        )
 
             for index in targets:
                 lower_upper: dict[str, Optional[float]] = {"lower": None, "upper": None}
@@ -288,12 +289,6 @@ class AlphaBoundsComputer(PoATighteningMain):
             lower_upper: dict[str, Optional[float]] = {"lower": None, "upper": None}
             for bound_name, sense in (("lower", minimize), ("upper", maximize)):
                 program_number += 1
-                print(
-                    f"[Alpha {program_number}/{total_programs}] "
-                    f"{'minimize' if bound_name == 'lower' else 'maximize'} "
-                    f"alpha{index}",
-                    flush=True,
-                )
                 m = self._build_alpha_bound_model()
                 alpha_expr = m.alpha[index]
                 m.tightening_objective = Objective(expr=alpha_expr, sense=sense)
@@ -305,6 +300,10 @@ class AlphaBoundsComputer(PoATighteningMain):
                     solver_options=solver_options,
                 )
                 bound_value = self._safe_value(alpha_expr) if solved else None
+                _tc = str(results.solver.termination_condition)
+                if program_number % 50 == 0 or program_number == total_programs or "infeasible" in _tc.lower():
+                    action = "minimize" if bound_name == "lower" else "maximize"
+                    print(f"[Alpha {program_number}/{total_programs}] {action} alpha{index} -> {bound_value} ({_tc})", flush=True)
                 lower_upper[bound_name] = bound_value
                 optimization_results[f"{self._json_key(index)}:{bound_name}"] = {
                     "value": bound_value,

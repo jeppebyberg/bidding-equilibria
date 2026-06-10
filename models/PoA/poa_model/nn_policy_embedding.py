@@ -221,7 +221,7 @@ class PoAPolicyEmbedding:
         margin: Optional[float] = None,
     ) -> dict[str, Any]:
         margin = float(self.default_relu_bound if margin is None else margin)
-        source = template_report or self.nn_relu_bounds_report
+        source = self.nn_relu_bounds_report if template_report is None else template_report
         if not source:
             if self.nn_policy_generator_ids:
                 if not self.nn_policies:
@@ -308,6 +308,50 @@ class PoAPolicyEmbedding:
         report["source"] = "default_loose_bounds"
         return report
 
+    def ensure_default_nn_relu_bounds_available(
+        self,
+        template_report: Optional[dict[str, Any]] = None,
+        overwrite_existing: bool = False,
+    ) -> dict[str, Any]:
+        if not self.nn_policy_generator_ids:
+            return {}
+        if self.nn_relu_bounds and not overwrite_existing:
+            return self.nn_relu_bounds_report or {
+                "nn_relu_bounds": {
+                    generator_name: {
+                        self._json_key(index): dict(bounds)
+                        for index, bounds in generator_bounds.items()
+                    }
+                    for generator_name, generator_bounds in self.nn_relu_bounds.items()
+                }
+            }
+
+        default_report = self.build_default_nn_relu_bounds_report(
+            template_report={} if template_report is None else template_report
+        )
+        if not default_report:
+            return {}
+
+        if hasattr(self, "load_tightening_report_data"):
+            self.load_tightening_report_data(
+                {
+                    "nn_relu_bounds_report": default_report,
+                    "nn_relu_bounds": default_report.get("nn_relu_bounds", {}),
+                },
+                report_path=getattr(self, "tightening_report_path", None),
+                prepare_bounds=False,
+                merge_existing=True,
+            )
+        else:
+            self._set_nn_relu_bounds_from_report(default_report)
+
+        if hasattr(self, "_mark_default_bound_used"):
+            self._mark_default_bound_used(
+                "nn_relu_bounds_report",
+                "Default loose NN ReLU bounds were used.",
+            )
+        return default_report
+
     def _raw_nn_feature_expression(self, feature_name: str, t: int, physical_generator_idx: int):
         m = self.model
         previous_t = self.num_time_steps - 1 if int(t) == 0 else int(t) - 1
@@ -332,14 +376,31 @@ class PoAPolicyEmbedding:
             return total_capacity(t)
         if feature_name == "residual_demand":
             return m.D[t] - total_wind_capacity(t)
-        if feature_name == "previous_generation_capacity":
-            return total_capacity(previous_t)
         if feature_name == "previous_demand":
             return m.D[previous_t]
-        if feature_name == "next_generation_capacity":
-            return total_capacity(next_t)
+        if feature_name == "previous_wind_generation_capacity":
+            return total_wind_capacity(previous_t)
+        if feature_name == "previous_residual_demand":
+            return m.D[previous_t] - total_wind_capacity(previous_t)
+        if feature_name == "previous_generation_capacity":  # legacy
+            return total_capacity(previous_t)
         if feature_name == "next_demand":
             return m.D[next_t]
+        if feature_name == "next_wind_generation_capacity":
+            return total_wind_capacity(next_t)
+        if feature_name == "next_residual_demand":
+            return m.D[next_t] - total_wind_capacity(next_t)
+        if feature_name == "next_generation_capacity":  # legacy
+            return total_capacity(next_t)
+        if feature_name == "total_demand_over_horizon":
+            return sum(m.D[time_idx] for time_idx in range(self.num_time_steps))
+        if feature_name == "total_wind_over_horizon":
+            return sum(total_wind_capacity(time_idx) for time_idx in range(self.num_time_steps))
+        if feature_name == "total_residual_over_horizon":
+            return sum(
+                m.D[time_idx] - total_wind_capacity(time_idx)
+                for time_idx in range(self.num_time_steps)
+            )
         if feature_name == "own_generation_capacity":
             return own_capacity(t)
         if feature_name == "previous_own_generation_capacity":
@@ -378,6 +439,24 @@ class PoAPolicyEmbedding:
             return 0.0
         return (raw - feature_min) / denominator
 
+    @staticmethod
+    def _clamp_relu_bounds_to_status(
+        status: str, L: float, U: float, h_lower: float, h_upper: float
+    ) -> tuple[float, float, float, float]:
+        """Clamp OBBT-derived ReLU bounds to be consistent with the classified status.
+
+        OBBT can return tiny positive L/U for inactive nodes when network weights are
+        near machine precision (e.g. ~1e-40), which would impose a positive floor on h
+        and conflict with the h == 0 constraint added for inactive nodes.  The same
+        fallback logic mirrors _DUAL_BIG_M_OBBT_MIN_FRACTION in _prepare_dual_big_m.
+        """
+        if status == "inactive":
+            safe_u = min(U, 0.0)
+            return min(L, safe_u), safe_u, 0.0, 0.0
+        if status == "active":
+            return max(L, 0.0), U, max(h_lower, 0.0), h_upper
+        return L, U, h_lower, h_upper  # ambiguous: Big-M values, keep as-is
+
     def _build_policy_constraints(self) -> None:
         def true_cost_alpha_rule(m, i, b, t):
             if int(i) in self.nn_policy_generator_ids:
@@ -397,9 +476,12 @@ class PoAPolicyEmbedding:
     def _build_nn_policy_constraints(self) -> None:
         m = self.model
         if not self.nn_relu_bounds:
+            self.ensure_default_nn_relu_bounds_available()
+        if not self.nn_relu_bounds:
             raise ValueError(
-                "NN ReLU bounds are required before building NN policy constraints. "
-                "Run compute_relu_bounds.py or call load_nn_relu_bounds_report(...)."
+                "NN ReLU bounds are required before building NN policy constraints, "
+                "and default loose bounds could not be constructed. Run "
+                "compute_relu_bounds.py or call load_nn_relu_bounds_report(...)."
             )
         nn_input_indices: list[tuple[int, int, int]] = []
         nn_z_indices: list[tuple[int, int, int, int]] = []
@@ -470,10 +552,18 @@ class PoAPolicyEmbedding:
                 index = (i, int(t), int(linear_idx), int(node))
                 if index not in m.nn_z:
                     continue
-                m.nn_z[index].setlb(float(bounds["L"]))
-                m.nn_z[index].setub(float(bounds["U"]))
-                m.nn_h[index].setlb(float(bounds["h_lower"]))
-                m.nn_h[index].setub(float(bounds["h_upper"]))
+                status = str(bounds.get("status", "ambiguous")).lower()
+                z_lb, z_ub, h_lb, h_ub = self._clamp_relu_bounds_to_status(
+                    status,
+                    float(bounds["L"]),
+                    float(bounds["U"]),
+                    float(bounds["h_lower"]),
+                    float(bounds["h_upper"]),
+                )
+                m.nn_z[index].setlb(z_lb)
+                m.nn_z[index].setub(z_ub)
+                m.nn_h[index].setlb(h_lb)
+                m.nn_h[index].setub(h_ub)
 
         for i in self.nn_policy_generator_ids:
             generator_name = self.physical_generator_names[i]
@@ -589,18 +679,25 @@ class PoAPolicyEmbedding:
                     int(linear_idx),
                     int(node),
                 )
+                status = str(bounds.get("status", "")).lower()
+                z_lb, z_ub, h_lb, h_ub = self._clamp_relu_bounds_to_status(
+                    status,
+                    float(bounds["L"]),
+                    float(bounds["U"]),
+                    float(bounds["h_lower"]),
+                    float(bounds["h_upper"]),
+                )
                 if hasattr(m, "nn_z") and index in m.nn_z:
-                    m.nn_z[index].setlb(float(bounds["L"]))
-                    m.nn_z[index].setub(float(bounds["U"]))
+                    m.nn_z[index].setlb(z_lb)
+                    m.nn_z[index].setub(z_ub)
                     stats["z_bounds_applied"] += 1
                 if hasattr(m, "nn_h") and index in m.nn_h:
-                    m.nn_h[index].setlb(float(bounds["h_lower"]))
-                    m.nn_h[index].setub(float(bounds["h_upper"]))
+                    m.nn_h[index].setlb(h_lb)
+                    m.nn_h[index].setub(h_ub)
                     stats["h_bounds_applied"] += 1
                 if not hasattr(m, "nn_delta") or index not in m.nn_delta:
                     continue
 
-                status = str(bounds.get("status", "")).lower()
                 if status == "inactive":
                     m.nn_delta[index].fix(0)
                     stats["delta_fixed_inactive"] += 1

@@ -280,14 +280,31 @@ class DROPoAPolicyEmbedding:
             return total_capacity(t)
         if feature_name == "residual_demand":
             return m.D[k, t] - total_wind_capacity(t)
-        if feature_name == "previous_generation_capacity":
-            return total_capacity(previous_t)
         if feature_name == "previous_demand":
             return m.D[k, previous_t]
-        if feature_name == "next_generation_capacity":
-            return total_capacity(next_t)
+        if feature_name == "previous_wind_generation_capacity":
+            return total_wind_capacity(previous_t)
+        if feature_name == "previous_residual_demand":
+            return m.D[k, previous_t] - total_wind_capacity(previous_t)
+        if feature_name == "previous_generation_capacity":  # legacy
+            return total_capacity(previous_t)
         if feature_name == "next_demand":
             return m.D[k, next_t]
+        if feature_name == "next_wind_generation_capacity":
+            return total_wind_capacity(next_t)
+        if feature_name == "next_residual_demand":
+            return m.D[k, next_t] - total_wind_capacity(next_t)
+        if feature_name == "next_generation_capacity":  # legacy
+            return total_capacity(next_t)
+        if feature_name == "total_demand_over_horizon":
+            return sum(m.D[k, time_idx] for time_idx in range(self.num_time_steps))
+        if feature_name == "total_wind_over_horizon":
+            return sum(total_wind_capacity(time_idx) for time_idx in range(self.num_time_steps))
+        if feature_name == "total_residual_over_horizon":
+            return sum(
+                m.D[k, time_idx] - total_wind_capacity(time_idx)
+                for time_idx in range(self.num_time_steps)
+            )
         if feature_name == "own_generation_capacity":
             return own_capacity(t)
         if feature_name == "previous_own_generation_capacity":
@@ -336,6 +353,24 @@ class DROPoAPolicyEmbedding:
         if abs(denominator) <= self.normalization_epsilon:
             return 0.0
         return (raw - feature_min) / denominator
+
+    @staticmethod
+    def _clamp_relu_bounds_to_status(
+        status: str, L: float, U: float, h_lower: float, h_upper: float
+    ) -> tuple[float, float, float, float]:
+        """Clamp OBBT-derived ReLU bounds to be consistent with the classified status.
+
+        OBBT can return tiny positive L/U for inactive nodes when network weights are
+        near machine precision (e.g. ~1e-40), which would impose a positive floor on h
+        and conflict with the h == 0 constraint added for inactive nodes.  The same
+        fallback logic mirrors _DUAL_BIG_M_OBBT_MIN_FRACTION in _prepare_dual_big_m.
+        """
+        if status == "inactive":
+            safe_u = min(U, 0.0)
+            return min(L, safe_u), safe_u, 0.0, 0.0
+        if status == "active":
+            return max(L, 0.0), U, max(h_lower, 0.0), h_upper
+        return L, U, h_lower, h_upper  # ambiguous: Big-M values, keep as-is
 
     def _build_nn_policy_constraints(self) -> None:
         m = self.model
@@ -432,10 +467,18 @@ class DROPoAPolicyEmbedding:
                     index = (int(k), int(i), int(time_idx), int(linear_idx), int(node))
                     if index not in m.nn_z:
                         continue
-                    m.nn_z[index].setlb(float(bounds["L"]))
-                    m.nn_z[index].setub(float(bounds["U"]))
-                    m.nn_h[index].setlb(float(bounds["h_lower"]))
-                    m.nn_h[index].setub(float(bounds["h_upper"]))
+                    status = str(bounds.get("status", "ambiguous")).lower()
+                    z_lb, z_ub, h_lb, h_ub = self._clamp_relu_bounds_to_status(
+                        status,
+                        float(bounds["L"]),
+                        float(bounds["U"]),
+                        float(bounds["h_lower"]),
+                        float(bounds["h_upper"]),
+                    )
+                    m.nn_z[index].setlb(z_lb)
+                    m.nn_z[index].setub(z_ub)
+                    m.nn_h[index].setlb(h_lb)
+                    m.nn_h[index].setub(h_ub)
 
         for i in self.nn_policy_generator_ids:
             i = int(i)

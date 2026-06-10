@@ -67,32 +67,33 @@ RESULT_DIR = Path("models/neural_network/training/nested_policy_design_cv_result
 SUPPORTED_FEATURE_COLUMNS = [
     "demand",
     "total_wind_generation_capacity",
-    "total_generation_capacity",
     "residual_demand",
-    "previous_generation_capacity",
     "previous_demand",
-    "next_generation_capacity",
+    "previous_wind_generation_capacity",
+    "previous_residual_demand",
     "next_demand",
-    "own_generation_capacity",
-    "previous_own_generation_capacity",
-    "next_own_generation_capacity",
+    "next_wind_generation_capacity",
+    "next_residual_demand",
+    "total_demand_over_horizon",
+    "total_wind_over_horizon",
+    "total_residual_over_horizon",
 ]
 
 FEATURE_SETS: dict[str, list[str] | None] = {
     "temporal_system_state": [
         "demand",
         "residual_demand",
-        "previous_generation_capacity",
         "previous_demand",
-        "next_generation_capacity",
+        "previous_wind_generation_capacity",
         "next_demand",
+        "next_wind_generation_capacity",
     ],
     "compact": [
         "demand",
         "total_wind_generation_capacity",
         "residual_demand",
-        "next_generation_capacity",
         "next_demand",
+        "next_wind_generation_capacity",
     ],
     "full_supported": None,  # None => use every available feature column.
 }

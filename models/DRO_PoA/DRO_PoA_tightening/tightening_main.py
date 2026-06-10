@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -22,7 +23,14 @@ DEFAULT_DRO_TIGHTENING_OUTPUT_PATHS: dict[str, str] = {
 class DROPoATighteningMain:
     """Shared orchestrator for DRO PoA tightening."""
 
-    _MAIN_STATE_ATTRS = {"poa", "dro", "dro_poa", "tightening_data", "stage_reports"}
+    _MAIN_STATE_ATTRS = {
+        "poa",
+        "dro",
+        "dro_poa",
+        "tightening_data",
+        "stage_reports",
+        "stage_timings",
+    }
 
     def __getattr__(self, name: str) -> Any:
         poa = self.__dict__.get("poa")
@@ -83,6 +91,7 @@ class DROPoATighteningMain:
         self.dro_poa = self.poa
         self.tightening_data: dict[str, Any] = {}
         self.stage_reports: dict[str, dict[str, Any]] = {}
+        self.stage_timings: dict[str, dict[str, Any]] = {}
 
     def _resolve_output_paths(
         self,
@@ -279,6 +288,31 @@ class DROPoATighteningMain:
             self._save_json(report, output_path)
         return report
 
+    def _record_stage_timing(
+        self,
+        stage_name: str,
+        elapsed_seconds: float,
+        mode: str,
+        output_path: str | Path | None,
+    ) -> None:
+        """Record per-stage wall time and, for freshly computed stages, stamp it.
+
+        ``mode`` is "run" (computed now) or "loaded" (read from a previous
+        report). Only "run" stamps and re-saves the stage report, so a loaded
+        report keeps the computation time it was originally written with.
+        """
+        self.stage_timings[stage_name] = {
+            "computation_time_seconds": elapsed_seconds,
+            "mode": mode,
+        }
+        if mode != "run":
+            return
+        report = self.stage_reports.get(stage_name)
+        if isinstance(report, dict):
+            report.setdefault("metadata", {})["computation_time_seconds"] = elapsed_seconds
+            if output_path is not None:
+                self._save_json(report, output_path)
+
     def _load_or_run_stage(
         self,
         stage_name: str,
@@ -287,9 +321,15 @@ class DROPoATighteningMain:
         previous_path: str | Path,
         output_path: str | Path | None,
     ) -> dict[str, Any]:
+        start = time.perf_counter()
         if run_flag:
-            return run_callable(output_path)
-        return self._load_previous_stage(stage_name, previous_path)
+            report = run_callable(output_path)
+            mode = "run"
+        else:
+            report = self._load_previous_stage(stage_name, previous_path)
+            mode = "loaded"
+        self._record_stage_timing(stage_name, time.perf_counter() - start, mode, output_path)
+        return report
 
     def load_existing_tightening_report(self, path: str | Path) -> dict[str, Any]:
         report = self._load_json(path)
@@ -622,8 +662,55 @@ class DROPoATighteningMain:
                 {},
             ),
             "stage_reports": self.stage_reports,
+            "stage_timings": self.stage_timings,
         }
         return self._save_json(payload, output_path)
+
+    def run_essential_bounds(
+        self,
+        previous_paths: Optional[dict[str, str | Path]] = None,
+        output_paths: Optional[dict[str, str | Path]] = None,
+        solver_name: str = "gurobi",
+        time_limit: Optional[float] = None,
+        tee: bool = False,
+        solver_threads: Optional[int] = None,
+    ) -> Path:
+        """Always (re)compute primal_big_m and optimal_cost_bounds.
+
+        Used when full DRO tightening is disabled but the McCormick C_opt envelope
+        still needs valid denominator bounds. Existing reports for the remaining
+        stages (relu/alpha/slack/dual) are reused when present; otherwise they are
+        left empty, and the final DRO solve falls back to its internal loose
+        defaults for them. Unlike ``run_all`` this bypasses the inter-stage
+        ``_require_*`` guards, which only make sense for a full tightening pass.
+        """
+        from models.DRO_PoA.DRO_PoA_tightening.compute_optimal_cost_bounds import (
+            DROOptimalCostBoundsComputer,
+        )
+        from models.DRO_PoA.DRO_PoA_tightening.compute_primal_big_m import DROPrimalBigMComputer
+
+        previous_paths = self._resolve_output_paths(previous_paths)
+        output_paths = self._resolve_output_paths(output_paths)
+
+        # Preserve any previously tightened non-essential stages in the final report.
+        for stage_name in ("relu_bounds", "alpha_bounds", "slack_binary_fix", "dual_big_m"):
+            previous_path = Path(previous_paths[stage_name])
+            if previous_path.exists():
+                self._load_previous_stage(stage_name, previous_path)
+
+        primal_stage = self._as_stage(DROPrimalBigMComputer)
+        primal_stage.run_primal_big_m(output_path=output_paths["primal_big_m"])
+
+        optimal_cost_stage = self._as_stage(DROOptimalCostBoundsComputer)
+        optimal_cost_stage.run_optimal_cost_bounds(
+            output_path=output_paths["optimal_cost_bounds"],
+            solver_name=solver_name,
+            time_limit=time_limit,
+            tee=tee,
+            solver_threads=solver_threads,
+        )
+
+        return self.save_final_report(output_paths["final"])
 
     def run_all(
         self,

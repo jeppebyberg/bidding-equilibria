@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import copy
 import json
+import random
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+import numpy as np
 import torch
 from torch import nn
 
@@ -21,12 +24,19 @@ class BiddingPolicyTrainingConfig:
     batch_size: int
     num_epochs: int
     weight_decay: float
-    test_size: float
+    val_size: float   # fraction of data for early-stopping validation
+    test_size: float  # fraction of data for held-out evaluation
     random_state: int
     patience: int | None
     min_delta: float
     device: str | None = None
     final_activation: str = "linear"
+    # ReduceLROnPlateau scheduler on the validation loss. Set
+    # use_lr_scheduler=False to keep a constant learning rate.
+    use_lr_scheduler: bool = True
+    lr_scheduler_factor: float = 0.5
+    lr_scheduler_patience: int = 20
+    lr_scheduler_min_lr: float = 1e-6
 
 def train_generator_policy(
     csv_path: str | Path,
@@ -35,8 +45,15 @@ def train_generator_policy(
     config: BiddingPolicyTrainingConfig,
 ) -> dict[str, Any]:
     """Train, save, and export a bidding policy network for one generator."""
+    # Seed Python/NumPy/PyTorch global RNGs so weight initialization (and any
+    # other global-RNG consumer) is reproducible. Without this, identical data
+    # and config still produce different trained models, making two runs
+    # impossible to compare. The data split is already deterministic via the
+    # sklearn random_state inside load_generator_policy_data.
+    _set_reproducible_seeds(config.random_state)
     policy_data = load_generator_policy_data(
         csv_path=csv_path,
+        val_size=config.val_size,
         test_size=config.test_size,
         random_state=config.random_state,
         batch_size=config.batch_size,
@@ -65,7 +82,9 @@ def train_generator_policy(
         f"batch size {config.batch_size}, and {config.num_epochs} epochs."
     )
 
+    training_start = time.perf_counter()
     history = _fit_model(model, policy_data, config, selected_device)
+    history["training_time_seconds"] = time.perf_counter() - training_start
 
     model_dir_path = Path(model_dir)
     result_dir_path = Path(result_dir)
@@ -102,9 +121,12 @@ def train_generator_policy(
         "output_dim": policy_data.output_dim,
         "number_of_target_bidding_blocks": len(policy_data.target_columns),
         "train_size": policy_data.train_size,
+        "val_size": policy_data.val_size,
         "test_size": policy_data.test_size,
-        "best_test_loss": history["best_test_loss"],
+        "best_val_loss": history["best_val_loss"],
+        "final_test_loss": history["final_test_loss"],
         "best_epoch": history["best_epoch"],
+        "training_time_seconds": history["training_time_seconds"],
         "model_path": str(model_path),
         "metadata_path": str(metadata_path),
         "history_path": str(history_path),
@@ -119,6 +141,15 @@ def train_generator_policy(
         "history": history,
     }
 
+def _set_reproducible_seeds(seed: int) -> None:
+    """Seed Python, NumPy, and PyTorch (CPU and CUDA) global RNGs."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
 def _fit_model(
     model: BiddingPolicyNetwork,
     policy_data: BiddingPolicyData,
@@ -131,10 +162,20 @@ def _fit_model(
         lr=config.learning_rate,
         weight_decay=config.weight_decay,
     )
+    scheduler = None
+    if config.use_lr_scheduler:
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode="min",
+            factor=config.lr_scheduler_factor,
+            patience=config.lr_scheduler_patience,
+            min_lr=config.lr_scheduler_min_lr,
+        )
 
     train_loss_history: list[float] = []
-    test_loss_history: list[float] = []
-    best_test_loss = float("inf")
+    val_loss_history: list[float] = []
+    lr_history: list[float] = []
+    best_val_loss = float("inf")
     best_epoch = 0
     best_state_dict: dict[str, torch.Tensor] | None = None
     epochs_without_improvement = 0
@@ -149,17 +190,26 @@ def _fit_model(
             device=device,
             optimizer=optimizer,
         )
-        test_loss = _evaluate(
+        val_loss = _evaluate(
             model=model,
-            data_loader=policy_data.test_loader,
+            data_loader=policy_data.val_loader,
             loss_function=loss_function,
             device=device,
         )
         train_loss_history.append(train_loss)
-        test_loss_history.append(test_loss)
+        val_loss_history.append(val_loss)
 
-        if test_loss < best_test_loss - config.min_delta:
-            best_test_loss = test_loss
+        # Record the LR that produced this epoch, then let the scheduler react.
+        current_lr = optimizer.param_groups[0]["lr"]
+        lr_history.append(current_lr)
+        if scheduler is not None:
+            scheduler.step(val_loss)
+            new_lr = optimizer.param_groups[0]["lr"]
+            if new_lr < current_lr:
+                print(f"  LR reduced: {current_lr:.3g} -> {new_lr:.3g} at epoch {epoch}")
+
+        if val_loss < best_val_loss - config.min_delta:
+            best_val_loss = val_loss
             best_epoch = epoch
             best_state_dict = copy.deepcopy(model.state_dict())
             epochs_without_improvement = 0
@@ -175,11 +225,21 @@ def _fit_model(
     if best_state_dict is not None:
         model.load_state_dict(best_state_dict)
 
+    # Evaluate once on the true held-out test set after checkpoint selection.
+    final_test_loss = _evaluate(
+        model=model,
+        data_loader=policy_data.test_loader,
+        loss_function=loss_function,
+        device=device,
+    )
+
     return {
         "train_loss": train_loss_history,
-        "test_loss": test_loss_history,
-        "best_test_loss": best_test_loss,
+        "val_loss": val_loss_history,
+        "lr": lr_history,
+        "best_val_loss": best_val_loss,
         "best_epoch": best_epoch,
+        "final_test_loss": final_test_loss,
     }
 
 def _initialize_final_relu_bias_from_targets(
@@ -264,15 +324,24 @@ def _build_metadata(
         "activation": "relu",
         "final_activation": config.final_activation,
         "train_size": policy_data.train_size,
+        "val_size": policy_data.val_size,
+        "val_fraction": config.val_size,
         "test_size": policy_data.test_size,
         "test_fraction": config.test_size,
         "num_epochs_trained": len(history["train_loss"]),
         "best_epoch": history["best_epoch"],
-        "best_test_loss": history["best_test_loss"],
+        "best_val_loss": history["best_val_loss"],
+        "final_test_loss": history["final_test_loss"],
+        "training_time_seconds": history.get("training_time_seconds"),
         "learning_rate": config.learning_rate,
         "batch_size": config.batch_size,
         "weight_decay": config.weight_decay,
         "random_state": config.random_state,
+        "use_lr_scheduler": config.use_lr_scheduler,
+        "lr_scheduler_factor": config.lr_scheduler_factor,
+        "lr_scheduler_patience": config.lr_scheduler_patience,
+        "lr_scheduler_min_lr": config.lr_scheduler_min_lr,
+        "final_learning_rate": history["lr"][-1] if history.get("lr") else config.learning_rate,
     }
 
 def _build_weight_export(

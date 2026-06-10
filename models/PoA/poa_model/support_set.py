@@ -63,7 +63,7 @@ class PoASupportSet:
 
         # One Sidak-corrected kappa for all T innovation constraints (t=0 cold-start +
         # t=1..T-1 AR(1) tube) and for the level box.  Matches DRO formulation exactly.
-        kappa = _ar1_kappa(self.num_time_steps)  # joint 99 % over T constraints
+        kappa = _ar1_kappa(self.num_time_steps)  # joint 95 % over T constraints
 
         # Precompute time-varying scale factors (pure Python floats; rho is fixed).
         # scale(t) = min((1-rho^{t+1})/(1-rho), 1/sqrt(1-rho^2))
@@ -88,7 +88,10 @@ class PoASupportSet:
         )
 
         m.demand_budget_expr = Expression(
-            rule=lambda _: self.ambiguity_kappa * sum(m.demand_reference[t] for t in m.time_steps)
+            rule=lambda _: self.ambiguity_kappa * sum(
+                m.demand_upper[t] - m.demand_reference[t]
+                for t in m.time_steps
+            )
         )
 
         def demand_lower_rule(m, t):
@@ -142,8 +145,8 @@ class PoASupportSet:
         def demand_budget_rule(m):
             return sum(m.D_abs_deviation[t] for t in m.time_steps) <= m.demand_budget_expr
 
-        def demand_feasibility_rule(m, t):
-            return m.demand_lower[t] >= 0
+        def demand_reference_feasibility_rule(m, t):
+            return m.demand_reference[t] >= 0
 
         self.model.demand_ar1_t0_up = Constraint(rule=demand_ar1_t0_up_rule)
         self.model.demand_ar1_t0_down = Constraint(rule=demand_ar1_t0_down_rule)
@@ -154,7 +157,7 @@ class PoASupportSet:
         self.model.demand_abs_deviation_pos_constraints = Constraint(self.model.time_steps, rule=demand_abs_deviation_pos_rule)
         self.model.demand_abs_deviation_neg_constraints = Constraint(self.model.time_steps, rule=demand_abs_deviation_neg_rule)
         self.model.demand_budget_constraint = Constraint(rule=demand_budget_rule)
-        self.model.demand_lower_feasibility = Constraint(self.model.time_steps, rule=demand_feasibility_rule)
+        self.model.demand_reference_feasibility = Constraint(self.model.time_steps, rule=demand_reference_feasibility_rule)
 
     def _build_support_set_wind(self) -> None:
         m = self.model
@@ -190,7 +193,10 @@ class PoASupportSet:
 
         m.wind_budget_expr = Expression(
             m.wind_physical_generators,
-            rule=lambda _, i: self.ambiguity_kappa * sum(m.wind_reference[i, t] for t in m.time_steps)
+            rule=lambda _, i: self.ambiguity_kappa * sum(
+                kappa * self.static_physical_capacity[int(i)] * m.sigma_W * wind_scales[int(t)]
+                for t in m.time_steps
+            )
         )
 
         def conventional_capacity_rule(m, i, b, t):

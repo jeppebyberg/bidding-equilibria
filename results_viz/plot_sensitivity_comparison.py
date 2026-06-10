@@ -51,8 +51,13 @@ def _extract_curve_label(case_name: str) -> str:
 
     ``cap_rho3p0_omega0p40_3W_3C``   →  "ω = 0.40  (3W + 3C)"
     ``comp_3W_3C``                    →  "3W + 3C"
+    ``peak_w_14``                     →  "peak hour = 14"
     ``base_test_case``                →  "base_test_case"
     """
+    peak_match = re.match(r"peak_w_(?P<tau>\d+)", case_name)
+    if peak_match:
+        return f"peak hour = {peak_match.group('tau')}"
+
     cap_match = re.match(
         r"cap_rho(?P<rho>[\dp]+)_omega(?P<omega>[\dp]+)_(?P<nw>\d+)W_(?P<nc>\d+)C",
         case_name,
@@ -66,16 +71,27 @@ def _extract_curve_label(case_name: str) -> str:
     if cnt_match:
         return f"{cnt_match.group('nw')}W + {cnt_match.group('nc')}C"
 
+    # Generic ``...NW_NC`` suffix (e.g. ``test_3W_1C``).
+    suffix_match = re.search(r"(?P<nw>\d+)W_(?P<nc>\d+)C", case_name)
+    if suffix_match:
+        return f"{suffix_match.group('nw')}W + {suffix_match.group('nc')}C"
+
     return case_name
 
 
 def _case_sort_key(case_name: str) -> tuple[float, str]:
+    peak_match = re.match(r"peak_w_(?P<tau>\d+)", case_name)
+    if peak_match:
+        return (float(peak_match.group("tau")), case_name)
     cap_match = re.match(r"cap_rho[\dp]+_omega(?P<omega>[\dp]+)", case_name)
     if cap_match:
         return (float(cap_match.group("omega").replace("p", ".")), case_name)
     cnt_match = re.match(r"comp_(?P<nw>\d+)W", case_name)
     if cnt_match:
         return (float(cnt_match.group("nw")), case_name)
+    suffix_match = re.search(r"(?P<nw>\d+)W_\d+C", case_name)
+    if suffix_match:
+        return (float(suffix_match.group("nw")), case_name)
     return (0.0, case_name)
 
 

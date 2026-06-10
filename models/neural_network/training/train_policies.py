@@ -22,12 +22,17 @@ LEARNING_RATE = 1e-3
 BATCH_SIZE = 128
 NUM_EPOCHS = 500
 WEIGHT_DECAY = 0.0
-TEST_SIZE = 0.2
+VAL_SIZE = 0.15
+TEST_SIZE = 0.15
 RANDOM_STATE = 42
 PATIENCE = 50
 MIN_DELTA = 1e-6
 DEVICE: str | None = None
 FINAL_ACTIVATION = "linear"
+USE_LR_SCHEDULER = True
+LR_SCHEDULER_FACTOR = 0.5
+LR_SCHEDULER_PATIENCE = 20
+LR_SCHEDULER_MIN_LR = 1e-6
 
 def main(device: str | None = DEVICE) -> None:
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
@@ -39,12 +44,17 @@ def main(device: str | None = DEVICE) -> None:
         batch_size=BATCH_SIZE,
         num_epochs=NUM_EPOCHS,
         weight_decay=WEIGHT_DECAY,
+        val_size=VAL_SIZE,
         test_size=TEST_SIZE,
         random_state=RANDOM_STATE,
         patience=PATIENCE,
         min_delta=MIN_DELTA,
         device=device,
         final_activation=FINAL_ACTIVATION,
+        use_lr_scheduler=USE_LR_SCHEDULER,
+        lr_scheduler_factor=LR_SCHEDULER_FACTOR,
+        lr_scheduler_patience=LR_SCHEDULER_PATIENCE,
+        lr_scheduler_min_lr=LR_SCHEDULER_MIN_LR,
     )
 
     csv_paths = _find_generator_feature_files(FEATURE_DIR)
@@ -69,8 +79,10 @@ def main(device: str | None = DEVICE) -> None:
             f"features={policy_data.input_dim}, "
             f"targets={policy_data.output_dim}, "
             f"train_scenarios={len(policy_data.train_scenarios)}, "
+            f"val_scenarios={len(policy_data.val_scenarios)}, "
             f"test_scenarios={len(policy_data.test_scenarios)}, "
-            f"best_test_loss={history['best_test_loss']:.8g}, "
+            f"best_val_loss={history['best_val_loss']:.8g}, "
+            f"final_test_loss={history['final_test_loss']:.8g}, "
             f"model={result['model_path']}"
         )
 

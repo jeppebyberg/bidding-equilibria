@@ -7,13 +7,17 @@ from typing import Any, Optional
 import numpy as np
 from pyomo.environ import value
 
+from models.helper import build_solver_summary, sanitize_for_json
+
 
 class DROPoAResults:
     def _safe_value(self, expr: Any) -> Optional[float]:
+        import math
         raw_value = value(expr, exception=False)
         if raw_value is None:
             return None
-        return float(raw_value)
+        f = float(raw_value)
+        return f if math.isfinite(f) else None
 
     def _profile_values(self, var: Any, *leading_indices: int) -> list[Optional[float]]:
         return [
@@ -192,20 +196,8 @@ class DROPoAResults:
                 }
             )
 
-        solver_summary: dict[str, Any] = {}
-        if hasattr(self, "solver_results"):
-            solver_summary = {
-                "status": str(self.solver_results.solver.status),
-                "termination_condition": str(
-                    self.solver_results.solver.termination_condition
-                ),
-            }
+        solver_summary = build_solver_summary(self)
 
-        dro_objective_with_epsilon = (
-            inner_objective + self.eta * self.epsilon
-            if inner_objective is not None
-            else None
-        )
         return {
             "reference_case": self.reference_case,
             "case_label": getattr(self, "case_label", ""),
@@ -228,7 +220,6 @@ class DROPoAResults:
                 self.optimal_cost_bound_optimization_results
             ),
             "inner_objective": inner_objective,
-            "dro_objective_with_epsilon": dro_objective_with_epsilon,
             "average_poa_difference": average_poa,
             "average_poa_ratio": average_poa_ratio,
             "average_relaxed_PoA": average_relaxed_PoA,
@@ -262,7 +253,7 @@ class DROPoAResults:
             raise ValueError("output_path must end with .json or have no suffix")
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", encoding="utf-8") as file_handle:
-            json.dump(results, file_handle, indent=2)
+            json.dump(sanitize_for_json(results), file_handle, indent=2)
         return path
 
     def solution_summary(self) -> dict[str, Any]:
@@ -306,14 +297,7 @@ class DROPoAResults:
             sum(m.wasserstein_distance[k] for k in m.scenarios)
             / self.num_empirical_scenarios
         )
-        solver_summary: dict[str, Any] = {}
-        if hasattr(self, "solver_results"):
-            solver_summary = {
-                "status": str(self.solver_results.solver.status),
-                "termination_condition": str(
-                    self.solver_results.solver.termination_condition
-                ),
-            }
+        solver_summary = build_solver_summary(self)
         return {
             "reference_case": self.reference_case,
             "regime_set": self.regime_set,
@@ -335,11 +319,6 @@ class DROPoAResults:
                 self.optimal_cost_bound_optimization_results
             ),
             "inner_objective": inner_objective,
-            "dro_objective_with_epsilon": (
-                inner_objective + self.eta * self.epsilon
-                if inner_objective is not None
-                else None
-            ),
             "average_poa_difference": average_poa,
             "average_poa_ratio": average_poa_ratio,
             "average_relaxed_PoA": average_relaxed_PoA,

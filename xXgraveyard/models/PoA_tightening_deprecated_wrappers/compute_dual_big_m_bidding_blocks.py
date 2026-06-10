@@ -6,7 +6,7 @@ from models.PoA.PoA_tightening.compute_dual_big_m import DualBigMComputer
 
 
 def main() -> None:
-    from driver.PoA_pipeline import PoAPipelineConfig, build_poa_tightening
+    from xXgraveyard.driver.PoA_pipeline import PoAPipelineConfig, build_poa_tightening
 
     config = PoAPipelineConfig(run_tightening=False)
     stage = build_poa_tightening(config, DualBigMComputer)

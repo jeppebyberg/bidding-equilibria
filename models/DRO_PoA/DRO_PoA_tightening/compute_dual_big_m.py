@@ -255,11 +255,11 @@ class DRODualBigMComputer(DROPoATighteningMain):
             solver.options[option_name] = option_value
         results = solver.solve(m, tee=tee, load_solutions=False)
         termination = results.solver.termination_condition
-        ok = termination in {
-            TerminationCondition.optimal,
-            TerminationCondition.locallyOptimal,
-            TerminationCondition.feasible,
-        }
+        # A valid dual Big-M is the *maximised* dual; only a proven-optimal solve
+        # certifies it. A feasible-but-suboptimal incumbent underestimates the max
+        # and would cut off dual values the full model needs (artificial
+        # infeasibility), so it must not be accepted as a tight bound.
+        ok = termination == TerminationCondition.optimal
         if len(results.solution) > 0:
             m.solutions.load_from(results)
         return bool(ok), results

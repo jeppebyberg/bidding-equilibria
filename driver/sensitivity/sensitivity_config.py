@@ -1,216 +1,430 @@
-"""Shared configuration and infrastructure for all sensitivity analyses.
+"""Shared sensitivity-study infrastructure for ``driver_tmp``.
 
-Defines:
-  - BaseConfig: project-standard hyperparameters (NN, solver, DRO) shared across
-    all sensitivity studies.  Modify specific fields per study; pass to
-    CompositionSweepConfig as the ``base_config``.
-  - _BaseCompositionSpec: shared base for all composition spec classes.
-    Concrete spec classes (e.g. CompositionSpec, CapacityCompositionSpec) live
-    in the individual sensitivity scripts that use them.
-  - Reference case YAML helpers.
-  - CompositionSweepConfig and run_composition_sweep: sweep infrastructure used
-    by individual sensitivity scripts.
-
-Individual sensitivity scripts import from here and define only what varies.
+Each study starts from ``driver_tmp.project_config.PROJECT_CONFIG``, changes
+only the fields under study, writes outputs to an isolated run directory, and
+then runs the requested block sequence.
 """
+
 from __future__ import annotations
 
+import copy
+import json
+import shutil
 import sys
-from dataclasses import dataclass, field, fields as dc_fields
+from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Iterable
 
-import numpy as np
 import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from driver.full_pipeline import (
-    FullPipelineConfig,
-    main as run_pipeline,
+from driver import (  # noqa: E402
+    block1_data_labels_pipeline,
+    block2_policy_training_pipeline,
+    block3_poa_pipeline,
+    block35_support_oos_pipeline,
+    block4_dro_poa_pipeline,
+    block45_oos_poa_pipeline,
+    full_pipeline,
+)
+from driver.project_config import load_project_config  # noqa: E402
+from driver.core.block0_core import (  # noqa: E402
+    ProjectConfig,
+    ensure_requested_policy_generators,
+    pipeline_manifest,
+)
+from driver.block0_system_setup import write_manifest  # noqa: E402
+from driver.core.visualization_core import (  # noqa: E402
+    plot_sensitivity_comparison_stage,
 )
 
-REFERENCE_CASES_PATH = PROJECT_ROOT / "config" / "reference_cases.yaml"
-SENSITIVITY_STUDIES_DIR = PROJECT_ROOT / "config" / "sensitivity_studies"
 
-_TIGHTENING_STAGES = [
-    "primal_big_m",
-    "relu_bounds",
-    "alpha_bounds",
-    "slack_binary_fix",
-    "dual_big_m",
-    "optimal_cost_bounds",
-]
+RESULT_ROOT = Path("results/sensitivity_studies")
+SENSITIVITY_CONFIG_DIR = PROJECT_ROOT / "config" / "sensitivity_studies"
 
-# ---------------------------------------------------------------------------
-# Cost templates — index i → generator Gi / Wi (cheapest = index 0)
-# ---------------------------------------------------------------------------
+CONV_B1_COSTS = [10.0, 30.0, 50.0, 70.0, 90.0]
+CONV_B2_COSTS = [20.0, 40.0, 60.0, 80.0, 100.0]
+WIND_COSTS = [0.01, 0.25, 0.50, 0.75, 1.00]
 
-_CONV_B1_COSTS = [10.0, 30.0, 50.0, 70.0, 90.0]
-_CONV_B2_COSTS = [20.0, 40.0, 60.0, 80.0, 100.0]
-_WIND_COSTS    = [0.01, 0.25, 0.50, 0.75, 1.00]
+PipelineRunner = Callable[[ProjectConfig], dict[str, Any]]
 
 
-# ---------------------------------------------------------------------------
-# BaseConfig — project-standard hyperparameters
-# ---------------------------------------------------------------------------
+BLOCK_RUNNERS: dict[str, PipelineRunner] = {
+    "full": full_pipeline.run,
+    "block1": block1_data_labels_pipeline.run,
+    "block2": block2_policy_training_pipeline.run,
+    "block3": block3_poa_pipeline.run,
+    "block35": block35_support_oos_pipeline.run,
+    "block4": block4_dro_poa_pipeline.run,
+    "block45": block45_oos_poa_pipeline.run,
+}
+
 
 @dataclass
-class BaseConfig:
-    """Project-standard hyperparameters shared across all sensitivity analyses.
+class SensitivityRun:
+    """One sensitivity run: a name plus field overrides on PROJECT_CONFIG."""
 
-    Covers all fields in SensitivityPipelineConfig except the case name,
-    output paths, and nn_policy_generators — those are set per-composition
-    by the sweep infrastructure.
+    name: str
+    overrides: dict[str, Any] = field(default_factory=dict)
+    label: str | None = None
 
-    Usage::
 
-        cfg = BaseConfig(hidden_layers=[8, 8], num_epochs=200)
-        # modify any field, then pass to CompositionSweepConfig:
-        sweep = CompositionSweepConfig(compositions=..., base_config=cfg, ...)
+@dataclass
+class SensitivityStudy:
+    """A collection of sensitivity runs sharing one base PROJECT_CONFIG."""
+
+    name: str
+    runs: list[SensitivityRun]
+    result_root: Path = RESULT_ROOT
+    blocks: tuple[str, ...] = ("full",)
+    base_overrides: dict[str, Any] = field(default_factory=dict)
+    shared_artifact_fields: tuple[str, ...] = field(default_factory=tuple)
+    # When True, any run whose result-affecting setup is identical to the base
+    # case copies the base-case results instead of recomputing them.
+    reuse_base_case_results: bool = True
+
+
+def load_base_config(overrides: dict[str, Any] | None = None) -> ProjectConfig:
+    cfg = load_project_config()
+    apply_overrides(cfg, overrides or {})
+    return cfg
+
+
+def apply_overrides(config: ProjectConfig, overrides: dict[str, Any]) -> ProjectConfig:
+    for key, value in overrides.items():
+        if not hasattr(config, key):
+            raise AttributeError(f"ProjectConfig has no field '{key}'")
+        setattr(config, key, copy.deepcopy(value))
+    return config
+
+
+def isolate_run_outputs(
+    config: ProjectConfig,
+    study_name: str,
+    run_name: str,
+    result_root: Path = RESULT_ROOT,
+) -> ProjectConfig:
+    """Point every generated artifact for this run into one isolated folder."""
+    run_dir = Path(result_root) / study_name / run_name
+    config.case_label = f"{study_name}/{run_name}"
+    config.figures_dir = run_dir / "figures"
+    config.poa_result_dir = run_dir / "poa"
+    config.synthetic_scenario_dir = run_dir / "synthetic_scenarios"
+    config.poa_scenario_dir = run_dir / "poa_scenarios"
+    config.dro_scenario_dir = run_dir / "dro_scenarios"
+    config.heuristic_results_path = run_dir / "merit_order_results.json"
+    config.raw_feature_dir = run_dir / "features" / "raw"
+    config.normalized_feature_dir = run_dir / "features" / "normalized"
+    config.model_dir = run_dir / "trained_models"
+    config.training_result_dir = run_dir / "training_results"
+    config.dro_result_dir = run_dir / "dro"
+    config.dro_result_archive_dir = run_dir / "dro" / "old_results"
+    config.runtime_config_path = run_dir / "runtime_regime_definitions.yaml"
+    config.support_calibration_report_path = run_dir / "support_oos_report.json"
+    return config
+
+
+def build_sensitivity_config(
+    study: SensitivityStudy,
+    run: SensitivityRun,
+) -> ProjectConfig:
+    base_cfg = load_base_config(study.base_overrides)
+    cfg = copy.deepcopy(base_cfg)
+    isolate_run_outputs(cfg, study.name, run.name, study.result_root)
+    for field_name in study.shared_artifact_fields:
+        if not hasattr(cfg, field_name):
+            raise AttributeError(f"ProjectConfig has no field '{field_name}'")
+        setattr(cfg, field_name, copy.deepcopy(getattr(base_cfg, field_name)))
+    if "case" in run.overrides and "nn_policy_generators" not in run.overrides:
+        cfg.nn_policy_generators = []
+    apply_overrides(cfg, run.overrides)
+    ensure_requested_policy_generators(cfg)
+    if run.label:
+        cfg.case_label = run.label
+    return cfg
+
+
+# ---------------------------------------------------------------------------
+# Base-case reuse
+#
+# A sensitivity run whose result-affecting configuration is identical to the
+# base case produces identical results, so it can copy the base-case outputs
+# instead of recomputing them. Only output-location fields (and case_label) are
+# allowed to differ; every field that affects what is computed must match.
+# ---------------------------------------------------------------------------
+
+# Fields that only control WHERE artifacts are written, not WHAT is computed.
+_OUTPUT_LOCATION_FIELDS = frozenset(
+    {
+        "case_label",
+        "figures_dir",
+        "poa_result_dir",
+        "synthetic_scenario_dir",
+        "poa_scenario_dir",
+        "dro_scenario_dir",
+        "heuristic_results_path",
+        "raw_feature_dir",
+        "normalized_feature_dir",
+        "model_dir",
+        "training_result_dir",
+        "dro_result_dir",
+        "dro_result_archive_dir",
+        "runtime_config_path",
+        "support_calibration_report_path",
+    }
+)
+
+
+BASE_CASE_FINGERPRINT_NAME = "config_fingerprint.json"
+
+
+def base_case_result_root() -> Path:
+    """Result directory of the pristine base case (results/<base case_label>)."""
+    return Path("results") / load_project_config().case_label
+
+
+def base_case_fingerprint_path() -> Path:
+    """Path to the locked base-case fingerprint, if any."""
+    return base_case_result_root() / BASE_CASE_FINGERPRINT_NAME
+
+
+def _canonical(value: Any) -> Any:
+    """Normalize a config value for stable equality / JSON round-tripping.
+
+    Tuples become lists and Paths become strings so a value compares equal to
+    its reloaded-from-JSON form (e.g. ``(1.0, 20.0)`` vs ``[1.0, 20.0]``).
     """
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, (list, tuple)):
+        return [_canonical(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _canonical(item) for key, item in value.items()}
+    return value
 
-    # Scenario generation
-    synthetic_time_steps: int | None = 24
-    synthetic_seed: int = 1
-    poa_seed: int = 1
-    synthetic_num_scenarios: int = 1000
-    ambiguity_set_config_path: str = "config/ambiguity_set_config.yaml"
-    ambiguity_set_config_name: str = "base_test_case"
-    bid_tolerance: float = 1e-2
 
-    # NN features
-    nn_feature_columns: list[str] = field(default_factory=lambda: [
-        "demand",
-        "total_wind_generation_capacity",
-        "total_generation_capacity",
-        "residual_demand",
-        "previous_generation_capacity",
-        "previous_demand",
-        "next_generation_capacity",
-        "next_demand",
-        "own_generation_capacity",
-        "previous_own_generation_capacity",
-        "next_own_generation_capacity",
-    ])
-    per_generator_normalization: bool = True
+def substantive_config_fields(config: ProjectConfig) -> dict[str, Any]:
+    """Result-affecting fields of a config (excludes output-location fields).
 
-    # NN architecture
-    hidden_layers: list[int] = field(default_factory=lambda: [4, 8])
-    learning_rate: float = 1e-3
-    batch_size: int = 32
-    num_epochs: int = 500
-    weight_decay: float = 0.0
-    test_size: float = 0.2
-    random_state: int = 42
-    patience: int | None = 50
-    min_delta: float = 1e-6
-    device: str | None = None
-    nn_final_activation: str = "linear"
+    Values are canonicalized so they compare equal across a JSON round-trip.
+    """
+    return {
+        field_info.name: _canonical(getattr(config, field_info.name))
+        for field_info in fields(ProjectConfig)
+        if field_info.name not in _OUTPUT_LOCATION_FIELDS
+    }
 
-    # NN training gate: only train generators with more accepted label changes.
-    nn_training_min_label_changes: int | None = 100
 
-    # Solver
-    horizon: int = 8
-    solver_name: str = "gurobi"
-    preprocessing_time_limit: int = 200
-    epsilon: float = 1e-6
-    poa_parallel_workers: int = 6
-    poa_solver_threads_per_worker: int | None = 1
+def write_base_case_fingerprint(
+    config: ProjectConfig | None = None,
+    overrides: dict[str, Any] | None = None,
+) -> Path:
+    """Stamp the base-case result dir with the config that produced it.
 
-    # PoA
-    poa_context_num_scenarios: int = 1
-    poa_objective_mode: str = "piecewise_mccormick"
-    poa_mccormick_PoA_bounds: tuple[float, float] | None = (1.0, 10.0)
-    poa_mccormick_num_pieces: int = 50
-    poa_time_limit: int | None = None
+    Once written, base-case reuse compares runs against this fingerprint instead
+    of the live ``PROJECT_CONFIG``, so later edits to ``PROJECT_CONFIG`` cannot
+    silently make a stale base case look like a match.
+    """
+    cfg = config or load_project_config()
+    if overrides:
+        apply_overrides(cfg, overrides)
+    path = base_case_fingerprint_path()
+    if not path.parent.exists():
+        raise FileNotFoundError(
+            f"Base-case result dir not found: {path.parent}. "
+            "Generate the base case before locking it."
+        )
+    payload = {
+        "note": (
+            "Locked base-case setup. A sensitivity run whose substantive config "
+            "matches 'substantive_config' reuses results/<base_case> instead of "
+            "recomputing."
+        ),
+        "case_label": cfg.case_label,
+        "substantive_config": substantive_config_fields(cfg),
+    }
+    with path.open("w", encoding="utf-8") as file_handle:
+        json.dump(payload, file_handle, indent=2)
+    print(f"Wrote base-case fingerprint: {path}")
+    return path
 
-    # DRO
-    poa_worst_case_regime_name: str = "poa_worst_case"
-    poa_worst_case_n_scenarios: int = 10
-    poa_regime_set: str = "sensitivity_runtime"
-    etas: list[float] = field(
-        default_factory=lambda: [0.0] + np.logspace(-2, 0.5, 10).tolist() + [10.0]
-    )
-    dro_wasserstein_epsilon: float = 2000.0
-    ambiguity_kappa: float = 0.3
-    dro_tightening_eta: float = 0.0
-    dro_objective_mode: str = "piecewise_mccormick"
-    dro_mccormick_PoA_bounds: tuple[float, float] | None = (1.0, 10.0)
-    dro_mccormick_num_pieces: int = 50
-    dro_time_limit: int | None = None
 
-    # Support calibration
-    calibrate_support_coverage: bool = True
-    support_verify_seed: int = 77777
-    support_verify_num_draws: int = 2000
-    support_coverage_grid: list[float] = field(
-        default_factory=lambda: [0.90, 0.95, 0.99, 0.999, 0.9999]
-    )
-    ar1_coverage: float | None = None
+def load_base_case_fingerprint() -> dict[str, Any] | None:
+    """Return the locked base-case fingerprint payload, or None if unlocked."""
+    path = base_case_fingerprint_path()
+    if not path.exists():
+        return None
+    with path.open("r", encoding="utf-8") as file_handle:
+        return json.load(file_handle)
 
-    # Stage toggles
-    run_scenario_generation: bool = True
-    run_heuristic_labels: bool = True
-    run_feature_building: bool = True
-    run_nn_training: bool = True
-    run_poa_tightening: bool = True
-    poa_tightening_flags: dict[str, bool] = field(
-        default_factory=lambda: {s: True for s in _TIGHTENING_STAGES}
-    )
-    run_poa_optimization: bool = True
-    run_dro_tightening: bool = True
-    dro_tightening_flags: dict[str, bool] = field(
-        default_factory=lambda: {s: True for s in _TIGHTENING_STAGES}
-    )
-    run_dro_optimization: bool = True
-    archive_existing_dro_results: bool = True
 
-    def to_pipeline_config(self, case: str = "base_test_case") -> FullPipelineConfig:
-        """Build a SensitivityPipelineConfig from this base config.
+def base_case_setup_diff(run_config: ProjectConfig) -> dict[str, tuple[Any, Any]]:
+    """Return result-affecting fields where ``run_config`` differs from the base case.
 
-        Fields present in both BaseConfig and SensitivityPipelineConfig are
-        forwarded directly.  Case name and output paths use SensitivityPipelineConfig
-        defaults and are overridden by the sweep infrastructure.
-        """
-        pipeline_fields = {f.name for f in dc_fields(FullPipelineConfig)}
-        kwargs = {
-            f.name: getattr(self, f.name)
-            for f in dc_fields(self)
-            if f.name in pipeline_fields
+    The reference is the locked fingerprint (``config_fingerprint.json``) when
+    present, otherwise the live ``load_project_config()``. An empty dict means the
+    run would compute exactly the base-case results. Output-location fields are
+    ignored. Each value is ``(base, run)``.
+    """
+    fingerprint = load_base_case_fingerprint()
+    if fingerprint is not None:
+        base_fields = fingerprint.get("substantive_config", {})
+    else:
+        base_fields = substantive_config_fields(load_project_config())
+    run_fields = substantive_config_fields(run_config)
+
+    diff: dict[str, tuple[Any, Any]] = {}
+    for name in set(base_fields) | set(run_fields):
+        base_value = base_fields.get(name)
+        run_value = run_fields.get(name)
+        if base_value != run_value:
+            diff[name] = (base_value, run_value)
+    return diff
+
+
+def run_matches_base_case(run_config: ProjectConfig) -> bool:
+    """True iff ``run_config`` matches the base case AND base-case results exist.
+
+    The on-disk check guards against copying from a base case that was never
+    generated. When a fingerprint is present the match is against that locked
+    setup; otherwise it falls back to the live ``PROJECT_CONFIG``.
+    """
+    if not (base_case_result_root() / "poa").exists():
+        return False
+    return not base_case_setup_diff(run_config)
+
+
+def copy_base_case_results(study: "SensitivityStudy", run: "SensitivityRun") -> Path:
+    """Copy the base-case result tree into this run's isolated directory."""
+    base_root = base_case_result_root()
+    run_dir = Path(study.result_root) / study.name / run.name
+    if base_root.resolve() == run_dir.resolve():
+        return run_dir
+    shutil.copytree(base_root, run_dir, dirs_exist_ok=True)
+    return run_dir
+
+
+def run_blocks(config: ProjectConfig, blocks: Iterable[str]) -> dict[str, Any]:
+    manifests: dict[str, Any] = {}
+    for block_name in blocks:
+        if block_name not in BLOCK_RUNNERS:
+            available = ", ".join(sorted(BLOCK_RUNNERS))
+            raise ValueError(f"Unknown block '{block_name}'. Available: {available}")
+        manifests[block_name] = BLOCK_RUNNERS[block_name](config)
+    return manifests
+
+
+def run_sensitivity_study(study: SensitivityStudy) -> dict[str, Any]:
+    sep = "=" * 72
+    print(f"\n{sep}")
+    print(f"  Sensitivity study: {study.name} ({len(study.runs)} run(s))")
+    print(f"  result_root: {Path(study.result_root) / study.name}")
+    print(f"  blocks: {', '.join(study.blocks)}")
+    print(f"{sep}")
+
+    study_manifest: dict[str, Any] = {
+        "study": study.name,
+        "result_root": str(Path(study.result_root) / study.name),
+        "blocks": list(study.blocks),
+        "shared_artifact_fields": list(study.shared_artifact_fields),
+        "runs": {},
+    }
+
+    for idx, run in enumerate(study.runs, start=1):
+        print(f"\n{sep}")
+        print(f"  [{idx}/{len(study.runs)}] {run.name}")
+        if run.overrides:
+            for key, value in run.overrides.items():
+                print(f"    {key}: {value}")
+        print(f"{sep}")
+
+        cfg = build_sensitivity_config(study, run)
+
+        reused_base_case = False
+        block_manifests: dict[str, Any]
+        if study.reuse_base_case_results and run_matches_base_case(cfg):
+            run_dir = copy_base_case_results(study, run)
+            reused_base_case = True
+            print(
+                f"  Setup matches base case -> copied base-case results\n"
+                f"    from {base_case_result_root()}\n"
+                f"    to   {run_dir}\n"
+                f"    (reuse assumes the base case was generated with the current "
+                f"PROJECT_CONFIG)"
+            )
+            block_manifests = {"reused_base_case": True}
+        else:
+            block_manifests = run_blocks(cfg, study.blocks)
+
+        run_manifest = {
+            "config": pipeline_manifest(cfg),
+            "overrides": copy.deepcopy(run.overrides),
+            "reused_base_case": reused_base_case,
+            "block_manifests": block_manifests,
         }
-        return FullPipelineConfig(case=case, **kwargs)
+        write_manifest(f"sensitivity_{study.name}_{run.name}", run_manifest, cfg)
+        study_manifest["runs"][run.name] = run_manifest["config"]
+
+    study_manifest_path = Path(study.result_root) / study.name / "study_manifest.yaml"
+    study_manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    with study_manifest_path.open("w", encoding="utf-8") as file_handle:
+        yaml.safe_dump(study_manifest, file_handle, sort_keys=False)
+    print(f"\nSensitivity study complete: {study_manifest_path}")
+
+    base_cfg = load_base_config(study.base_overrides)
+    if getattr(base_cfg, "plot_results_along_the_way", False):
+        print(f"\n{sep}")
+        print("  Building cross-run sensitivity comparison plots")
+        print(f"{sep}")
+        plot_sensitivity_comparison_stage(study.name, study.result_root)
+
+    return study_manifest
 
 
-# ---------------------------------------------------------------------------
-# Composition spec classes
-# ---------------------------------------------------------------------------
+def write_ambiguity_sweep_config(
+    study_name: str,
+    ambiguity_sets: dict[str, Any],
+    default_name: str,
+) -> Path:
+    """Write a study-local ambiguity-set YAML under config/sensitivity_studies."""
+    path = SENSITIVITY_CONFIG_DIR / f"{study_name}_ambiguity_sets.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "default_ambiguity_set": default_name,
+        "ambiguity_sets": ambiguity_sets,
+    }
+    with path.open("w", encoding="utf-8") as file_handle:
+        yaml.safe_dump(payload, file_handle, sort_keys=False)
+    print(f"Wrote ambiguity-set sweep config: {path}")
+    return path
+
 
 @dataclass
-class _BaseCompositionSpec:
-    """Shared fields and validation for all composition sensitivity specifications."""
+class BaseCompositionSpec:
+    """Shared composition fields for reference-case sensitivity studies."""
 
     n_wind: int
     n_conv: int
-
     demand: float = 100.0
-    conv_b1_costs: list[float] = field(default_factory=lambda: list(_CONV_B1_COSTS))
-    conv_b2_costs: list[float] = field(default_factory=lambda: list(_CONV_B2_COSTS))
-    wind_costs: list[float] = field(default_factory=lambda: list(_WIND_COSTS))
+    conv_b1_costs: list[float] = field(default_factory=lambda: list(CONV_B1_COSTS))
+    conv_b2_costs: list[float] = field(default_factory=lambda: list(CONV_B2_COSTS))
+    wind_costs: list[float] = field(default_factory=lambda: list(WIND_COSTS))
 
     def __post_init__(self) -> None:
         if self.n_wind + self.n_conv < 1:
             raise ValueError("Composition must have at least one generator.")
         if self.n_conv > len(self.conv_b1_costs):
             raise ValueError(
-                f"n_conv={self.n_conv} exceeds conv cost template length {len(self.conv_b1_costs)}."
+                f"n_conv={self.n_conv} exceeds conv cost template length "
+                f"{len(self.conv_b1_costs)}."
             )
         if self.n_wind > len(self.wind_costs):
             raise ValueError(
-                f"n_wind={self.n_wind} exceeds wind cost template length {len(self.wind_costs)}."
+                f"n_wind={self.n_wind} exceeds wind cost template length "
+                f"{len(self.wind_costs)}."
             )
 
     @property
@@ -222,212 +436,91 @@ class _BaseCompositionSpec:
         return [f"G{i + 1}" for i in range(self.n_conv)]
 
     @property
-    def total_generators(self) -> int:
-        return self.n_wind + self.n_conv
+    def case_name(self) -> str:
+        return f"{self.n_wind}W_{self.n_conv}C"
+
+    @property
+    def total_conv_capacity_mw(self) -> float:
+        return self.n_conv * 2 * float(getattr(self, "conv_block_cap"))
+
+    @property
+    def total_wind_capacity_mw(self) -> float:
+        return self.n_wind * float(getattr(self, "wind_block_cap"))
 
 
-# ---------------------------------------------------------------------------
-# Reference case YAML helpers
-# ---------------------------------------------------------------------------
-
-def generate_reference_case(spec: _BaseCompositionSpec) -> dict[str, Any]:
-    """Build the YAML-compatible dict for a reference case from a composition spec.
-
-    Generator ordering: conventional G{n_conv}...G1 (most expensive first),
-    then wind W{n_wind}...W1, matching the base case convention.
-    """
+def generate_reference_case(spec: BaseCompositionSpec) -> dict[str, Any]:
+    """Build a reference-case YAML entry from a composition spec."""
     generators: list[dict[str, Any]] = []
     gen_id = 0
 
     for i in range(spec.n_conv - 1, -1, -1):
         name = f"G{i + 1}"
-        generators.append({
-            "id": gen_id,
-            "name": name,
-            "type": "conventional",
-            "pmin": 0.0,
-            "R_rate_up": spec.conv_ramp,
-            "R_rate_down": spec.conv_ramp,
-            "bidding_blocks": [
-                {"block_id": 0, "name": f"{name}_B1",
-                 "pmax": float(spec.conv_block_cap), "cost": float(spec.conv_b1_costs[i])},
-                {"block_id": 1, "name": f"{name}_B2",
-                 "pmax": float(spec.conv_block_cap), "cost": float(spec.conv_b2_costs[i])},
-            ],
-        })
+        generators.append(
+            {
+                "id": gen_id,
+                "name": name,
+                "type": "conventional",
+                "pmin": 0.0,
+                "R_rate_up": float(spec.conv_ramp),
+                "R_rate_down": float(spec.conv_ramp),
+                "bidding_blocks": [
+                    {
+                        "block_id": 0,
+                        "name": f"{name}_B1",
+                        "pmax": float(spec.conv_block_cap),
+                        "cost": float(spec.conv_b1_costs[i]),
+                    },
+                    {
+                        "block_id": 1,
+                        "name": f"{name}_B2",
+                        "pmax": float(spec.conv_block_cap),
+                        "cost": float(spec.conv_b2_costs[i]),
+                    },
+                ],
+            }
+        )
         gen_id += 1
 
     for i in range(spec.n_wind - 1, -1, -1):
         name = f"W{i + 1}"
-        generators.append({
-            "id": gen_id,
-            "name": name,
-            "type": "wind",
-            "pmin": 0.0,
-            "R_rate_up": spec.wind_ramp,
-            "R_rate_down": spec.wind_ramp,
-            "bidding_blocks": [
-                {"block_id": 0, "name": f"{name}_B1",
-                 "pmax": float(spec.wind_block_cap), "cost": float(spec.wind_costs[i])},
-            ],
-        })
+        generators.append(
+            {
+                "id": gen_id,
+                "name": name,
+                "type": "wind",
+                "pmin": 0.0,
+                "R_rate_up": float(spec.wind_ramp),
+                "R_rate_down": float(spec.wind_ramp),
+                "bidding_blocks": [
+                    {
+                        "block_id": 0,
+                        "name": f"{name}_B1",
+                        "pmax": float(spec.wind_block_cap),
+                        "cost": float(spec.wind_costs[i]),
+                    }
+                ],
+            }
+        )
         gen_id += 1
 
-    players = [{"id": i, "controlled_generators": [i]} for i in range(gen_id)]
     return {
         "demand": [float(spec.demand)],
         "time_steps": [24],
         "generators": generators,
-        "players": players,
+        "players": [{"id": i, "controlled_generators": [i]} for i in range(gen_id)],
     }
 
 
-def _study_yaml_path(study_name: str) -> Path:
-    return SENSITIVITY_STUDIES_DIR / f"{study_name}.yaml"
-
-
-def register_composition_in_study_yaml(
-    spec: _BaseCompositionSpec,
+def write_reference_case_sweep_config(
     study_name: str,
-) -> bool:
-    """Write the composition's reference case into config/sensitivity_studies/{study_name}.yaml.
-
-    Returns True if newly added, False if already existed.
-    """
-    path = _study_yaml_path(study_name)
+    specs: Iterable[BaseCompositionSpec],
+) -> Path:
+    """Write study-local reference cases under config/sensitivity_studies."""
+    specs = list(specs)
+    path = SENSITIVITY_CONFIG_DIR / f"{study_name}.yaml"
     path.parent.mkdir(parents=True, exist_ok=True)
-
-    existing: dict[str, Any] = {}
-    if path.exists():
-        with path.open("r", encoding="utf-8") as fh:
-            existing = yaml.safe_load(fh) or {}
-
-    if spec.case_name in existing:
-        return False
-
-    existing[spec.case_name] = generate_reference_case(spec)
-    with path.open("w", encoding="utf-8") as fh:
-        yaml.dump(existing, fh, default_flow_style=False, sort_keys=False, allow_unicode=True)
-    return True
-
-def write_study_yaml(sweep: CompositionSweepConfig) -> Path:
-    """Write all compositions for this study into config/sensitivity_studies/{study_name}.yaml.
-
-    All cases are stored as top-level keys in one file, matching the format of
-    reference_cases.yaml.  The loader in config/utils/cases_utils.py searches
-    this directory automatically, so no changes to reference_cases.yaml are needed.
-
-    Returns the path to the written YAML file.
-    """
-    path = _study_yaml_path(sweep.study_name)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    cases = {spec.case_name: generate_reference_case(spec) for spec in sweep.compositions}
-    with path.open("w", encoding="utf-8") as fh:
-        yaml.dump(cases, fh, default_flow_style=False, sort_keys=False, allow_unicode=True)
-    print(f"Wrote {len(cases)} case(s) to: {path}")
+    payload = {spec.case_name: generate_reference_case(spec) for spec in specs}
+    with path.open("w", encoding="utf-8") as file_handle:
+        yaml.safe_dump(payload, file_handle, sort_keys=False)
+    print(f"Wrote {len(payload)} reference case(s): {path}")
     return path
-
-
-# ---------------------------------------------------------------------------
-# Composition sweep infrastructure
-# ---------------------------------------------------------------------------
-
-@dataclass
-class CompositionSweepConfig:
-    """Sweep over physical compositions sharing a common pipeline configuration.
-
-    ``base_config`` holds all NN/solver/DRO hyperparameters.  Per-composition,
-    only the case name, output paths, and nn_policy_generators are set
-    automatically.
-
-    To patch individual pipeline fields for specific compositions (e.g., vary
-    dro_wasserstein_epsilon per run), use ``composition_overrides``::
-
-        composition_overrides={
-            "cap_rho3p0_omega0p20_3W_3C": {"dro_wasserstein_epsilon": 1000.0},
-        }
-    """
-
-    compositions: list[_BaseCompositionSpec]
-    base_config: BaseConfig
-
-    study_name: str = "composition_sweep"
-    result_root: Path = Path("results/sensitivity_studies")
-
-    # Maps case_name -> {SensitivityPipelineConfig field: value}.
-    composition_overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
-
-
-def build_composition_sensitivity_config(
-    spec: _BaseCompositionSpec,
-    sweep: CompositionSweepConfig,
-    nn_policy_generators: list[str] | None = None,
-) -> FullPipelineConfig:
-    """Build a per-composition SensitivityPipelineConfig from the sweep's base config.
-
-    Calls base_config.to_pipeline_config(), sets the case name and all output
-    paths to an isolated subdirectory, then applies nn_policy_generators and
-    any entries in sweep.composition_overrides.
-    """
-    config = sweep.base_config.to_pipeline_config(spec.case_name)
-    config.case_label = getattr(spec, "label", "")
-
-    comp_dir = sweep.result_root / sweep.study_name / spec.case_name
-    config.synthetic_scenario_dir = comp_dir / "synthetic_scenarios"
-    config.poa_scenario_dir = comp_dir / "poa_scenarios"
-    config.dro_scenario_dir = comp_dir / "dro_scenarios"
-    config.heuristic_results_path = comp_dir / "merit_order_results.json"
-    config.raw_feature_dir = comp_dir / "features" / "raw"
-    config.normalized_feature_dir = comp_dir / "features" / "normalized"
-    config.model_dir = comp_dir / "trained_models"
-    config.training_result_dir = comp_dir / "training_results"
-    config.poa_result_dir = comp_dir / "poa"
-    config.dro_result_dir = comp_dir / "dro"
-    config.dro_result_archive_dir = comp_dir / "dro" / "old_results"
-    config.runtime_config_path = comp_dir / "runtime_regime_definitions.yaml"
-    config.support_calibration_report_path = comp_dir / "support_calibration.json"
-
-    if nn_policy_generators is not None:
-        config.nn_policy_generators = nn_policy_generators
-
-    for key, value in sweep.composition_overrides.get(spec.case_name, {}).items():
-        setattr(config, key, value)
-
-    return config
-
-
-def run_composition_sweep(sweep: CompositionSweepConfig) -> None:
-    """Write study YAMLs, register all compositions, and run the pipeline for each."""
-    n = len(sweep.compositions)
-    sep = "=" * 64
-
-    print(f"\n{sep}")
-    print(f"  Composition sweep  |  study='{sweep.study_name}'  ({n} composition(s))")
-    print(f"  result_root: {sweep.result_root / sweep.study_name}")
-    print(f"{sep}")
-
-    write_study_yaml(sweep)
-
-    print(f"\nCompositions registered in config/sensitivity_studies/{sweep.study_name}.yaml:")
-    for spec in sweep.compositions:
-        print(f"  {spec.case_name}  "
-              f"({spec.n_wind}W + {spec.n_conv}C, "
-              f"total cap = {spec.total_conv_capacity_mw:.0f} MW conv + "
-              f"{spec.total_wind_capacity_mw:.0f} MW wind)")
-
-    for idx, spec in enumerate(sweep.compositions):
-        print(f"\n{sep}")
-        print(f"  [{idx + 1}/{n}] {spec.case_name}")
-        print(f"    generators : {spec.n_conv} conv ({', '.join(spec.conv_names)})"
-              f"  +  {spec.n_wind} wind ({', '.join(spec.wind_names)})")
-        print(f"    nn_policy  : determined by label-change filter "
-              f"(threshold > {sweep.base_config.nn_training_min_label_changes})")
-        print(f"    result_dir : {sweep.result_root / sweep.study_name / spec.case_name}")
-        print(f"{sep}")
-
-        config = build_composition_sensitivity_config(spec, sweep)
-        run_pipeline(config)
-
-    print(f"\n{sep}")
-    print(f"  Sweep complete.  Results: {sweep.result_root / sweep.study_name}")
-    print(f"{sep}\n")
