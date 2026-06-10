@@ -21,16 +21,18 @@ study = SensitivityStudy(
         "normalized_feature_dir",
     ),
     base_overrides={
-        "run_scenario_generation": False,
-        "run_heuristic_labels": False,
-        "run_feature_building": False,
-        "run_nn_training": False,
+        "run_scenario_generation": True,
+        "run_heuristic_labels": True,
+        "run_feature_building": True,
+        "run_nn_training": True,
         "run_poa_optimization": True,
         "run_dro_optimization": True,
     },
     runs=[
         SensitivityRun("T4", {"horizon": 4}),
-        SensitivityRun("T6", {"horizon": 8}),
+        SensitivityRun("T6", {"horizon": 6}),
+        SensitivityRun("T8", {"horizon": 8}),
+        SensitivityRun("T10", {"horizon": 10}),
         SensitivityRun("T12", {"horizon": 12}),
     ],
 )

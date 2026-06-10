@@ -482,13 +482,12 @@ class DROPoATighteningReports:
                 )
         return prepared
 
-    # Minimum fraction of default_bound that an OBBT-derived tight_big_m must
-    # reach before it is applied.  Results below this floor (when not confirmed
-    # by a primal slack argument) are treated as structurally unreliable: the
-    # single-scenario OBBT does not include the adversarial support_objective_floor
-    # constraint, so it can claim M=0 for lower-bound duals when the DRO model
-    # actually requires M > 0 in adversarially-forced high-PoA scenarios.
-    _DUAL_BIG_M_OBBT_MIN_FRACTION: float = 1e-3
+    # Maximum absolute value that an OBBT-derived tight_big_m must not exceed
+    # to be applied.  Results above this threshold (when not confirmed by a primal
+    # slack argument) are treated as insufficiently tight: the single-scenario OBBT
+    # does not include the adversarial support_objective_floor constraint, so weak
+    # bounds (larger than this threshold) are discarded in favor of the default.
+    _DUAL_BIG_M_OBBT_MAX_ABSOLUTE: float = 0.1
 
     def _prepare_dual_big_m(
         self,
@@ -517,13 +516,10 @@ class DROPoATighteningReports:
                     idx = self._parse_json_index(str(raw_key))
                     fixed_by_slack_map[idx] = bool(details.get("fixed_by_slack", False))
 
-        min_obbt_bound = float(default_bound) * self._DUAL_BIG_M_OBBT_MIN_FRACTION
-
         def _safe_bound(index: tuple[int, ...], tight_val: float) -> float:
             fbs = fixed_by_slack_map.get(index, False)
-            if not fbs and tight_val < min_obbt_bound:
-                # OBBT result is suspiciously small; revert to the default bound
-                # to avoid artificial infeasibility in the DRO adversarial model.
+            if not fbs and tight_val > self._DUAL_BIG_M_OBBT_MAX_ABSOLUTE:
+                # OBBT result is insufficiently tight; revert to the default bound.
                 return float(default_bound)
             return max(0.0, min(float(default_bound), tight_val))
 

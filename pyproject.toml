@@ -31,6 +31,7 @@ dependencies = [
     "pyyaml",
     "scikit-learn",
     "torch",
+    "gurobipy==12.0.1",
 ]
 
 [project.optional-dependencies]
