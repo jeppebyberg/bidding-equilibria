@@ -8,7 +8,8 @@ players N increases, each player's block capacities shrink proportionally:
 Ramp rates scale with per-player capacity to keep the ramp/capacity ratio constant
 at the base-case values (conv: 40 %, wind: 100 %).
 
-N ranges from 1 to 5 (limited by the five-slot cost template in sensitivity_config).
+N ranges from 2 to 8 (16 participants at maximum), with costs linearly
+interpolated within the base-case range so the total merit order is fixed.
 
 Run:
   python -m driver.sensitivity.num_players_sweep
@@ -24,20 +25,25 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from driver.sensitivity.sensitivity_config import (  # noqa: E402
-    CONV_B1_COSTS,
-    CONV_B2_COSTS,
-    WIND_COSTS,
     BaseCompositionSpec,
     SensitivityRun,
     SensitivityStudy,
     run_sensitivity_study,
     write_reference_case_sweep_config,
 )
+
+# Cost range anchored to the N=3 base case so the total merit order is
+# the same for all player counts (only the number of slices changes).
+_CONV_B1_MIN, _CONV_B1_MAX = 10.0, 50.0
+_CONV_B2_MIN, _CONV_B2_MAX = 20.0, 60.0
+_WIND_MIN, _WIND_MAX = 0.01, 0.50
 
 STUDY_NAME = "num_players_sweep"
 
@@ -49,7 +55,7 @@ _BASE_N = 3
 _BASE_CONV_RAMP = 20.0
 _BASE_WIND_RAMP = 50.0
 
-N_VALUES = [1, 2, 3, 4, 5]
+N_VALUES = [2, 3, 4, 5, 6, 7, 8]
 
 
 @dataclass
@@ -82,9 +88,9 @@ def _make_spec(n: int) -> NumPlayersSpec:
         n_wind=n,
         n_conv=n,
         demand=DEMAND_MW,
-        conv_b1_costs=list(CONV_B1_COSTS),
-        conv_b2_costs=list(CONV_B2_COSTS),
-        wind_costs=list(WIND_COSTS),
+        conv_b1_costs=np.linspace(_CONV_B1_MIN, _CONV_B1_MAX, n).tolist(),
+        conv_b2_costs=np.linspace(_CONV_B2_MIN, _CONV_B2_MAX, n).tolist(),
+        wind_costs=np.linspace(_WIND_MIN, _WIND_MAX, n).tolist(),
     )
 
 

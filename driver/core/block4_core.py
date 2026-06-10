@@ -672,19 +672,19 @@ def run_dro_eta_sweep(
     return summaries
 
 
-def _snapshot_solution(optimizer: DRO_PoAOptimization) -> dict:
+def _snapshot_solution(optimizer: DRO_PoAOptimization) -> list:
     """Save all current model variable values so they can be restored as a warm start."""
     from pyomo.environ import Var
-    return {
-        var_data: var_data.value
+    return [
+        (var_data, var_data.value)
         for var_data in optimizer.model.component_data_objects(Var, active=True)
         if var_data.value is not None
-    }
+    ]
 
 
-def _restore_solution(optimizer: DRO_PoAOptimization, snapshot: dict) -> None:
+def _restore_solution(optimizer: DRO_PoAOptimization, snapshot: list) -> None:
     """Write a saved snapshot back into the model variables for warm-start reuse."""
-    for var_data, value in snapshot.items():
+    for var_data, value in snapshot:
         var_data.set_value(value)
 
 

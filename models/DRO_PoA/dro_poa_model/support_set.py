@@ -18,14 +18,17 @@ def _ar1_kappa(num_time_steps: int, joint_coverage: float) -> float:
 def _level_scale(rho: float, t: int) -> float:
     """Time-varying level-band scale factor (multiples of innovation sigma).
 
-    scale(t) = min( (1-rho^{t+1})/(1-rho),  1/sqrt(1-rho^2) )
+    scale(t) = min( (1-|rho|^{t+1})/(1-|rho|),  1/sqrt(1-rho^2) )
 
-    At t=0 this equals 1 (innovation sigma only); it grows until it reaches the
-    stationary bound 1/sqrt(1-rho^2) and stays flat.  Because rho is fixed per
-    DRO solve, scale(t) is a plain Python float, keeping level-band constraints
-    linear in sigma_D / sigma_W.  Matches PoA support_set.py exactly.
+    Uses |rho| in the cumulative term because the worst-case level deviation
+    satisfies |level_t| <= |rho|*|level_{t-1}| + |eps_t|, giving the geometric
+    sum (1-|rho|^{t+1})/(1-|rho|) regardless of sign.  For positive rho this
+    is identical to the previous formula; for negative rho the original formula
+    oscillated (e.g. 0.25 at t=1 for rho=-0.75) making the band too tight.
+    At t=0 this equals 1; it grows until it reaches 1/sqrt(1-rho^2) and stays flat.
     """
-    cumulative = (1.0 - rho ** (t + 1)) / (1.0 - rho)
+    abs_rho = abs(rho)
+    cumulative = (1.0 - abs_rho ** (t + 1)) / (1.0 - abs_rho)
     stationary = 1.0 / np.sqrt(1.0 - rho ** 2)
     return min(cumulative, stationary)
 

@@ -640,9 +640,9 @@ def plot_dro_stage(
 
 def plot_dro_perturbed_distribution_stage(
     config: Any,
-    dro_config: Any,
     regime_names: list[str],
     results_dir: Path,
+    **_: Any,
 ) -> None:
     from results_viz.plot_dro_perturbed_distribution import plot_dro_perturbed_distribution
 
