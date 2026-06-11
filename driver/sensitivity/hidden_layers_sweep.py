@@ -44,6 +44,18 @@ def build_study() -> SensitivityStudy:
         name=STUDY_NAME,
         result_root=Path("results/sensitivity_studies"),
         blocks=("full",),
+        # Training must run for each architecture variant; the upstream data
+        # (scenarios, labels, features, PoA regime) is identical for all runs.
+        base_overrides={"run_nn_training": True},
+        shared_artifact_fields=(
+            "synthetic_scenario_dir",
+            "heuristic_results_path",
+            "raw_feature_dir",
+            "normalized_feature_dir",
+            "runtime_config_path",
+            "poa_scenario_dir",
+            "support_calibration_report_path",
+        ),
         runs=[
             SensitivityRun(
                 name=run_name(layers),

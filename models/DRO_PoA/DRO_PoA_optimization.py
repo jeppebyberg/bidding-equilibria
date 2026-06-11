@@ -35,6 +35,7 @@ from models.helper import (
     gurobi_log_filter,
     infer_num_time_steps,
     is_wind_generator_name,
+    parse_gurobi_node_log,
     ramp_vectors,
 )
 from models.DRO_PoA.dro_poa_model.mccormick import DROPoAMcCormick
@@ -1927,10 +1928,47 @@ class DRO_PoAOptimization(
         start = time.perf_counter()
         with gurobi_log_filter(solver, self._gurobi_log_path, self._gurobi_log_pos) as log_path:
             self._gurobi_log_path = log_path
+            log_file = Path(log_path)
+            log_offset = log_file.stat().st_size if log_file.exists() else 0
             self.solver_results = solver.solve(
                 tee=False, load_solutions=False, warmstart=warm_start
             )
         self.solve_wall_time_seconds = time.perf_counter() - start
+
+        # Slice this solve's segment out of the shared (appended) Gurobi log and
+        # parse the node log into an incumbent/BestBd/gap time series, so each
+        # eta's bound movement can be saved alongside its result.
+        self.last_solve_gurobi_log = None
+        self.solve_bound_progression = []
+        try:
+            with log_file.open("r", encoding="utf-8", errors="replace") as file_handle:
+                file_handle.seek(log_offset)
+                self.last_solve_gurobi_log = file_handle.read()
+        except OSError:
+            pass
+        if self.last_solve_gurobi_log:
+            self.solve_bound_progression = parse_gurobi_node_log(self.last_solve_gurobi_log)
+
+        # Certified bracket from Gurobi (maximization): the incumbent is a lower
+        # bound and ObjBound an upper bound on the optimum, so a time-limited
+        # solve still yields a reportable interval. Reset first: the persistent
+        # solver is reused across the eta sweep and stale values must not leak.
+        self.best_objective_bound = None
+        self.mip_gap = None
+        gurobi_model = getattr(solver, "_solver_model", None)
+        if gurobi_model is not None:
+            try:
+                bound = float(gurobi_model.ObjBound)
+                if np.isfinite(bound):
+                    self.best_objective_bound = bound
+            except (AttributeError, TypeError, ValueError):
+                pass
+            try:
+                gap = float(gurobi_model.MIPGap)
+                if np.isfinite(gap):
+                    self.mip_gap = gap
+            except (AttributeError, TypeError, ValueError):
+                pass
 
         termination = self.solver_results.solver.termination_condition
         if termination == TerminationCondition.infeasible:

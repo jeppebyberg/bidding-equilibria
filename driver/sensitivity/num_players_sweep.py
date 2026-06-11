@@ -150,6 +150,11 @@ def run_dro_only(
 
 if __name__ == "__main__":
     if "--dro-only" in sys.argv:
-        run_dro_only()
+        _n_values: list[int] | None = None
+        if "--n" in sys.argv:
+            _idx = sys.argv.index("--n") + 1
+            _n_values = [int(v) for v in sys.argv[_idx].split(",")]
+        _no_tighten = "--no-tighten" in sys.argv
+        run_dro_only(n_values=_n_values, run_tightening=not _no_tighten)
     else:
         run()

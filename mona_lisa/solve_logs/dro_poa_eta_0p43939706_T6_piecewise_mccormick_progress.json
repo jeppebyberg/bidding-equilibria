@@ -1,0 +1,724 @@
+{
+  "eta": 0.43939705607607904,
+  "regime_name": "poa_worst_case",
+  "objective_mode": "piecewise_mccormick",
+  "num_time_steps": 6,
+  "termination_condition": "optimal",
+  "wall_time_seconds": 4.633817699999781,
+  "best_objective_bound": 1.599505686765687,
+  "mip_gap": 0.0,
+  "bound_progression": [
+    {
+      "time_s": 1.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.15036,
+      "gap_percent": 34.4
+    },
+    {
+      "time_s": 1.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.15036,
+      "gap_percent": 34.4
+    },
+    {
+      "time_s": 1.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.15036,
+      "gap_percent": 34.4
+    },
+    {
+      "time_s": 1.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.15036,
+      "gap_percent": 34.4
+    },
+    {
+      "time_s": 1.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.15036,
+      "gap_percent": 34.4
+    },
+    {
+      "time_s": 1.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.15036,
+      "gap_percent": 34.4
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.15036,
+      "gap_percent": 34.4
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.15036,
+      "gap_percent": 34.4
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.15036,
+      "gap_percent": 34.4
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.15036,
+      "gap_percent": 34.4
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.15036,
+      "gap_percent": 34.4
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.15036,
+      "gap_percent": 34.4
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.15036,
+      "gap_percent": 34.4
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.14539,
+      "gap_percent": 34.1
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.1452,
+      "gap_percent": 34.1
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.12489,
+      "gap_percent": 32.8
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.12261,
+      "gap_percent": 32.7
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.12261,
+      "gap_percent": 32.7
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.12261,
+      "gap_percent": 32.7
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.11219,
+      "gap_percent": 32.1
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.10918,
+      "gap_percent": 31.9
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.06444,
+      "gap_percent": 29.1
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.06345,
+      "gap_percent": 29.0
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.05484,
+      "gap_percent": 28.5
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.05481,
+      "gap_percent": 28.5
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.02699,
+      "gap_percent": 26.7
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.02587,
+      "gap_percent": 26.7
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.02087,
+      "gap_percent": 26.3
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.01542,
+      "gap_percent": 26.0
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.01191,
+      "gap_percent": 25.8
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.01057,
+      "gap_percent": 25.7
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.00513,
+      "gap_percent": 25.4
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.00062,
+      "gap_percent": 25.1
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.00062,
+      "gap_percent": 25.1
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.00062,
+      "gap_percent": 25.1
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.00062,
+      "gap_percent": 25.1
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 2.00062,
+      "gap_percent": 25.1
+    },
+    {
+      "time_s": 3.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.99856,
+      "gap_percent": 24.9
+    },
+    {
+      "time_s": 3.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.99578,
+      "gap_percent": 24.8
+    },
+    {
+      "time_s": 3.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.99428,
+      "gap_percent": 24.7
+    },
+    {
+      "time_s": 3.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.99401,
+      "gap_percent": 24.7
+    },
+    {
+      "time_s": 3.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.99385,
+      "gap_percent": 24.7
+    },
+    {
+      "time_s": 3.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.99343,
+      "gap_percent": 24.6
+    },
+    {
+      "time_s": 3.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.99341,
+      "gap_percent": 24.6
+    },
+    {
+      "time_s": 3.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.99268,
+      "gap_percent": 24.6
+    },
+    {
+      "time_s": 3.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.99268,
+      "gap_percent": 24.6
+    },
+    {
+      "time_s": 3.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.99268,
+      "gap_percent": 24.6
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.71376,
+      "gap_percent": 7.14
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.71376,
+      "gap_percent": 7.14
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.71376,
+      "gap_percent": 7.14
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.70167,
+      "gap_percent": 6.39
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.70103,
+      "gap_percent": 6.35
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.69855,
+      "gap_percent": 6.19
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.68513,
+      "gap_percent": 5.35
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.68503,
+      "gap_percent": 5.35
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.68503,
+      "gap_percent": 5.35
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.68503,
+      "gap_percent": 5.35
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.67571,
+      "gap_percent": 4.76
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.67565,
+      "gap_percent": 4.76
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.67559,
+      "gap_percent": 4.76
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.67552,
+      "gap_percent": 4.75
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.67268,
+      "gap_percent": 4.57
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.6716,
+      "gap_percent": 4.51
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.6714,
+      "gap_percent": 4.49
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.67067,
+      "gap_percent": 4.45
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.66459,
+      "gap_percent": 4.07
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.66455,
+      "gap_percent": 4.07
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.6617,
+      "gap_percent": 3.89
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.6461,
+      "gap_percent": 2.91
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.64608,
+      "gap_percent": 2.91
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.64414,
+      "gap_percent": 2.79
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.64124,
+      "gap_percent": 2.61
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.64124,
+      "gap_percent": 2.61
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.64124,
+      "gap_percent": 2.61
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.64124,
+      "gap_percent": 2.61
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.64124,
+      "gap_percent": 2.61
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.64124,
+      "gap_percent": 2.61
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.63451,
+      "gap_percent": 2.19
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.63116,
+      "gap_percent": 1.98
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.62949,
+      "gap_percent": 1.87
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.62941,
+      "gap_percent": 1.87
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.62893,
+      "gap_percent": 1.84
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.62891,
+      "gap_percent": 1.84
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.62867,
+      "gap_percent": 1.82
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.62867,
+      "gap_percent": 1.82
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.62867,
+      "gap_percent": 1.82
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.62867,
+      "gap_percent": 1.82
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59951,
+      "best_bound": 1.62867,
+      "gap_percent": 1.82
+    },
+    {
+      "time_s": 4.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 2,
+      "incumbent": 1.59951,
+      "best_bound": 1.62867,
+      "gap_percent": 1.82
+    }
+  ]
+}

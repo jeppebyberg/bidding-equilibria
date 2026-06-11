@@ -713,6 +713,61 @@ def _set_poa_upper_cut(optimizer: DRO_PoAOptimization, upper_bound: float) -> No
     print(f"  PoA upper cut added: avg PoA <= {upper_bound + 1e-4:.6g}")
 
 
+def _poa_scenario_caps_from_eta0(optimizer: DRO_PoAOptimization) -> dict[int, float]:
+    """Per-scenario PoA upper bounds derived from the eta=0 solution.
+
+    At eta=0 the scenario blocks are independent and the objective is the plain
+    average PoA, so the optimum maximizes every PoA[k] individually. Each PoA[k]
+    can exceed its incumbent value by at most K times the solve's absolute gap
+    (otherwise holding the other scenarios at their incumbents would beat the
+    proven bound), so PoA[k] <= value + K * gap is valid. The support floor
+    PoA[k] - eta * W[k] >= 1 only shrinks the feasible set as eta grows, so the
+    caps remain valid for every eta > 0.
+
+    Returns an empty dict when the certified bound or a PoA value is missing.
+    """
+    from pyomo.environ import value as _value
+
+    m = optimizer.model
+    if not hasattr(m, "PoA"):
+        return {}
+    bound = optional_float(getattr(optimizer, "best_objective_bound", None))
+    incumbent = optional_float(_value(m.objective, exception=False))
+    if bound is None or incumbent is None:
+        return {}
+    K = optimizer.num_empirical_scenarios
+    slack = max(0.0, bound - incumbent) * K + 1e-4
+    caps: dict[int, float] = {}
+    for k in m.scenarios:
+        poa_k = optional_float(_value(m.PoA[k], exception=False))
+        if poa_k is None:
+            return {}
+        caps[int(k)] = poa_k + slack
+    return caps
+
+
+def _set_poa_scenario_caps(
+    optimizer: DRO_PoAOptimization,
+    caps: dict[int, float],
+) -> None:
+    """Tighten each PoA[k] variable upper bound in the live persistent model.
+
+    Unlike the average PoA cut, these pull the LP relaxation down per scenario,
+    so BestBd no longer sits at the loose variable bound for scenarios whose
+    individual worst-case PoA is far below the maximum.
+    """
+    m = optimizer.model
+    solver = optimizer._persistent_solver
+    applied = 0
+    for k, cap in caps.items():
+        var = m.PoA[k]
+        if var.ub is None or cap < float(var.ub):
+            var.setub(cap)
+            solver.update_var(var)
+            applied += 1
+    print(f"  Per-scenario PoA caps tightened: {applied}/{len(caps)}")
+
+
 def run_dro_eta_path_for_regime(
     config: DROPoAPipelineConfig,
     scenarios: dict[str, Any],
@@ -730,11 +785,15 @@ def run_dro_eta_path_for_regime(
 
     eta_max is the most penalised/constrained problem and gives the lowest objective
     value -- a valid Gurobi Cutoff for every subsequent solve (the feasible set only
-    grows as eta decreases, so every later optimum is >= the eta_max optimum).
+    grows as eta decreases, so every later optimum is >= the eta_max optimum). The
+    Cutoff is then ratcheted up after every interior solve, since each optimum is a
+    valid lower bound for all smaller etas.
 
     eta_min=0 is the least penalised and gives the highest average PoA -- a valid
     upper bound on m.PoA[k] for all higher-eta solves, which tightens Gurobi's LP
     relaxation BestBd from the loose variable bound (10) down to the actual optimum.
+    Because the scenarios decouple at eta=0, the same solve also yields valid
+    per-scenario PoA caps (see _poa_scenario_caps_from_eta0).
 
     Interior etas are then solved descending, each warm-starting from the previous.
     """
@@ -762,6 +821,7 @@ def run_dro_eta_path_for_regime(
     summaries: list[dict[str, Any]] = []
     eta_count = len(ordered_etas)
     eta_max_snapshot: dict = {}
+    best_cutoff: float | None = None
 
     for position, eta in enumerate(ordered_etas):
         is_first_solve = position == 0   # eta_max
@@ -795,10 +855,16 @@ def run_dro_eta_path_for_regime(
         if is_first_solve:
             # Save eta_max solution for all interior warm starts.
             eta_max_snapshot = _snapshot_solution(optimizer)
-            # eta_max objective is a valid lower bound for every later solve
-            # (feasible set only grows as eta decreases).
+
+        if is_first_solve or is_interior:
+            # Descending etas: each incumbent objective is a valid lower bound
+            # for every smaller eta (the feasible set only grows as eta
+            # decreases), so ratchet the Cutoff up with the latest solve.
+            # eta_min is excluded: its optimum is the path maximum, not a
+            # lower bound for the interior etas solved after it.
             lb = optional_float(summary.get("inner_objective"))
-            if lb is not None:
+            if lb is not None and (best_cutoff is None or lb > best_cutoff):
+                best_cutoff = lb
                 optimizer._persistent_solver.options["Cutoff"] = lb - 1e-4
                 print(f"  Cutoff (lower bound) set to: {lb:.6g}")
 
@@ -809,8 +875,24 @@ def run_dro_eta_path_for_regime(
             ub = optional_float(summary.get("average_relaxed_PoA"))
             if ub is None:
                 ub = optional_float(summary.get("inner_objective"))
+            if float(eta) == 0.0:
+                # At eta=0 the objective is exactly the average PoA, so the
+                # certified solver bound is a valid cap even if this solve hit
+                # the time limit (where the incumbent understates the max).
+                bound_ub = optional_float(
+                    (summary.get("solver") or {}).get("best_objective_bound")
+                )
+                if bound_ub is not None:
+                    ub = bound_ub
             if ub is not None:
                 _set_poa_upper_cut(optimizer, ub)
+            # At eta=0 the scenarios decouple, so the solution also yields
+            # valid per-scenario PoA caps -- much stronger than the average
+            # cut alone for the small-eta solves that follow.
+            if float(eta) == 0.0:
+                scenario_caps = _poa_scenario_caps_from_eta0(optimizer)
+                if scenario_caps:
+                    _set_poa_scenario_caps(optimizer, scenario_caps)
 
     # Report in ascending eta order so the summary reads naturally.
     summaries.sort(
@@ -849,6 +931,57 @@ def _available_archive_path(path: Path) -> Path:
         if not candidate.exists():
             return candidate
         suffix += 1
+
+def save_dro_solve_log_artifacts(
+    optimizer: DRO_PoAOptimization,
+    result_path: Path,
+) -> Path | None:
+    """Persist the per-eta Gurobi log and parsed bound progression.
+
+    Writes two sidecar files under ``<regime_dir>/solve_logs/``: the raw Gurobi
+    log segment for this solve (``<result>_gurobi.log``) and a JSON time series
+    of incumbent/BestBd/gap over solve time (``<result>_progress.json``), so
+    bound movement and computation time can be plotted without re-running.
+    The subfolder keeps them out of the ``dro_poa_eta_*_T*.json`` result globs
+    used by the eta-sweep plotting.
+    """
+    log_text = getattr(optimizer, "last_solve_gurobi_log", None)
+    progression = getattr(optimizer, "solve_bound_progression", None) or []
+    if not log_text and not progression:
+        return None
+
+    log_dir = result_path.parent / "solve_logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    stem = result_path.stem
+    if log_text:
+        (log_dir / f"{stem}_gurobi.log").write_text(log_text, encoding="utf-8")
+
+    solver_results = getattr(optimizer, "solver_results", None)
+    termination = (
+        str(solver_results.solver.termination_condition)
+        if solver_results is not None
+        else None
+    )
+    payload = {
+        "eta": float(optimizer.eta),
+        "regime_name": optimizer.regime_name,
+        "objective_mode": optimizer.objective_mode,
+        "num_time_steps": int(optimizer.num_time_steps),
+        "termination_condition": termination,
+        "wall_time_seconds": optional_float(
+            getattr(optimizer, "solve_wall_time_seconds", None)
+        ),
+        "best_objective_bound": optional_float(
+            getattr(optimizer, "best_objective_bound", None)
+        ),
+        "mip_gap": optional_float(getattr(optimizer, "mip_gap", None)),
+        "bound_progression": progression,
+    }
+    progress_path = log_dir / f"{stem}_progress.json"
+    with progress_path.open("w", encoding="utf-8") as file_handle:
+        json.dump(payload, file_handle, indent=2)
+    return progress_path
+
 
 def _print_dro_solve_banner(
     regime_name: str,
@@ -908,11 +1041,19 @@ def solve_and_save_dro_for_eta(
     start = time.perf_counter()
     optimizer.solve(time_limit=config.dro_time_limit, warm_start=True)
     output_path = optimizer.save_results(result_path)
+    progress_path = save_dro_solve_log_artifacts(optimizer, output_path)
     elapsed = time.perf_counter() - start
 
     print(f"\nDRO PoA optimization complete: {output_path}")
     print(f"  Regime: {regime_name}")
     print(f"  Eta: {eta}")
+    bound = optional_float(getattr(optimizer, "best_objective_bound", None))
+    gap = optional_float(getattr(optimizer, "mip_gap", None))
+    if bound is not None:
+        gap_note = f"  (MIP gap {gap:.2%})" if gap is not None else ""
+        print(f"  Best objective bound: {bound:.6g}{gap_note}")
+    if progress_path is not None:
+        print(f"  Solve log + bound progression: {progress_path.parent}")
     print(f"  Start: {'empirical MIP start' if from_empirical_start else 'previous eta'}")
     print(f"  Objective mode: {optimizer.objective_mode}")
     if optimizer.objective_mode != "difference":

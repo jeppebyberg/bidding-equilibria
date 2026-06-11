@@ -1,0 +1,284 @@
+{
+  "eta": 0.022758459260747887,
+  "regime_name": "poa_worst_case",
+  "objective_mode": "piecewise_mccormick",
+  "num_time_steps": 6,
+  "termination_condition": "optimal",
+  "wall_time_seconds": 18.71668939999654,
+  "best_objective_bound": 1.8910801927799001,
+  "mip_gap": 0.0,
+  "bound_progression": [
+    {
+      "time_s": 0.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 1.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 1.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 1.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 1.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 1.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 1.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 1.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 1.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 2.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 3.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 3.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 3.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 3.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 3.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 3.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 3.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 3.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 3.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 5.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.84891,
+      "best_bound": 2.74893,
+      "gap_percent": 48.7
+    },
+    {
+      "time_s": 6.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.8712112,
+      "best_bound": 2.74893,
+      "gap_percent": 46.9
+    },
+    {
+      "time_s": 10.0,
+      "nodes_explored": 1744,
+      "nodes_unexplored": 1100,
+      "incumbent": 1.87121,
+      "best_bound": 2.73545,
+      "gap_percent": 46.2
+    },
+    {
+      "time_s": 14.0,
+      "nodes_explored": 22214,
+      "nodes_unexplored": 3709,
+      "incumbent": 1.8859279,
+      "best_bound": 2.3471,
+      "gap_percent": 24.5
+    },
+    {
+      "time_s": 15.0,
+      "nodes_explored": 23993,
+      "nodes_unexplored": 3585,
+      "incumbent": 1.88593,
+      "best_bound": 2.32619,
+      "gap_percent": 23.3
+    },
+    {
+      "time_s": 18.0,
+      "nodes_explored": 39588,
+      "nodes_unexplored": 0,
+      "incumbent": 1.8910802,
+      "best_bound": 1.89108,
+      "gap_percent": 0.0
+    }
+  ]
+}

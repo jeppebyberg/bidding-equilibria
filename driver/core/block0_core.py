@@ -140,7 +140,7 @@ class ProjectConfig:
     dro_mccormick_c_opt_bounds: tuple[float, float] | None = None
     dro_mccormick_num_pieces: int = 50
     dro_mccormick_c_opt_breakpoints: list[float] | None = None
-    dro_time_limit: int | None = None
+    dro_time_limit: int = 1000
 
     calibrate_support_coverage: bool = True
     support_verify_seed: int = 77777

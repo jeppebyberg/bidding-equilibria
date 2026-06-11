@@ -497,6 +497,14 @@ def build_solver_summary(optimizer: Any) -> dict[str, Any]:
     if wall_time is not None:
         summary["wall_time_seconds"] = float(wall_time)
 
+    # Certified MIP bracket (set by solves that expose it, e.g. the DRO eta
+    # sweep): with the incumbent objective this gives a reportable interval
+    # even when the solve stopped at a time limit.
+    for attr_name in ("best_objective_bound", "mip_gap"):
+        attr_value = getattr(optimizer, attr_name, None)
+        if attr_value is not None:
+            summary[attr_name] = float(attr_value)
+
     model = getattr(optimizer, "model", None)
     if model is not None:
         summary["variable_counts"] = count_integer_variables(model)
@@ -752,3 +760,54 @@ def gurobi_log_filter(
     finally:
         stop_event.set()
         tail_thread.join()
+
+
+def _optional_log_number(token: str) -> Optional[float]:
+    """Parse a Gurobi log column; '-' (value not yet available) becomes None."""
+    if token in ("-", ""):
+        return None
+    try:
+        return float(token)
+    except ValueError:
+        return None
+
+
+def parse_gurobi_node_log(log_text: str) -> list:
+    """Parse Gurobi MIP node-log lines into a bound-progression time series.
+
+    Returns one record per progress line, in log order, with keys ``time_s``,
+    ``nodes_explored``, ``nodes_unexplored``, ``incumbent``, ``best_bound`` and
+    ``gap_percent`` (None where Gurobi printed '-'). Node-log columns are
+    position-stable from the right -- ``Incumbent BestBd Gap It/Node Time`` --
+    which also holds for the shorter ``H``/``*`` incumbent lines, so fields are
+    indexed from the line end.
+    """
+    progression = []
+    for raw_line in log_text.splitlines():
+        line = raw_line.strip()
+        if len(line) < 2 or not line.endswith("s"):
+            continue
+        if line[0] not in "0123456789*H":
+            continue
+        tokens = line.split()
+        if tokens[0] in {"H", "*"}:
+            tokens = tokens[1:]
+        if len(tokens) < 7 or not tokens[-1][:-1].isdigit():
+            continue
+        nodes_token = tokens[0].lstrip("*H")
+        if not nodes_token.isdigit() or not tokens[1].isdigit():
+            continue
+        gap_token = tokens[-3]
+        if gap_token != "-" and not gap_token.endswith("%"):
+            continue
+        progression.append(
+            {
+                "time_s": float(tokens[-1][:-1]),
+                "nodes_explored": int(nodes_token),
+                "nodes_unexplored": int(tokens[1]),
+                "incumbent": _optional_log_number(tokens[-5]),
+                "best_bound": _optional_log_number(tokens[-4]),
+                "gap_percent": _optional_log_number(gap_token.rstrip("%")),
+            }
+        )
+    return progression

@@ -518,8 +518,8 @@ class DROPoATighteningReports:
 
         def _safe_bound(index: tuple[int, ...], tight_val: float) -> float:
             fbs = fixed_by_slack_map.get(index, False)
-            if not fbs and tight_val > self._DUAL_BIG_M_OBBT_MAX_ABSOLUTE:
-                # OBBT result is insufficiently tight; revert to the default bound.
+            if not fbs and tight_val <= self._DUAL_BIG_M_OBBT_MAX_ABSOLUTE:
+                # OBBT result is insufficiently tight which causes numerically instability 
                 return float(default_bound)
             return max(0.0, min(float(default_bound), tight_val))
 

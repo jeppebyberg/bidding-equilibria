@@ -1,0 +1,76 @@
+{
+  "eta": 10.0,
+  "regime_name": "poa_worst_case",
+  "objective_mode": "piecewise_mccormick",
+  "num_time_steps": 6,
+  "termination_condition": "optimal",
+  "wall_time_seconds": 0.986657199995534,
+  "best_objective_bound": 1.5970252042556392,
+  "mip_gap": 0.0,
+  "bound_progression": [
+    {
+      "time_s": 0.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59025,
+      "best_bound": 1.7762,
+      "gap_percent": 11.7
+    },
+    {
+      "time_s": 0.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59025,
+      "best_bound": 1.6838,
+      "gap_percent": 5.88
+    },
+    {
+      "time_s": 0.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59025,
+      "best_bound": 1.66056,
+      "gap_percent": 4.42
+    },
+    {
+      "time_s": 0.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59025,
+      "best_bound": 1.61523,
+      "gap_percent": 1.57
+    },
+    {
+      "time_s": 0.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59025,
+      "best_bound": 1.61305,
+      "gap_percent": 1.43
+    },
+    {
+      "time_s": 0.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59025,
+      "best_bound": 1.60462,
+      "gap_percent": 0.9
+    },
+    {
+      "time_s": 0.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.59025,
+      "best_bound": 1.60462,
+      "gap_percent": 0.9
+    },
+    {
+      "time_s": 0.0,
+      "nodes_explored": 0,
+      "nodes_unexplored": 0,
+      "incumbent": 1.5970252,
+      "best_bound": 1.60462,
+      "gap_percent": 0.48
+    }
+  ]
+}
