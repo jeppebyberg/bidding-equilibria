@@ -1,0 +1,8 @@
+{
+  "block": "block1_data_labels",
+  "scenario_dir": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\synthetic_scenarios",
+  "heuristic_results_path": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\merit_order_results.json",
+  "num_scenarios": 3125,
+  "saved_scenario_tables": true,
+  "ran_heuristic_labels": true
+}

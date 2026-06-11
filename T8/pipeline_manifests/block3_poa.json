@@ -1,0 +1,11 @@
+{
+  "block": "block3_poa",
+  "poa_scenario_dir": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\poa_scenarios",
+  "poa_result_path": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\poa\\poa_optimization_T8_piecewise_mccormick.json",
+  "poa_tightening_report_path": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\poa\\tightening\\final_tightening_report.json",
+  "regime_name": "poa_worst_case",
+  "regime_params_path": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\poa\\poa_worst_case_regime_params.json",
+  "runtime_config_path": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\runtime_regime_definitions.yaml",
+  "ran_poa_tightening": true,
+  "ran_poa_optimization": true
+}

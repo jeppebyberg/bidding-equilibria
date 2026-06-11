@@ -1,0 +1,103 @@
+{
+  "config": {
+    "case_label": "horizon_poa_compute_sweep/T8",
+    "horizon": 8,
+    "synthetic": {
+      "scenario_dir": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\synthetic_scenarios",
+      "heuristic_results_path": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\merit_order_results.json",
+      "raw_feature_dir": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\features\\raw",
+      "normalized_feature_dir": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\features\\normalized",
+      "normalization_stats_path": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\features\\normalized\\min_max_stats.json"
+    },
+    "policies": {
+      "model_dir": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\trained_models",
+      "training_result_dir": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\training_results",
+      "requested_generators": [
+        "G1",
+        "G2"
+      ]
+    },
+    "poa": {
+      "scenario_dir": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\poa_scenarios",
+      "result_dir": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\poa",
+      "result_path": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\poa\\poa_optimization_T8_piecewise_mccormick.json",
+      "tightening_report_path": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\poa\\tightening/final_tightening_report.json"
+    },
+    "regime_bridge": {
+      "regime_name": "poa_worst_case",
+      "runtime_config_path": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\runtime_regime_definitions.yaml",
+      "dro_scenario_dir": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\dro_scenarios"
+    },
+    "support_oos": {
+      "support_calibration_report_path": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\support_oos_report.json"
+    },
+    "dro": {
+      "result_dir": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\dro",
+      "archive_dir": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\dro\\old_results",
+      "eta_sweep_summary_path": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\dro\\eta_sweep_summary.json",
+      "etas": [
+        0.0,
+        0.0031622776601683794,
+        0.005179474679231213,
+        0.008483428982440717,
+        0.013894954943731374,
+        0.022758459260747887,
+        0.0372759372031494,
+        0.061054022965853265,
+        0.1,
+        0.1637893706954064,
+        0.2682695795279725,
+        0.43939705607607904,
+        0.7196856730011522,
+        1.1787686347935866,
+        1.9306977288832496,
+        3.1622776601683795,
+        10.0
+      ]
+    },
+    "oos_poa": {
+      "result_path": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\oos_poa\\oos_poa_results.json"
+    }
+  },
+  "overrides": {
+    "horizon": 8,
+    "synthetic_time_steps": 8,
+    "synthetic_num_scenarios": 3125
+  },
+  "reused_base_case": false,
+  "block_manifests": {
+    "block1": {
+      "block": "block1_data_labels",
+      "scenario_dir": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\synthetic_scenarios",
+      "heuristic_results_path": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\merit_order_results.json",
+      "num_scenarios": 3125,
+      "saved_scenario_tables": true,
+      "ran_heuristic_labels": true
+    },
+    "block2": {
+      "block": "block2_policy_training",
+      "raw_feature_dir": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\features\\raw",
+      "normalized_feature_dir": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\features\\normalized",
+      "normalization_stats_path": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\features\\normalized\\min_max_stats.json",
+      "model_dir": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\trained_models",
+      "training_result_dir": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\training_results",
+      "nn_policy_generators": [
+        "G1",
+        "G2"
+      ],
+      "ran_feature_building": true,
+      "ran_nn_training": true
+    },
+    "block3": {
+      "block": "block3_poa",
+      "poa_scenario_dir": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\poa_scenarios",
+      "poa_result_path": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\poa\\poa_optimization_T8_piecewise_mccormick.json",
+      "poa_tightening_report_path": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\poa\\tightening\\final_tightening_report.json",
+      "regime_name": "poa_worst_case",
+      "regime_params_path": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\poa\\poa_worst_case_regime_params.json",
+      "runtime_config_path": "results\\sensitivity_studies\\horizon_poa_compute_sweep\\T8\\runtime_regime_definitions.yaml",
+      "ran_poa_tightening": true,
+      "ran_poa_optimization": true
+    }
+  }
+}
