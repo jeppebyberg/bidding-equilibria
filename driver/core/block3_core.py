@@ -41,7 +41,6 @@ from driver.core.block0_core import (
 )
 from driver.core.block1_core import apply_time_steps_override
 
-
 RUN_TIGHTENING = True
 
 TIGHTENING_FLAGS = {
@@ -91,6 +90,7 @@ TIGHTENING_STAGE_LABELS = {
 }
 
 _REGIME_PARAM_COLUMNS = ("mu_D", "rho_D", "sigma_D", "mu_W", "rho_W", "sigma_W", "peak_W")
+
 
 @dataclass
 class PoAPipelineConfig:
@@ -183,9 +183,7 @@ class PoAPipelineConfig:
     run_feature_building: bool = True
     run_nn_training: bool = True
     run_tightening: bool = RUN_TIGHTENING
-    tightening_flags: dict[str, bool] = field(
-        default_factory=lambda: dict(TIGHTENING_FLAGS)
-    )
+    tightening_flags: dict[str, bool] = field(default_factory=lambda: dict(TIGHTENING_FLAGS))
     tightening_previous_paths: dict[str, str | Path] = field(
         default_factory=lambda: dict(TIGHTENING_PREVIOUS_PATHS)
     )
@@ -245,13 +243,9 @@ class PoAPipelineConfig:
     @property
     def poa_results_path(self) -> Path:
         objective_suffix = (
-            ""
-            if self.poa_objective_mode == "difference"
-            else f"_{self.poa_objective_mode}"
+            "" if self.poa_objective_mode == "difference" else f"_{self.poa_objective_mode}"
         )
-        return self.poa_result_dir / (
-            f"poa_optimization_T{self.horizon}{objective_suffix}.json"
-        )
+        return self.poa_result_dir / (f"poa_optimization_T{self.horizon}{objective_suffix}.json")
 
 
 def build_poa_config(config: ProjectConfig) -> PoAPipelineConfig:
@@ -376,18 +370,18 @@ def build_poa_mccormick_bounds(config: PoAPipelineConfig) -> dict[str, Any] | No
     }
     if mode == "piecewise_mccormick":
         if config.poa_mccormick_c_opt_breakpoints is not None:
-            mccormick_bounds["C_opt_breakpoints"] = list(
-                config.poa_mccormick_c_opt_breakpoints
-            )
+            mccormick_bounds["C_opt_breakpoints"] = list(config.poa_mccormick_c_opt_breakpoints)
         else:
             mccormick_bounds["num_pieces"] = int(config.poa_mccormick_num_pieces)
     return mccormick_bounds
+
 
 def default_poa_mccormick_c_opt_bounds() -> tuple[float, float]:
     return (
         float(PoAOptimization.DEFAULT_LOOSE_C_OPT_LOWER),
         float(PoAOptimization.DEFAULT_LOOSE_C_OPT_UPPER),
     )
+
 
 def build_poa_tightening_mccormick_bounds(
     config: PoAPipelineConfig,
@@ -407,6 +401,7 @@ def build_poa_tightening_mccormick_bounds(
         mccormick_bounds["num_pieces"] = int(config.poa_mccormick_num_pieces)
     return mccormick_bounds
 
+
 def load_poa_optimal_cost_bounds(config: PoAPipelineConfig) -> tuple[float, float] | None:
     for path in (config.tightening_report_path, config.optimal_cost_bounds_path):
         if not Path(path).exists():
@@ -421,6 +416,7 @@ def load_poa_optimal_cost_bounds(config: PoAPipelineConfig) -> tuple[float, floa
         if lower is not None and upper is not None:
             return (float(lower), float(upper))
     return None
+
 
 def build_poa_optimizer(
     config: PoAPipelineConfig,
@@ -444,6 +440,7 @@ def build_poa_optimizer(
     )
     return optimizer
 
+
 def build_poa_tightening(
     config: PoAPipelineConfig,
     tightening_cls: type[PoATighteningMain] = PoATighteningMain,
@@ -466,6 +463,7 @@ def build_poa_tightening(
         use_default_bounds=(objective_mode != "difference"),
     )
     return tightening
+
 
 def run_tightening_pipeline(
     config: PoAPipelineConfig,
@@ -515,6 +513,7 @@ def run_tightening_pipeline(
     print(f"Tightening runtime: {elapsed:.2f} seconds")
     return final_report_path
 
+
 def print_tightening_plan(
     config: PoAPipelineConfig,
     flags: dict[str, bool],
@@ -548,6 +547,7 @@ def print_tightening_plan(
         print(f"    {label:<17} {action:<5} {path_label}: {path}")
     print(f"  Final report: {output_paths['final']}")
 
+
 def run_nn_relu_bounds(config: PoAPipelineConfig) -> Path:
     print("\nStarting PoA NN ReLU bound tightening")
     print(f"  output={config.nn_relu_bounds_path}")
@@ -561,10 +561,7 @@ def run_nn_relu_bounds(config: PoAPipelineConfig) -> Path:
     )
     stage = build_poa_tightening(config, ReLUBoundsComputer)
     optimizer = stage.poa
-    print(
-        "  resolved_policy_generators="
-        f"{list(optimizer.nn_policy_generator_names)}"
-    )
+    print("  resolved_policy_generators=" f"{list(optimizer.nn_policy_generator_names)}")
     print(
         f"  physical_generators={optimizer.num_physical_generators}, "
         f"generator_blocks={len(optimizer.generator_block_pairs)}, "
@@ -605,14 +602,13 @@ def run_nn_relu_bounds(config: PoAPipelineConfig) -> Path:
     print(f"Total fixed NN ReLU binaries: {total_fixed}")
     return output_path
 
+
 def run_alpha_bounds(config: PoAPipelineConfig) -> Path:
     stage = build_poa_tightening(config, AlphaBoundsComputer)
     if config.primal_big_m_path.exists():
         stage._load_previous_stage("primal_big_m", config.primal_big_m_path)
     else:
-        stage._as_stage(PrimalBigMComputer).run_primal_big_m(
-            output_path=config.primal_big_m_path
-        )
+        stage._as_stage(PrimalBigMComputer).run_primal_big_m(output_path=config.primal_big_m_path)
     stage._load_previous_stage("relu_bounds", config.nn_relu_bounds_path)
 
     start = time.perf_counter()
@@ -631,6 +627,7 @@ def run_alpha_bounds(config: PoAPipelineConfig) -> Path:
     print(f"Alpha entries: {len(report.get('alpha_bounds', {}))}")
     print(f"Alpha-bound runtime: {elapsed:.2f} seconds")
     return output_path
+
 
 def run_primal_big_m(
     config: PoAPipelineConfig,
@@ -673,6 +670,7 @@ def run_primal_big_m(
     print(f"Primal Big-M runtime: {elapsed:.2f} seconds")
     return primal_big_m
 
+
 def run_slack_binary_fix(config: PoAPipelineConfig) -> Path:
     stage = build_poa_tightening(config, SlackBinaryFixComputer)
     stage._load_previous_stage("primal_big_m", config.primal_big_m_path)
@@ -696,6 +694,7 @@ def run_slack_binary_fix(config: PoAPipelineConfig) -> Path:
     print(f"Slack/binary runtime: {elapsed:.2f} seconds")
     return output_path
 
+
 def run_dual_big_m(config: PoAPipelineConfig) -> Path:
     stage = build_poa_tightening(config, DualBigMComputer)
     stage._load_previous_stage("primal_big_m", config.primal_big_m_path)
@@ -718,14 +717,13 @@ def run_dual_big_m(config: PoAPipelineConfig) -> Path:
     print(f"Dual Big-M runtime: {elapsed:.2f} seconds")
     return output_path
 
+
 def run_optimal_cost_bounds(config: PoAPipelineConfig) -> Path:
     stage = build_poa_tightening(config, OptimalCostBoundsComputer)
     if config.primal_big_m_path.exists():
         stage._load_previous_stage("primal_big_m", config.primal_big_m_path)
     else:
-        stage._as_stage(PrimalBigMComputer).run_primal_big_m(
-            output_path=config.primal_big_m_path
-        )
+        stage._as_stage(PrimalBigMComputer).run_primal_big_m(output_path=config.primal_big_m_path)
 
     start = time.perf_counter()
     report = stage.run_optimal_cost_bounds(
@@ -744,6 +742,7 @@ def run_optimal_cost_bounds(config: PoAPipelineConfig) -> Path:
     print(f"C_opt upper: {bounds.get('upper')}")
     print(f"C_opt bound runtime: {elapsed:.2f} seconds")
     return output_path
+
 
 def run_final_poa(config: PoAPipelineConfig) -> Path:
     optimizer = build_poa_optimizer(config, PoAOptimization)
@@ -775,6 +774,7 @@ def run_final_poa(config: PoAPipelineConfig) -> Path:
     applied_stats = optimizer.apply_tightened_bounds_to_model()
     optimizer.solve(time_limit=config.poa_time_limit)
     output_path = optimizer.save_results(config.poa_results_path)
+    save_poa_solve_log_artifacts(optimizer, Path(output_path))
     elapsed = time.perf_counter() - start
 
     print(f"\nPoA optimization complete: {output_path}")
@@ -795,11 +795,61 @@ def run_final_poa(config: PoAPipelineConfig) -> Path:
     print(f"PoA optimization runtime: {elapsed:.2f} seconds")
     return output_path
 
+
+def save_poa_solve_log_artifacts(
+    optimizer: PoAOptimization,
+    result_path: Path,
+) -> Path | None:
+    """Persist the final PoA solve's Gurobi log and parsed bound progression.
+
+    Writes two sidecar files under ``<poa_dir>/solve_logs/``: the raw Gurobi log
+    (``<result>_gurobi.log``) and a JSON time series of incumbent/BestBd/gap over
+    solve time (``<result>_progress.json``), so bound movement and compute time
+    can be plotted without re-running. The subfolder keeps them out of the
+    ``poa_optimization_T*.json`` result globs used by the summary.
+    """
+    log_text = getattr(optimizer, "last_solve_gurobi_log", None)
+    progression = getattr(optimizer, "solve_bound_progression", None) or []
+    if not log_text and not progression:
+        return None
+
+    def _opt_float(value: Any) -> float | None:
+        try:
+            return float(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    log_dir = result_path.parent / "solve_logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    stem = result_path.stem
+    if log_text:
+        (log_dir / f"{stem}_gurobi.log").write_text(log_text, encoding="utf-8")
+
+    solver_results = getattr(optimizer, "solver_results", None)
+    termination = (
+        str(solver_results.solver.termination_condition) if solver_results is not None else None
+    )
+    payload = {
+        "objective_mode": optimizer.objective_mode,
+        "num_time_steps": int(optimizer.num_time_steps),
+        "termination_condition": termination,
+        "wall_time_seconds": _opt_float(getattr(optimizer, "solve_wall_time_seconds", None)),
+        "best_objective_bound": _opt_float(getattr(optimizer, "best_objective_bound", None)),
+        "mip_gap": _opt_float(getattr(optimizer, "mip_gap", None)),
+        "bound_progression": progression,
+    }
+    progress_path = log_dir / f"{stem}_progress.json"
+    with progress_path.open("w", encoding="utf-8") as file_handle:
+        json.dump(payload, file_handle, indent=2)
+    return progress_path
+
+
 def write_json(path: Path, payload: Any) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as file_handle:
         json.dump(sanitize_for_json(payload), file_handle, indent=2)
     return path
+
 
 def ensure_primal_big_m_in_report(path: Path, optimizer: PoAOptimization) -> bool:
     if not path.exists():
@@ -835,13 +885,9 @@ def extract_poa_regime_params(
         selected_regime = ambiguity_set.get("selected_regime", {}) or {}
         fixed_parameters = ambiguity_set.get("fixed_parameters", {}) or {}
         required_selected = ("mu_D", "sigma_D", "mu_W", "sigma_W")
-        missing_selected = [
-            key for key in required_selected if selected_regime.get(key) is None
-        ]
+        missing_selected = [key for key in required_selected if selected_regime.get(key) is None]
         required_fixed = ("rho_D", "rho_W")
-        missing_fixed = [
-            key for key in required_fixed if fixed_parameters.get(key) is None
-        ]
+        missing_fixed = [key for key in required_fixed if fixed_parameters.get(key) is None]
         peak_value = fixed_parameters.get("peak_W", fixed_parameters.get("tau_W"))
         if not missing_selected and not missing_fixed and peak_value is not None:
             return {
@@ -867,9 +913,7 @@ def extract_poa_regime_params(
     df = pd.read_csv(scenarios_csv, nrows=1)
     missing = [col for col in _REGIME_PARAM_COLUMNS if col not in df.columns]
     if missing:
-        raise ValueError(
-            f"PoA context scenario CSV is missing regime parameter columns: {missing}"
-        )
+        raise ValueError(f"PoA context scenario CSV is missing regime parameter columns: {missing}")
     row = df.iloc[0]
     return {col: float(row[col]) for col in _REGIME_PARAM_COLUMNS}
 
@@ -908,4 +952,3 @@ def print_regime_bridge(config: ProjectConfig, regime_params: dict[str, float]) 
     )
     for key, value in regime_params.items():
         print(f"  {key}: {value:.6g}")
-

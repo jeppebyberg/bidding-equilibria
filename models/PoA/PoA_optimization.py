@@ -20,6 +20,7 @@ from models.helper import (
     gurobi_log_filter,
     infer_num_time_steps,
     is_wind_generator_name,
+    parse_gurobi_node_log,
     ramp_vectors,
 )
 from models.synthetic_data_generation.economic_dispatch_clean import EconomicDispatchModel
@@ -29,13 +30,10 @@ from models.PoA.poa_model.results import PoAResults
 from models.PoA.poa_model.support_set import PoASupportSet
 from models.PoA.poa_model.tightening_reports import PoATighteningReports
 
+
 class PoAOptimization(
-        PoAPolicyEmbedding, 
-        PoATighteningReports, 
-        PoAMcCormick,
-        PoASupportSet, 
-        PoAResults
-    ):
+    PoAPolicyEmbedding, PoATighteningReports, PoAMcCormick, PoASupportSet, PoAResults
+):
     """
     Block-aware Price of Anarchy optimization.
 
@@ -104,9 +102,7 @@ class PoAOptimization(
         self.ambiguity_set_config = ambiguity_set_config or {}
         self.nn_model_dir = Path(nn_model_dir) if nn_model_dir is not None else None
         self.nn_normalization_stats_path = (
-            Path(nn_normalization_stats_path)
-            if nn_normalization_stats_path is not None
-            else None
+            Path(nn_normalization_stats_path) if nn_normalization_stats_path is not None else None
         )
         self.requested_nn_policy_generators = nn_policy_generators
         self.use_default_bounds = bool(use_default_bounds)
@@ -155,8 +151,7 @@ class PoAOptimization(
             raise ValueError("num_time_steps must be positive")
 
         self.static_block_capacity = [
-            float(self.scenarios_df[f"{block}_cap"].iloc[0])
-            for block in self.block_names
+            float(self.scenarios_df[f"{block}_cap"].iloc[0]) for block in self.block_names
         ]
         self.static_physical_capacity = [
             sum(self.static_block_capacity[g] for g in self.physical_to_block_indices[i])
@@ -176,9 +171,7 @@ class PoAOptimization(
         normalized_mode = str(objective_mode).strip().lower()
         if normalized_mode not in self.allowed_objective_modes:
             allowed = ", ".join(sorted(self.allowed_objective_modes))
-            raise ValueError(
-                f"objective_mode must be one of {{{allowed}}}; got {objective_mode!r}"
-            )
+            raise ValueError(f"objective_mode must be one of {{{allowed}}}; got {objective_mode!r}")
         return normalized_mode
 
     # ------------------------------------------------------------------
@@ -198,12 +191,10 @@ class PoAOptimization(
             list(blocks) for blocks in block_structure.physical_to_block_indices
         ]
         self.blocks_by_generator = {
-            int(i): list(blocks)
-            for i, blocks in block_structure.blocks_by_generator.items()
+            int(i): list(blocks) for i, blocks in block_structure.blocks_by_generator.items()
         }
         self.local_blocks_by_generator = {
-            int(i): list(blocks)
-            for i, blocks in block_structure.local_blocks_by_generator.items()
+            int(i): list(blocks) for i, blocks in block_structure.local_blocks_by_generator.items()
         }
         self.local_to_global_block = dict(block_structure.local_to_global_block)
         self.global_to_local_block = dict(block_structure.global_to_local_block)
@@ -216,9 +207,7 @@ class PoAOptimization(
         self.ramp_vector_down = [float(v) for v in ramp_down]
 
         self.wind_physical_generator_ids = [
-            i
-            for i, name in enumerate(self.physical_generator_names)
-            if self._is_wind_name(name)
+            i for i, name in enumerate(self.physical_generator_names) if self._is_wind_name(name)
         ]
         self.conventional_physical_generator_ids = [
             i
@@ -226,9 +215,7 @@ class PoAOptimization(
             if i not in self.wind_physical_generator_ids
         ]
         self.wind_block_pairs = [
-            (i, b)
-            for (i, b) in self.generator_block_pairs
-            if i in self.wind_physical_generator_ids
+            (i, b) for (i, b) in self.generator_block_pairs if i in self.wind_physical_generator_ids
         ]
         self.conventional_block_pairs = [
             (i, b)
@@ -257,14 +244,10 @@ class PoAOptimization(
             numeric_value = float(value)
         except (TypeError, ValueError) as exc:
             rendered_path = "".join(f"['{part}']" for part in path)
-            raise ValueError(
-                f"ambiguity_set_config{rendered_path} must be numeric"
-            ) from exc
+            raise ValueError(f"ambiguity_set_config{rendered_path} must be numeric") from exc
         if not np.isfinite(numeric_value):
             rendered_path = "".join(f"['{part}']" for part in path)
-            raise ValueError(
-                f"ambiguity_set_config{rendered_path} must be finite"
-            )
+            raise ValueError(f"ambiguity_set_config{rendered_path} must be finite")
         return numeric_value
 
     @staticmethod
@@ -277,17 +260,14 @@ class PoAOptimization(
         upper = PoAOptimization._required_float(config, (section, parameter, "max"))
         if lower > upper:
             raise ValueError(
-                f"ambiguity_set_config['{section}']['{parameter}']['min'] "
-                "cannot exceed max"
+                f"ambiguity_set_config['{section}']['{parameter}']['min'] " "cannot exceed max"
             )
         return (lower, upper)
 
     def _configure_ambiguity_set_parameters(self) -> None:
         cfg = self.ambiguity_set_config
         if not isinstance(cfg, dict) or not cfg:
-            raise ValueError(
-                "ambiguity_set_config is required; use load_ambiguity_set_config()"
-            )
+            raise ValueError("ambiguity_set_config is required; use load_ambiguity_set_config()")
 
         self.ambiguity_kappa = self._required_float(cfg, ("kappa",))
         self.mu_D_bounds = self._required_bounds(cfg, "demand", "mu")
@@ -305,7 +285,9 @@ class PoAOptimization(
         if self.ambiguity_kappa < 0:
             raise ValueError("ambiguity_set_config['kappa'] must be non-negative")
         if not -0.999 <= self.demand_rho_fixed <= 0.999:
-            raise ValueError("ambiguity_set_config['demand']['rho_fixed'] must be in [-0.999, 0.999]")
+            raise ValueError(
+                "ambiguity_set_config['demand']['rho_fixed'] must be in [-0.999, 0.999]"
+            )
         if not -0.999 <= self.wind_rho_fixed <= 0.999:
             raise ValueError("ambiguity_set_config['wind']['rho_fixed'] must be in [-0.999, 0.999]")
         if not 0 <= self.wind_tau_fixed <= 24:
@@ -317,8 +299,7 @@ class PoAOptimization(
             raise ValueError("Reference-case scalar demand must be positive and finite")
 
         self.demand_shape = [
-            float(value)
-            for value in scenario_manager._build_demand_shape(self.num_time_steps)
+            float(value) for value in scenario_manager._build_demand_shape(self.num_time_steps)
         ]
         self.wind_shape = [
             float(value)
@@ -361,7 +342,7 @@ class PoAOptimization(
         EconomicDispatchModel (exact LP) rather than the merit-order heuristic.
         Returns one dispatch value per physical generator.
         """
-        
+
         mu_D = 0.5 * (self.mu_D_bounds[0] + self.mu_D_bounds[1])
         mu_W = 0.5 * (self.mu_W_bounds[0] + self.mu_W_bounds[1])
         demand_t0 = float(self.demand_D_ref * mu_D * self.demand_shape[0])
@@ -388,7 +369,7 @@ class PoAOptimization(
         )
         ed.solve()
         dispatches = ed.get_dispatches()
-        return dispatches[0][0] 
+        return dispatches[0][0]
 
     @staticmethod
     def load_ambiguity_set(
@@ -406,9 +387,7 @@ class PoAOptimization(
         if not isinstance(ambiguity_sets, dict) or not ambiguity_sets:
             raise ValueError("'ambiguity_sets' must be a non-empty mapping")
         selected_name = (
-            config_name
-            or raw_config.get("default_ambiguity_set")
-            or next(iter(ambiguity_sets))
+            config_name or raw_config.get("default_ambiguity_set") or next(iter(ambiguity_sets))
         )
         if selected_name not in ambiguity_sets:
             raise ValueError(
@@ -427,14 +406,13 @@ class PoAOptimization(
                 include_nn_relu_bounds=bool(self.nn_policy_generator_ids),
                 include_tight_big_m=True,
                 include_optimal_cost_bounds=(
-                    self.objective_mode
-                    in {"mccormick", "piecewise_mccormick"}
+                    self.objective_mode in {"mccormick", "piecewise_mccormick"}
                 ),
                 overwrite_existing=False,
             )
         self._ensure_loaded_bounds_prepared()
         self.model = ConcreteModel()
-        
+
         self.model.time_steps = Set(initialize=range(self.num_time_steps))
         self.model.time_steps_minus_1 = Set(initialize=range(1, self.num_time_steps))
         self.model.time_steps_plus_1 = Set(initialize=range(self.num_time_steps + 1))
@@ -443,7 +421,9 @@ class PoAOptimization(
         self.model.generator_blocks = Set(dimen=2, initialize=self.generator_block_pairs)
 
         self.model.wind_physical_generators = Set(initialize=self.wind_physical_generator_ids)
-        self.model.conventional_physical_generators = Set(initialize=self.conventional_physical_generator_ids)
+        self.model.conventional_physical_generators = Set(
+            initialize=self.conventional_physical_generator_ids
+        )
         self.model.wind_blocks = Set(dimen=2, initialize=self.wind_block_pairs)
         self.model.conventional_blocks = Set(dimen=2, initialize=self.conventional_block_pairs)
 
@@ -456,19 +436,23 @@ class PoAOptimization(
         self._build_equilibrium_variables()
         self._build_complementarity_equilibrium_variables()
         self._build_optimal_variables()
-        self._build_complementarity_optimal_variables()  
+        self._build_complementarity_optimal_variables()
 
     def _build_PoA_variables(self) -> None:
         self._build_ambiguity_set_variables()
         self.model.D = Var(self.model.time_steps, domain=NonNegativeReals)
-        self.model.P_max_block = Var(self.model.generator_blocks, self.model.time_steps, domain=NonNegativeReals)
+        self.model.P_max_block = Var(
+            self.model.generator_blocks, self.model.time_steps, domain=NonNegativeReals
+        )
         self.model.C_eq = Var(domain=Reals)
         c_opt_bounds = (
             self.mccormick_bounds["C_opt"]
-            if self.objective_mode in {
+            if self.objective_mode
+            in {
                 "mccormick",
                 "piecewise_mccormick",
-            } and self.mccormick_bounds is not None
+            }
+            and self.mccormick_bounds is not None
             else (None, None)
         )
         self.model.C_opt = Var(domain=Reals, bounds=c_opt_bounds)
@@ -487,11 +471,15 @@ class PoAOptimization(
 
         # Auxiliary variables for support set deviations and budgets
         self.model.D_abs_deviation = Var(self.model.time_steps, domain=NonNegativeReals)
-        self.model.P_max_phys_abs_deviation = Var(self.model.wind_physical_generators, self.model.time_steps, domain=NonNegativeReals)
+        self.model.P_max_phys_abs_deviation = Var(
+            self.model.wind_physical_generators, self.model.time_steps, domain=NonNegativeReals
+        )
 
     def _build_equilibrium_variables(self) -> None:
         self._ensure_loaded_bounds_prepared()
-        self.model.P_eq = Var(self.model.generator_blocks, self.model.time_steps, domain=NonNegativeReals)
+        self.model.P_eq = Var(
+            self.model.generator_blocks, self.model.time_steps, domain=NonNegativeReals
+        )
         self.model.alpha = Var(self.model.generator_blocks, self.model.time_steps, domain=Reals)
         self.model.lambda_eq = Var(
             self.model.time_steps,
@@ -522,9 +510,7 @@ class PoAOptimization(
             domain=Reals,
             bounds=lambda m, i, t: (
                 0.0,
-                self.M_mu_ramp_up_eq[int(i), int(t)]
-                if int(t) < self.num_time_steps
-                else 0.0,
+                self.M_mu_ramp_up_eq[int(i), int(t)] if int(t) < self.num_time_steps else 0.0,
             ),
         )
         self.model.mu_ramp_down_eq = Var(
@@ -533,21 +519,29 @@ class PoAOptimization(
             domain=Reals,
             bounds=lambda m, i, t: (
                 0.0,
-                self.M_mu_ramp_down_eq[int(i), int(t)]
-                if int(t) < self.num_time_steps
-                else 0.0,
+                self.M_mu_ramp_down_eq[int(i), int(t)] if int(t) < self.num_time_steps else 0.0,
             ),
         )
 
     def _build_complementarity_equilibrium_variables(self) -> None:
-        self.model.z_upper_eq = Var(self.model.generator_blocks, self.model.time_steps, domain=Binary)
-        self.model.z_lower_eq = Var(self.model.generator_blocks, self.model.time_steps, domain=Binary)
-        self.model.z_ramp_up_eq = Var(self.model.physical_generators, self.model.time_steps, domain=Binary)
-        self.model.z_ramp_down_eq = Var(self.model.physical_generators, self.model.time_steps, domain=Binary)
+        self.model.z_upper_eq = Var(
+            self.model.generator_blocks, self.model.time_steps, domain=Binary
+        )
+        self.model.z_lower_eq = Var(
+            self.model.generator_blocks, self.model.time_steps, domain=Binary
+        )
+        self.model.z_ramp_up_eq = Var(
+            self.model.physical_generators, self.model.time_steps, domain=Binary
+        )
+        self.model.z_ramp_down_eq = Var(
+            self.model.physical_generators, self.model.time_steps, domain=Binary
+        )
 
     def _build_optimal_variables(self) -> None:
         self._ensure_loaded_bounds_prepared()
-        self.model.P_opt = Var(self.model.generator_blocks, self.model.time_steps, domain=NonNegativeReals)
+        self.model.P_opt = Var(
+            self.model.generator_blocks, self.model.time_steps, domain=NonNegativeReals
+        )
         self.model.lambda_opt = Var(
             self.model.time_steps,
             domain=Reals,
@@ -577,9 +571,7 @@ class PoAOptimization(
             domain=Reals,
             bounds=lambda m, i, t: (
                 0.0,
-                self.M_mu_ramp_up_opt[int(i), int(t)]
-                if int(t) < self.num_time_steps
-                else 0.0,
+                self.M_mu_ramp_up_opt[int(i), int(t)] if int(t) < self.num_time_steps else 0.0,
             ),
         )
         self.model.mu_ramp_down_opt = Var(
@@ -588,17 +580,23 @@ class PoAOptimization(
             domain=Reals,
             bounds=lambda m, i, t: (
                 0.0,
-                self.M_mu_ramp_down_opt[int(i), int(t)]
-                if int(t) < self.num_time_steps
-                else 0.0,
+                self.M_mu_ramp_down_opt[int(i), int(t)] if int(t) < self.num_time_steps else 0.0,
             ),
         )
 
     def _build_complementarity_optimal_variables(self) -> None:
-        self.model.z_upper_opt = Var(self.model.generator_blocks, self.model.time_steps, domain=Binary)
-        self.model.z_lower_opt = Var(self.model.generator_blocks, self.model.time_steps, domain=Binary)
-        self.model.z_ramp_up_opt = Var(self.model.physical_generators, self.model.time_steps, domain=Binary)
-        self.model.z_ramp_down_opt = Var(self.model.physical_generators, self.model.time_steps, domain=Binary)
+        self.model.z_upper_opt = Var(
+            self.model.generator_blocks, self.model.time_steps, domain=Binary
+        )
+        self.model.z_lower_opt = Var(
+            self.model.generator_blocks, self.model.time_steps, domain=Binary
+        )
+        self.model.z_ramp_up_opt = Var(
+            self.model.physical_generators, self.model.time_steps, domain=Binary
+        )
+        self.model.z_ramp_down_opt = Var(
+            self.model.physical_generators, self.model.time_steps, domain=Binary
+        )
 
     def _build_objective(self) -> None:
         if self.objective_mode == "difference":
@@ -642,26 +640,57 @@ class PoAOptimization(
 
         def generation_lower_eq_rule(m, i, b, t):
             return m.P_eq[i, b, t] >= 0
-        
+
         def ramp_up_eq_rule(m, i, t):
-            return sum(m.P_eq[i, b, t] for b in self.local_blocks_by_generator[int(i)]) - sum(m.P_eq[i, b, t - 1] for b in self.local_blocks_by_generator[int(i)]) - self.ramp_vector_up[int(i)] <= 0
+            return (
+                sum(m.P_eq[i, b, t] for b in self.local_blocks_by_generator[int(i)])
+                - sum(m.P_eq[i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
+                - self.ramp_vector_up[int(i)]
+                <= 0
+            )
 
         def ramp_up_initial_eq_rule(m, i):
-            return sum(m.P_eq[i, b, 0] for b in self.local_blocks_by_generator[int(i)]) - self.p_init[int(i)] <= self.ramp_vector_up[int(i)]
+            return (
+                sum(m.P_eq[i, b, 0] for b in self.local_blocks_by_generator[int(i)])
+                - self.p_init[int(i)]
+                <= self.ramp_vector_up[int(i)]
+            )
 
         def ramp_down_eq_rule(m, i, t):
-            return - sum(m.P_eq[i, b, t] for b in self.local_blocks_by_generator[int(i)]) + sum(m.P_eq[i, b, t - 1] for b in self.local_blocks_by_generator[int(i)]) - self.ramp_vector_down[int(i)] <= 0
-        
-        def ramp_down_initial_eq_rule(m, i):
-            return - sum(m.P_eq[i, b, 0] for b in self.local_blocks_by_generator[int(i)]) + self.p_init[int(i)] - self.ramp_vector_down[int(i)] <= 0
+            return (
+                -sum(m.P_eq[i, b, t] for b in self.local_blocks_by_generator[int(i)])
+                + sum(m.P_eq[i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
+                - self.ramp_vector_down[int(i)]
+                <= 0
+            )
 
-        self.model.power_balance_eq     = Constraint(self.model.time_steps, rule=power_balance_eq_rule)
-        self.model.generation_upper_eq  = Constraint(self.model.generator_blocks, self.model.time_steps, rule=generation_upper_eq_rule)
-        self.model.generation_lower_eq  = Constraint(self.model.generator_blocks, self.model.time_steps, rule=generation_lower_eq_rule)
-        self.model.ramp_up_eq           = Constraint(self.model.physical_generators, self.model.time_steps_minus_1, rule=ramp_up_eq_rule)
-        self.model.ramp_up_initial_eq   = Constraint(self.model.physical_generators, rule=ramp_up_initial_eq_rule)
-        self.model.ramp_down_eq         = Constraint(self.model.physical_generators, self.model.time_steps_minus_1, rule=ramp_down_eq_rule)
-        self.model.ramp_down_initial_eq = Constraint(self.model.physical_generators, rule=ramp_down_initial_eq_rule)
+        def ramp_down_initial_eq_rule(m, i):
+            return (
+                -sum(m.P_eq[i, b, 0] for b in self.local_blocks_by_generator[int(i)])
+                + self.p_init[int(i)]
+                - self.ramp_vector_down[int(i)]
+                <= 0
+            )
+
+        self.model.power_balance_eq = Constraint(self.model.time_steps, rule=power_balance_eq_rule)
+        self.model.generation_upper_eq = Constraint(
+            self.model.generator_blocks, self.model.time_steps, rule=generation_upper_eq_rule
+        )
+        self.model.generation_lower_eq = Constraint(
+            self.model.generator_blocks, self.model.time_steps, rule=generation_lower_eq_rule
+        )
+        self.model.ramp_up_eq = Constraint(
+            self.model.physical_generators, self.model.time_steps_minus_1, rule=ramp_up_eq_rule
+        )
+        self.model.ramp_up_initial_eq = Constraint(
+            self.model.physical_generators, rule=ramp_up_initial_eq_rule
+        )
+        self.model.ramp_down_eq = Constraint(
+            self.model.physical_generators, self.model.time_steps_minus_1, rule=ramp_down_eq_rule
+        )
+        self.model.ramp_down_initial_eq = Constraint(
+            self.model.physical_generators, rule=ramp_down_initial_eq_rule
+        )
 
     def _build_lower_level_optimal_constraints(self) -> None:
         def power_balance_opt_rule(m, t):
@@ -674,24 +703,57 @@ class PoAOptimization(
             return m.P_opt[i, b, t] >= 0
 
         def ramp_up_opt_rule(m, i, t):
-            return sum(m.P_opt[i, b, t] for b in self.local_blocks_by_generator[int(i)]) - sum(m.P_opt[i, b, t - 1] for b in self.local_blocks_by_generator[int(i)]) - self.ramp_vector_up[int(i)] <= 0
+            return (
+                sum(m.P_opt[i, b, t] for b in self.local_blocks_by_generator[int(i)])
+                - sum(m.P_opt[i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
+                - self.ramp_vector_up[int(i)]
+                <= 0
+            )
 
         def ramp_up_initial_opt_rule(m, i):
-            return sum(m.P_opt[i, b, 0] for b in self.local_blocks_by_generator[int(i)]) - self.p_init[int(i)] <= self.ramp_vector_up[int(i)]
+            return (
+                sum(m.P_opt[i, b, 0] for b in self.local_blocks_by_generator[int(i)])
+                - self.p_init[int(i)]
+                <= self.ramp_vector_up[int(i)]
+            )
 
         def ramp_down_opt_rule(m, i, t):
-            return - sum(m.P_opt[i, b, t] for b in self.local_blocks_by_generator[int(i)]) + sum(m.P_opt[i, b, t - 1] for b in self.local_blocks_by_generator[int(i)]) - self.ramp_vector_down[int(i)] <= 0
-        
-        def ramp_down_initial_opt_rule(m, i):
-            return - sum(m.P_opt[i, b, 0] for b in self.local_blocks_by_generator[int(i)]) + self.p_init[int(i)] - self.ramp_vector_down[int(i)] <= 0
+            return (
+                -sum(m.P_opt[i, b, t] for b in self.local_blocks_by_generator[int(i)])
+                + sum(m.P_opt[i, b, t - 1] for b in self.local_blocks_by_generator[int(i)])
+                - self.ramp_vector_down[int(i)]
+                <= 0
+            )
 
-        self.model.power_balance_opt     = Constraint(self.model.time_steps, rule=power_balance_opt_rule)
-        self.model.generation_upper_opt  = Constraint(self.model.generator_blocks, self.model.time_steps, rule=generation_upper_opt_rule)
-        self.model.generation_lower_opt  = Constraint(self.model.generator_blocks, self.model.time_steps, rule=generation_lower_opt_rule)
-        self.model.ramp_up_opt           = Constraint(self.model.physical_generators, self.model.time_steps_minus_1, rule=ramp_up_opt_rule)
-        self.model.ramp_up_initial_opt   = Constraint(self.model.physical_generators, rule=ramp_up_initial_opt_rule)
-        self.model.ramp_down_opt         = Constraint(self.model.physical_generators, self.model.time_steps_minus_1, rule=ramp_down_opt_rule)
-        self.model.ramp_down_initial_opt = Constraint(self.model.physical_generators, rule=ramp_down_initial_opt_rule)
+        def ramp_down_initial_opt_rule(m, i):
+            return (
+                -sum(m.P_opt[i, b, 0] for b in self.local_blocks_by_generator[int(i)])
+                + self.p_init[int(i)]
+                - self.ramp_vector_down[int(i)]
+                <= 0
+            )
+
+        self.model.power_balance_opt = Constraint(
+            self.model.time_steps, rule=power_balance_opt_rule
+        )
+        self.model.generation_upper_opt = Constraint(
+            self.model.generator_blocks, self.model.time_steps, rule=generation_upper_opt_rule
+        )
+        self.model.generation_lower_opt = Constraint(
+            self.model.generator_blocks, self.model.time_steps, rule=generation_lower_opt_rule
+        )
+        self.model.ramp_up_opt = Constraint(
+            self.model.physical_generators, self.model.time_steps_minus_1, rule=ramp_up_opt_rule
+        )
+        self.model.ramp_up_initial_opt = Constraint(
+            self.model.physical_generators, rule=ramp_up_initial_opt_rule
+        )
+        self.model.ramp_down_opt = Constraint(
+            self.model.physical_generators, self.model.time_steps_minus_1, rule=ramp_down_opt_rule
+        )
+        self.model.ramp_down_initial_opt = Constraint(
+            self.model.physical_generators, rule=ramp_down_initial_opt_rule
+        )
 
     # ------------------------------------------------------------------
     # KKT stationarity conditions
@@ -717,9 +779,15 @@ class PoAOptimization(
         def final_ramp_down_dual_eq_rule(m, i):
             return m.mu_ramp_down_eq[i, self.num_time_steps] == 0
 
-        self.model.stationarity_eq = Constraint(self.model.generator_blocks, self.model.time_steps, rule=stationarity_eq_rule)
-        self.model.final_ramp_up_dual_eq = Constraint(self.model.physical_generators, rule=final_ramp_up_dual_eq_rule)
-        self.model.final_ramp_down_dual_eq = Constraint(self.model.physical_generators, rule=final_ramp_down_dual_eq_rule)
+        self.model.stationarity_eq = Constraint(
+            self.model.generator_blocks, self.model.time_steps, rule=stationarity_eq_rule
+        )
+        self.model.final_ramp_up_dual_eq = Constraint(
+            self.model.physical_generators, rule=final_ramp_up_dual_eq_rule
+        )
+        self.model.final_ramp_down_dual_eq = Constraint(
+            self.model.physical_generators, rule=final_ramp_down_dual_eq_rule
+        )
 
     def _build_KKT_stationarity_optimal_constraints(self) -> None:
         def stationarity_opt_rule(m, i, b, t):
@@ -742,9 +810,15 @@ class PoAOptimization(
         def final_ramp_down_dual_opt_rule(m, i):
             return m.mu_ramp_down_opt[i, self.num_time_steps] == 0
 
-        self.model.stationarity_opt = Constraint(self.model.generator_blocks, self.model.time_steps, rule=stationarity_opt_rule)
-        self.model.final_ramp_up_dual_opt = Constraint(self.model.physical_generators, rule=final_ramp_up_dual_opt_rule)
-        self.model.final_ramp_down_dual_opt = Constraint(self.model.physical_generators, rule=final_ramp_down_dual_opt_rule)
+        self.model.stationarity_opt = Constraint(
+            self.model.generator_blocks, self.model.time_steps, rule=stationarity_opt_rule
+        )
+        self.model.final_ramp_up_dual_opt = Constraint(
+            self.model.physical_generators, rule=final_ramp_up_dual_opt_rule
+        )
+        self.model.final_ramp_down_dual_opt = Constraint(
+            self.model.physical_generators, rule=final_ramp_down_dual_opt_rule
+        )
 
     # ------------------------------------------------------------------
     # KKT complementarity conditions
@@ -760,8 +834,7 @@ class PoAOptimization(
         def upper_bound_complementarity_dual_eq_rule(m, i, b, t):
             return (
                 m.mu_upper_eq[i, b, t]
-                <= self.M_mu_upper_eq[int(i), int(b), int(t)]
-                * m.z_upper_eq[i, b, t]
+                <= self.M_mu_upper_eq[int(i), int(b), int(t)] * m.z_upper_eq[i, b, t]
             )
 
         def lower_bound_complementarity_eq_rule(m, i, b, t):
@@ -773,8 +846,7 @@ class PoAOptimization(
         def lower_bound_complementarity_dual_eq_rule(m, i, b, t):
             return (
                 m.mu_lower_eq[i, b, t]
-                <= self.M_mu_lower_eq[int(i), int(b), int(t)]
-                * m.z_lower_eq[i, b, t]
+                <= self.M_mu_lower_eq[int(i), int(b), int(t)] * m.z_lower_eq[i, b, t]
             )
 
         def ramp_up_complementarity_eq_rule(m, i, t):
@@ -793,10 +865,9 @@ class PoAOptimization(
 
         def ramp_up_complementarity_dual_eq_rule(m, i, t):
             return (
-                m.mu_ramp_up_eq[i, t]
-                <= self.M_mu_ramp_up_eq[int(i), int(t)] * m.z_ramp_up_eq[i, t]
+                m.mu_ramp_up_eq[i, t] <= self.M_mu_ramp_up_eq[int(i), int(t)] * m.z_ramp_up_eq[i, t]
             )
-        
+
         def ramp_down_complementarity_eq_rule(m, i, t):
             return -self.M_ramp_down[int(i), int(t)] * (1 - m.z_ramp_down_eq[i, t]) <= (
                 -sum(m.P_eq[i, b, t] for b in self.local_blocks_by_generator[int(i)])
@@ -817,18 +888,54 @@ class PoAOptimization(
                 <= self.M_mu_ramp_down_eq[int(i), int(t)] * m.z_ramp_down_eq[i, t]
             )
 
-        self.model.upper_bound_complementarity_eq       = Constraint(self.model.generator_blocks, self.model.time_steps, rule=upper_bound_complementarity_eq_rule)
-        self.model.upper_bound_complementarity_dual_eq  = Constraint(self.model.generator_blocks, self.model.time_steps, rule=upper_bound_complementarity_dual_eq_rule)
-        self.model.lower_bound_complementarity_eq       = Constraint(self.model.generator_blocks, self.model.time_steps, rule=lower_bound_complementarity_eq_rule)
-        self.model.lower_bound_complementarity_dual_eq  = Constraint(self.model.generator_blocks, self.model.time_steps, rule=lower_bound_complementarity_dual_eq_rule)
+        self.model.upper_bound_complementarity_eq = Constraint(
+            self.model.generator_blocks,
+            self.model.time_steps,
+            rule=upper_bound_complementarity_eq_rule,
+        )
+        self.model.upper_bound_complementarity_dual_eq = Constraint(
+            self.model.generator_blocks,
+            self.model.time_steps,
+            rule=upper_bound_complementarity_dual_eq_rule,
+        )
+        self.model.lower_bound_complementarity_eq = Constraint(
+            self.model.generator_blocks,
+            self.model.time_steps,
+            rule=lower_bound_complementarity_eq_rule,
+        )
+        self.model.lower_bound_complementarity_dual_eq = Constraint(
+            self.model.generator_blocks,
+            self.model.time_steps,
+            rule=lower_bound_complementarity_dual_eq_rule,
+        )
 
-        self.model.ramp_up_complementarity_eq           = Constraint(self.model.physical_generators, self.model.time_steps_minus_1, rule=ramp_up_complementarity_eq_rule)
-        self.model.ramp_up_complementarity_dual_eq      = Constraint(self.model.physical_generators, self.model.time_steps, rule=ramp_up_complementarity_dual_eq_rule)
-        self.model.ramp_up_initial_complementarity_eq   = Constraint(self.model.physical_generators, rule=ramp_up_initial_complementarity_eq_rule)
+        self.model.ramp_up_complementarity_eq = Constraint(
+            self.model.physical_generators,
+            self.model.time_steps_minus_1,
+            rule=ramp_up_complementarity_eq_rule,
+        )
+        self.model.ramp_up_complementarity_dual_eq = Constraint(
+            self.model.physical_generators,
+            self.model.time_steps,
+            rule=ramp_up_complementarity_dual_eq_rule,
+        )
+        self.model.ramp_up_initial_complementarity_eq = Constraint(
+            self.model.physical_generators, rule=ramp_up_initial_complementarity_eq_rule
+        )
 
-        self.model.ramp_down_complementarity_eq         = Constraint(self.model.physical_generators, self.model.time_steps_minus_1, rule=ramp_down_complementarity_eq_rule)
-        self.model.ramp_down_complementarity_dual_eq    = Constraint(self.model.physical_generators, self.model.time_steps, rule=ramp_down_complementarity_dual_eq_rule)
-        self.model.ramp_down_initial_complementarity_eq = Constraint(self.model.physical_generators, rule=ramp_down_initial_complementarity_eq_rule)
+        self.model.ramp_down_complementarity_eq = Constraint(
+            self.model.physical_generators,
+            self.model.time_steps_minus_1,
+            rule=ramp_down_complementarity_eq_rule,
+        )
+        self.model.ramp_down_complementarity_dual_eq = Constraint(
+            self.model.physical_generators,
+            self.model.time_steps,
+            rule=ramp_down_complementarity_dual_eq_rule,
+        )
+        self.model.ramp_down_initial_complementarity_eq = Constraint(
+            self.model.physical_generators, rule=ramp_down_initial_complementarity_eq_rule
+        )
 
     def _build_KKT_complementarity_optimal_constraints(self) -> None:
         def upper_bound_complementarity_opt_rule(m, i, b, t):
@@ -836,12 +943,11 @@ class PoAOptimization(
                 -self.M_cap[int(i), int(b), int(t)] * (1 - m.z_upper_opt[i, b, t])
                 <= m.P_opt[i, b, t] - m.P_max_block[i, b, t]
             )
-    
+
         def upper_bound_complementarity_dual_opt_rule(m, i, b, t):
             return (
                 m.mu_upper_opt[i, b, t]
-                <= self.M_mu_upper_opt[int(i), int(b), int(t)]
-                * m.z_upper_opt[i, b, t]
+                <= self.M_mu_upper_opt[int(i), int(b), int(t)] * m.z_upper_opt[i, b, t]
             )
 
         def lower_bound_complementarity_opt_rule(m, i, b, t):
@@ -853,10 +959,9 @@ class PoAOptimization(
         def lower_bound_complementarity_dual_opt_rule(m, i, b, t):
             return (
                 m.mu_lower_opt[i, b, t]
-                <= self.M_mu_lower_opt[int(i), int(b), int(t)]
-                * m.z_lower_opt[i, b, t]
+                <= self.M_mu_lower_opt[int(i), int(b), int(t)] * m.z_lower_opt[i, b, t]
             )
-        
+
         def ramp_up_complementarity_opt_rule(m, i, t):
             return -self.M_ramp_up[int(i), int(t)] * (1 - m.z_ramp_up_opt[i, t]) <= (
                 sum(m.P_opt[i, b, t] for b in self.local_blocks_by_generator[int(i)])
@@ -897,19 +1002,55 @@ class PoAOptimization(
                 <= self.M_mu_ramp_down_opt[int(i), int(t)] * m.z_ramp_down_opt[i, t]
             )
 
-        self.model.upper_bound_complementarity_opt       = Constraint(self.model.generator_blocks, self.model.time_steps, rule=upper_bound_complementarity_opt_rule)
-        self.model.upper_bound_complementarity_dual_opt  = Constraint(self.model.generator_blocks, self.model.time_steps, rule=upper_bound_complementarity_dual_opt_rule)
+        self.model.upper_bound_complementarity_opt = Constraint(
+            self.model.generator_blocks,
+            self.model.time_steps,
+            rule=upper_bound_complementarity_opt_rule,
+        )
+        self.model.upper_bound_complementarity_dual_opt = Constraint(
+            self.model.generator_blocks,
+            self.model.time_steps,
+            rule=upper_bound_complementarity_dual_opt_rule,
+        )
 
-        self.model.lower_bound_complementarity_opt       = Constraint(self.model.generator_blocks, self.model.time_steps, rule=lower_bound_complementarity_opt_rule)
-        self.model.lower_bound_complementarity_dual_opt  = Constraint(self.model.generator_blocks, self.model.time_steps, rule=lower_bound_complementarity_dual_opt_rule)
+        self.model.lower_bound_complementarity_opt = Constraint(
+            self.model.generator_blocks,
+            self.model.time_steps,
+            rule=lower_bound_complementarity_opt_rule,
+        )
+        self.model.lower_bound_complementarity_dual_opt = Constraint(
+            self.model.generator_blocks,
+            self.model.time_steps,
+            rule=lower_bound_complementarity_dual_opt_rule,
+        )
 
-        self.model.ramp_up_complementarity_opt           = Constraint(self.model.physical_generators, self.model.time_steps_minus_1, rule=ramp_up_complementarity_opt_rule)
-        self.model.ramp_up_complementarity_dual_opt      = Constraint(self.model.physical_generators, self.model.time_steps, rule=ramp_up_complementarity_dual_opt_rule)
-        self.model.ramp_up_initial_complementarity_opt   = Constraint(self.model.physical_generators, rule=ramp_up_initial_complementarity_opt_rule)
+        self.model.ramp_up_complementarity_opt = Constraint(
+            self.model.physical_generators,
+            self.model.time_steps_minus_1,
+            rule=ramp_up_complementarity_opt_rule,
+        )
+        self.model.ramp_up_complementarity_dual_opt = Constraint(
+            self.model.physical_generators,
+            self.model.time_steps,
+            rule=ramp_up_complementarity_dual_opt_rule,
+        )
+        self.model.ramp_up_initial_complementarity_opt = Constraint(
+            self.model.physical_generators, rule=ramp_up_initial_complementarity_opt_rule
+        )
 
-        self.model.ramp_down_complementarity_opt         = Constraint(self.model.physical_generators, self.model.time_steps_minus_1, rule=ramp_down_complementarity_opt_rule)
-        self.model.ramp_down_complementarity_dual_opt    = Constraint(self.model.physical_generators, self.model.time_steps, rule=ramp_down_complementarity_dual_opt_rule)
-        self.model.ramp_down_initial_complementarity_opt = Constraint(self.model.physical_generators, rule=ramp_down_initial_complementarity_opt_rule)
+        self.model.ramp_down_complementarity_opt = Constraint(
+            self.model.physical_generators,
+            self.model.time_steps_minus_1,
+            rule=ramp_down_complementarity_opt_rule,
+        )
+        self.model.ramp_down_complementarity_dual_opt = Constraint(
+            self.model.physical_generators,
+            self.model.time_steps,
+            rule=ramp_down_complementarity_dual_opt_rule,
+        )
+        self.model.ramp_down_initial_complementarity_opt = Constraint(
+            self.model.physical_generators, rule=ramp_down_initial_complementarity_opt_rule
+        )
 
     # ------------------------------------------------------------------
     # PoA constraints
@@ -917,16 +1058,14 @@ class PoAOptimization(
 
     def _get_equilibrium_cost_expression(self, m: ConcreteModel) -> Any:
         return sum(
-            self.block_cost_vector[self.local_to_global_block[(int(i), int(b))]]
-            * m.P_eq[i, b, t]
+            self.block_cost_vector[self.local_to_global_block[(int(i), int(b))]] * m.P_eq[i, b, t]
             for (i, b) in m.generator_blocks
             for t in m.time_steps
         )
 
     def _get_optimal_cost_expression(self, m: ConcreteModel) -> Any:
         return sum(
-            self.block_cost_vector[self.local_to_global_block[(int(i), int(b))]]
-            * m.P_opt[i, b, t]
+            self.block_cost_vector[self.local_to_global_block[(int(i), int(b))]] * m.P_opt[i, b, t]
             for (i, b) in m.generator_blocks
             for t in m.time_steps
         )
@@ -937,10 +1076,11 @@ class PoAOptimization(
 
         def cost_opt_rule(m):
             return m.C_opt == self._get_optimal_cost_expression(m)
-        
+
         self.model.cost_definition_eq = Constraint(rule=cost_eq_rule)
         self.model.cost_definition_opt = Constraint(rule=cost_opt_rule)
         if self.objective_mode == "difference":
+
             def PoA_rule(m):
                 return m.C_eq - m.C_opt == m.PoA
 
@@ -962,10 +1102,47 @@ class PoAOptimization(
         if time_limit is not None:
             solver.options["TimeLimit"] = float(time_limit)
         start = time.perf_counter()
-        with gurobi_log_filter(solver):
+        with gurobi_log_filter(solver) as gurobi_log_path:
             self.solver_results = solver.solve(self.model, tee=False)
         self.solve_wall_time_seconds = time.perf_counter() - start
+
+        # Certified bracket from Gurobi (maximization): the incumbent objective
+        # is a lower bound and ObjBound an upper bound on the optimum, so a
+        # time-limited solve still yields a reportable interval and gap. These
+        # are surfaced in the result JSON's ``solver`` block by
+        # build_solver_summary.
+        self.best_objective_bound = None
+        self.mip_gap = None
+        gurobi_model = getattr(solver, "_solver_model", None)
+        if gurobi_model is not None:
+            try:
+                bound = float(gurobi_model.ObjBound)
+                if np.isfinite(bound):
+                    self.best_objective_bound = bound
+            except (AttributeError, TypeError, ValueError):
+                pass
+            try:
+                gap = float(gurobi_model.MIPGap)
+                if np.isfinite(gap):
+                    self.mip_gap = gap
+            except (AttributeError, TypeError, ValueError):
+                pass
+
+        # Capture the Gurobi log and parse the incumbent/best-bound progression
+        # so the bound movement over solve time can be persisted and plotted
+        # without re-solving (the raw log itself lives in a temp file).
+        self.last_solve_gurobi_log = None
+        self.solve_bound_progression = []
+        try:
+            with open(gurobi_log_path, "r", encoding="utf-8", errors="replace") as fh:
+                self.last_solve_gurobi_log = fh.read()
+        except OSError:
+            pass
+        if self.last_solve_gurobi_log:
+            self.solve_bound_progression = parse_gurobi_node_log(self.last_solve_gurobi_log)
+
         return self.solver_results
+
 
 if __name__ == "__main__":
     case = "base_test_case"
@@ -1028,7 +1205,9 @@ if __name__ == "__main__":
     print(f"  Tightening report: {tightening_report_path}")
     print(f"  Active NN ReLU binaries fixed: {applied_nn_relu_stats['delta_fixed_active']}")
     print(f"  Inactive NN ReLU binaries fixed: {applied_nn_relu_stats['delta_fixed_inactive']}")
-    print(f"  Ambiguous NN ReLU binaries left binary: {applied_nn_relu_stats['delta_left_ambiguous']}")
+    print(
+        f"  Ambiguous NN ReLU binaries left binary: {applied_nn_relu_stats['delta_left_ambiguous']}"
+    )
     print(f"  Applied fixed binaries: {applied_stats['fixed_binaries']}")
     print(f"  Applied dual upper bounds: {applied_stats['dual_upper_bounds']}")
     print(f"  Applied alpha bounds: {applied_stats['alpha_bounds']}")

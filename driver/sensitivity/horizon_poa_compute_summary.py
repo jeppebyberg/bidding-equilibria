@@ -62,8 +62,27 @@ def _load_run(run_dir: Path) -> dict[str, Any] | None:
         "num_binary_variables_fixed": counts.get("num_binary_variables_fixed"),
         "num_continuous_variables": counts.get("num_continuous_variables"),
         "PoA": objective.get("PoA"),
+        # Certified MIP bracket (maximization): incumbent is the best feasible
+        # objective, best_objective_bound the dual upper bound. They coincide
+        # when the solve proves optimality and diverge when it hits the cap.
+        "incumbent": objective.get("objective_value", objective.get("PoA")),
+        "best_objective_bound": solver.get("best_objective_bound"),
         "result_path": str(result_path),
     }
+
+
+def _incumbent_and_bound(run: dict[str, Any]) -> tuple[Any, Any]:
+    """Resolve (incumbent, best_bound) for one run.
+
+    A proven-optimal solve has zero gap, so its bound equals the incumbent even
+    when ``best_objective_bound`` was not recorded (e.g. results produced before
+    the solver started emitting the bound).
+    """
+    incumbent = run.get("incumbent")
+    bound = run.get("best_objective_bound")
+    if bound is None and run.get("termination_condition") == "optimal":
+        bound = incumbent
+    return incumbent, bound
 
 
 def collect_summary() -> dict[str, Any]:
@@ -96,6 +115,8 @@ _FIELDNAMES = [
     "termination_condition",
     "mip_gap",
     "PoA",
+    "incumbent",
+    "best_objective_bound",
 ]
 
 
@@ -113,11 +134,13 @@ def _fmt(value: Any, spec: str) -> str:
 def print_table(summary: dict[str, Any]) -> None:
     header = (
         f"{'horizon':>8}{'wall (s)':>12}{'solver (s)':>12}"
-        f"{'binaries':>12}{'free bin':>12}{'fixed bin':>12}{'PoA':>10}"
+        f"{'binaries':>12}{'free bin':>12}{'fixed bin':>12}"
+        f"{'incumbent':>11}{'best bound':>11}{'gap':>9}"
     )
     print("\n" + header)
     print("-" * len(header))
     for run in summary["runs"]:
+        incumbent, bound = _incumbent_and_bound(run)
         print(
             f"{run['horizon']:>8}"
             f"{_fmt(run['wall_time_seconds'], '.2f'):>12}"
@@ -125,7 +148,9 @@ def print_table(summary: dict[str, Any]) -> None:
             f"{_fmt(run['num_binary_variables'], 'd'):>12}"
             f"{_fmt(run['num_binary_variables_free'], 'd'):>12}"
             f"{_fmt(run['num_binary_variables_fixed'], 'd'):>12}"
-            f"{_fmt(run['PoA'], '.4f'):>10}"
+            f"{_fmt(incumbent, '.4f'):>11}"
+            f"{_fmt(bound, '.4f'):>11}"
+            f"{_fmt(run['mip_gap'], '.2%'):>9}"
         )
     print()
 
@@ -187,6 +212,48 @@ def plot_summary(
     plt.close(fig)
 
 
+def plot_incumbent_vs_bound(summary: dict[str, Any], path: Path) -> None:
+    """Plot the incumbent PoA against Gurobi's best bound across horizons.
+
+    The two curves coincide where the solve proved optimality and split open
+    into an optimality-gap band where it stopped at the time limit.
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    horizons: list[int] = []
+    incumbents: list[float] = []
+    bounds: list[float] = []
+    for run in summary["runs"]:
+        incumbent, bound = _incumbent_and_bound(run)
+        if incumbent is None or bound is None:
+            continue
+        horizons.append(run["horizon"])
+        incumbents.append(incumbent)
+        bounds.append(bound)
+    if not horizons:
+        return
+
+    arch = "[" + ", ".join(str(n) for n in summary["hidden_layers"]) + "]"
+    fig, ax = plt.subplots(figsize=(7, 5))
+    ax.fill_between(
+        horizons, incumbents, bounds, alpha=0.15, color="tab:gray", label="optimality gap"
+    )
+    ax.plot(horizons, bounds, marker="^", color="tab:red", label="best bound (dual)")
+    ax.plot(horizons, incumbents, marker="o", color="tab:blue", label="incumbent (PoA)")
+    ax.set_xlabel("horizon (time steps)")
+    ax.set_ylabel("Price of Anarchy")
+    ax.set_title(f"Base-PoA incumbent vs best bound (NN {arch})")
+    ax.set_xticks(horizons)
+    ax.legend()
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+
+
 def main() -> None:
     print(f"Base-PoA compute summary for study '{STUDY_NAME}'")
     summary = collect_summary()
@@ -201,6 +268,7 @@ def main() -> None:
     poa_plot_path = RESULT_ROOT / "poa_vs_horizon.png"
     time_plot_path = RESULT_ROOT / "compute_time_vs_horizon.png"
     binary_plot_path = RESULT_ROOT / "binaries_vs_horizon.png"
+    bound_plot_path = RESULT_ROOT / "incumbent_vs_bound_vs_horizon.png"
 
     RESULT_ROOT.mkdir(parents=True, exist_ok=True)
     with json_path.open("w", encoding="utf-8") as fh:
@@ -208,7 +276,10 @@ def main() -> None:
     write_csv(summary, csv_path)
     try:
         plot_summary(summary, poa_plot_path, time_plot_path, binary_plot_path)
-        plotted = f"{poa_plot_path}\n  {time_plot_path}\n  {binary_plot_path}"
+        plot_incumbent_vs_bound(summary, bound_plot_path)
+        plotted = (
+            f"{poa_plot_path}\n  {time_plot_path}\n  {binary_plot_path}\n" f"  {bound_plot_path}"
+        )
     except Exception as exc:  # plotting is optional
         plotted = f"(skipped: {exc})"
 
