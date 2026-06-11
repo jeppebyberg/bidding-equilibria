@@ -24,6 +24,30 @@ from models.DRO_PoA.DRO_PoA_tightening.tightening_main import DROPoATighteningMa
 
 _PARALLEL_RELU_COMPUTER: Optional["DROReLUBoundsComputer"] = None
 
+# The lower and upper preactivation bounds are solved as two independent
+# optimization programs, so on an essentially-constant preactivation they can
+# disagree by a tiny amount and report L slightly above U. A crossing within
+# this absolute tolerance is solver numerical noise and is repaired by snapping
+# L down to U; a crossing beyond it signals a genuine formulation/model bug and
+# is raised.
+_RELU_BOUND_CROSSING_ABS_TOL = 1e-6
+
+
+def _repair_crossed_relu_bounds(L: float, U: float, tolerance: float) -> tuple[float, float]:
+    """Return (L, U) with L <= U, repairing tiny numerical crossings.
+
+    Raises ValueError only when L exceeds U by more than the crossing tolerance,
+    which indicates a real problem rather than solver noise.
+    """
+    if L <= U:
+        return L, U
+    crossing = L - U
+    allowed = max(float(tolerance), _RELU_BOUND_CROSSING_ABS_TOL)
+    if crossing > allowed:
+        raise ValueError(f"crossing {crossing:.3e} exceeds tolerance {allowed:.3e}")
+    midpoint = 0.5 * (L + U)
+    return midpoint, midpoint
+
 
 def _initialize_parallel_relu_computer(state: dict[str, Any]) -> None:
     global _PARALLEL_RELU_COMPUTER
@@ -91,11 +115,13 @@ def _solve_parallel_first_layer_relu_bound(task: tuple[Any, ...]) -> dict[str, A
         )
     L = float(lower_value)
     U = float(upper_value)
-    if L > U + float(tolerance):
+    try:
+        L, U = _repair_crossed_relu_bounds(L, U, float(tolerance))
+    except ValueError as exc:
         raise ValueError(
             f"{generator_name}: invalid first-layer bounds at k={scenario_idx}, "
-            f"t={time_idx}, node={neuron_idx}: L={L}, U={U}"
-        )
+            f"t={time_idx}, node={neuron_idx}: L={L}, U={U} ({exc})"
+        ) from exc
     key = (int(scenario_idx), int(time_idx), 0, int(neuron_idx))
     return {
         "generator_name": generator_name,
@@ -179,11 +205,13 @@ def _solve_parallel_later_layer_relu_bound(task: tuple[Any, ...]) -> dict[str, A
         )
     L = float(lower_value)
     U = float(upper_value)
-    if L > U + float(tolerance):
+    try:
+        L, U = _repair_crossed_relu_bounds(L, U, float(tolerance))
+    except ValueError as exc:
         raise ValueError(
             f"{generator_name}: invalid later-layer bounds at k={scenario_idx}, "
-            f"t={time_idx}, layer={linear_idx}, node={neuron_idx}: L={L}, U={U}"
-        )
+            f"t={time_idx}, layer={linear_idx}, node={neuron_idx}: L={L}, U={U} ({exc})"
+        ) from exc
     key = (int(scenario_idx), int(time_idx), int(linear_idx), int(neuron_idx))
     return {
         "generator_name": generator_name,
