@@ -36,7 +36,15 @@ DRO_TIGHTENING_FLAGS = {
 ALWAYS_ON_TIGHTENING_STAGES = ("primal_big_m", "optimal_cost_bounds")
 
 def default_eta_grid() -> list[float]:
-    return [0.0] + np.logspace(-2.5, 0.5, 15).tolist() + [10.0]
+    # Sampling is concentrated where the base-case worst-case PoA ratio actually
+    # responds to eta. The ratio is most sensitive at very small eta and flat
+    # beyond eta ~ 1, so the old logspace(-2.5, 0.5) tail (1.18, 1.93, 3.16) just
+    # re-sampled the plateau. Instead: a fine low-eta region below the previous
+    # 10**-2.5 floor, the main descent region 10**-2.5 .. 1.0, and only two tail
+    # anchors (1.5, 10.0).
+    low = np.logspace(-4.0, -2.5, 6, endpoint=False).tolist()  # ~1e-4 .. 1.8e-3
+    mid = np.logspace(-2.5, 0.0, 9).tolist()  # 3.2e-3 .. 1.0
+    return [0.0] + low + mid + [1.5, 10.0]
 
 
 def poa_tightening_paths(base_dir: Path) -> dict[str, str]:

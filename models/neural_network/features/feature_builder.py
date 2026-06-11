@@ -48,18 +48,15 @@ class NeuralNetworkFeatureBuilder:
         # Current-period features
         "demand",
         "total_wind_generation_capacity",
-        "total_generation_capacity",       # legacy: collinear with wind when conv. cap. is fixed
         "residual_demand",
         # Previous-period features
         "previous_demand",
         "previous_wind_generation_capacity",
         "previous_residual_demand",
-        "previous_generation_capacity",    # legacy: encodes previous wind + constant
         # Next-period features
         "next_demand",
         "next_wind_generation_capacity",
         "next_residual_demand",
-        "next_generation_capacity",        # legacy: encodes next wind + constant
         # Horizon-aggregate features (scenario-level; constant across time steps)
         "total_demand_over_horizon",
         "total_wind_over_horizon",
