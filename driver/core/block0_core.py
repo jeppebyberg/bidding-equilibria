@@ -9,7 +9,6 @@ import numpy as np
 
 from config.scenarios.scenario_generator import ScenarioManager
 
-
 POA_TIGHTENING_FLAGS = {
     "primal_big_m": True,
     "relu_bounds": True,
@@ -17,6 +16,7 @@ POA_TIGHTENING_FLAGS = {
     "slack_binary_fix": True,
     "dual_big_m": True,
     "optimal_cost_bounds": True,
+    "equilibrium_cost_bounds": False,
 }
 
 DRO_TIGHTENING_FLAGS = {
@@ -26,6 +26,7 @@ DRO_TIGHTENING_FLAGS = {
     "slack_binary_fix": True,
     "dual_big_m": True,
     "optimal_cost_bounds": True,
+    "equilibrium_cost_bounds": False,
 }
 
 # primal_big_m and optimal_cost_bounds are correctness-critical for a valid
@@ -35,30 +36,27 @@ DRO_TIGHTENING_FLAGS = {
 # force-enabled in code.
 ALWAYS_ON_TIGHTENING_STAGES = ("primal_big_m", "optimal_cost_bounds")
 
+
 def default_eta_grid() -> list[float]:
-    # Sampling is concentrated where the base-case worst-case PoA ratio actually
-    # responds to eta. The ratio is most sensitive at very small eta and flat
-    # beyond eta ~ 1, so the old logspace(-2.5, 0.5) tail (1.18, 1.93, 3.16) just
-    # re-sampled the plateau. Instead: a fine low-eta region below the previous
-    # 10**-2.5 floor, the main descent region 10**-2.5 .. 1.0, and only two tail
-    # anchors (1.5, 10.0).
-    low = np.logspace(-4.0, -2.5, 6, endpoint=False).tolist()  # ~1e-4 .. 1.8e-3
-    mid = np.logspace(-2.5, 0.0, 9).tolist()  # 3.2e-3 .. 1.0
-    return [0.0] + low + mid + [1.5, 10.0]
+    # One anchor in the flat left plateau (eta < ~0.005).
+    low = [0.001, 0.005]
+    # Five points across the ~2-decade transition where the curve actually moves.
+    mid = np.logspace(-2.0, 0.0, 10).tolist()  # 0.01, 0.032, 0.1, 0.316, 1.0
+    # One anchor to confirm the right plateau.
+    tail = [10.0]
+    return [0.0] + low + mid + tail
 
 
 def poa_tightening_paths(base_dir: Path) -> dict[str, str]:
     base = str(base_dir / "tightening")
-    stages = list(POA_TIGHTENING_FLAGS)
-    paths = {stage: f"{base}/{stage}_report.json" for stage in stages}
+    paths = {stage: f"{base}/{stage}_report.json" for stage in POA_TIGHTENING_FLAGS}
     paths["final"] = f"{base}/final_tightening_report.json"
     return paths
 
 
 def dro_tightening_paths(base_dir: Path) -> dict[str, str]:
     base = str(base_dir / "tightening" / "{regime_name}")
-    stages = list(DRO_TIGHTENING_FLAGS)
-    paths = {stage: f"{base}/{stage}_report.json" for stage in stages}
+    paths = {stage: f"{base}/{stage}_report.json" for stage in DRO_TIGHTENING_FLAGS}
     paths["final"] = f"{base}/final_tightening_report.json"
     return paths
 
@@ -150,6 +148,9 @@ class ProjectConfig:
     dro_mccormick_c_opt_breakpoints: list[float] | None = None
     dro_time_limit: int = 1000
 
+    # Relative cushion on the derived PoA upper bound (numerical safety).
+    poa_bounds_derivation_margin: float = 1e-3
+
     calibrate_support_coverage: bool = True
     support_verify_seed: int = 77777
     support_verify_num_draws: int = 2000
@@ -189,6 +190,7 @@ class ProjectConfig:
             self.synthetic_time_steps = self.horizon
         if self.synthetic_labels_target is not None:
             import math
+
             self.synthetic_num_scenarios = math.ceil(self.synthetic_labels_target / self.horizon)
         root = Path("results") / self.case_label
         defaults = {
@@ -240,9 +242,7 @@ def ensure_requested_policy_generators(config: ProjectConfig) -> ProjectConfig:
             )
         if not config.allow_wind_to_play:
             wind_names = {
-                gen["physical_name"]
-                for gen in manager.physical_generators
-                if bool(gen["is_wind"])
+                gen["physical_name"] for gen in manager.physical_generators if bool(gen["is_wind"])
             }
             config.nn_policy_generators = [
                 name for name in config.nn_policy_generators if name not in wind_names

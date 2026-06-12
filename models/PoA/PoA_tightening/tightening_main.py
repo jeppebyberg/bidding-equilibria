@@ -7,7 +7,6 @@ from typing import Any, Callable, Optional
 
 from models.PoA.PoA_optimization import PoAOptimization
 
-
 DEFAULT_TIGHTENING_OUTPUT_PATHS: dict[str, str] = {
     "primal_big_m": "results/poa_tightening/primal_big_m_report.json",
     "relu_bounds": "results/poa_tightening/relu_bounds_report.json",
@@ -15,8 +14,10 @@ DEFAULT_TIGHTENING_OUTPUT_PATHS: dict[str, str] = {
     "slack_binary_fix": "results/poa_tightening/slack_binary_fix_report.json",
     "dual_big_m": "results/poa_tightening/dual_big_m_report.json",
     "optimal_cost_bounds": "results/poa_tightening/optimal_cost_bounds_report.json",
+    "equilibrium_cost_bounds": "results/poa_tightening/equilibrium_cost_bounds_report.json",
     "final": "results/poa_tightening/final_tightening_report.json",
 }
+
 
 class PoATighteningMain:
     """Shared orchestrator for the staged PoA tightening workflow."""
@@ -49,6 +50,7 @@ class PoATighteningMain:
         objective_mode: str = "difference",
         mccormick_bounds: Optional[dict[str, Any]] = None,
         use_default_bounds: bool = False,
+        alpha_ordering_epsilon: float = PoAOptimization.DEFAULT_ALPHA_ORDERING_EPSILON,
     ) -> None:
         self.poa = PoAOptimization(
             scenarios_df=scenarios_df,
@@ -63,6 +65,7 @@ class PoATighteningMain:
             objective_mode=objective_mode,
             mccormick_bounds=mccormick_bounds,
             use_default_bounds=use_default_bounds,
+            alpha_ordering_epsilon=alpha_ordering_epsilon,
         )
         self.tightening_data: dict[str, Any] = {}
         self.stage_reports: dict[str, dict[str, Any]] = {}
@@ -141,9 +144,9 @@ class PoATighteningMain:
             self.tightening_data["alpha_optimization_results"] = (
                 report.get("alpha_optimization_results", {}) or {}
             )
-            self.poa.alpha_bound_optimization_results = (
-                self.tightening_data["alpha_optimization_results"]
-            )
+            self.poa.alpha_bound_optimization_results = self.tightening_data[
+                "alpha_optimization_results"
+            ]
 
         if "slack_bounds" in report:
             self.tightening_data["slack_bounds"] = report.get("slack_bounds", {}) or {}
@@ -162,9 +165,7 @@ class PoATighteningMain:
             self.tightening_data["optimal_cost_bounds"] = (
                 report.get("optimal_cost_bounds", {}) or {}
             )
-            self.poa.optimal_cost_bounds = self.tightening_data[
-                "optimal_cost_bounds"
-            ]
+            self.poa.optimal_cost_bounds = self.tightening_data["optimal_cost_bounds"]
             c_opt_bounds = self._extract_c_opt_bounds(self.poa.optimal_cost_bounds)
             if c_opt_bounds is not None and self.poa.mccormick_bounds is not None:
                 self.poa.mccormick_bounds["C_opt"] = c_opt_bounds
@@ -184,6 +185,20 @@ class PoATighteningMain:
             self.poa.optimal_cost_bound_optimization_results = self.tightening_data[
                 "optimal_cost_bound_optimization_results"
             ]
+
+        if "equilibrium_cost_bounds" in report:
+            self.tightening_data["equilibrium_cost_bounds"] = (
+                report.get("equilibrium_cost_bounds", {}) or {}
+            )
+            self.poa.equilibrium_cost_bounds = self.tightening_data["equilibrium_cost_bounds"]
+
+        if "equilibrium_cost_bound_optimization_results" in report:
+            self.tightening_data["equilibrium_cost_bound_optimization_results"] = (
+                report.get("equilibrium_cost_bound_optimization_results", {}) or {}
+            )
+
+        if report.get("derived_poa_bounds"):
+            self.tightening_data["derived_poa_bounds"] = report.get("derived_poa_bounds")
 
         return report
 
@@ -299,9 +314,7 @@ class PoATighteningMain:
             )
             return {
                 "metadata": {
-                    "description": (
-                        "Default loose componentwise dual Big-M bounds."
-                    ),
+                    "description": ("Default loose componentwise dual Big-M bounds."),
                     "source": "default_loose_bounds",
                     "reference_case": self.poa.reference_case,
                     "num_time_steps": self.poa.num_time_steps,
@@ -477,6 +490,12 @@ class PoATighteningMain:
                 "optimal_cost_bound_optimization_results",
                 {},
             ),
+            "equilibrium_cost_bounds": self.tightening_data.get("equilibrium_cost_bounds", {}),
+            "equilibrium_cost_bound_optimization_results": self.tightening_data.get(
+                "equilibrium_cost_bound_optimization_results",
+                {},
+            ),
+            "derived_poa_bounds": self.tightening_data.get("derived_poa_bounds"),
             "stage_reports": self.stage_reports,
             "stage_timings": self.stage_timings,
         }
@@ -489,7 +508,9 @@ class PoATighteningMain:
 
     def _require_relu_before_alpha(self) -> None:
         if getattr(self.poa, "nn_policy_generator_ids", []) and not self.poa.nn_relu_bounds:
-            raise ValueError("ReLU bounds must be computed or loaded before alpha-bound tightening.")
+            raise ValueError(
+                "ReLU bounds must be computed or loaded before alpha-bound tightening."
+            )
 
     def _require_alpha_bounds(self) -> None:
         if not getattr(self.poa, "alpha_bounds", None):
@@ -513,6 +534,9 @@ class PoATighteningMain:
         run_slack_binary_fix: bool = True,
         run_dual_big_m: bool = True,
         run_optimal_cost_bounds: bool = True,
+        run_equilibrium_cost_bounds: bool = False,
+        poa_bounds_lower: float = 1.0,
+        poa_bounds_margin: float = 1e-3,
         previous_paths: Optional[dict[str, str | Path]] = None,
         output_paths: Optional[dict[str, str | Path]] = None,
         solver_name: str = "gurobi",
@@ -529,6 +553,9 @@ class PoATighteningMain:
     ) -> Path:
         from models.PoA.PoA_tightening.compute_alpha_bounds import AlphaBoundsComputer
         from models.PoA.PoA_tightening.compute_dual_big_m import DualBigMComputer
+        from models.PoA.PoA_tightening.compute_equilibrium_cost_bounds import (
+            EquilibriumCostBoundsComputer,
+        )
         from models.PoA.PoA_tightening.compute_optimal_cost_bounds import OptimalCostBoundsComputer
         from models.PoA.PoA_tightening.compute_primal_big_m import PrimalBigMComputer
         from models.PoA.PoA_tightening.compute_relu_bounds import ReLUBoundsComputer
@@ -543,6 +570,7 @@ class PoATighteningMain:
         slack_stage = self._as_stage(SlackBinaryFixComputer)
         dual_stage = self._as_stage(DualBigMComputer)
         optimal_cost_stage = self._as_stage(OptimalCostBoundsComputer)
+        equilibrium_cost_stage = self._as_stage(EquilibriumCostBoundsComputer)
 
         self._load_or_run_stage(
             "primal_big_m",
@@ -637,5 +665,30 @@ class PoATighteningMain:
             output_paths["optimal_cost_bounds"],
             use_default_if_missing=use_default_stage_inputs,
         )
+
+        # Optional equilibrium cost bound (gated by run_equilibrium_cost_bounds).
+        # Participates only when computing now or when a previous report exists to
+        # reuse; otherwise it is skipped so the final report omits the section and
+        # the McCormick PoA box falls back to the hand-set *_mccormick_PoA_bounds.
+        eq_previous = previous_paths.get("equilibrium_cost_bounds")
+        if run_equilibrium_cost_bounds or (eq_previous and Path(eq_previous).exists()):
+            if run_equilibrium_cost_bounds:
+                self._require_alpha_bounds()
+            self._load_or_run_stage(
+                "equilibrium_cost_bounds",
+                run_equilibrium_cost_bounds,
+                lambda output_path: equilibrium_cost_stage.run_equilibrium_cost_bounds(
+                    output_path=output_path,
+                    solver_name=solver_name,
+                    time_limit=time_limit,
+                    tee=tee,
+                    solver_threads=solver_threads,
+                    poa_bounds_lower=poa_bounds_lower,
+                    poa_bounds_margin=poa_bounds_margin,
+                ),
+                eq_previous,
+                output_paths.get("equilibrium_cost_bounds"),
+                use_default_if_missing=False,
+            )
 
         return self.save_final_report(output_paths["final"])

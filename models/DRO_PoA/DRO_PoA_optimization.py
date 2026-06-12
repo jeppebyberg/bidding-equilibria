@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import sys
 import time
 from pathlib import Path
@@ -12,6 +13,7 @@ from pyomo.environ import (
     Binary,
     ConcreteModel,
     Constraint,
+    ConstraintList,
     NonNegativeReals,
     Objective,
     Reals,
@@ -94,6 +96,7 @@ class DRO_PoAOptimization(
     DEFAULT_PoA_UPPER = 10.0
     DEFAULT_PHI_LOWER = DEFAULT_PoA_LOWER
     DEFAULT_PHI_UPPER = DEFAULT_PoA_UPPER
+    DEFAULT_ALPHA_ORDERING_EPSILON = 1e-6
 
     normalization_epsilon = 1e-12
     # Scenarios whose minimum achievable Wasserstein distance to the support set
@@ -143,6 +146,7 @@ class DRO_PoAOptimization(
         default_phi_lower: Optional[float] = None,
         default_phi_upper: Optional[float] = None,
         ar1_coverage: Optional[float] = None,
+        alpha_ordering_epsilon: float = DEFAULT_ALPHA_ORDERING_EPSILON,
     ):
         if float(eta) < 0.0:
             raise ValueError("eta must be nonnegative")
@@ -186,12 +190,15 @@ class DRO_PoAOptimization(
         self.default_PoA_upper = float(
             default_PoA_upper if default_phi_upper is None else default_phi_upper
         )
+        self.alpha_ordering_epsilon = float(alpha_ordering_epsilon)
         if self.default_c_opt_lower <= 0.0:
             raise ValueError("default_c_opt_lower must be strictly positive")
         if self.default_c_opt_upper < self.default_c_opt_lower:
             raise ValueError("default_c_opt_upper must be >= default_c_opt_lower")
         if self.default_lambda_lower >= self.default_lambda_upper:
             raise ValueError("default_lambda_lower must be < default_lambda_upper")
+        if self.alpha_ordering_epsilon < 0.0:
+            raise ValueError("alpha_ordering_epsilon must be nonnegative")
         self.capacity_dual_bound = float(self.default_dual_big_m)
         self.ramp_dual_bound = float(self.default_dual_big_m)
         self.primal_big_m_placeholder = float(self.default_dual_big_m)
@@ -980,7 +987,6 @@ class DRO_PoAOptimization(
         self._build_PoA_constraints()
         self._build_support_floor_constraints()
 
-    
     def _build_transport_constraints(self) -> None:
         m = self.model
 
@@ -1986,7 +1992,18 @@ class DRO_PoAOptimization(
                     "optimizer.write_iis_on_infeasible=True to diagnose)."
                 )
         elif len(self.solver_results.solution) > 0:
-            self.model.solutions.load_from(self.solver_results)
+            # Gurobi can return sign-bounded KKT duals (e.g. mu_lower_eq) a hair
+            # past their 0 lower bound, within FeasibilityTol (~1e-6). The value
+            # is genuinely zero; the only effect is a cosmetic W1002 on load.
+            # Silence pyomo.core just for this load so real out-of-bounds loads
+            # elsewhere still surface.
+            pyomo_core_logger = logging.getLogger("pyomo.core")
+            previous_level = pyomo_core_logger.level
+            pyomo_core_logger.setLevel(logging.ERROR)
+            try:
+                self.model.solutions.load_from(self.solver_results)
+            finally:
+                pyomo_core_logger.setLevel(previous_level)
         return self.solver_results
 
 if __name__ == "__main__":

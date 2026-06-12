@@ -63,6 +63,7 @@ class PoAOptimization(
     DEFAULT_LOOSE_C_OPT_UPPER = 10000
     DEFAULT_PoA_LOWER = 1.0
     DEFAULT_PoA_UPPER = 10.0
+    DEFAULT_ALPHA_ORDERING_EPSILON = 1e-6
 
     allowed_objective_modes = {
         "difference",
@@ -95,6 +96,7 @@ class PoAOptimization(
         default_c_opt_upper: float = DEFAULT_LOOSE_C_OPT_UPPER,
         default_PoA_lower: float = DEFAULT_PoA_LOWER,
         default_PoA_upper: float = DEFAULT_PoA_UPPER,
+        alpha_ordering_epsilon: float = DEFAULT_ALPHA_ORDERING_EPSILON,
     ):
         self.scenarios_df = scenarios_df.reset_index(drop=True)
         self.costs_df = costs_df
@@ -116,12 +118,15 @@ class PoAOptimization(
         self.default_c_opt_upper = float(default_c_opt_upper)
         self.default_PoA_lower = float(default_PoA_lower)
         self.default_PoA_upper = float(default_PoA_upper)
+        self.alpha_ordering_epsilon = float(alpha_ordering_epsilon)
         if self.default_c_opt_lower <= 0.0:
             raise ValueError("default_c_opt_lower must be strictly positive")
         if self.default_c_opt_upper < self.default_c_opt_lower:
             raise ValueError("default_c_opt_upper must be >= default_c_opt_lower")
         if self.default_lambda_lower >= self.default_lambda_upper:
             raise ValueError("default_lambda_lower must be < default_lambda_upper")
+        if self.alpha_ordering_epsilon < 0.0:
+            raise ValueError("alpha_ordering_epsilon must be nonnegative")
         self.capacity_dual_bound = float(self.default_dual_big_m)
         self.ramp_dual_bound = float(self.default_dual_big_m)
         self.default_bounds_used: dict[str, Any] = self._empty_default_bounds_used()

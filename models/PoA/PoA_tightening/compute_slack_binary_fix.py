@@ -33,6 +33,10 @@ def _initialize_parallel_slack_computer(state: dict[str, Any]) -> None:
         objective_mode=state.get("objective_mode", "difference"),
         mccormick_bounds=state.get("mccormick_bounds"),
         use_default_bounds=bool(state.get("use_default_bounds", False)),
+        alpha_ordering_epsilon=state.get(
+            "alpha_ordering_epsilon",
+            PoAOptimization.DEFAULT_ALPHA_ORDERING_EPSILON,
+        ),
     )
     if "p_init" in state:
         poa.p_init = state["p_init"]
@@ -165,6 +169,7 @@ class SlackBinaryFixComputer(PoATighteningMain):
             "objective_mode": self.poa.objective_mode,
             "mccormick_bounds": self.poa.mccormick_bounds,
             "use_default_bounds": self.poa.use_default_bounds,
+            "alpha_ordering_epsilon": self.poa.alpha_ordering_epsilon,
             "nn_relu_bounds_report": getattr(self.poa, "nn_relu_bounds_report", {}) or {},
             "primal_big_m": getattr(self.poa, "primal_big_m", {}) or {},
         }

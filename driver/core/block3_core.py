@@ -164,6 +164,8 @@ class PoAPipelineConfig:
     poa_mccormick_c_opt_bounds: tuple[float, float] | None = None
     poa_mccormick_num_pieces: int = 4
     poa_mccormick_c_opt_breakpoints: list[float] | None = None
+    # Cushion on the derived McCormick PoA upper bound.
+    poa_bounds_derivation_margin: float = 1e-3
 
     solver_name: str = "gurobi"
     preprocessing_time_limit: int = 200
@@ -241,6 +243,10 @@ class PoAPipelineConfig:
         return Path(self.tightening_output_paths["optimal_cost_bounds"])
 
     @property
+    def equilibrium_cost_bounds_path(self) -> Path:
+        return Path(self.tightening_output_paths["equilibrium_cost_bounds"])
+
+    @property
     def poa_results_path(self) -> Path:
         objective_suffix = (
             "" if self.poa_objective_mode == "difference" else f"_{self.poa_objective_mode}"
@@ -285,6 +291,7 @@ def build_poa_config(config: ProjectConfig) -> PoAPipelineConfig:
         poa_mccormick_c_opt_bounds=config.poa_mccormick_c_opt_bounds,
         poa_mccormick_num_pieces=config.poa_mccormick_num_pieces,
         poa_mccormick_c_opt_breakpoints=config.poa_mccormick_c_opt_breakpoints,
+        poa_bounds_derivation_margin=config.poa_bounds_derivation_margin,
         solver_name=config.solver_name,
         preprocessing_time_limit=config.preprocessing_time_limit,
         poa_time_limit=config.poa_time_limit,
@@ -355,17 +362,10 @@ def build_poa_mccormick_bounds(config: PoAPipelineConfig) -> dict[str, Any] | No
             f"default C_opt bounds {c_opt_bounds} for McCormick final solve."
         )
 
-    if config.poa_mccormick_PoA_bounds is None or c_opt_bounds is None:
-        raise ValueError(
-            "McCormick objective modes require bounds. Set either "
-            "poa_mccormick_bounds={'PoA': (...), 'C_opt': (...), ...} or both "
-            "poa_mccormick_PoA_bounds and poa_mccormick_c_opt_bounds in FullPipelineConfig. "
-            "Alternatively, run the optimal_cost_bounds tightening stage and provide "
-            "poa_mccormick_PoA_bounds."
-        )
+    poa_bounds = resolve_poa_mccormick_poa_box(config)
 
     mccormick_bounds: dict[str, Any] = {
-        "PoA": tuple(config.poa_mccormick_PoA_bounds),
+        "PoA": poa_bounds,
         "C_opt": tuple(c_opt_bounds),
     }
     if mode == "piecewise_mccormick":
@@ -416,6 +416,50 @@ def load_poa_optimal_cost_bounds(config: PoAPipelineConfig) -> tuple[float, floa
         if lower is not None and upper is not None:
             return (float(lower), float(upper))
     return None
+
+
+def load_poa_derived_poa_bounds(config: PoAPipelineConfig) -> tuple[float, float] | None:
+    """Read the derived PoA box [PoA_L, PoA_U] from the tightening report, or None.
+
+    The box is computed and stored by the equilibrium_cost_bounds stage
+    (PoA_U = max C_eq / min C_opt), so the final solve only reads it here.
+    """
+    for path in (config.tightening_report_path, config.equilibrium_cost_bounds_path):
+        if not Path(path).exists():
+            continue
+        with Path(path).open("r", encoding="utf-8") as file_handle:
+            report = json.load(file_handle)
+        box = report.get("derived_poa_bounds")
+        if isinstance(box, (list, tuple)) and len(box) == 2:
+            return (float(box[0]), float(box[1]))
+    return None
+
+
+def resolve_poa_mccormick_poa_box(config: PoAPipelineConfig) -> tuple[float, float]:
+    """Resolve the McCormick PoA box (PoA_L, PoA_U) for the final PoA solve.
+
+    If the equilibrium_cost_bounds stage stored a ``derived_poa_bounds`` box
+    (PoA_U = max C_eq / min C_opt), use it. Otherwise fall back to the hand-set
+    ``poa_mccormick_PoA_bounds`` (e.g. (1, 20)).
+    """
+    derived = load_poa_derived_poa_bounds(config)
+    if derived is not None:
+        print(
+            f"[block3] using derived McCormick PoA box from tightening report: "
+            f"({derived[0]:.6g}, {derived[1]:.6g})"
+        )
+        return derived
+    config_box = (
+        tuple(config.poa_mccormick_PoA_bounds)
+        if config.poa_mccormick_PoA_bounds is not None
+        else None
+    )
+    if config_box is None:
+        raise ValueError(
+            "McCormick objective modes require a PoA box. Set poa_mccormick_PoA_bounds "
+            "(e.g. (1.0, 50.0)) or run the equilibrium_cost_bounds tightening stage."
+        )
+    return config_box
 
 
 def build_poa_optimizer(
@@ -499,6 +543,11 @@ def run_tightening_pipeline(
         run_slack_binary_fix=bool(flags["slack_binary_fix"]),
         run_dual_big_m=bool(flags["dual_big_m"]),
         run_optimal_cost_bounds=bool(flags["optimal_cost_bounds"]),
+        run_equilibrium_cost_bounds=bool(flags.get("equilibrium_cost_bounds", False)),
+        poa_bounds_lower=(
+            config.poa_mccormick_PoA_bounds[0] if config.poa_mccormick_PoA_bounds else 1.0
+        ),
+        poa_bounds_margin=config.poa_bounds_derivation_margin,
         previous_paths=previous_paths,
         output_paths=output_paths,
         solver_name=config.solver_name,

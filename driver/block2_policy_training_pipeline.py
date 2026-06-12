@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +49,7 @@ def run(config=None) -> dict[str, Any]:
     cfg = config or build_config()
     cfg.nn_policy_generators = _resolve_policy_generators(cfg, cfg)
 
+    t0 = time.perf_counter()
     manager = ScenarioManager(cfg.case)
     scenarios = load_or_generate_scenarios(
         config=cfg,
@@ -68,6 +70,7 @@ def run(config=None) -> dict[str, Any]:
         train_policies(cfg)
     else:
         print("[block2] Reusing existing trained policies.")
+    wall_time = time.perf_counter() - t0
 
     discovered = discover_trained_policy_generators(cfg.model_dir)
     if discovered:
@@ -86,6 +89,7 @@ def run(config=None) -> dict[str, Any]:
         "nn_policy_generators": list(cfg.nn_policy_generators),
         "ran_feature_building": bool(cfg.run_feature_building),
         "ran_nn_training": bool(cfg.run_nn_training),
+        "wall_time_seconds": wall_time,
     }
     write_manifest("block2_policy_training", manifest, cfg)
     return manifest

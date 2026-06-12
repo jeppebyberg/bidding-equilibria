@@ -8,7 +8,6 @@ from typing import Any, Callable, Optional
 
 from models.DRO_PoA.DRO_PoA_optimization import DRO_PoAOptimization
 
-
 DEFAULT_DRO_TIGHTENING_OUTPUT_PATHS: dict[str, str] = {
     "primal_big_m": "results/dro_poa_tightening/{regime_name}/primal_big_m_report.json",
     "relu_bounds": "results/dro_poa_tightening/{regime_name}/relu_bounds_report.json",
@@ -16,6 +15,7 @@ DEFAULT_DRO_TIGHTENING_OUTPUT_PATHS: dict[str, str] = {
     "slack_binary_fix": "results/dro_poa_tightening/{regime_name}/slack_binary_fix_report.json",
     "dual_big_m": "results/dro_poa_tightening/{regime_name}/dual_big_m_report.json",
     "optimal_cost_bounds": "results/dro_poa_tightening/{regime_name}/optimal_cost_bounds_report.json",
+    "equilibrium_cost_bounds": "results/dro_poa_tightening/{regime_name}/equilibrium_cost_bounds_report.json",
     "final": "results/dro_poa_tightening/{regime_name}/final_tightening_report.json",
 }
 
@@ -65,6 +65,9 @@ class DROPoATighteningMain:
         ambiguity_kappa: float = 0.3,
         use_default_bounds: bool = False,
         ar1_coverage: Optional[float] = None,
+        alpha_ordering_epsilon: float = (
+            DRO_PoAOptimization.DEFAULT_ALPHA_ORDERING_EPSILON
+        ),
     ) -> None:
         self.poa = DRO_PoAOptimization(
             scenarios_df=scenarios_df,
@@ -86,6 +89,7 @@ class DROPoATighteningMain:
             ambiguity_kappa=ambiguity_kappa,
             use_default_bounds=use_default_bounds,
             ar1_coverage=ar1_coverage,
+            alpha_ordering_epsilon=alpha_ordering_epsilon,
         )
         self.dro = self.poa
         self.dro_poa = self.poa
@@ -228,6 +232,16 @@ class DROPoATighteningMain:
         ) and hasattr(self.poa, "_set_optimal_cost_bounds_from_report"):
             self.poa._set_optimal_cost_bounds_from_report(report)
 
+        for key in (
+            "equilibrium_cost_bounds",
+            "scenario_equilibrium_cost_bounds",
+            "equilibrium_cost_bound_optimization_results",
+        ):
+            if key in report:
+                self.tightening_data[key] = report.get(key, {}) or {}
+        if report.get("derived_poa_bounds"):
+            self.tightening_data["derived_poa_bounds"] = report.get("derived_poa_bounds")
+
         if "alpha_bounds" in self.tightening_data:
             self.poa.alpha_bounds = self._parse_alpha_bounds(
                 self.tightening_data.get("alpha_bounds", {}) or {}
@@ -256,7 +270,9 @@ class DROPoATighteningMain:
             )
 
         report_scenarios = metadata.get("num_empirical_scenarios")
-        if report_scenarios is not None and int(report_scenarios) != int(self.poa.num_empirical_scenarios):
+        if report_scenarios is not None and int(report_scenarios) != int(
+            self.poa.num_empirical_scenarios
+        ):
             raise ValueError(
                 "DRO tightening report num_empirical_scenarios mismatch: "
                 f"report has {report_scenarios}, current model has "
@@ -362,6 +378,7 @@ class DROPoATighteningMain:
                 "mccormick_bounds": self.poa.mccormick_bounds,
                 "use_default_bounds": self.poa.use_default_bounds,
                 "ar1_coverage": getattr(self.poa, "ar1_coverage", None),
+                "alpha_ordering_epsilon": self.poa.alpha_ordering_epsilon,
             },
             "tightening_data": dict(self.tightening_data),
         }
@@ -407,9 +424,7 @@ class DROPoATighteningMain:
         for key, value in (alpha_bounds or {}).items():
             index = self._parse_json_index(key)
             if len(index) not in {3, 4}:
-                raise ValueError(
-                    f"Alpha-bound key '{key}' must have i,b,t or k,i,b,t indices"
-                )
+                raise ValueError(f"Alpha-bound key '{key}' must have i,b,t or k,i,b,t indices")
             parsed[tuple(int(part) for part in index)] = {
                 "lower": float(value["lower"]),
                 "upper": float(value["upper"]),
@@ -452,7 +467,9 @@ class DROPoATighteningMain:
             "nn_relu_bounds",
             {},
         ):
-            raise ValueError("ReLU bounds must be computed or loaded before alpha-bound tightening.")
+            raise ValueError(
+                "ReLU bounds must be computed or loaded before alpha-bound tightening."
+            )
 
     def _require_alpha_bounds(self) -> None:
         if not getattr(self.poa, "alpha_bounds", None):
@@ -542,10 +559,15 @@ class DROPoATighteningMain:
                 value = self._details_value(details, "value", details)
             numeric_value = float(value)
             if regime_index not in aggregated or numeric_value > float(
-                aggregated[regime_index].get("big_m", aggregated[regime_index].get("tight_big_m", 0.0))
+                aggregated[regime_index].get(
+                    "big_m", aggregated[regime_index].get("tight_big_m", 0.0)
+                )
             ):
                 aggregated[regime_index] = dict(details) if isinstance(details, dict) else {}
-                if "tight_big_m" in aggregated[regime_index] and "big_m" not in aggregated[regime_index]:
+                if (
+                    "tight_big_m" in aggregated[regime_index]
+                    and "big_m" not in aggregated[regime_index]
+                ):
                     aggregated[regime_index]["tight_big_m"] = numeric_value
                 else:
                     aggregated[regime_index]["big_m"] = numeric_value
@@ -560,9 +582,13 @@ class DROPoATighteningMain:
         for var_name, entries in (fixed_binaries or {}).items():
             candidates: dict[tuple[int, ...], list[dict[str, Any]]] = {}
             for raw_key, details in (entries or {}).items():
-                index = self._parse_json_index(raw_key) if isinstance(raw_key, str) else tuple(raw_key)
+                index = (
+                    self._parse_json_index(raw_key) if isinstance(raw_key, str) else tuple(raw_key)
+                )
                 if len(index) < 2:
-                    raise ValueError(f"Scenario-indexed fixed binary key '{raw_key}' must include k")
+                    raise ValueError(
+                        f"Scenario-indexed fixed binary key '{raw_key}' must include k"
+                    )
                 regime_index = tuple(int(part) for part in index[1:])
                 candidates.setdefault(regime_index, []).append(dict(details or {}))
             for regime_index, scenario_details in candidates.items():
@@ -588,7 +614,9 @@ class DROPoATighteningMain:
         for generator_name, entries in (relu_bounds or {}).items():
             accum: dict[tuple[int, int, int], dict[str, float]] = {}
             for raw_key, details in (entries or {}).items():
-                index = self._parse_json_index(raw_key) if isinstance(raw_key, str) else tuple(raw_key)
+                index = (
+                    self._parse_json_index(raw_key) if isinstance(raw_key, str) else tuple(raw_key)
+                )
                 if len(index) != 4:
                     raise ValueError(
                         f"Scenario-indexed ReLU key '{raw_key}' must have k,t,linear_idx,node"
@@ -661,6 +689,16 @@ class DROPoATighteningMain:
                 "optimal_cost_bound_optimization_results",
                 {},
             ),
+            "equilibrium_cost_bounds": self.tightening_data.get("equilibrium_cost_bounds", {}),
+            "scenario_equilibrium_cost_bounds": self.tightening_data.get(
+                "scenario_equilibrium_cost_bounds",
+                {},
+            ),
+            "equilibrium_cost_bound_optimization_results": self.tightening_data.get(
+                "equilibrium_cost_bound_optimization_results",
+                {},
+            ),
+            "derived_poa_bounds": self.tightening_data.get("derived_poa_bounds"),
             "stage_reports": self.stage_reports,
             "stage_timings": self.stage_timings,
         }
@@ -720,6 +758,9 @@ class DROPoATighteningMain:
         run_slack_binary_fix: bool = True,
         run_dual_big_m: bool = True,
         run_optimal_cost_bounds: bool = True,
+        run_equilibrium_cost_bounds: bool = False,
+        poa_bounds_lower: float = 1.0,
+        poa_bounds_margin: float = 1e-3,
         previous_paths: Optional[dict[str, str | Path]] = None,
         output_paths: Optional[dict[str, str | Path]] = None,
         solver_name: str = "gurobi",
@@ -735,12 +776,17 @@ class DROPoATighteningMain:
     ) -> Path:
         from models.DRO_PoA.DRO_PoA_tightening.compute_alpha_bounds import DROAlphaBoundsComputer
         from models.DRO_PoA.DRO_PoA_tightening.compute_dual_big_m import DRODualBigMComputer
+        from models.DRO_PoA.DRO_PoA_tightening.compute_equilibrium_cost_bounds import (
+            DROEquilibriumCostBoundsComputer,
+        )
         from models.DRO_PoA.DRO_PoA_tightening.compute_optimal_cost_bounds import (
             DROOptimalCostBoundsComputer,
         )
         from models.DRO_PoA.DRO_PoA_tightening.compute_primal_big_m import DROPrimalBigMComputer
         from models.DRO_PoA.DRO_PoA_tightening.compute_relu_bounds import DROReLUBoundsComputer
-        from models.DRO_PoA.DRO_PoA_tightening.compute_slack_binary_fix import DROSlackBinaryFixComputer
+        from models.DRO_PoA.DRO_PoA_tightening.compute_slack_binary_fix import (
+            DROSlackBinaryFixComputer,
+        )
 
         previous_paths = self._resolve_output_paths(previous_paths)
         output_paths = self._resolve_output_paths(output_paths)
@@ -751,6 +797,7 @@ class DROPoATighteningMain:
         slack_stage = self._as_stage(DROSlackBinaryFixComputer)
         dual_stage = self._as_stage(DRODualBigMComputer)
         optimal_cost_stage = self._as_stage(DROOptimalCostBoundsComputer)
+        equilibrium_cost_stage = self._as_stage(DROEquilibriumCostBoundsComputer)
 
         self._load_or_run_stage(
             "primal_big_m",
@@ -840,5 +887,30 @@ class DROPoATighteningMain:
             previous_paths["optimal_cost_bounds"],
             output_paths["optimal_cost_bounds"],
         )
+
+        # Optional equilibrium cost bound (gated by run_equilibrium_cost_bounds):
+        # compute when requested, else reuse a previous report when present, else
+        # skip so the final report omits the section and the McCormick PoA box
+        # falls back to the hand-set dro_mccormick_PoA_bounds.
+        eq_previous = previous_paths.get("equilibrium_cost_bounds")
+        if run_equilibrium_cost_bounds:
+            self._require_alpha_bounds()
+            self._load_or_run_stage(
+                "equilibrium_cost_bounds",
+                True,
+                lambda output_path: equilibrium_cost_stage.run_equilibrium_cost_bounds(
+                    output_path=output_path,
+                    solver_name=solver_name,
+                    time_limit=time_limit,
+                    tee=tee,
+                    solver_threads=solver_threads,
+                    poa_bounds_lower=poa_bounds_lower,
+                    poa_bounds_margin=poa_bounds_margin,
+                ),
+                eq_previous,
+                output_paths.get("equilibrium_cost_bounds"),
+            )
+        elif eq_previous and Path(eq_previous).exists():
+            self._load_previous_stage("equilibrium_cost_bounds", eq_previous)
 
         return self.save_final_report(output_paths["final"])

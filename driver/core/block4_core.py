@@ -91,6 +91,8 @@ class DROPoAPipelineConfig:
     solver_name: str = "gurobi"
     preprocessing_time_limit: int | None = 200
     dro_time_limit: int | None = 400
+    # Cushion on the derived McCormick PoA upper bound.
+    poa_bounds_derivation_margin: float = 1e-3
     slack_epsilon: float = 1e-6
     poa_parallel_workers: int = 1
     poa_solver_threads_per_worker: int | None = None
@@ -182,6 +184,7 @@ def build_dro_config(config: ProjectConfig) -> DROPoAPipelineConfig:
         solver_name=config.solver_name,
         preprocessing_time_limit=config.preprocessing_time_limit,
         dro_time_limit=config.dro_time_limit,
+        poa_bounds_derivation_margin=config.poa_bounds_derivation_margin,
         slack_epsilon=config.epsilon,
         poa_parallel_workers=config.poa_parallel_workers,
         poa_solver_threads_per_worker=config.poa_solver_threads_per_worker,
@@ -271,9 +274,7 @@ def validate_scenarios_within_wasserstein_support(
             rejected_reasons[int(scenario_idx)] = "demand_innov_t0"
             continue
         if horizon > 1:
-            ar1_ref = demand_ref_scalar * mu_D * (
-                demand_shape[1:] - rho_D * demand_shape[:-1]
-            )
+            ar1_ref = demand_ref_scalar * mu_D * (demand_shape[1:] - rho_D * demand_shape[:-1])
             innov = demand[1:] - rho_D * demand[:-1] - ar1_ref
             if bool(np.any(np.abs(innov) > demand_threshold + 1e-9)):
                 rejected_reasons[int(scenario_idx)] = "demand_innov"
@@ -299,9 +300,7 @@ def validate_scenarios_within_wasserstein_support(
                 rejected_reasons[int(scenario_idx)] = f"wind_{generator_name}_innov_t0"
                 break
             if horizon > 1:
-                ar1_ref = capacity * mu_W * (
-                    wind_shape[1:] - rho_W * wind_shape[:-1]
-                )
+                ar1_ref = capacity * mu_W * (wind_shape[1:] - rho_W * wind_shape[:-1])
                 innov = wind[1:] - rho_W * wind[:-1] - ar1_ref
                 if bool(np.any(np.abs(innov) > wind_threshold + 1e-9)):
                     rejected_reasons[int(scenario_idx)] = f"wind_{generator_name}_innov"
@@ -484,9 +483,7 @@ def build_dro_tightening(
         epsilon=config.dro_wasserstein_epsilon,
         nn_model_dir=str(config.model_dir) if config.nn_policy_generators else None,
         nn_normalization_stats_path=(
-            str(config.nn_normalization_stats_path)
-            if config.nn_policy_generators
-            else None
+            str(config.nn_normalization_stats_path) if config.nn_policy_generators else None
         ),
         nn_policy_generators=list(config.nn_policy_generators),
         reference_case=config.case,
@@ -497,6 +494,7 @@ def build_dro_tightening(
         use_default_bounds=(objective_mode != "difference"),
         ar1_coverage=config.ar1_coverage,
     )
+
 
 def run_dro_tightening_for_regime(
     config: DROPoAPipelineConfig,
@@ -521,6 +519,11 @@ def run_dro_tightening_for_regime(
         run_slack_binary_fix=bool(flags["slack_binary_fix"]),
         run_dual_big_m=bool(flags["dual_big_m"]),
         run_optimal_cost_bounds=bool(flags["optimal_cost_bounds"]),
+        run_equilibrium_cost_bounds=bool(flags.get("equilibrium_cost_bounds", False)),
+        poa_bounds_lower=(
+            config.dro_mccormick_PoA_bounds[0] if config.dro_mccormick_PoA_bounds else 1.0
+        ),
+        poa_bounds_margin=config.poa_bounds_derivation_margin,
         previous_paths=previous_paths,
         output_paths=output_paths,
         solver_name=config.solver_name,
@@ -535,6 +538,7 @@ def run_dro_tightening_for_regime(
     print(f"  Regime: {regime_name}")
     print(f"  Runtime: {elapsed:.2f} seconds")
     return final_report_path
+
 
 def run_dro_essential_bounds_for_regime(
     config: DROPoAPipelineConfig,
@@ -572,6 +576,7 @@ def run_dro_essential_bounds_for_regime(
     print(f"  Runtime: {elapsed:.2f} seconds")
     return final_report_path
 
+
 def print_tightening_plan(
     config: DROPoAPipelineConfig,
     regime_name: str,
@@ -606,6 +611,7 @@ def print_tightening_plan(
         print(f"    {label:<17} {action:<5} {path_label}: {path}")
     print(f"  Final report: {output_paths['final']}")
     print("  Note: this support-tightening report is reused for every eta in the regime.")
+
 
 def _print_wasserstein_floor_diagnostic(
     rows: list[dict[str, Any]],
@@ -675,6 +681,7 @@ def run_dro_eta_sweep(
 def _snapshot_solution(optimizer: DRO_PoAOptimization) -> list:
     """Save all current model variable values so they can be restored as a warm start."""
     from pyomo.environ import Var
+
     return [
         (var_data, var_data.value)
         for var_data in optimizer.model.component_data_objects(Var, active=True)
@@ -696,6 +703,7 @@ def _set_poa_upper_cut(optimizer: DRO_PoAOptimization, upper_bound: float) -> No
     optimum of the least-penalised problem for all subsequent higher-eta solves.
     """
     from pyomo.environ import Constraint as _Constraint
+
     m = optimizer.model
     solver = optimizer._persistent_solver
     K = optimizer.num_empirical_scenarios
@@ -705,9 +713,7 @@ def _set_poa_upper_cut(optimizer: DRO_PoAOptimization, upper_bound: float) -> No
             solver.remove_constraint(c)
         m.del_component(m.poa_upper_cut)
 
-    m.poa_upper_cut = _Constraint(
-        expr=sum(m.PoA[k] for k in m.scenarios) / K <= upper_bound + 1e-4
-    )
+    m.poa_upper_cut = _Constraint(expr=sum(m.PoA[k] for k in m.scenarios) / K <= upper_bound + 1e-4)
     for c in m.poa_upper_cut.values():
         solver.add_constraint(c)
     print(f"  PoA upper cut added: avg PoA <= {upper_bound + 1e-4:.6g}")
@@ -824,7 +830,7 @@ def run_dro_eta_path_for_regime(
     best_cutoff: float | None = None
 
     for position, eta in enumerate(ordered_etas):
-        is_first_solve = position == 0   # eta_max
+        is_first_solve = position == 0  # eta_max
         is_second_solve = position == 1  # eta_min
         is_interior = position >= 2
 
@@ -879,9 +885,7 @@ def run_dro_eta_path_for_regime(
                 # At eta=0 the objective is exactly the average PoA, so the
                 # certified solver bound is a valid cap even if this solve hit
                 # the time limit (where the incumbent understates the max).
-                bound_ub = optional_float(
-                    (summary.get("solver") or {}).get("best_objective_bound")
-                )
+                bound_ub = optional_float((summary.get("solver") or {}).get("best_objective_bound"))
                 if bound_ub is not None:
                     ub = bound_ub
             if ub is not None:
@@ -895,9 +899,7 @@ def run_dro_eta_path_for_regime(
                     _set_poa_scenario_caps(optimizer, scenario_caps)
 
     # Report in ascending eta order so the summary reads naturally.
-    summaries.sort(
-        key=lambda s: float(s["eta"]) if s.get("eta") is not None else float("inf")
-    )
+    summaries.sort(key=lambda s: float(s["eta"]) if s.get("eta") is not None else float("inf"))
     return summaries
 
 
@@ -922,6 +924,7 @@ def archive_existing_dro_result_folders(
         print(f"\nArchived existing DRO results for regime '{regime_name}': {archive_dir}")
     return archived_paths
 
+
 def _available_archive_path(path: Path) -> Path:
     if not path.exists():
         return path
@@ -931,6 +934,7 @@ def _available_archive_path(path: Path) -> Path:
         if not candidate.exists():
             return candidate
         suffix += 1
+
 
 def save_dro_solve_log_artifacts(
     optimizer: DRO_PoAOptimization,
@@ -958,9 +962,7 @@ def save_dro_solve_log_artifacts(
 
     solver_results = getattr(optimizer, "solver_results", None)
     termination = (
-        str(solver_results.solver.termination_condition)
-        if solver_results is not None
-        else None
+        str(solver_results.solver.termination_condition) if solver_results is not None else None
     )
     payload = {
         "eta": float(optimizer.eta),
@@ -968,12 +970,8 @@ def save_dro_solve_log_artifacts(
         "objective_mode": optimizer.objective_mode,
         "num_time_steps": int(optimizer.num_time_steps),
         "termination_condition": termination,
-        "wall_time_seconds": optional_float(
-            getattr(optimizer, "solve_wall_time_seconds", None)
-        ),
-        "best_objective_bound": optional_float(
-            getattr(optimizer, "best_objective_bound", None)
-        ),
+        "wall_time_seconds": optional_float(getattr(optimizer, "solve_wall_time_seconds", None)),
+        "best_objective_bound": optional_float(getattr(optimizer, "best_objective_bound", None)),
         "mip_gap": optional_float(getattr(optimizer, "mip_gap", None)),
         "bound_progression": progression,
     }
@@ -997,17 +995,14 @@ def _print_dro_solve_banner(
     text; this banner labels which regime/eta/objective is being solved.
     """
     progress = (
-        f" [{eta_index}/{eta_count}]"
-        if eta_index is not None and eta_count is not None
-        else ""
+        f" [{eta_index}/{eta_count}]" if eta_index is not None and eta_count is not None else ""
     )
-    start_kind = (
-        "empirical MIP start" if from_empirical_start else "warm start (previous eta)"
-    )
+    start_kind = "empirical MIP start" if from_empirical_start else "warm start (previous eta)"
     print("\n" + "=" * 78)
     print(f"SOLVING DRO PoA{progress}  |  regime: {regime_name}  |  eta: {float(eta):.6g}")
     print(f"  objective mode: {objective_mode}  |  start: {start_kind}")
     print("=" * 78)
+
 
 def solve_and_save_dro_for_eta(
     optimizer: DRO_PoAOptimization,
@@ -1067,6 +1062,7 @@ def solve_and_save_dro_for_eta(
     print(f"  Runtime: {elapsed:.2f} seconds")
     return output_path
 
+
 def build_dro_mccormick_bounds(
     config: DROPoAPipelineConfig,
     regime_name: str,
@@ -1088,33 +1084,34 @@ def build_dro_mccormick_bounds(
     if c_opt_bounds is None:
         c_opt_bounds = load_dro_optimal_cost_bounds(config, regime_name)
 
-    if config.dro_mccormick_PoA_bounds is None or c_opt_bounds is None:
+    if c_opt_bounds is None:
         raise ValueError(
-            "DRO mccormick objective modes require mccormick bounds. Set either "
-            "dro_mccormick_bounds={'PoA': (...), 'C_opt': (...), ...} or both "
-            "dro_mccormick_PoA_bounds and dro_mccormick_c_opt_bounds in "
-            "DROFullPipelineConfig. Alternatively, run/load the optimal_cost_bounds "
-            "tightening stage and provide dro_mccormick_PoA_bounds."
+            "DRO mccormick objective modes require C_opt bounds. Set "
+            "dro_mccormick_bounds={'PoA': (...), 'C_opt': (...), ...} or "
+            "dro_mccormick_c_opt_bounds in DROFullPipelineConfig, or run/load the "
+            "optimal_cost_bounds tightening stage."
         )
 
+    poa_bounds = resolve_dro_mccormick_poa_box(config, regime_name)
+
     mccormick_bounds: dict[str, Any] = {
-        "PoA": tuple(config.dro_mccormick_PoA_bounds),
+        "PoA": poa_bounds,
         "C_opt": tuple(c_opt_bounds),
     }
     if mode == "piecewise_mccormick":
         if config.dro_mccormick_c_opt_breakpoints is not None:
-            mccormick_bounds["C_opt_breakpoints"] = list(
-                config.dro_mccormick_c_opt_breakpoints
-            )
+            mccormick_bounds["C_opt_breakpoints"] = list(config.dro_mccormick_c_opt_breakpoints)
         else:
             mccormick_bounds["num_pieces"] = int(config.dro_mccormick_num_pieces)
     return mccormick_bounds
+
 
 def default_dro_mccormick_c_opt_bounds() -> tuple[float, float]:
     return (
         float(DRO_PoAOptimization.DEFAULT_LOOSE_C_OPT_LOWER),
         float(DRO_PoAOptimization.DEFAULT_LOOSE_C_OPT_UPPER),
     )
+
 
 def build_dro_tightening_mccormick_bounds(
     config: DROPoAPipelineConfig,
@@ -1133,6 +1130,7 @@ def build_dro_tightening_mccormick_bounds(
     if mode == "piecewise_mccormick":
         mccormick_bounds["num_pieces"] = int(config.dro_mccormick_num_pieces)
     return mccormick_bounds
+
 
 def load_dro_optimal_cost_bounds(
     config: DROPoAPipelineConfig,
@@ -1165,6 +1163,70 @@ def load_dro_optimal_cost_bounds(
             return (float(lower), float(upper))
     return None
 
+
+def load_dro_derived_poa_bounds(
+    config: DROPoAPipelineConfig,
+    regime_name: str,
+) -> tuple[float, float] | None:
+    """Read the derived PoA box [PoA_L, PoA_U] from the regime's tightening report, or None.
+
+    The box is computed and stored by the equilibrium_cost_bounds stage
+    (PoA_U = max C_eq / min C_opt), so the final solve only reads it here.
+    """
+    output_stage_paths = resolved_stage_paths(config.tightening_output_paths, regime_name)
+    previous_stage_paths = resolved_stage_paths(config.tightening_previous_paths, regime_name)
+    candidate_paths = tuple(
+        dict.fromkeys(
+            [
+                output_stage_paths["final"],
+                output_stage_paths["equilibrium_cost_bounds"],
+                previous_stage_paths["final"],
+                previous_stage_paths["equilibrium_cost_bounds"],
+            ]
+        )
+    )
+    for path in candidate_paths:
+        report_path = Path(path)
+        if not report_path.exists():
+            continue
+        with report_path.open("r", encoding="utf-8") as file_handle:
+            report = json.load(file_handle)
+        box = report.get("derived_poa_bounds")
+        if isinstance(box, (list, tuple)) and len(box) == 2:
+            return (float(box[0]), float(box[1]))
+    return None
+
+
+def resolve_dro_mccormick_poa_box(
+    config: DROPoAPipelineConfig,
+    regime_name: str,
+) -> tuple[float, float]:
+    """Resolve the McCormick PoA box (PoA_L, PoA_U) for the DRO solve of one regime.
+
+    If the equilibrium_cost_bounds stage stored a ``derived_poa_bounds`` box
+    (PoA_U = max C_eq / min C_opt), use it. Otherwise fall back to the hand-set
+    ``dro_mccormick_PoA_bounds`` (e.g. (1, 20)).
+    """
+    derived = load_dro_derived_poa_bounds(config, regime_name)
+    if derived is not None:
+        print(
+            f"[block4][{regime_name}] using derived McCormick PoA box from tightening "
+            f"report: ({derived[0]:.6g}, {derived[1]:.6g})"
+        )
+        return derived
+    config_box = (
+        tuple(config.dro_mccormick_PoA_bounds)
+        if config.dro_mccormick_PoA_bounds is not None
+        else None
+    )
+    if config_box is None:
+        raise ValueError(
+            "DRO mccormick objective modes require a PoA box. Set dro_mccormick_PoA_bounds "
+            "(e.g. (1.0, 50.0)) or run the equilibrium_cost_bounds tightening stage."
+        )
+    return config_box
+
+
 def build_dro_optimizer(
     config: DROPoAPipelineConfig,
     scenarios: dict[str, Any],
@@ -1184,9 +1246,7 @@ def build_dro_optimizer(
         epsilon=float(config.dro_wasserstein_epsilon),
         nn_model_dir=str(config.model_dir) if config.nn_policy_generators else None,
         nn_normalization_stats_path=(
-            str(config.nn_normalization_stats_path)
-            if config.nn_policy_generators
-            else None
+            str(config.nn_normalization_stats_path) if config.nn_policy_generators else None
         ),
         nn_policy_generators=list(config.nn_policy_generators),
         reference_case=config.case,
@@ -1198,6 +1258,7 @@ def build_dro_optimizer(
     )
     return optimizer
 
+
 def resolved_stage_paths(
     paths: dict[str, str | Path],
     regime_name: str,
@@ -1207,6 +1268,7 @@ def resolved_stage_paths(
         stage_name: str(path_template).format(regime_name=regime_name)
         for stage_name, path_template in merged.items()
     }
+
 
 def eta_label(eta: float) -> str:
     return f"{float(eta):.8g}".replace("-", "m").replace(".", "p")
@@ -1273,5 +1335,3 @@ def average_poa_ratio(result: dict[str, Any]) -> float | None:
     if not ratios:
         return None
     return float(np.mean(ratios))
-
-

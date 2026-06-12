@@ -16,7 +16,7 @@ from driver.core.block0_core import ProjectConfig
 PROJECT_CONFIG = ProjectConfig(
     case_label = "base_case",
     synthetic_labels_target=25000,
-    horizon = 8,
+    horizon = 6,
 
     allow_wind_to_play = False,
 
@@ -28,6 +28,7 @@ PROJECT_CONFIG = ProjectConfig(
     run_heuristic_labels = False,
     run_feature_building = False,
     run_nn_training = False,
+
     run_poa_tightening = False,
 
     ambiguity_kappa = 0.25,
@@ -37,26 +38,26 @@ PROJECT_CONFIG = ProjectConfig(
         "alpha_bounds": True,
         "slack_binary_fix": True,
         "dual_big_m": True,
+        "equilibrium_cost_bounds": True,
     },
 
     run_poa_optimization = False,
 
-    run_dro_tightening = True,
+    run_dro_tightening = False,
 
     dro_tightening_flags = {
         "relu_bounds": True,
         "alpha_bounds": True,
         "slack_binary_fix": True,
         "dual_big_m": True,
+        "equilibrium_cost_bounds": True,
     },
 
     run_dro_optimization = True,
 
     poa_mccormick_num_pieces = 50,
-    poa_mccormick_PoA_bounds = (1.0, 10.0),
 
     dro_mccormick_num_pieces = 50,
-    dro_mccormick_PoA_bounds = (1.0, 10.0),
 )
 
 def load_project_config() -> ProjectConfig:

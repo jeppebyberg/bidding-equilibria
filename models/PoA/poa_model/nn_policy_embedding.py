@@ -545,6 +545,22 @@ class PoAPolicyEmbedding:
         m.nn_output = Var(m.nn_output_index, domain=Reals)
         m.nn_constraints = ConstraintList()
 
+        # Monotone-clamp ordering of a generator's own bids is applied as a
+        # structural transformation of the raw network outputs (alpha_b =
+        # max(alpha_{b-1} + eps, y_b)) rather than as a hard inequality on
+        # alpha, which would couple back through the policy equalities and
+        # restrict the upper-level market state. One ReLU per non-first block.
+        alpha_clamp_indices: list[tuple[int, int, int]] = []
+        for i in self.nn_policy_generator_ids:
+            local_blocks = list(self.local_blocks_by_generator[int(i)])
+            for right_block in local_blocks[1:]:
+                for t in range(self.num_time_steps):
+                    alpha_clamp_indices.append((int(i), int(right_block), int(t)))
+        m.alpha_clamp_index = Set(dimen=3, initialize=alpha_clamp_indices)
+        m.alpha_clamp_h = Var(m.alpha_clamp_index, domain=NonNegativeReals)
+        m.alpha_clamp_delta = Var(m.alpha_clamp_index, domain=Binary)
+        m.alpha_clamp_constraints = ConstraintList()
+
         for i in self.nn_policy_generator_ids:
             generator_name = self.physical_generator_names[i]
             relu_bounds = self.nn_relu_bounds[generator_name]
@@ -640,11 +656,164 @@ class PoAPolicyEmbedding:
                     previous_values = current_values
                     linear_idx += 1
 
-            for output_idx, local_block in policy["target_map"].items():
-                for t in range(self.num_time_steps):
-                    m.nn_constraints.add(
-                        m.alpha[i, local_block, t] == m.nn_output[i, t, output_idx]
+            self._build_alpha_monotone_clamp(i)
+
+    def _build_alpha_monotone_clamp(self, physical_generator_idx: int) -> None:
+        """Map raw network outputs to ascending bids via a monotone clamp.
+
+        For local blocks b_1 < ... < b_n with raw outputs y_k, set
+            alpha[b_1] = y_1
+            alpha[b_k] = alpha[b_{k-1}] + eps + ReLU(y_k - alpha[b_{k-1}] - eps)
+                       = max(alpha[b_{k-1}] + eps, y_k).
+        This guarantees alpha[b_k] >= alpha[b_{k-1}] + eps as a deterministic
+        function of the network outputs, so it never restricts the market state.
+        Each ReLU big-M is derived by interval propagation of the certified
+        last-hidden-layer bounds through the final linear layer (valid, loose).
+        """
+        m = self.model
+        i = int(physical_generator_idx)
+        generator_name = self.physical_generator_names[i]
+        policy = self.nn_policies[generator_name]
+        epsilon = float(self.alpha_ordering_epsilon)
+
+        block_to_output = {
+            int(local_block): int(output_idx)
+            for output_idx, local_block in policy["target_map"].items()
+        }
+        local_blocks = [int(b) for b in self.local_blocks_by_generator[i]]
+        missing = [b for b in local_blocks if b not in block_to_output]
+        if missing:
+            raise ValueError(
+                f"{generator_name}: local blocks {missing} are NN-controlled but "
+                f"absent from the policy target map; cannot order bids."
+            )
+
+        for t in range(self.num_time_steps):
+            output_lo, output_hi = self._nn_raw_output_interval_bounds(i, t)
+
+            first_block = local_blocks[0]
+            first_output = block_to_output[first_block]
+            m.nn_constraints.add(
+                m.alpha[i, first_block, t] == m.nn_output[i, t, first_output]
+            )
+            alpha_lo = output_lo[first_output]
+            alpha_hi = output_hi[first_output]
+            prev_block = first_block
+
+            for right_block in local_blocks[1:]:
+                out_k = block_to_output[right_block]
+                # s = y_k - alpha[prev] - eps; r = ReLU(s); alpha[k] = alpha[prev] + eps + r
+                s_lo = output_lo[out_k] - alpha_hi - epsilon
+                s_hi = output_hi[out_k] - alpha_lo - epsilon
+                s_expr = (
+                    m.nn_output[i, t, out_k]
+                    - m.alpha[i, prev_block, t]
+                    - epsilon
+                )
+                idx = (i, right_block, t)
+                h = m.alpha_clamp_h[idx]
+                delta = m.alpha_clamp_delta[idx]
+                if s_hi <= 0.0:
+                    # Network already orders this block: clamp is inactive (r = 0).
+                    m.alpha_clamp_constraints.add(h == 0)
+                    delta.fix(0)
+                elif s_lo >= 0.0:
+                    # Network always violates ordering here: clamp is active (r = s).
+                    m.alpha_clamp_constraints.add(h == s_expr)
+                    delta.fix(1)
+                else:
+                    m.alpha_clamp_constraints.add(h >= s_expr)
+                    m.alpha_clamp_constraints.add(h >= 0)
+                    m.alpha_clamp_constraints.add(h <= s_expr - s_lo * (1 - delta))
+                    m.alpha_clamp_constraints.add(h <= s_hi * delta)
+                m.alpha_clamp_constraints.add(
+                    m.alpha[i, right_block, t]
+                    == m.alpha[i, prev_block, t] + epsilon + h
+                )
+
+                # alpha[k] = max(alpha[k-1] + eps, y_k); exact interval enclosure.
+                alpha_lo = max(alpha_lo + epsilon, output_lo[out_k])
+                alpha_hi = max(alpha_hi + epsilon, output_hi[out_k])
+                prev_block = right_block
+
+    def _nn_raw_output_interval_bounds(
+        self, physical_generator_idx: int, t: int
+    ) -> tuple[dict[int, float], dict[int, float]]:
+        """Valid interval bounds on the raw network outputs y_k at time t.
+
+        Seeds the propagation from the certified post-activation bounds
+        (h_lower/h_upper) of each hidden ReLU layer in the ReLU bounds report
+        and propagates forward through the remaining linear/ReLU layers. The
+        report's OBBT bounds are computed over the support set, so the seed is
+        valid; interval arithmetic then yields valid (loose) output bounds.
+        """
+        i = int(physical_generator_idx)
+        generator_name = self.physical_generator_names[i]
+        policy = self.nn_policies[generator_name]
+        relu_bounds = self.nn_relu_bounds[generator_name]
+        layers = policy["layers"]
+
+        interval_lo: Optional[list[float]] = None
+        interval_hi: Optional[list[float]] = None
+        linear_idx = -1
+        for pos, layer in enumerate(layers):
+            layer_type = str(layer.get("type", "")).lower()
+            if layer_type == "linear":
+                linear_idx += 1
+                if interval_lo is None:
+                    # Bounds before the first certified ReLU layer are unknown;
+                    # we only start propagating once we have a valid seed.
+                    continue
+                weight = np.asarray(layer["weight"], dtype=float)
+                bias = np.asarray(layer["bias"], dtype=float)
+                new_lo: list[float] = []
+                new_hi: list[float] = []
+                for node in range(weight.shape[0]):
+                    lo = float(bias[node])
+                    hi = float(bias[node])
+                    for j in range(weight.shape[1]):
+                        w = float(weight[node, j])
+                        if w >= 0.0:
+                            lo += w * interval_lo[j]
+                            hi += w * interval_hi[j]
+                        else:
+                            lo += w * interval_hi[j]
+                            hi += w * interval_lo[j]
+                    new_lo.append(lo)
+                    new_hi.append(hi)
+                interval_lo, interval_hi = new_lo, new_hi
+            elif layer_type == "relu":
+                width = len(np.asarray(layers[pos - 1]["bias"], dtype=float))
+                seed_lo: list[float] = []
+                seed_hi: list[float] = []
+                for node in range(width):
+                    bounds = relu_bounds.get((int(t), int(linear_idx), int(node)))
+                    if bounds is None:
+                        raise ValueError(
+                            f"{generator_name}: missing ReLU bounds for clamp big-M "
+                            f"at time {t}, linear layer {linear_idx}, node {node}."
+                        )
+                    _, _, h_lb, h_ub = self._clamp_relu_bounds_to_status(
+                        str(bounds.get("status", "ambiguous")).lower(),
+                        float(bounds["L"]),
+                        float(bounds["U"]),
+                        float(bounds["h_lower"]),
+                        float(bounds["h_upper"]),
                     )
+                    seed_lo.append(h_lb)
+                    seed_hi.append(h_ub)
+                interval_lo, interval_hi = seed_lo, seed_hi
+
+        if interval_lo is None or interval_hi is None:
+            raise NotImplementedError(
+                f"{generator_name}: monotone-clamp big-M requires at least one "
+                f"hidden ReLU layer with certified bounds. A purely linear policy "
+                f"would need raw-output bounds from a dedicated tightening pass."
+            )
+        return (
+            {node: interval_lo[node] for node in range(len(interval_lo))},
+            {node: interval_hi[node] for node in range(len(interval_hi))},
+        )
 
     def apply_nn_relu_bounds_to_model(
         self,
