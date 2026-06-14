@@ -97,6 +97,7 @@ def draw_poa_regime_oos_samples(config: ProjectConfig) -> dict[str, Any]:
         regime_set=config.poa_regime_set,
         seed=config.support_verify_seed,
         enforce_support_set=False,
+        enforce_n_minus_one=False,
     )
     return {**scenarios, "draw_config_path": draw_config_path}
 

@@ -149,6 +149,12 @@ def train_policies(config: ProjectConfig) -> Path:
 
     if getattr(config, "plot_results_along_the_way", False):
         plot_training_results(config)
+        # Merit-order view of the trained policies (true cost vs heuristic label
+        # vs NN prediction). Self-guarded so a plotting failure never aborts
+        # training.
+        from driver.core.visualization_core import plot_nn_policy_stage
+
+        plot_nn_policy_stage(config)
 
     return summary_path
 

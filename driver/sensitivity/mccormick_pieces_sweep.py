@@ -1,29 +1,28 @@
-"""Sensitivity study: PoA solve cost vs. number of McCormick pieces, at T=6 and T=8.
+"""Sensitivity study: PoA solve cost vs. number of McCormick pieces, at T=6.
 
 Justifies the choice of ``poa_mccormick_num_pieces``. The number of pieces in
 the piecewise-McCormick relaxation of ``C_eq = PoA * C_opt`` is the only thing
-that changes across runs at a given horizon: more pieces tighten the relaxation
-(smaller ex-post gap) at the cost of more binaries and solve time. Everything
-upstream -- the scenarios, heuristic labels, features, trained policies, and the
-tightening bounds (ReLU big-M, dual big-M, alpha bounds, and the C_opt range) --
-is held fixed per horizon by reusing the horizon_poa_compute_sweep artifacts, so
-each run differs only in how finely the same C_opt interval is subdivided.
+that changes across runs: more pieces tighten the relaxation (smaller ex-post
+gap) at the cost of more binaries and solve time. Everything upstream -- the
+scenarios, heuristic labels, features, trained policies, and the tightening
+bounds (ReLU big-M, dual big-M, alpha bounds, and the C_opt range) -- is held
+fixed by reusing the base-case run's artifacts, so each run differs only in how
+finely the same C_opt interval is subdivided.
 
-Because the base horizon is not locked yet, the trade-off is measured at both
-candidate horizons (T=6 and T=8). Each horizon reuses its own upstream
-artifacts; both were produced by the same sweep with identical settings, so the
-two horizons are directly comparable.
+The study is run only at the base horizon T=6, reusing the base-case NN policies
+and tightening reports directly (results/base_case). T=8 is intentionally not
+investigated.
 
 Because the breakpoints are ``linspace(C_opt_L, C_opt_U, num_pieces + 1)``, the
-C_opt range comes straight from that horizon's ``optimal_cost_bounds`` report
+C_opt range comes straight from the base case's ``optimal_cost_bounds`` report
 and is identical for every piece count; only the subdivision count varies. The
 McCormick PoA box upper bound is likewise derived from that report at solve time
 (PoA_U = C_opt_max / C_opt_min), so it too is identical across piece counts.
 
-Each run reuses (with <T> = T6 or T8):
-  - trained policies      (results/sensitivity_studies/horizon_poa_compute_sweep/<T>/trained_models)
-  - features / norm stats (results/sensitivity_studies/horizon_poa_compute_sweep/<T>/features)
-  - tightening reports    (results/sensitivity_studies/horizon_poa_compute_sweep/<T>/poa/tightening)
+Each run reuses (with <T> = T6):
+  - trained policies      (results/base_case/trained_models)
+  - features / norm stats (results/base_case/features)
+  - tightening reports    (results/base_case/poa/tightening)
 and writes an isolated PoA result to:
   results/sensitivity_studies/mccormick_pieces_sweep/<T>/P<n>/poa/
 
@@ -58,30 +57,24 @@ from driver.project_config import load_project_config  # noqa: E402
 STUDY_NAME = "mccormick_pieces_sweep"
 RESULT_ROOT = PROJECT_ROOT / "results" / "sensitivity_studies" / STUDY_NAME
 
-# Candidate base horizons. The pieces trade-off is measured at both because the
-# base horizon is not locked yet.
-HORIZONS = [6, 8]
+# Base horizon. Only T=6 is investigated; T=8 is intentionally excluded.
+HORIZONS = [6]
 
 # Horizons this run actually (re)solves. Subset of HORIZONS so a run can fill
 # in missing horizons without re-solving the ones already on disk.
 HORIZONS_TO_RUN = list(HORIZONS)
 
-# Per-horizon upstream artifact roots: the self-contained per-horizon runs of
-# the horizon_poa_compute_sweep, which trained the policies and computed the
-# tightening reports at each horizon with identical settings.
+# Per-horizon upstream artifact root: the base-case run, which trained the NN
+# policies and computed the tightening reports. The sweep reuses these directly
+# so every piece count solves against the same base-case inputs.
 UPSTREAM_ROOTS = {
-    horizon: PROJECT_ROOT
-    / "results"
-    / "sensitivity_studies"
-    / "horizon_poa_compute_sweep"
-    / f"T{horizon}"
-    for horizon in HORIZONS
+    6: PROJECT_ROOT / "results" / "base_case",
 }
 
 # Piece counts under study. Brackets the chosen value (50) on both sides so the
 # companion summary can show the compute/binary cost rising while the ex-post
 # relaxation gap flattens out.
-PIECES = [5, 10, 20, 30, 50, 75, 100]
+PIECES = [5, 10, 20, 30, 50, 75, 100, 200]
 
 # Piece counts this run actually (re)solves. Subset of PIECES so a run can fill
 # in missing points without re-solving the ones already on disk.
@@ -91,6 +84,14 @@ PIECES_TO_RUN = list(PIECES)
 # incumbent and MIP gap instead of a proven optimum; the summary flags them via
 # ``termination_condition``. None = solve every run to global optimality.
 POA_TIME_LIMIT: int | None = 3000
+
+# Pin Gurobi Threads/Seed for the final PoA solve so the cases are comparable
+# 1:1. Multi-threaded Gurobi has a nondeterministic search path, so solve-time
+# differences across cases would otherwise reflect solver variability rather
+# than the piece count under study. Single-thread + fixed seed makes each solve
+# deterministic; the cost is a slower (but apples-to-apples) solve per case.
+POA_SOLVER_THREADS: int | None = 1
+POA_SOLVER_SEED: int | None = 0
 
 
 def horizon_name(horizon: int) -> str:
@@ -158,6 +159,10 @@ def build_run_config(horizon: int, num_pieces: int):
     cfg.run_dro_optimization = False
 
     cfg.poa_time_limit = POA_TIME_LIMIT
+    # Pin solver threads/seed so every case solves under identical, deterministic
+    # conditions -- the prerequisite for reading solve times as 1:1 comparable.
+    cfg.poa_solver_threads = POA_SOLVER_THREADS
+    cfg.poa_solver_seed = POA_SOLVER_SEED
     # Summary builds its own cross-run plots; skip per-run plotting overhead.
     cfg.plot_results_along_the_way = False
     return cfg
@@ -175,8 +180,8 @@ def _seed_tightening_reports(cfg, horizon: int) -> None:
     source = UPSTREAM_ROOTS[horizon] / "poa" / "tightening"
     if not source.exists():
         raise FileNotFoundError(
-            f"Tightening reports for T={horizon} not found: {source}. Generate them "
-            "via the horizon_poa_compute_sweep before running this sweep."
+            f"Tightening reports for T={horizon} not found: {source}. Run the base-case "
+            "pipeline (block3 PoA tightening) before running this sweep."
         )
     target = Path(cfg.poa_result_dir) / "tightening"
     target.mkdir(parents=True, exist_ok=True)
@@ -211,7 +216,7 @@ def run() -> dict[str, Any]:
     print("  Sweep complete. Building cross-pieces comparison...")
     print(f"{sep}")
     # Imported here to avoid a circular import (the summary imports this module).
-    from driver.sensitivity import mccormick_pieces_summary
+    from driver.sensitivity.summaries import mccormick_pieces_summary
 
     mccormick_pieces_summary.main()
     return manifests

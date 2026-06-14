@@ -18,18 +18,18 @@ PROJECT_CONFIG = ProjectConfig(
     synthetic_labels_target=25000,
     horizon = 6,
 
-    allow_wind_to_play = False,
+    allow_wind_to_play = True,
 
     batch_size = 16,
     lr_scheduler_patience = 20,
 
     plot_results_along_the_way = True,
-    run_scenario_generation = False,
-    run_heuristic_labels = False,
-    run_feature_building = False,
-    run_nn_training = False,
+    run_scenario_generation = True,
+    run_heuristic_labels = True,
+    run_feature_building = True,
+    run_nn_training = True,
 
-    run_poa_tightening = False,
+    run_poa_tightening = True,
 
     ambiguity_kappa = 0.25,
 
@@ -38,26 +38,23 @@ PROJECT_CONFIG = ProjectConfig(
         "alpha_bounds": True,
         "slack_binary_fix": True,
         "dual_big_m": True,
-        "equilibrium_cost_bounds": True,
     },
 
-    run_poa_optimization = False,
+    run_poa_optimization = True,
 
-    run_dro_tightening = False,
+    run_dro_tightening = True,
 
     dro_tightening_flags = {
         "relu_bounds": True,
         "alpha_bounds": True,
         "slack_binary_fix": True,
         "dual_big_m": True,
-        "equilibrium_cost_bounds": True,
     },
 
     run_dro_optimization = True,
 
-    poa_mccormick_num_pieces = 50,
-
-    dro_mccormick_num_pieces = 50,
+    poa_mccormick_num_pieces = 100,
+    dro_mccormick_num_pieces = 100,
 )
 
 def load_project_config() -> ProjectConfig:

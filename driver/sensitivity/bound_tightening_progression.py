@@ -1,18 +1,36 @@
-"""Sensitivity study: PoA and DRO bound-tightening progression.
+"""Sensitivity study: PoA bound-tightening progression (tightening vs. solve time), at T=6.
 
-Runs the base learned-policy configuration through five cumulative tightening
-settings:
+Runs the base-case learned-policy configuration through five cumulative tightening
+settings, recomputing the PoA tightening reports and re-solving the base PoA MILP
+for each:
 
-  1. loose optional stages
-  2. ReLU bounds
-  3. ReLU + alpha bounds
-  4. ReLU + alpha + slack binary fixing
-  5. base case: all optional stages, including dual Big-M tightening
+  1. loose         -- no optional stages (loose ReLU/alpha/dual defaults)
+  2. relu          -- + ReLU preactivation bounds
+  3. alpha         -- + alpha bounds (also triggers analytical cost-ratio PoA bound kappa)
+  4. slack         -- + slack-based complementarity binary fixing
+  5. dual          -- + dual Big-M tightening                   <- base case
 
-Each run solves both the base PoA model and the DRO eta sweep. Upstream
-scenarios, labels, features, and trained policies are reused by default; only the
-PoA/DRO tightening reports and final optimization outputs are recomputed in
-study-local result folders.
+Each step adds exactly one optional stage on top of the previous one, so the
+marginal cost (tightening time) and benefit (smaller / faster MILP) of every
+stage is isolated. The equilibrium_cost_bounds stage has been removed; the
+cost-ratio PoA upper bound (kappa) is now derived analytically from the alpha
+bounds and applied automatically in every case that includes alpha_bounds.
+Only the PoA formulation is exercised here -- the DRO half is intentionally
+left out for now.
+
+Upstream data, features, and trained policies are reused from the base-case run
+(results/base_case); only the tightening reports and the final PoA solve are
+recomputed, in study-local result folders:
+  results/sensitivity_studies/bound_tightening_progression/T6/<case>/poa/
+
+Each run records the two times this study compares:
+  - poa/tightening/final_tightening_report.json -> ``stage_timings`` (per-stage
+    tightening wall time + which stages ran) = time spent on tightening
+  - poa/poa_optimization_T*.json                -> ``solver.wall_time_seconds``
+    = PoA solve / computation time (plus variable_counts and objective.PoA)
+
+Companion summary (table + CSV/JSON + plots):
+  .\\.venv\\Scripts\\python.exe -m driver.sensitivity.bound_tightening_progression_summary
 
 Run:
   .\\.venv\\Scripts\\python.exe -m driver.sensitivity.bound_tightening_progression
@@ -20,167 +38,98 @@ Run:
 
 from __future__ import annotations
 
-import copy
-import time
+import shutil
+import sys
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-import yaml
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-from driver import block3_poa_pipeline
-from driver.block0_system_setup import write_manifest
-from driver.core.block0_core import ProjectConfig, pipeline_manifest
-from driver.core.block4_core import (
-    archive_existing_dro_result_folders,
-    build_dro_config,
-    build_dro_tightening,
-    load_dro_scenario_data,
-    resolve_dro_regime_names,
-    resolved_stage_paths,
-    run_dro_eta_sweep,
-    write_json,
-)
-from driver.core.block2_core import discover_trained_policy_generators
-from driver.sensitivity.sensitivity_config import (
-    SensitivityRun,
-    SensitivityStudy,
-    build_sensitivity_config,
-)
-from models.DRO_PoA.DRO_PoA_tightening.compute_alpha_bounds import (
-    DROAlphaBoundsComputer,
-)
-from models.DRO_PoA.DRO_PoA_tightening.compute_dual_big_m import (
-    DRODualBigMComputer,
-)
-from models.DRO_PoA.DRO_PoA_tightening.compute_optimal_cost_bounds import (
-    DROOptimalCostBoundsComputer,
-)
-from models.DRO_PoA.DRO_PoA_tightening.compute_primal_big_m import (
-    DROPrimalBigMComputer,
-)
-from models.DRO_PoA.DRO_PoA_tightening.compute_relu_bounds import (
-    DROReLUBoundsComputer,
-)
-from models.DRO_PoA.DRO_PoA_tightening.compute_slack_binary_fix import (
-    DROSlackBinaryFixComputer,
-)
-from models.DRO_PoA.DRO_PoA_tightening.tightening_main import DROPoATighteningMain
+from driver import block3_poa_pipeline  # noqa: E402
+from driver.project_config import load_project_config  # noqa: E402
 
 STUDY_NAME = "bound_tightening_progression"
+RESULT_ROOT = PROJECT_ROOT / "results" / "sensitivity_studies" / STUDY_NAME
 
-OPTIONAL_TIGHTENING_STAGES = (
+# Base horizon. Only T=6 is investigated; T=8 is intentionally excluded.
+HORIZON = 6
+
+# Upstream artifact root: the base-case run, which trained the NN policies and
+# generated the scenarios/features. The progression reuses these directly and
+# recomputes only the tightening reports (per flag set) and the final PoA solve.
+UPSTREAM_ROOT = PROJECT_ROOT / "results" / "base_case"
+
+# Optional tightening stages added one at a time, in dependency order.
+# Note: alpha_bounds also triggers the analytical cost-ratio PoA bound (kappa)
+# automatically -- no separate equilibrium_cost_bounds stage is needed.
+CUMULATIVE_STAGES = (
     "relu_bounds",
     "alpha_bounds",
     "slack_binary_fix",
     "dual_big_m",
 )
 
-LOOSE_FLAGS = {
-    "relu_bounds": False,
-    "alpha_bounds": False,
-    "slack_binary_fix": False,
-    "dual_big_m": False,
-}
-
-RELU_FLAGS = {
-    "relu_bounds": True,
-    "alpha_bounds": False,
-    "slack_binary_fix": False,
-    "dual_big_m": False,
-}
-
-ALPHA_FLAGS = {
-    "relu_bounds": True,
-    "alpha_bounds": True,
-    "slack_binary_fix": False,
-    "dual_big_m": False,
-}
-
-SLACK_FLAGS = {
-    "relu_bounds": True,
-    "alpha_bounds": True,
-    "slack_binary_fix": True,
-    "dual_big_m": False,
-}
-
-BASE_FLAGS = {
-    "relu_bounds": True,
-    "alpha_bounds": True,
-    "slack_binary_fix": True,
-    "dual_big_m": True,
-}
-
-TIGHTENING_CASES: tuple[tuple[str, str, dict[str, bool]], ...] = (
-    ("x_tightening_flags_1", "loose optional stages", LOOSE_FLAGS),
-    ("x_tightening_flags_2", "relu bounds", RELU_FLAGS),
-    ("x_tightening_flags_3", "relu + alpha bounds", ALPHA_FLAGS),
-    ("x_tightening_flags_4", "relu + alpha + slack fixes", SLACK_FLAGS),
-    ("base_case", "base tightening", BASE_FLAGS),
+# Cumulative cases: (case_name, label, enabled-optional-stages). Each case turns
+# on a prefix of CUMULATIVE_STAGES; the always-on primal_big_m and
+# optimal_cost_bounds stages run in every case.
+TIGHTENING_CASES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("S0_loose", "loose (no optional stages)", ()),
+    ("S1_relu", "+ ReLU bounds", ("relu_bounds",)),
+    ("S2_alpha", "+ alpha bounds (+ kappa PoA bound)", ("relu_bounds", "alpha_bounds")),
+    (
+        "S3_slack",
+        "+ slack binary fix",
+        ("relu_bounds", "alpha_bounds", "slack_binary_fix"),
+    ),
+    (
+        "S4_dual",
+        "+ dual Big-M (base case)",
+        ("relu_bounds", "alpha_bounds", "slack_binary_fix", "dual_big_m"),
+    ),
 )
 
-BASE_OVERRIDES: dict[str, Any] = {
-    # Reuse the base data/features/policies. The study recomputes only PoA/DRO
-    # tightening and final solves for each flag configuration.
-    "run_scenario_generation": False,
-    "run_heuristic_labels": False,
-    "run_feature_building": False,
-    "run_nn_training": False,
-    "run_poa_tightening": True,
-    "run_poa_optimization": True,
-    "run_dro_tightening": True,
-    "run_dro_optimization": True,
-    "archive_existing_dro_results": False,
-    "plot_results_along_the_way": False,
-}
+# Cases this run actually (re)solves. Subset of TIGHTENING_CASES so a run can
+# fill in missing cases without re-solving the ones already on disk.
+CASES_TO_RUN = [name for name, _label, _stages in TIGHTENING_CASES]
 
-SHARED_ARTIFACT_FIELDS = (
-    "model_dir",
-    "normalized_feature_dir",
-    "training_result_dir",
-)
+# Per-run PoA solve time limit (seconds). Runs that hit this cap report the
+# incumbent and MIP gap instead of a proven optimum; the summary flags them via
+# ``termination_condition``. None = solve every run to global optimality.
+POA_TIME_LIMIT: int | None = 3000
+
+# Pin Gurobi Threads/Seed for the final PoA solve so the cases are comparable
+# 1:1. Multi-threaded Gurobi has a nondeterministic search path, so solve-time
+# differences across cases would otherwise reflect solver variability rather
+# than the tightening under study. Single-thread + fixed seed makes each solve
+# deterministic; the cost is a slower (but apples-to-apples) solve per case.
+POA_SOLVER_THREADS: int | None = 1
+POA_SOLVER_SEED: int | None = 0
 
 
-def _jsonable(value: Any) -> Any:
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, dict):
-        return {str(key): _jsonable(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_jsonable(item) for item in value]
-    return value
+def horizon_name(horizon: int = HORIZON) -> str:
+    return f"T{horizon}"
 
 
-def _flags_with_required_stages(flags: dict[str, bool]) -> dict[str, bool]:
-    """Return a full flag dict; always-on stages are handled by pipeline code."""
-    return {
-        "primal_big_m": True,
-        **{stage: bool(flags.get(stage, False)) for stage in OPTIONAL_TIGHTENING_STAGES},
-        "optimal_cost_bounds": True,
-    }
+def run_dir(case_name: str) -> Path:
+    return RESULT_ROOT / horizon_name() / case_name
 
 
-def build_study() -> SensitivityStudy:
-    return SensitivityStudy(
-        name=STUDY_NAME,
-        blocks=("block3", "block4"),
-        base_overrides=BASE_OVERRIDES,
-        shared_artifact_fields=SHARED_ARTIFACT_FIELDS,
-        runs=[
-            SensitivityRun(
-                name=name,
-                label=label,
-                overrides={
-                    "poa_tightening_flags": _flags_with_required_stages(flags),
-                    "dro_tightening_flags": _flags_with_required_stages(flags),
-                },
-            )
-            for name, label, flags in TIGHTENING_CASES
-        ],
-        reuse_base_case_results=False,
-    )
+def _build_flags(enabled_stages: tuple[str, ...]) -> dict[str, bool]:
+    """Full PoA tightening flag dict for one cumulative case.
+
+    primal_big_m and optimal_cost_bounds are always on; the optional stages are
+    enabled iff they appear in this case's prefix of CUMULATIVE_STAGES.
+    """
+    flags = {"primal_big_m": True, "optimal_cost_bounds": True}
+    for stage in CUMULATIVE_STAGES:
+        flags[stage] = stage in enabled_stages
+    return flags
 
 
 def _validate_cumulative_flags(flags: dict[str, bool]) -> None:
+    """Enforce the stage dependency chain so each case is internally consistent."""
     if flags.get("alpha_bounds") and not flags.get("relu_bounds"):
         raise ValueError("alpha_bounds=True requires relu_bounds=True")
     if flags.get("slack_binary_fix") and not flags.get("alpha_bounds"):
@@ -189,299 +138,108 @@ def _validate_cumulative_flags(flags: dict[str, bool]) -> None:
         raise ValueError("dual_big_m=True requires slack_binary_fix=True")
 
 
-def _validate_shared_artifacts(config: ProjectConfig) -> None:
-    model_dir = Path(config.model_dir)
-    stats_path = Path(config.normalized_feature_dir) / "min_max_stats.json"
-    if not model_dir.exists():
-        raise FileNotFoundError(
-            f"Trained model directory not found: {model_dir}. "
-            "Run the base pipeline through NN training, or point PROJECT_CONFIG.model_dir "
-            "at existing trained policies before launching this study."
-        )
-    if not stats_path.exists():
-        raise FileNotFoundError(
-            f"Normalization stats not found: {stats_path}. "
-            "Run feature building/training first, or point normalized_feature_dir "
-            "at existing normalized features."
-        )
+def build_run_config(case_name: str, flags: dict[str, bool]):
+    """Base config re-pointed to recompute one tightening case in an isolated dir.
 
-
-def _record_stage_timing(
-    tightening: DROPoATighteningMain,
-    stage_name: str,
-    output_path: str | Path,
-    run_callable: Callable[[], dict[str, Any]],
-) -> dict[str, Any]:
-    start = time.perf_counter()
-    report = run_callable()
-    tightening._record_stage_timing(
-        stage_name,
-        time.perf_counter() - start,
-        "run",
-        output_path,
-    )
-    return report
-
-
-def _print_dro_partial_tightening_plan(
-    config: Any,
-    regime_name: str,
-    flags: dict[str, bool],
-    output_paths: dict[str, str],
-) -> None:
-    time_limit = (
-        "none"
-        if config.preprocessing_time_limit is None
-        else f"{config.preprocessing_time_limit} seconds"
-    )
-    threads = (
-        "solver default"
-        if config.poa_solver_threads_per_worker is None
-        else str(config.poa_solver_threads_per_worker)
-    )
-    print(f"\nStarting DRO staged tightening for regime '{regime_name}'")
-    print("  Runtime")
-    print(f"    solver: {config.solver_name}")
-    print(f"    time limit: {time_limit}")
-    print(f"    parallel workers: {config.poa_parallel_workers}")
-    print(f"    solver threads per worker: {threads}")
-    print("  Stages")
-    labels = {
-        "primal_big_m": "Primal Big-M",
-        "relu_bounds": "NN ReLU bounds",
-        "alpha_bounds": "Alpha bounds",
-        "slack_binary_fix": "Slack binary fix",
-        "dual_big_m": "Dual Big-M",
-        "optimal_cost_bounds": "C_opt bounds",
-    }
-    for stage_name in (
-        "primal_big_m",
-        *OPTIONAL_TIGHTENING_STAGES,
-        "optimal_cost_bounds",
-    ):
-        should_run = stage_name in {"primal_big_m", "optimal_cost_bounds"} or bool(
-            flags.get(stage_name, False)
-        )
-        action = "run" if should_run else "loose"
-        print(f"    {labels[stage_name]:<17} {action:<5} output: {output_paths[stage_name]}")
-    print(f"  Final report: {output_paths['final']}")
-
-
-def run_partial_dro_tightening_for_regime(
-    config: Any,
-    scenarios: dict[str, Any],
-    regime_name: str,
-) -> Path:
-    """Run exactly the requested DRO stages and write a valid final report.
-
-    The regular DRO tightening orchestrator requires skipped partial stages to
-    already exist on disk. For this progression study, missing optional sections
-    are intentional: the final optimizer will apply the stages present in the
-    report and use its loose defaults for the omitted ones.
+    Upstream data/feature/policy dirs point at the base-case run so every case
+    shares identical inputs; only the tightening reports and the final PoA
+    outputs are isolated, and only ``poa_tightening_flags`` varies across cases.
     """
-    flags = {
-        stage: bool(config.tightening_flags.get(stage, False))
-        for stage in OPTIONAL_TIGHTENING_STAGES
-    }
-    _validate_cumulative_flags(flags)
-    output_paths = resolved_stage_paths(config.tightening_output_paths, regime_name)
-    _print_dro_partial_tightening_plan(config, regime_name, flags, output_paths)
+    cfg = load_project_config()
+    out_dir = run_dir(case_name)
 
-    tightening = build_dro_tightening(config, scenarios, regime_name)
+    cfg.case_label = f"{STUDY_NAME}/{horizon_name()}/{case_name}"
+    # ``horizon`` set post-construction does not re-derive synthetic_time_steps;
+    # set it explicitly so the PoA context scenario matches the horizon.
+    cfg.horizon = int(HORIZON)
+    cfg.synthetic_time_steps = int(HORIZON)
 
-    primal_stage = tightening._as_stage(DROPrimalBigMComputer)
-    relu_stage = tightening._as_stage(DROReLUBoundsComputer)
-    alpha_stage = tightening._as_stage(DROAlphaBoundsComputer)
-    slack_stage = tightening._as_stage(DROSlackBinaryFixComputer)
-    dual_stage = tightening._as_stage(DRODualBigMComputer)
-    optimal_cost_stage = tightening._as_stage(DROOptimalCostBoundsComputer)
+    # Reuse the base-case upstream artifacts (policies, norm stats, features).
+    cfg.model_dir = UPSTREAM_ROOT / "trained_models"
+    cfg.training_result_dir = UPSTREAM_ROOT / "training_results"
+    cfg.raw_feature_dir = UPSTREAM_ROOT / "features" / "raw"
+    cfg.normalized_feature_dir = UPSTREAM_ROOT / "features" / "normalized"
+    cfg.synthetic_scenario_dir = UPSTREAM_ROOT / "synthetic_scenarios"
+    cfg.heuristic_results_path = UPSTREAM_ROOT / "merit_order_results.json"
 
-    _record_stage_timing(
-        tightening,
-        "primal_big_m",
-        output_paths["primal_big_m"],
-        lambda: primal_stage.run_primal_big_m(output_path=output_paths["primal_big_m"]),
-    )
+    # Isolate just the outputs this case produces.
+    cfg.poa_result_dir = out_dir / "poa"
+    cfg.figures_dir = out_dir / "figures"
+    cfg.poa_scenario_dir = out_dir / "poa_scenarios"
+    cfg.runtime_config_path = out_dir / "runtime_regime_definitions.yaml"
 
-    if flags["relu_bounds"]:
-        _record_stage_timing(
-            tightening,
-            "relu_bounds",
-            output_paths["relu_bounds"],
-            lambda: relu_stage.run_relu_bounds(
-                output_path=output_paths["relu_bounds"],
-                solver_name=config.solver_name,
-                time_limit=config.preprocessing_time_limit,
-                tee=False,
-                parallel_workers=config.poa_parallel_workers,
-                solver_threads=config.poa_solver_threads_per_worker,
-            ),
-        )
+    # The field under study: recompute tightening with exactly this flag set.
+    cfg.poa_tightening_flags = flags
 
-    if flags["alpha_bounds"]:
-        _record_stage_timing(
-            tightening,
-            "alpha_bounds",
-            output_paths["alpha_bounds"],
-            lambda: alpha_stage.run_alpha_bounds(
-                output_path=output_paths["alpha_bounds"],
-                solver_name=config.solver_name,
-                time_limit=config.preprocessing_time_limit,
-                tee=False,
-                parallel_workers=config.poa_parallel_workers,
-                solver_threads=config.poa_solver_threads_per_worker,
-            ),
-        )
+    # Reuse upstream data; recompute tightening + final PoA solve only.
+    cfg.run_scenario_generation = False
+    cfg.run_heuristic_labels = False
+    cfg.run_feature_building = False
+    cfg.run_nn_training = False
+    cfg.run_poa_tightening = True
+    cfg.run_poa_optimization = True
+    # Base PoA only -- keep the DRO half of the pipeline off.
+    cfg.run_dro_tightening = False
+    cfg.run_dro_optimization = False
 
-    if flags["slack_binary_fix"]:
-        _record_stage_timing(
-            tightening,
-            "slack_binary_fix",
-            output_paths["slack_binary_fix"],
-            lambda: slack_stage.run_slack_binary_fix(
-                output_path=output_paths["slack_binary_fix"],
-                epsilon=config.slack_epsilon,
-                solver_name=config.solver_name,
-                time_limit=config.preprocessing_time_limit,
-                tee=False,
-                parallel_workers=config.poa_parallel_workers,
-                solver_threads=config.poa_solver_threads_per_worker,
-            ),
-        )
-
-    if flags["dual_big_m"]:
-        _record_stage_timing(
-            tightening,
-            "dual_big_m",
-            output_paths["dual_big_m"],
-            lambda: dual_stage.run_dual_big_m(
-                output_path=output_paths["dual_big_m"],
-                solver_name=config.solver_name,
-                time_limit=config.preprocessing_time_limit,
-                tee=False,
-                parallel_workers=config.poa_parallel_workers,
-                solver_threads=config.poa_solver_threads_per_worker,
-            ),
-        )
-
-    _record_stage_timing(
-        tightening,
-        "optimal_cost_bounds",
-        output_paths["optimal_cost_bounds"],
-        lambda: optimal_cost_stage.run_optimal_cost_bounds(
-            output_path=output_paths["optimal_cost_bounds"],
-            solver_name=config.solver_name,
-            time_limit=config.preprocessing_time_limit,
-            tee=False,
-            solver_threads=config.poa_solver_threads_per_worker,
-        ),
-    )
-
-    final_report_path = tightening.save_final_report(output_paths["final"])
-    print(f"\nDRO tightening report complete: {final_report_path}")
-    print(f"  Regime: {regime_name}")
-    return final_report_path
+    cfg.poa_time_limit = POA_TIME_LIMIT
+    # Pin solver threads/seed so every case solves under identical, deterministic
+    # conditions -- the prerequisite for reading solve times as 1:1 comparable.
+    cfg.poa_solver_threads = POA_SOLVER_THREADS
+    cfg.poa_solver_seed = POA_SOLVER_SEED
+    # Summary builds its own cross-run plots; skip per-run plotting overhead.
+    cfg.plot_results_along_the_way = False
+    return cfg
 
 
-def run_dro_progression_block(config: ProjectConfig) -> dict[str, Any]:
-    discovered = discover_trained_policy_generators(config.model_dir)
-    if discovered:
-        config.nn_policy_generators = discovered
-        print(f"[bound-tightening] using trained policy generators: {discovered}")
+def _clear_tightening_dir(cfg) -> None:
+    """Remove any prior tightening reports so disabled stages use loose defaults.
 
-    dcfg = build_dro_config(config)
-    scenarios = load_dro_scenario_data(dcfg)
-    regime_names = resolve_dro_regime_names(dcfg, scenarios)
-
-    tightening_reports: dict[str, str] = {}
-    if config.run_dro_tightening:
-        for regime_name in regime_names:
-            report_path = run_partial_dro_tightening_for_regime(
-                dcfg,
-                scenarios,
-                regime_name,
-            )
-            tightening_reports[regime_name] = str(report_path)
-    else:
-        print("[bound-tightening] Reusing existing DRO tightening reports.")
-
-    summary_path = dcfg.dro_result_dir / "eta_sweep_summary.json"
-    sweep_summary: list[dict[str, Any]] = []
-    if config.run_dro_optimization:
-        if config.archive_existing_dro_results:
-            archive_existing_dro_result_folders(dcfg, regime_names)
-        sweep_summary = run_dro_eta_sweep(dcfg, scenarios, regime_names)
-        write_json(summary_path, sweep_summary)
-        print(f"\nSaved DRO eta-sweep summary: {summary_path}")
-    else:
-        print("[bound-tightening] Reusing existing DRO eta-sweep results.")
-
-    return {
-        "block": "bound_tightening_progression_dro",
-        "runtime_config_path": dcfg.runtime_config_path,
-        "dro_scenario_dir": dcfg.poa_scenario_dir,
-        "dro_result_dir": dcfg.dro_result_dir,
-        "eta_sweep_summary_path": summary_path,
-        "regime_names": regime_names,
-        "etas": list(dcfg.etas),
-        "tightening_reports": tightening_reports,
-        "derived_poa_bound": derived_poa_bound,
-        "ran_dro_tightening": bool(config.run_dro_tightening),
-        "ran_dro_optimization": bool(config.run_dro_optimization),
-        "num_summary_records": len(sweep_summary),
-    }
+    A stage that is off in this case must fall back to its loose default rather
+    than load a stale report left by an earlier run of the same case dir. Wiping
+    the dir guarantees enabled stages are recomputed and disabled ones are loose.
+    """
+    tightening_dir = Path(cfg.poa_result_dir) / "tightening"
+    if tightening_dir.exists():
+        shutil.rmtree(tightening_dir)
 
 
 def run() -> dict[str, Any]:
-    study = build_study()
+    cases = [case for case in TIGHTENING_CASES if case[0] in CASES_TO_RUN]
     sep = "=" * 72
     print(f"\n{sep}")
-    print(f"  Sensitivity study: {study.name} ({len(study.runs)} run(s))")
-    print(f"  result_root: {Path(study.result_root) / study.name}")
-    print("  blocks: block3, custom DRO progression block")
+    print(f"  PoA bound-tightening progression ({len(cases)} case(s))")
+    print(f"  result_root: {RESULT_ROOT}")
+    print(f"  horizon: T={HORIZON}")
+    print(f"  upstream: {UPSTREAM_ROOT}")
+    print(f"  cases: {[name for name, _l, _s in cases]}")
     print(f"{sep}")
 
-    study_manifest: dict[str, Any] = {
-        "study": study.name,
-        "result_root": str(Path(study.result_root) / study.name),
-        "blocks": ["block3", "bound_tightening_progression_dro"],
-        "shared_artifact_fields": list(study.shared_artifact_fields),
-        "runs": {},
-    }
-
-    for idx, sensitivity_run in enumerate(study.runs, start=1):
+    manifests: dict[str, Any] = {}
+    for idx, (name, label, enabled_stages) in enumerate(cases, start=1):
         print(f"\n{sep}")
-        print(f"  [{idx}/{len(study.runs)}] {sensitivity_run.name}")
-        print(f"  {sensitivity_run.label or sensitivity_run.name}")
+        print(f"  [{idx}/{len(cases)}] {name}: {label}")
         print(f"{sep}")
-
-        cfg = build_sensitivity_config(study, sensitivity_run)
-        _validate_shared_artifacts(cfg)
-
-        block3_manifest = block3_poa_pipeline.run(cfg)
-        dro_manifest = run_dro_progression_block(cfg)
-
-        run_manifest = {
-            "config": pipeline_manifest(cfg),
-            "overrides": copy.deepcopy(sensitivity_run.overrides),
-            "block_manifests": {
-                "block3": block3_manifest,
-                "bound_tightening_progression_dro": dro_manifest,
-            },
-        }
-        write_manifest(
-            f"sensitivity_{study.name}_{sensitivity_run.name}",
-            run_manifest,
-            cfg,
+        flags = _build_flags(enabled_stages)
+        _validate_cumulative_flags(flags)
+        cfg = build_run_config(name, flags)
+        _clear_tightening_dir(cfg)
+        manifest = block3_poa_pipeline.run(cfg)
+        manifests[name] = manifest
+        print(
+            f"\n  [{name}] tightening: "
+            f"{manifest.get('tightening_wall_time_seconds', float('nan')):.2f}s"
+            f"  |  PoA solve: {manifest.get('solve_wall_time_seconds', float('nan')):.2f}s"
         )
-        study_manifest["runs"][sensitivity_run.name] = run_manifest
 
-    study_manifest_path = Path(study.result_root) / study.name / "study_manifest.yaml"
-    study_manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    with study_manifest_path.open("w", encoding="utf-8") as file_handle:
-        yaml.safe_dump(_jsonable(study_manifest), file_handle, sort_keys=False)
-    print(f"\nSensitivity study complete: {study_manifest_path}")
-    return study_manifest
+    print(f"\n{sep}")
+    print("  Progression complete. Building tightening/compute-time summary...")
+    print(f"{sep}")
+    # Imported here to avoid a circular import (the summary imports this module).
+    from driver.sensitivity.summaries import bound_tightening_progression_summary
+
+    bound_tightening_progression_summary.main()
+    return manifests
 
 
 if __name__ == "__main__":

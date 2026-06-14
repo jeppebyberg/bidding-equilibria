@@ -409,6 +409,7 @@ def load_dro_scenario_data(config: DROPoAPipelineConfig) -> dict[str, Any]:
         regime_set=config.poa_regime_set,
         seed=config.poa_seed,
         enforce_support_set=False,
+        enforce_n_minus_one=False,
     )
 
     if config.ar1_coverage is not None:
@@ -1203,28 +1204,37 @@ def resolve_dro_mccormick_poa_box(
 ) -> tuple[float, float]:
     """Resolve the McCormick PoA box (PoA_L, PoA_U) for the DRO solve of one regime.
 
-    If the equilibrium_cost_bounds stage stored a ``derived_poa_bounds`` box
-    (PoA_U = max C_eq / min C_opt), use it. Otherwise fall back to the hand-set
-    ``dro_mccormick_PoA_bounds`` (e.g. (1, 20)).
+    Takes the tighter of (a) derived_poa_bounds from the tightening report
+    (cost-ratio kappa or max C_eq / min C_opt) and (b) dro_mccormick_PoA_bounds
+    from config. Config acts as a ceiling so a stale or loose derived bound never
+    widens beyond what is manually specified.
     """
     derived = load_dro_derived_poa_bounds(config, regime_name)
-    if derived is not None:
-        print(
-            f"[block4][{regime_name}] using derived McCormick PoA box from tightening "
-            f"report: ({derived[0]:.6g}, {derived[1]:.6g})"
-        )
-        return derived
     config_box = (
         tuple(config.dro_mccormick_PoA_bounds)
         if config.dro_mccormick_PoA_bounds is not None
         else None
     )
-    if config_box is None:
-        raise ValueError(
-            "DRO mccormick objective modes require a PoA box. Set dro_mccormick_PoA_bounds "
-            "(e.g. (1.0, 50.0)) or run the equilibrium_cost_bounds tightening stage."
+    if derived is not None and config_box is not None:
+        box = (max(derived[0], config_box[0]), min(derived[1], config_box[1]))
+        print(
+            f"[block4][{regime_name}] McCormick PoA box: derived=({derived[0]:.6g}, {derived[1]:.6g})"
+            f"  config=({config_box[0]:.6g}, {config_box[1]:.6g})"
+            f"  -> final=({box[0]:.6g}, {box[1]:.6g})"
         )
-    return config_box
+        return box
+    if derived is not None:
+        print(
+            f"[block4][{regime_name}] McCormick PoA box from tightening report: "
+            f"({derived[0]:.6g}, {derived[1]:.6g})"
+        )
+        return derived
+    if config_box is not None:
+        return config_box
+    raise ValueError(
+        "DRO mccormick objective modes require a PoA box. Set dro_mccormick_PoA_bounds "
+        "(e.g. (1.0, 50.0)) or run the equilibrium_cost_bounds tightening stage."
+    )
 
 
 def build_dro_optimizer(

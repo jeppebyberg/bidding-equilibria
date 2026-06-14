@@ -588,6 +588,108 @@ def print_bid_error_summary(
     print()
 
 
+def find_max_error_point(
+    nn_policies: dict[str, NNPolicy],
+    normalized_dfs: dict[str, pd.DataFrame],
+    result: dict[str, Any],
+    test_scenarios: list[int],
+) -> dict[str, Any] | None:
+    """Locate the single (scenario, time, block) with the largest |NN - label| error.
+
+    Returns a dict with scenario_id, time_id, block_name, generator_name, label,
+    prediction and abs_error, or None if no test predictions are available.
+    """
+    best: dict[str, Any] | None = None
+
+    for gen_name, policy in sorted(nn_policies.items()):
+        ndf = normalized_dfs[gen_name]
+        test_rows = ndf[ndf["scenario_id"].isin(test_scenarios)]
+        if test_rows.empty:
+            continue
+        feat = torch.tensor(test_rows[policy.feature_columns].to_numpy(dtype=np.float32))
+        with torch.no_grad():
+            preds = policy.model(feat).numpy()
+
+        scenario_ids = test_rows["scenario_id"].to_numpy()
+        time_ids = test_rows["time_id"].to_numpy()
+
+        for col_idx, block in enumerate(policy.block_names):
+            if block not in result["block_names"]:
+                continue
+            block_idx = result["block_names"].index(block)
+            labels = np.array(
+                [
+                    float(result["final_bids"][int(s)][block_idx][int(t)])
+                    for s, t in zip(scenario_ids, time_ids)
+                ],
+                dtype=float,
+            )
+            abs_err = np.abs(preds[:, col_idx] - labels)
+            row = int(np.argmax(abs_err))
+            if best is None or abs_err[row] > best["abs_error"]:
+                best = {
+                    "scenario_id": int(scenario_ids[row]),
+                    "time_id": int(time_ids[row]),
+                    "block_name": block,
+                    "generator_name": gen_name,
+                    "label": float(labels[row]),
+                    "prediction": float(preds[row, col_idx]),
+                    "abs_error": float(abs_err[row]),
+                }
+
+    return best
+
+
+def find_max_below_cost_point(
+    nn_policies: dict[str, NNPolicy],
+    normalized_dfs: dict[str, pd.DataFrame],
+    result: dict[str, Any],
+    test_scenarios: list[int],
+) -> dict[str, Any] | None:
+    """Locate the (scenario, time, block) where an NN bid undercuts true cost most.
+
+    Mirrors find_max_error_point but ranks by (true_cost - NN bid), i.e. the
+    largest amount by which the policy bids below the generator's marginal cost.
+    Returns a dict with scenario_id, time_id, block_name, generator_name,
+    true_cost, prediction and undercut (>0 means below cost), or None if no NN
+    bid ever falls below cost on the test set.
+    """
+    block_costs = np.asarray(result["block_costs"], dtype=float)
+    best: dict[str, Any] | None = None
+
+    for gen_name, policy in sorted(nn_policies.items()):
+        ndf = normalized_dfs[gen_name]
+        test_rows = ndf[ndf["scenario_id"].isin(test_scenarios)]
+        if test_rows.empty:
+            continue
+        feat = torch.tensor(test_rows[policy.feature_columns].to_numpy(dtype=np.float32))
+        with torch.no_grad():
+            preds = policy.model(feat).numpy()
+
+        scenario_ids = test_rows["scenario_id"].to_numpy()
+        time_ids = test_rows["time_id"].to_numpy()
+
+        for col_idx, block in enumerate(policy.block_names):
+            if block not in result["block_names"]:
+                continue
+            block_idx = result["block_names"].index(block)
+            true_cost = float(block_costs[block_idx])
+            undercut = true_cost - preds[:, col_idx]
+            row = int(np.argmax(undercut))
+            if best is None or undercut[row] > best["undercut"]:
+                best = {
+                    "scenario_id": int(scenario_ids[row]),
+                    "time_id": int(time_ids[row]),
+                    "block_name": block,
+                    "generator_name": gen_name,
+                    "true_cost": true_cost,
+                    "prediction": float(preds[row, col_idx]),
+                    "undercut": float(undercut[row]),
+                }
+
+    return best
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -603,12 +705,19 @@ def generate_merit_order_figures(
     n_merit_scenarios: int = 2,
     merit_time_steps: list[int] | None = None,
     sample_seed: int = 1,
+    single_time_step_figures: bool = False,
     show: bool = False,
+    include_max_error_figure: bool = True,
+    include_below_cost_figure: bool = True,
 ) -> list[Path]:
     """Generate merit-order and prediction-scatter figures for trained NN policies.
 
     All paths are explicit so the pipeline can route outputs to a per-run folder.
     Returns the list of saved figure paths.
+
+    When single_time_step_figures is True, each time step is rendered as its own
+    figure (one merit-order curve per file) instead of being packed into the
+    columns of a single per-scenario figure.
     """
     result_json_path = Path(result_json_path)
     scenarios_csv_path = Path(scenarios_csv_path)
@@ -671,23 +780,96 @@ def generate_merit_order_figures(
     # ---- Print bid error summary ----------------------------------------------
     print_bid_error_summary(nn_policies, normalized_dfs, result, test_scenarios)
 
+    # ---- Figure for the single worst NN prediction error ----------------------
+    if include_max_error_figure:
+        worst = find_max_error_point(nn_policies, normalized_dfs, result, test_scenarios)
+        if worst is None:
+            print("No max-error point found (no test predictions available).")
+        else:
+            print(
+                f"Max prediction error: block {worst['block_name']} "
+                f"(scenario {worst['scenario_id']}, t={worst['time_id']}) "
+                f"label={worst['label']:.3f}, NN={worst['prediction']:.3f}, "
+                f"|error|={worst['abs_error']:.3f}"
+            )
+            p_err = make_scenario_figure(
+                scenario_id=worst["scenario_id"],
+                time_steps=[worst["time_id"]],
+                result=result,
+                scenarios_df=scenarios_df,
+                normalized_dfs=normalized_dfs,
+                nn_policies=nn_policies,
+                output_path=output_dir
+                / f"nn_policy_merit_order_max_error_s{worst['scenario_id']}"
+                f"_t{worst['time_id']}_{worst['block_name']}.png",
+                show=show,
+            )
+            print(f"Saved max-error figure:    {p_err}")
+            saved_paths.append(p_err)
+
+    # ---- Figure for the largest below-true-cost NN bid ------------------------
+    if include_below_cost_figure:
+        under = find_max_below_cost_point(
+            nn_policies, normalized_dfs, result, test_scenarios
+        )
+        if under is None or under["undercut"] <= 0:
+            print("No NN bid below true cost found on the test set.")
+        else:
+            print(
+                f"Max below-cost bid: block {under['block_name']} "
+                f"(scenario {under['scenario_id']}, t={under['time_id']}) "
+                f"cost={under['true_cost']:.3f}, NN={under['prediction']:.3f}, "
+                f"undercut={under['undercut']:.3f}"
+            )
+            p_under = make_scenario_figure(
+                scenario_id=under["scenario_id"],
+                time_steps=[under["time_id"]],
+                result=result,
+                scenarios_df=scenarios_df,
+                normalized_dfs=normalized_dfs,
+                nn_policies=nn_policies,
+                output_path=output_dir
+                / f"nn_policy_merit_order_below_cost_s{under['scenario_id']}"
+                f"_t{under['time_id']}_{under['block_name']}.png",
+                show=show,
+            )
+            print(f"Saved below-cost figure:   {p_under}")
+            saved_paths.append(p_under)
+
     rng = np.random.default_rng(sample_seed)
     sampled_scenarios = sorted(
         rng.choice(test_scenarios, size=min(n_merit_scenarios, len(test_scenarios)), replace=False)
     )
     for s_id in sampled_scenarios:
-        p1 = make_scenario_figure(
-            scenario_id=int(s_id),
-            time_steps=merit_time_steps,
-            result=result,
-            scenarios_df=scenarios_df,
-            normalized_dfs=normalized_dfs,
-            nn_policies=nn_policies,
-            output_path=output_dir / f"nn_policy_merit_order_scenario_{s_id}.png",
-            show=show,
-        )
-        print(f"Saved merit order figure:  {p1}")
-        saved_paths.append(p1)
+        if single_time_step_figures:
+            # One figure per time step (one merit-order curve per file).
+            for t in merit_time_steps:
+                p1 = make_scenario_figure(
+                    scenario_id=int(s_id),
+                    time_steps=[t],
+                    result=result,
+                    scenarios_df=scenarios_df,
+                    normalized_dfs=normalized_dfs,
+                    nn_policies=nn_policies,
+                    output_path=output_dir
+                    / f"nn_policy_merit_order_scenario_{s_id}_t{t}.png",
+                    show=show,
+                )
+                print(f"Saved merit order figure:  {p1}")
+                saved_paths.append(p1)
+        else:
+            p1 = make_scenario_figure(
+                scenario_id=int(s_id),
+                time_steps=merit_time_steps,
+                result=result,
+                scenarios_df=scenarios_df,
+                normalized_dfs=normalized_dfs,
+                nn_policies=nn_policies,
+                output_path=output_dir / f"nn_policy_merit_order_scenario_{s_id}.png",
+                show=show,
+            )
+            print(f"Saved merit order figure:  {p1}")
+            saved_paths.append(p1)
 
     p2 = make_scatter_figure(
         nn_policies=nn_policies,

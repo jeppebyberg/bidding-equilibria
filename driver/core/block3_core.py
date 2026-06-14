@@ -175,6 +175,10 @@ class PoAPipelineConfig:
     # preprocessing stages. Keep Gurobi threads low when workers > 1.
     poa_parallel_workers: int = 1
     poa_solver_threads_per_worker: int | None = None
+    # Gurobi Threads/Seed for the FINAL PoA solve. None = Gurobi default. Pin both
+    # to make solves deterministic and comparable 1:1 across tightening cases.
+    poa_solver_threads: int | None = None
+    poa_solver_seed: int | None = None
 
     # When True, render training diagnostic plots after NN training completes.
     plot_results_along_the_way: bool = False
@@ -298,6 +302,8 @@ def build_poa_config(config: ProjectConfig) -> PoAPipelineConfig:
         epsilon=config.epsilon,
         poa_parallel_workers=config.poa_parallel_workers,
         poa_solver_threads_per_worker=config.poa_solver_threads_per_worker,
+        poa_solver_threads=config.poa_solver_threads,
+        poa_solver_seed=config.poa_solver_seed,
         plot_results_along_the_way=config.plot_results_along_the_way,
         run_scenario_generation=config.run_scenario_generation,
         run_heuristic_labels=config.run_heuristic_labels,
@@ -438,28 +444,37 @@ def load_poa_derived_poa_bounds(config: PoAPipelineConfig) -> tuple[float, float
 def resolve_poa_mccormick_poa_box(config: PoAPipelineConfig) -> tuple[float, float]:
     """Resolve the McCormick PoA box (PoA_L, PoA_U) for the final PoA solve.
 
-    If the equilibrium_cost_bounds stage stored a ``derived_poa_bounds`` box
-    (PoA_U = max C_eq / min C_opt), use it. Otherwise fall back to the hand-set
-    ``poa_mccormick_PoA_bounds`` (e.g. (1, 20)).
+    Takes the tighter of (a) derived_poa_bounds from the tightening report
+    (cost-ratio kappa or max C_eq / min C_opt) and (b) poa_mccormick_PoA_bounds
+    from config. Config acts as a ceiling so a stale or loose derived bound never
+    widens beyond what is manually specified.
     """
     derived = load_poa_derived_poa_bounds(config)
-    if derived is not None:
-        print(
-            f"[block3] using derived McCormick PoA box from tightening report: "
-            f"({derived[0]:.6g}, {derived[1]:.6g})"
-        )
-        return derived
     config_box = (
         tuple(config.poa_mccormick_PoA_bounds)
         if config.poa_mccormick_PoA_bounds is not None
         else None
     )
-    if config_box is None:
-        raise ValueError(
-            "McCormick objective modes require a PoA box. Set poa_mccormick_PoA_bounds "
-            "(e.g. (1.0, 50.0)) or run the equilibrium_cost_bounds tightening stage."
+    if derived is not None and config_box is not None:
+        box = (max(derived[0], config_box[0]), min(derived[1], config_box[1]))
+        print(
+            f"[block3] McCormick PoA box: derived=({derived[0]:.6g}, {derived[1]:.6g})"
+            f"  config=({config_box[0]:.6g}, {config_box[1]:.6g})"
+            f"  -> final=({box[0]:.6g}, {box[1]:.6g})"
         )
-    return config_box
+        return box
+    if derived is not None:
+        print(
+            f"[block3] McCormick PoA box from tightening report: "
+            f"({derived[0]:.6g}, {derived[1]:.6g})"
+        )
+        return derived
+    if config_box is not None:
+        return config_box
+    raise ValueError(
+        "McCormick objective modes require a PoA box. Set poa_mccormick_PoA_bounds "
+        "(e.g. (1.0, 50.0)) or run the equilibrium_cost_bounds tightening stage."
+    )
 
 
 def build_poa_optimizer(
@@ -821,7 +836,11 @@ def run_final_poa(config: PoAPipelineConfig) -> Path:
             "delta_left_ambiguous": 0,
         }
     applied_stats = optimizer.apply_tightened_bounds_to_model()
-    optimizer.solve(time_limit=config.poa_time_limit)
+    optimizer.solve(
+        time_limit=config.poa_time_limit,
+        solver_threads=config.poa_solver_threads,
+        solver_seed=config.poa_solver_seed,
+    )
     output_path = optimizer.save_results(config.poa_results_path)
     save_poa_solve_log_artifacts(optimizer, Path(output_path))
     elapsed = time.perf_counter() - start

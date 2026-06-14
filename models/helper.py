@@ -516,6 +516,11 @@ def build_solver_summary(optimizer: Any) -> dict[str, Any]:
     if wall_time is not None:
         summary["wall_time_seconds"] = float(wall_time)
 
+    # Gurobi Threads/Seed used for this solve, so timings can be read as 1:1
+    # comparable only when these match across runs (None = Gurobi default).
+    summary["solver_threads"] = getattr(optimizer, "last_solve_threads", None)
+    summary["solver_seed"] = getattr(optimizer, "last_solve_seed", None)
+
     # Certified MIP bracket (set by solves that expose it, e.g. the DRO eta
     # sweep): with the incumbent objective this gives a reportable interval
     # even when the solve stopped at a time limit.

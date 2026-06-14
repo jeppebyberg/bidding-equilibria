@@ -43,7 +43,7 @@ def default_eta_grid() -> list[float]:
     # Five points across the ~2-decade transition where the curve actually moves.
     mid = np.logspace(-2.0, 0.0, 10).tolist()  # 0.01, 0.032, 0.1, 0.316, 1.0
     # One anchor to confirm the right plateau.
-    tail = [10.0]
+    tail = [5.0, 10.0]
     return [0.0] + low + mid + tail
 
 
@@ -73,6 +73,11 @@ class ProjectConfig:
     ambiguity_set_config_path: str = "config/ambiguity_set_config.yaml"
     ambiguity_set_config_name: str = "base_test_case"
     bid_tolerance: float = 1e-2
+    # Undercut applied when a marginal block bids just below its nearest higher
+    # competitor. Kept separate from bid_tolerance so the buffer below the next
+    # generator's cost (e.g. wind vs the conventional fringe at 10 -> label ~9.75
+    # with margin 0.25) can be widened without coarsening numerical comparisons.
+    inflation_margin: float = 0.25
 
     nn_feature_columns: list[str] = field(
         default_factory=lambda: [
@@ -117,15 +122,20 @@ class ProjectConfig:
     epsilon: float = 1e-6
     poa_parallel_workers: int = 6
     poa_solver_threads_per_worker: int | None = 1
+    # Gurobi Threads/Seed for the FINAL PoA solve (not the tightening subproblems).
+    # None = Gurobi default (all cores, default seed). Pin both (e.g. threads=1,
+    # seed=0) to make solves deterministic and comparable 1:1 across runs.
+    poa_solver_threads: int | None = None
+    poa_solver_seed: int | None = None
 
     poa_context_num_scenarios: int = 1
     poa_objective_mode: str = "piecewise_mccormick"
     poa_mccormick_bounds: dict[str, Any] | None = None
-    poa_mccormick_PoA_bounds: tuple[float, float] | None = (1.0, 20.0)
+    poa_mccormick_PoA_bounds: tuple[float, float] | None = (1.0, 100.0)
     poa_mccormick_c_opt_bounds: tuple[float, float] | None = None
     poa_mccormick_num_pieces: int = 50
     poa_mccormick_c_opt_breakpoints: list[float] | None = None
-    poa_time_limit: int | None = None
+    poa_time_limit: int | None = 3600
     run_poa_tightening: bool = False
     poa_tightening_flags: dict[str, bool] = field(
         default_factory=lambda: dict(POA_TIGHTENING_FLAGS)
@@ -142,9 +152,9 @@ class ProjectConfig:
     dro_tightening_eta: float = 0.0
     dro_objective_mode: str = "piecewise_mccormick"
     dro_mccormick_bounds: dict[str, Any] | None = None
-    dro_mccormick_PoA_bounds: tuple[float, float] | None = (1.0, 20.0)
+    dro_mccormick_PoA_bounds: tuple[float, float] | None = (1.0, 100.0)
     dro_mccormick_c_opt_bounds: tuple[float, float] | None = None
-    dro_mccormick_num_pieces: int = 50
+    dro_mccormick_num_pieces: int = 100
     dro_mccormick_c_opt_breakpoints: list[float] | None = None
     dro_time_limit: int = 1000
 
@@ -165,7 +175,7 @@ class ProjectConfig:
     run_dro_optimization: bool = False
     archive_existing_dro_results: bool = True
 
-    plot_results_along_the_way: bool = False
+    plot_results_along_the_way: bool = True
     run_scenario_generation: bool = True
     run_heuristic_labels: bool = True
     run_feature_building: bool = False

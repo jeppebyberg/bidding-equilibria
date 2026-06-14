@@ -332,6 +332,19 @@ class DROEquilibriumCostBoundsComputer(DROPoATighteningMain):
             poa_bounds_lower=poa_bounds_lower,
             poa_bounds_margin=poa_bounds_margin,
         )
+        cost_ratio_bound = self._compute_cost_ratio_bound()
+
+        # Tighten derived_poa_bounds with the cost-ratio bound kappa: PoA <= kappa
+        # is valid whenever a feasible displacement pair exists in the alpha bounds,
+        # independently of C_eq and C_opt (no optimization required for kappa).
+        if cost_ratio_bound is not None:
+            kappa = cost_ratio_bound["kappa"]
+            if derived_poa_bounds is not None:
+                if kappa < derived_poa_bounds[1]:
+                    derived_poa_bounds[1] = kappa
+            else:
+                # c_opt_min unavailable but kappa still gives a valid upper bound.
+                derived_poa_bounds = [poa_bounds_lower, kappa]
 
         report = {
             "metadata": {
@@ -359,13 +372,18 @@ class DROEquilibriumCostBoundsComputer(DROPoATighteningMain):
             "num_optimization_programs": bound_report["num_optimization_programs"],
             "primal_big_m": self.tightening_data.get("primal_big_m", {}),
         }
+        if cost_ratio_bound is not None:
+            report["cost_ratio_bound"] = cost_ratio_bound
         if derived_poa_bounds is not None:
-            # PoA_U = max C_eq / min C_opt; the final DRO solve reads this box directly.
+            # PoA_U = min(max C_eq / min C_opt, kappa); the final DRO solve reads this box.
             report["derived_poa_bounds"] = derived_poa_bounds
             report["metadata"]["derived_poa_bounds_margin"] = float(poa_bounds_margin)
+            kappa_str = (
+                f", kappa={cost_ratio_bound['kappa']:.6g}" if cost_ratio_bound is not None else ""
+            )
             print(
                 f"[equilibrium_cost_bounds][{self.poa.regime_name}] "
-                f"max C_eq={bound_report['C_eq']['max']:.6g} -> derived PoA box "
+                f"max C_eq={bound_report['C_eq']['max']:.6g}{kappa_str} -> derived PoA box "
                 f"({derived_poa_bounds[0]:.6g}, {derived_poa_bounds[1]:.6g})"
             )
         else:

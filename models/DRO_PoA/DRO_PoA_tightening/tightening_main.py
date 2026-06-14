@@ -750,6 +750,62 @@ class DROPoATighteningMain:
 
         return self.save_final_report(output_paths["final"])
 
+    def _compute_cost_ratio_bound(self) -> Optional[dict[str, Any]]:
+        """Valid analytical PoA upper bound from the largest feasible cost-ratio displacement pair.
+
+        For each pair of blocks ((i,b), (j,k)) with c_{j,k} > c_{i,b}: if the
+        certified lower bound on alpha[j,k] is strictly below the certified upper
+        bound on alpha[i,b], then (j,k) can displace (i,b) in some scenario despite
+        being more expensive. The PoA is bounded above by kappa = max c_{j,k}/c_{i,b}
+        over all such feasible displacement pairs.
+
+        Returns a dict with 'kappa' and the witnessing pair, or None if unavailable.
+        """
+        alpha_bounds = getattr(self.poa, "alpha_bounds", None) or {}
+        if not alpha_bounds:
+            return None
+        block_cost: dict[tuple[int, int], float] = {
+            (int(i), int(b)): float(
+                self.poa.block_cost_vector[self.poa.local_to_global_block[(int(i), int(b))]]
+            )
+            for i, b in self.poa.generator_block_pairs
+        }
+        # Aggregate per (i,b): max upper and min lower over all time steps.
+        # Keys are (i,b,t) for PoA; offset handles DRO (k,i,b,t) variant too.
+        alpha_ub: dict[tuple[int, int], float] = {}
+        alpha_lb: dict[tuple[int, int], float] = {}
+        for key, bounds in alpha_bounds.items():
+            offset = 1 if len(key) == 4 else 0
+            ib = (int(key[offset]), int(key[offset + 1]))
+            alpha_ub[ib] = max(alpha_ub.get(ib, -1e18), float(bounds["upper"]))
+            alpha_lb[ib] = min(alpha_lb.get(ib, 1e18), float(bounds["lower"]))
+        kappa: Optional[float] = None
+        best: Optional[tuple[tuple[int, int], tuple[int, int]]] = None
+        for ib, c_ib in block_cost.items():
+            if c_ib <= 0 or ib not in alpha_ub:
+                continue
+            for jk, c_jk in block_cost.items():
+                if c_jk <= c_ib or jk not in alpha_lb:
+                    continue
+                if alpha_lb[jk] >= alpha_ub[ib]:
+                    continue  # j,k always bids above i,b: displacement impossible
+                ratio = c_jk / c_ib
+                if kappa is None or ratio > kappa:
+                    kappa = ratio
+                    best = (ib, jk)
+        if kappa is None or best is None:
+            return None
+        ib, jk = best
+        return {
+            "kappa": float(kappa),
+            "cheap_block": list(ib),
+            "expensive_block": list(jk),
+            "cheap_cost": float(block_cost[ib]),
+            "expensive_cost": float(block_cost[jk]),
+            "cheap_alpha_upper": float(alpha_ub[ib]),
+            "expensive_alpha_lower": float(alpha_lb[jk]),
+        }
+
     def run_all(
         self,
         run_primal_big_m: bool = True,
@@ -912,5 +968,25 @@ class DROPoATighteningMain:
             )
         elif eq_previous and Path(eq_previous).exists():
             self._load_previous_stage("equilibrium_cost_bounds", eq_previous)
+
+        # Analytical cost-ratio PoA bound: always applied last so it can tighten
+        # whatever derived_poa_bounds was set by equilibrium_cost_bounds (or replace
+        # it entirely when that stage is absent). No solver required.
+        if getattr(self.poa, "alpha_bounds", None):
+            cost_ratio = self._compute_cost_ratio_bound()
+            if cost_ratio is not None:
+                kappa = float(cost_ratio["kappa"])
+                existing = self.tightening_data.get("derived_poa_bounds")
+                if existing is not None:
+                    derived: list[float] = [float(existing[0]), min(float(existing[1]), kappa)]
+                else:
+                    derived = [poa_bounds_lower, kappa]
+                self.tightening_data["derived_poa_bounds"] = derived
+                print(
+                    f"[cost_ratio_bound] kappa={kappa:.6g} "
+                    f"(block {cost_ratio['cheap_block']} -> {cost_ratio['expensive_block']}) "
+                    f"-> derived PoA box ({derived[0]:.6g}, {derived[1]:.6g})",
+                    flush=True,
+                )
 
         return self.save_final_report(output_paths["final"])

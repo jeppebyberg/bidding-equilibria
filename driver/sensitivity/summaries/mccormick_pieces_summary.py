@@ -13,7 +13,7 @@ and derives the ex-post fraction ``ex_post_ratio / PoA`` -- the share of the
 reported (relaxed) PoA that is actually realized. As pieces increase the
 relaxation tightens, so the gap shrinks and the fraction approaches 1, while the
 binary count and solve time grow: the trade-off that justifies the chosen count.
-Each plot shows one line per horizon (T=6 and T=8).
+Each plot shows one line per horizon (T=6).
 
 Writes the cross-run comparison as CSV + JSON and three plots.
 
@@ -35,15 +35,15 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from driver.sensitivity.mccormick_pieces_sweep import (  # noqa: E402
     HORIZONS,
-    PIECES,
     RESULT_ROOT,
     STUDY_NAME,
+    horizon_name,
     run_dir,
     run_name,
 )
 
 # Number of pieces in the production configuration, highlighted in the plots.
-CHOSEN_PIECES = 50
+CHOSEN_PIECES = 100
 
 
 def _find_poa_result(run_dir_path: Path) -> Path | None:
@@ -101,11 +101,29 @@ def _load_run(run_dir_path: Path) -> dict[str, Any] | None:
     }
 
 
+def _discover_pieces(horizon: int) -> list[int]:
+    """Return every piece count with a P<n> dir on disk for this horizon, sorted.
+
+    Discovering from disk (rather than the sweep's PIECES list) means the summary
+    stitches together every run present -- e.g. an early 5..100 sweep plus a later
+    200/500 sweep -- regardless of what the most recent sweep run targeted.
+    """
+    horizon_dir = RESULT_ROOT / horizon_name(horizon)
+    if not horizon_dir.exists():
+        return []
+    pieces: list[int] = []
+    for child in horizon_dir.glob("P*"):
+        if child.is_dir() and child.name[1:].isdigit():
+            pieces.append(int(child.name[1:]))
+    return sorted(pieces)
+
+
 def collect_summary() -> dict[str, Any]:
-    """Build the cross-pieces summary, preserving HORIZONS x PIECES order."""
+    """Build the cross-pieces summary from every run on disk, in piece order."""
+    horizons = [h for h in HORIZONS if _discover_pieces(h)]
     runs: list[dict[str, Any]] = []
-    for horizon in HORIZONS:
-        for num_pieces in PIECES:
+    for horizon in horizons:
+        for num_pieces in _discover_pieces(horizon):
             name = run_name(num_pieces)
             run_dir_path = run_dir(horizon, num_pieces)
             loaded = _load_run(run_dir_path)
@@ -121,7 +139,7 @@ def collect_summary() -> dict[str, Any]:
     return {
         "study": STUDY_NAME,
         "chosen_pieces": CHOSEN_PIECES,
-        "horizons": list(HORIZONS),
+        "horizons": horizons,
         "runs": runs,
     }
 
@@ -191,6 +209,21 @@ def print_table(summary: dict[str, Any]) -> None:
 _HORIZON_COLORS = {6: "tab:blue", 8: "tab:orange"}
 
 
+def _apply_log_x(ax: Any, all_pieces: list[int]) -> None:
+    """Log x-axis with integer piece-count tick labels (5..500 spans too wide for linear)."""
+    from matplotlib.ticker import FixedFormatter, FixedLocator
+
+    ax.set_xscale("log")
+    ax.xaxis.set_major_locator(FixedLocator(all_pieces))
+    ax.xaxis.set_major_formatter(FixedFormatter([str(p) for p in all_pieces]))
+    ax.xaxis.set_minor_locator(FixedLocator([]))
+
+
+def _is_capped(run: dict[str, Any]) -> bool:
+    """True if the run hit the solve time limit (not a proven optimum)."""
+    return str(run.get("termination_condition")) not in {"optimal", "None", "none"}
+
+
 def plot_summary(
     summary: dict[str, Any],
     time_path: Path,
@@ -216,6 +249,7 @@ def plot_summary(
                        label=f"chosen = {chosen}")
 
     fig, ax = plt.subplots(figsize=(7, 5))
+    capped_labelled = False
     for horizon in horizons:
         runs = _runs_for_horizon(summary, horizon)
         ax.plot(
@@ -225,10 +259,21 @@ def plot_summary(
             color=_HORIZON_COLORS.get(horizon),
             label=f"T={horizon}",
         )
+        # Overlay hollow red markers on runs that hit the time limit (incumbent,
+        # not a proven optimum) so the capped points are not read as solved.
+        capped = [r for r in runs if _is_capped(r)]
+        if capped:
+            ax.scatter(
+                [r["pieces"] for r in capped],
+                [r["wall_time_seconds"] for r in capped],
+                facecolors="none", edgecolors="tab:red", s=120, linewidths=1.8,
+                zorder=5, label=None if capped_labelled else "hit time limit",
+            )
+            capped_labelled = True
     ax.set_xlabel("McCormick pieces")
     ax.set_ylabel("PoA solve wall time (s)")
     ax.set_title("PoA solve time vs. McCormick pieces")
-    ax.set_xticks(all_pieces)
+    _apply_log_x(ax, all_pieces)
     ax.grid(alpha=0.3)
     _mark_chosen(ax)
     ax.legend()
@@ -259,7 +304,7 @@ def plot_summary(
     ax.set_xlabel("McCormick pieces")
     ax.set_ylabel("binary variables")
     ax.set_title("PoA binary count vs. McCormick pieces")
-    ax.set_xticks(all_pieces)
+    _apply_log_x(ax, all_pieces)
     ax.grid(alpha=0.3)
     _mark_chosen(ax)
     ax.legend()
@@ -299,7 +344,7 @@ def plot_summary(
     ax.set_ylabel("relaxation gap")
     ax2.set_ylabel("ex-post fraction (%)")
     ax.set_title("Ex-post relaxation gap vs. McCormick pieces")
-    ax.set_xticks(all_pieces)
+    _apply_log_x(ax, all_pieces)
     ax.grid(alpha=0.3)
     _mark_chosen(ax)
     lines1, labels1 = ax.get_legend_handles_labels()

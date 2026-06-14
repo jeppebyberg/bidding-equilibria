@@ -62,7 +62,7 @@ class PoAOptimization(
     DEFAULT_LOOSE_C_OPT_LOWER = 1e-3
     DEFAULT_LOOSE_C_OPT_UPPER = 10000
     DEFAULT_PoA_LOWER = 1.0
-    DEFAULT_PoA_UPPER = 10.0
+    DEFAULT_PoA_UPPER = 50.0
     DEFAULT_ALPHA_ORDERING_EPSILON = 1e-6
 
     allowed_objective_modes = {
@@ -1099,13 +1099,28 @@ class PoAOptimization(
     # Solve and results
     # ------------------------------------------------------------------
 
-    def solve(self, time_limit: Optional[float] = None) -> Any:
+    def solve(
+        self,
+        time_limit: Optional[float] = None,
+        solver_threads: Optional[int] = None,
+        solver_seed: Optional[int] = None,
+    ) -> Any:
         if not hasattr(self, "model"):
             raise ValueError("Model is not built. Call build_model() first.")
         solver = SolverFactory("gurobi_direct")
         solver.options["IntFeasTol"] = 1e-8
         if time_limit is not None:
             solver.options["TimeLimit"] = float(time_limit)
+        # Pin Threads/Seed so solves are deterministic and comparable 1:1 across
+        # runs. Multi-threaded Gurobi has a nondeterministic search path, so a
+        # single-thread, fixed-seed solve is required to attribute solve-time
+        # differences to the model (tightening) rather than solver variability.
+        if solver_threads is not None:
+            solver.options["Threads"] = int(solver_threads)
+        if solver_seed is not None:
+            solver.options["Seed"] = int(solver_seed)
+        self.last_solve_threads = solver_threads
+        self.last_solve_seed = solver_seed
         start = time.perf_counter()
         with gurobi_log_filter(solver) as gurobi_log_path:
             self.solver_results = solver.solve(self.model, tee=False)
