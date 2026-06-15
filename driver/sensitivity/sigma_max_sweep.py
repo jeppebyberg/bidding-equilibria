@@ -1,12 +1,13 @@
-"""Sensitivity study: autocorrelation rho in the DRO ambiguity set.
+"""Sensitivity study: max sigma in the DRO ambiguity set.
 
-Varies ``demand.rho_fixed`` and ``wind.rho_fixed`` jointly across a grid that
-includes negative values.  The regime-definition rho parameters (rho_D / rho_W
-used for scenario generation) are unchanged; only the DRO ambiguity-set
-constraint is swept.
+Shrinks the upper bound on the regime standard deviation, ``demand.sigma.max``
+and ``wind.sigma.max`` jointly, across [0.025 (base), 0.02, 0.015, 0.01]. The
+``sigma.min`` floors and every other ambiguity-set field are inherited from
+base_test_case; only the sigma ceiling is tightened, so each PoA difference is
+attributable to the narrower spread the uncertainty set is allowed to take.
 
 Run:
-  python -m driver.sensitivity.rho_sweep
+  python -m driver.sensitivity.sigma_max_sweep
 """
 
 from __future__ import annotations
@@ -31,29 +32,31 @@ from driver.sensitivity.sensitivity_config import (  # noqa: E402
     write_ambiguity_sweep_config,
 )
 
-STUDY_NAME = "rho_sweep"
+STUDY_NAME = "sigma_max_sweep"
 BASE_AMBIGUITY_CONFIG = PROJECT_ROOT / "config" / "ambiguity_set_config.yaml"
 
-RHO_VALUES = [-0.25, 0.0, 0.25, 0.50, 0.75, 0.99]
+# Max sigma values under study. Base case is 0.025.
+SIGMA_MAX_VALUES = [0.025, 0.02, 0.015, 0.01]
+BASE_SIGMA_MAX = 0.025
+
 
 @dataclass(frozen=True)
-class RhoSpec:
-    """One rho sensitivity run."""
+class SigmaMaxSpec:
+    """One max-sigma sensitivity run."""
 
-    rho: float
+    sigma_max: float
 
     @property
     def run_name(self) -> str:
-        sign = "neg" if self.rho < 0 else "pos"
-        mag = f"{abs(self.rho):.2f}".replace(".", "p")
-        return f"rho_{sign}{mag}"
+        # Filesystem-clean, sortable: 0.025 -> sigma_0p025.
+        return "sigma_" + format(self.sigma_max, "g").replace(".", "p")
 
     @property
     def ambiguity_set_name(self) -> str:
         return self.run_name
 
 
-def write_rho_ambiguity_configs(specs: list[RhoSpec]) -> Path:
+def write_sigma_max_ambiguity_configs(specs: list[SigmaMaxSpec]) -> Path:
     base_config = load_project_config()
     with BASE_AMBIGUITY_CONFIG.open("r", encoding="utf-8") as fh:
         raw: dict[str, Any] = yaml.safe_load(fh)
@@ -62,9 +65,9 @@ def write_rho_ambiguity_configs(specs: list[RhoSpec]) -> Path:
     ambiguity_sets: dict[str, Any] = {}
     for spec in specs:
         entry = copy.deepcopy(base_entry)
-        entry["demand"]["rho_fixed"] = float(spec.rho)
-        entry["wind"]["rho_fixed"] = float(spec.rho)
-        entry["description"] = f"Rho sensitivity: rho_fixed = {spec.rho:.2f}."
+        entry["demand"]["sigma"]["max"] = float(spec.sigma_max)
+        entry["wind"]["sigma"]["max"] = float(spec.sigma_max)
+        entry["description"] = f"Max-sigma sensitivity: sigma.max = {spec.sigma_max:g}."
         ambiguity_sets[spec.ambiguity_set_name] = entry
 
     return write_ambiguity_sweep_config(
@@ -74,8 +77,8 @@ def write_rho_ambiguity_configs(specs: list[RhoSpec]) -> Path:
     )
 
 
-def build_study(specs: list[RhoSpec]) -> SensitivityStudy:
-    ambiguity_config_path = write_rho_ambiguity_configs(specs)
+def build_study(specs: list[SigmaMaxSpec]) -> SensitivityStudy:
+    ambiguity_config_path = write_sigma_max_ambiguity_configs(specs)
     return SensitivityStudy(
         name=STUDY_NAME,
         blocks=("full",),
@@ -86,13 +89,17 @@ def build_study(specs: list[RhoSpec]) -> SensitivityStudy:
                     "ambiguity_set_config_path": str(ambiguity_config_path),
                     "ambiguity_set_config_name": spec.ambiguity_set_name,
                 },
+                label=(
+                    f"sigma.max = {spec.sigma_max:g}"
+                    + (" (base)" if spec.sigma_max == BASE_SIGMA_MAX else "")
+                ),
             )
             for spec in specs
         ],
     )
 
 
-specs = [RhoSpec(rho=v) for v in RHO_VALUES]
+specs = [SigmaMaxSpec(sigma_max=v) for v in SIGMA_MAX_VALUES]
 
 
 def run() -> dict[str, Any]:

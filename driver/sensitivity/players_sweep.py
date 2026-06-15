@@ -52,6 +52,8 @@ _CONV_B2_MIN, _CONV_B2_MAX = 20.0, 60.0
 _WIND_MIN, _WIND_MAX = 0.1, 0.3
 
 N_VALUES = [2, 3, 4, 5]
+# Subset to actually run this session; edit to skip already-completed runs.
+N_VALUES_TO_RUN = [3, 4, 5]  # N2 completed; resume from N3
 
 
 @dataclass
@@ -125,6 +127,7 @@ def build_study() -> SensitivityStudy:
                 label=f"N = {spec.n_conv}",
             )
             for spec in specs
+            if spec.n_conv in N_VALUES_TO_RUN
         ],
     )
 

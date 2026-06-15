@@ -38,6 +38,8 @@ from driver.sensitivity.sensitivity_config import (
 STUDY_NAME = "bidding_blocks_sweep"
 
 NUM_BLOCKS_VALUES = [1, 2, 3, 4]
+# Subset to actually run this session; edit to skip already-completed runs.
+NUM_BLOCKS_TO_RUN = list(NUM_BLOCKS_VALUES)
 
 # 3C+3W composition matching base_test_case (highest-cost generator listed first).
 _CONV_GENS = [
@@ -154,12 +156,13 @@ def build_study() -> SensitivityStudy:
                 label=f"B = {b}",
             )
             for b in NUM_BLOCKS_VALUES
+        if b in NUM_BLOCKS_TO_RUN
         ],
     )
 
 
 def run() -> dict[str, Any]:
-    blocks_to_write = [b for b in NUM_BLOCKS_VALUES if _case_override(b) != "base_test_case"]
+    blocks_to_write = [b for b in NUM_BLOCKS_TO_RUN if _case_override(b) != "base_test_case"]
     _write_reference_cases(blocks_to_write)
     return run_sensitivity_study(build_study())
 

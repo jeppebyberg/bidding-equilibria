@@ -490,6 +490,18 @@ def count_integer_variables(model: Any) -> dict[str, int]:
     }
 
 
+def count_constraints(model: Any) -> int:
+    """Count active constraint rows in a Pyomo model.
+
+    Counts individual constraint data objects (one per index of each indexed
+    Constraint), matching how ``count_integer_variables`` counts Var data
+    objects, so the number is the model-as-formulated row count.
+    """
+    from pyomo.environ import Constraint
+
+    return sum(1 for _ in model.component_data_objects(Constraint, active=True))
+
+
 def build_solver_summary(optimizer: Any) -> dict[str, Any]:
     """Build the ``solver`` results block: status, solve time, variable counts.
 
@@ -532,6 +544,7 @@ def build_solver_summary(optimizer: Any) -> dict[str, Any]:
     model = getattr(optimizer, "model", None)
     if model is not None:
         summary["variable_counts"] = count_integer_variables(model)
+        summary["num_constraints"] = count_constraints(model)
 
     return summary
 

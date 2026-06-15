@@ -10,21 +10,33 @@ To compare with and without wind playing:
 To compute the different computation time when having different horizons
 - python -m driver.sensitivity.horizon_sweep
 
+To sweep the DRO ambiguity-set parameters (each runs the full pipeline per variant):
+- python -m driver.sensitivity.peak_w_sweep
+- python -m driver.sensitivity.rho_sweep
+- python -m driver.sensitivity.sigma_max_sweep  # max sigma [0.025 base, 0.02, 0.015, 0.01]
+
+DRO eta-sweep analysis (block4 only; reuses each case's existing PoA artifacts,
+fills in the missing <case>/dro/ folders. Skips T6 / N3 which already have DRO):
+- python -m driver.sensitivity.horizon_sweep_dro
+- python -m driver.sensitivity.players_sweep_dro
+Then build the cross-case comparison plots + summary CSVs:
+- python -m results_viz.plot_sensitivity_eta_sweep horizon_sweep
+- python -m results_viz.plot_sensitivity_eta_sweep players_sweep
+
 ## Run all (PowerShell)
 
 ```powershell
 $logDir = 'logs'
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $indexLog = 'overnight.log'
-'' | Out-File $indexLog   # clear index from previous run
+# Append to existing log so last night's records are preserved.
 
 $mods = @(
-  'driver.sensitivity.bound_tightening_progression',
-  'driver.sensitivity.horizon_sweep',
-  'driver.sensitivity.ramp_rate_sweep',
-  'driver.sensitivity.players_sweep',
-  'driver.sensitivity.bidding_blocks_sweep',
-  'driver.sensitivity.overlapping_costs_sweep'
+  'driver.sensitivity.peak_w_sweep',
+  'driver.sensitivity.rho_sweep',
+  'driver.sensitivity.sigma_max_sweep',
+  'driver.sensitivity.composition_sweep',
+  'driver.sensitivity.horizon_sweep_dro'
 )
 
 foreach ($m in $mods) {
