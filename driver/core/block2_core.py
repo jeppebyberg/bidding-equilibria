@@ -157,6 +157,13 @@ def plot_training_results(config: ProjectConfig) -> Path:
     from models.neural_network.training.visualize_training import (
         main as visualize_training_main,
     )
+    from models.neural_network.training.visualize_test_predictions import (
+        plot_test_predictions,
+    )
+    from models.neural_network.training.visualize_training_labels import (
+        load_all_raw_datasets,
+        plot_label_scatter_individual,
+    )
 
     figures_dir = config.figures_dir or Path("results") / config.case / "figures"
     plot_dir = Path(figures_dir) / "training_results"
@@ -166,5 +173,25 @@ def plot_training_results(config: ProjectConfig) -> Path:
         plot_dir=plot_dir,
     )
     print(f"Saved training plots to {plot_dir}")
+
+    # Per-block training-label scatters with residual-demand regions. One PNG
+    # per (generator, block) under plot_dir/training_labels.
+    datasets = load_all_raw_datasets(config.raw_feature_dir)
+    plot_label_scatter_individual(
+        datasets,
+        output_dir=plot_dir / "training_labels",
+        shade_regions=True,
+    )
+
+    # Per-block held-out test predictions overlaid on the residual-demand bid
+    # regions. One PNG per (generator, block) under plot_dir/test_predictions.
+    plot_test_predictions(
+        output_dir=plot_dir / "test_predictions",
+        raw_dir=config.raw_feature_dir,
+        norm_dir=config.normalized_feature_dir,
+        model_dir=config.model_dir,
+        test_size=config.test_size,
+        random_state=config.random_state,
+    )
     return plot_dir
 
