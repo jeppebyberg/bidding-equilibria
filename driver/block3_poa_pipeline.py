@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,7 @@ from driver.block0_system_setup import (  # noqa: E402
     write_manifest,
 )
 
+
 def run(config=None) -> dict[str, Any]:
     cfg = config or build_config()
     pcfg = build_poa_config(cfg)
@@ -48,6 +50,7 @@ def run(config=None) -> dict[str, Any]:
             time_steps=cfg.horizon,
         )
 
+    t0_tightening = time.perf_counter()
     if cfg.run_poa_tightening:
         run_tightening_pipeline(pcfg)
     else:
@@ -57,11 +60,14 @@ def run(config=None) -> dict[str, Any]:
             "existing reports when present and loose defaults otherwise)."
         )
         run_tightening_pipeline(pcfg, run_optional_stages=False)
+    tightening_wall_time = time.perf_counter() - t0_tightening
 
+    t0_solve = time.perf_counter()
     if cfg.run_poa_optimization:
         run_final_poa(pcfg)
     else:
         print("[block3] Reusing existing PoA optimization result.")
+    solve_wall_time = time.perf_counter() - t0_solve
 
     if cfg.plot_results_along_the_way:
         plot_base_poa_stage(pcfg)
@@ -88,9 +94,13 @@ def run(config=None) -> dict[str, Any]:
         "runtime_config_path": runtime_config_path,
         "ran_poa_tightening": bool(cfg.run_poa_tightening),
         "ran_poa_optimization": bool(cfg.run_poa_optimization),
+        "tightening_wall_time_seconds": tightening_wall_time,
+        "solve_wall_time_seconds": solve_wall_time,
+        "wall_time_seconds": tightening_wall_time + solve_wall_time,
     }
     write_manifest("block3_poa", manifest, cfg)
     return manifest
+
 
 if __name__ == "__main__":
     run()

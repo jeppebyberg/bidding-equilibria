@@ -15,6 +15,19 @@ from models.PoA.PoA_tightening.tightening_main import (
 )
 
 
+# Minimum half-width for NN-policy alpha bounds. A near-constant learned policy
+# can collapse a certified alpha interval to ~1e-9, which ill-conditions the
+# downstream McCormick alpha*P products and produces sub-tolerance constraint
+# violations in the final PoA solve (the solver can then under-report the PoA).
+# Widening such an interval is always valid -- in the final model alpha is still
+# pinned by the embedded alpha = NN(features) ReLU constraints, so the box only
+# affects the relaxation/Big-M derivation, never the true optimum. We therefore
+# floor NN-policy bounds to at least this half-width around their midpoint.
+# True-cost (non-NN) bids keep their exact width-0 fixing so price-takers still
+# bid marginal cost. Set to 0.0 to restore the previous (un-floored) behaviour.
+DEFAULT_MIN_NN_ALPHA_BOUND_HALF_WIDTH = 1e-5
+
+
 _PARALLEL_ALPHA_COMPUTER: Optional["AlphaBoundsComputer"] = None
 
 
@@ -33,6 +46,10 @@ def _initialize_parallel_alpha_computer(state: dict[str, Any]) -> None:
         objective_mode=state.get("objective_mode", "difference"),
         mccormick_bounds=state.get("mccormick_bounds"),
         use_default_bounds=bool(state.get("use_default_bounds", False)),
+        alpha_ordering_epsilon=state.get(
+            "alpha_ordering_epsilon",
+            PoAOptimization.DEFAULT_ALPHA_ORDERING_EPSILON,
+        ),
     )
     if "p_init" in state:
         poa.p_init = state["p_init"]
@@ -105,6 +122,7 @@ class AlphaBoundsComputer(PoATighteningMain):
             "objective_mode": self.poa.objective_mode,
             "mccormick_bounds": self.poa.mccormick_bounds,
             "use_default_bounds": self.poa.use_default_bounds,
+            "alpha_ordering_epsilon": self.poa.alpha_ordering_epsilon,
             "nn_relu_bounds_report": getattr(self.poa, "nn_relu_bounds_report", {}) or {},
             "primal_big_m": getattr(self.poa, "primal_big_m", {}) or {},
         }
@@ -128,6 +146,26 @@ class AlphaBoundsComputer(PoATighteningMain):
         if solver_threads is not None and solver_name == "gurobi":
             options["Threads"] = int(solver_threads)
         return options or None
+
+    def _floor_nn_alpha_bound_width(
+        self, index: tuple[int, int, int], lower: float, upper: float
+    ) -> tuple[float, float]:
+        """Widen a collapsed NN-policy alpha interval to a minimum half-width.
+
+        Applies only to NN-policy generator indices and only enlarges the
+        interval (symmetric about its midpoint). True-cost generators and
+        already-wide intervals are returned unchanged. See
+        DEFAULT_MIN_NN_ALPHA_BOUND_HALF_WIDTH for the rationale.
+        """
+        half = float(
+            getattr(self, "min_nn_alpha_bound_half_width", DEFAULT_MIN_NN_ALPHA_BOUND_HALF_WIDTH)
+        )
+        if half <= 0.0 or int(index[0]) not in set(self.nn_policy_generator_ids):
+            return lower, upper
+        if (upper - lower) >= 2.0 * half:
+            return lower, upper
+        midpoint = 0.5 * (lower + upper)
+        return midpoint - half, midpoint + half
 
     def _build_tightening_sets(self) -> None:
         """
@@ -272,10 +310,10 @@ class AlphaBoundsComputer(PoATighteningMain):
                     }
                 if lower_upper["lower"] is None or lower_upper["upper"] is None:
                     raise RuntimeError(f"Could not compute alpha bounds for index {index}")
-                alpha_bounds[index] = {
-                    "lower": float(lower_upper["lower"]),
-                    "upper": float(lower_upper["upper"]),
-                }
+                floored_lower, floored_upper = self._floor_nn_alpha_bound_width(
+                    index, float(lower_upper["lower"]), float(lower_upper["upper"])
+                )
+                alpha_bounds[index] = {"lower": floored_lower, "upper": floored_upper}
 
             self.alpha_bounds = alpha_bounds
             self.alpha_bound_optimization_results = optimization_results
@@ -312,10 +350,10 @@ class AlphaBoundsComputer(PoATighteningMain):
 
             if lower_upper["lower"] is None or lower_upper["upper"] is None:
                 raise RuntimeError(f"Could not compute alpha bounds for index {index}")
-            alpha_bounds[index] = {
-                "lower": float(lower_upper["lower"]),
-                "upper": float(lower_upper["upper"]),
-            }
+            floored_lower, floored_upper = self._floor_nn_alpha_bound_width(
+                index, float(lower_upper["lower"]), float(lower_upper["upper"])
+            )
+            alpha_bounds[index] = {"lower": floored_lower, "upper": floored_upper}
 
         self.alpha_bounds = alpha_bounds
         self.alpha_bound_optimization_results = optimization_results

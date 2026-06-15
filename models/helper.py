@@ -15,8 +15,37 @@ from typing import Any, Callable, Iterator, Mapping, Optional, Sequence
 import numpy as np
 import pandas as pd
 
-
 PROFILE_TYPES = (list, tuple, np.ndarray, pd.Series)
+
+
+def derive_poa_upper_bound(
+    c_eq_max: float,
+    c_opt_min: float,
+    lower: float = 1.0,
+    margin: float = 1e-3,
+) -> tuple[float, float]:
+    """Derive the McCormick PoA box (PoA_L, PoA_U) from cost extrema.
+
+    PoA(omega) = C_eq/C_opt <= max_omega C_eq / min_omega C_opt over the support
+    set (C_eq >= 0, C_opt > 0). The numerator max C_eq comes from the
+    equilibrium_cost_bounds tightening stage and the denominator min C_opt from
+    the optimal_cost_bounds stage. ``margin`` is a small relative cushion so the
+    box does not clamp a worst case sitting exactly on it; the lower bound is 1.0
+    by default (equilibrium cost >= optimal cost).
+    """
+    c_eq_max = float(c_eq_max)
+    c_opt_min = float(c_opt_min)
+    if c_opt_min <= 0.0:
+        raise ValueError(f"min C_opt must be strictly positive; got {c_opt_min!r}.")
+    if c_eq_max < 0.0:
+        raise ValueError(f"max C_eq must be non-negative; got {c_eq_max!r}.")
+    if margin < 0.0:
+        raise ValueError(f"margin must be non-negative; got {margin!r}.")
+    poa_lower = float(lower)
+    poa_upper = c_eq_max / c_opt_min * (1.0 + float(margin))
+    # Guard so the McCormick envelope is non-degenerate (PoA_U strictly > PoA_L).
+    poa_upper = max(poa_upper, poa_lower * (1.0 + 1e-6) + 1e-6)
+    return (poa_lower, poa_upper)
 
 
 @dataclass(frozen=True)
@@ -98,9 +127,7 @@ def ensure_profile(
                 )
             return profile[:expected_len]
         if len(profile) != expected_len:
-            raise ValueError(
-                f"{column_name} must have length {expected_len}, got {len(profile)}"
-            )
+            raise ValueError(f"{column_name} must have length {expected_len}, got {len(profile)}")
         return profile
 
     return [float(value)] * expected_len
@@ -154,15 +181,11 @@ def build_block_structure(
     """Build consistent global/local block mappings for physical generators."""
     block_names = [str(name) for name in block_names]
     physical_generator_names = [str(name) for name in physical_generator_names]
-    physical_idx_by_name = {
-        name: idx for idx, name in enumerate(physical_generator_names)
-    }
+    physical_idx_by_name = {name: idx for idx, name in enumerate(physical_generator_names)}
 
     block_to_physical: dict[str, str] = {}
     block_to_physical_idx: list[int] = []
-    physical_to_block_indices: list[list[int]] = [
-        [] for _ in physical_generator_names
-    ]
+    physical_to_block_indices: list[list[int]] = [[] for _ in physical_generator_names]
 
     for block_idx, block_name in enumerate(block_names):
         physical_name = infer_physical_from_block_name(block_name)
@@ -224,8 +247,7 @@ def target_columns_to_local_blocks(
     generator_name = str(generator_name)
     if generator_name not in physical_generator_names:
         raise ValueError(
-            f"Unknown generator '{generator_name}'. "
-            f"Available: {physical_generator_names}"
+            f"Unknown generator '{generator_name}'. " f"Available: {physical_generator_names}"
         )
 
     generator_idx = physical_generator_names.index(generator_name)
@@ -283,12 +305,10 @@ def ramp_vectors(
 ) -> tuple[list[float], list[float]]:
     """Read physical-generator ramp-up and ramp-down vectors."""
     ramp_up = [
-        float(ramps_df[f"{physical}_ramp_up"].iloc[0])
-        for physical in physical_generator_names
+        float(ramps_df[f"{physical}_ramp_up"].iloc[0]) for physical in physical_generator_names
     ]
     ramp_down = [
-        float(ramps_df[f"{physical}_ramp_down"].iloc[0])
-        for physical in physical_generator_names
+        float(ramps_df[f"{physical}_ramp_down"].iloc[0]) for physical in physical_generator_names
     ]
     return ramp_up, ramp_down
 
@@ -310,8 +330,7 @@ def half_capacity_initial_dispatch(
         physical_initial = []
         for block_indices in physical_to_block_indices:
             physical_capacity = sum(
-                float(row[f"{block_names[int(block_idx)]}_cap"])
-                for block_idx in block_indices
+                float(row[f"{block_names[int(block_idx)]}_cap"]) for block_idx in block_indices
             )
             physical_initial.append(0.5 * physical_capacity)
         initial_dispatch.append(physical_initial)
@@ -394,9 +413,7 @@ def wind_generator_config_value(
             if key in grouped and isinstance(grouped[key], dict) and field_name in grouped[key]:
                 return grouped[key][field_name]
 
-    legacy_key = {"reference": "wind_reference", "min": "wind_min", "max": "wind_max"}[
-        field_name
-    ]
+    legacy_key = {"reference": "wind_reference", "min": "wind_min", "max": "wind_max"}[field_name]
     return per_generator_config_value(
         cfg.get(legacy_key),
         generator_idx,
@@ -409,6 +426,7 @@ def wind_generator_config_value(
 # JSON serialization helpers
 # ---------------------------------------------------------------------------
 
+
 def sanitize_for_json(obj: Any) -> Any:
     """Recursively replace non-finite floats (NaN, Inf) with None.
 
@@ -417,6 +435,7 @@ def sanitize_for_json(obj: Any) -> Any:
     readers.  Call this before json.dump to produce a valid file.
     """
     import math
+
     if isinstance(obj, float):
         return None if not math.isfinite(obj) else obj
     if isinstance(obj, dict):
@@ -471,6 +490,18 @@ def count_integer_variables(model: Any) -> dict[str, int]:
     }
 
 
+def count_constraints(model: Any) -> int:
+    """Count active constraint rows in a Pyomo model.
+
+    Counts individual constraint data objects (one per index of each indexed
+    Constraint), matching how ``count_integer_variables`` counts Var data
+    objects, so the number is the model-as-formulated row count.
+    """
+    from pyomo.environ import Constraint
+
+    return sum(1 for _ in model.component_data_objects(Constraint, active=True))
+
+
 def build_solver_summary(optimizer: Any) -> dict[str, Any]:
     """Build the ``solver`` results block: status, solve time, variable counts.
 
@@ -497,6 +528,11 @@ def build_solver_summary(optimizer: Any) -> dict[str, Any]:
     if wall_time is not None:
         summary["wall_time_seconds"] = float(wall_time)
 
+    # Gurobi Threads/Seed used for this solve, so timings can be read as 1:1
+    # comparable only when these match across runs (None = Gurobi default).
+    summary["solver_threads"] = getattr(optimizer, "last_solve_threads", None)
+    summary["solver_seed"] = getattr(optimizer, "last_solve_seed", None)
+
     # Certified MIP bracket (set by solves that expose it, e.g. the DRO eta
     # sweep): with the incumbent objective this gives a reportable interval
     # even when the solve stopped at a time limit.
@@ -508,6 +544,7 @@ def build_solver_summary(optimizer: Any) -> dict[str, Any]:
     model = getattr(optimizer, "model", None)
     if model is not None:
         summary["variable_counts"] = count_integer_variables(model)
+        summary["num_constraints"] = count_constraints(model)
 
     return summary
 

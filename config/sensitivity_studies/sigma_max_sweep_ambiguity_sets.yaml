@@ -1,0 +1,82 @@
+default_ambiguity_set: sigma_0p025
+ambiguity_sets:
+  sigma_0p025:
+    description: 'Max-sigma sensitivity: sigma.max = 0.025.'
+    demand:
+      mu:
+        min: 0.75
+        max: 1.25
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.75
+    wind:
+      mu:
+        min: 0.25
+        max: 0.75
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.75
+      tau_fixed: 14
+    kappa: 0.3
+  sigma_0p02:
+    description: 'Max-sigma sensitivity: sigma.max = 0.02.'
+    demand:
+      mu:
+        min: 0.75
+        max: 1.25
+      sigma:
+        min: 0.001
+        max: 0.02
+      rho_fixed: 0.75
+    wind:
+      mu:
+        min: 0.25
+        max: 0.75
+      sigma:
+        min: 0.001
+        max: 0.02
+      rho_fixed: 0.75
+      tau_fixed: 14
+    kappa: 0.3
+  sigma_0p015:
+    description: 'Max-sigma sensitivity: sigma.max = 0.015.'
+    demand:
+      mu:
+        min: 0.75
+        max: 1.25
+      sigma:
+        min: 0.001
+        max: 0.015
+      rho_fixed: 0.75
+    wind:
+      mu:
+        min: 0.25
+        max: 0.75
+      sigma:
+        min: 0.001
+        max: 0.015
+      rho_fixed: 0.75
+      tau_fixed: 14
+    kappa: 0.3
+  sigma_0p01:
+    description: 'Max-sigma sensitivity: sigma.max = 0.01.'
+    demand:
+      mu:
+        min: 0.75
+        max: 1.25
+      sigma:
+        min: 0.001
+        max: 0.01
+      rho_fixed: 0.75
+    wind:
+      mu:
+        min: 0.25
+        max: 0.75
+      sigma:
+        min: 0.001
+        max: 0.01
+      rho_fixed: 0.75
+      tau_fixed: 14
+    kappa: 0.3

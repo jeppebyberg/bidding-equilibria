@@ -430,6 +430,11 @@ def plot_nn_policy_stage(config: Any) -> None:
     out_dir = figures_root(config) / "nn_policy_merit_order"
     scenarios_csv = Path(config.synthetic_scenario_dir) / "scenarios.csv"
 
+    # Show one time step at a time: first / middle / last of the horizon, each as
+    # its own figure (3 separate merit-order plots).
+    horizon = int(config.horizon)
+    merit_time_steps = sorted({0, horizon // 2, horizon - 1})
+
     def _run() -> None:
         generate_merit_order_figures(
             result_json_path=config.heuristic_results_path,
@@ -438,6 +443,9 @@ def plot_nn_policy_stage(config: Any) -> None:
             model_dir=config.model_dir,
             output_dir=out_dir,
             nn_generator_names=None,  # auto-detect trained *.pt files
+            n_merit_scenarios=1,
+            merit_time_steps=merit_time_steps,
+            single_time_step_figures=True,
             show=False,
         )
         print(f"[plot] Saved NN policy figures to {out_dir}")
@@ -561,6 +569,80 @@ def run_oos_evaluation_stage(
         return out_path
 
     return _guard("OOS PoA evaluation", _run)
+
+
+# ---------------------------------------------------------------------------
+# Stage: DRO out-of-sample PoA distribution (artifact-only, no Gurobi)
+# ---------------------------------------------------------------------------
+
+def plot_dro_oos_stage(config: Any) -> None:
+    """Plot the OOS PoA distribution from an existing oos_poa_results.json.
+
+    Reads only the block-4.5 artifact (per-scenario ``poa_ratios`` plus the
+    mean/max summaries); it never triggers a (Gurobi) OOS evaluation. The DRO
+    eta-frontier overlay is handled separately by plot_dro_stage.
+    """
+    import json
+
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    oos_path = figures_root(config).parent / "oos_poa" / "oos_poa_results.json"
+    if not oos_path.exists():
+        print(f"[plot] Skipping DRO OOS distribution: result not found at {oos_path}")
+        return
+
+    results = json.loads(oos_path.read_text(encoding="utf-8"))
+    if isinstance(results, dict):
+        results = [results]
+    if not results:
+        print(f"[plot] Skipping DRO OOS distribution: no records in {oos_path}")
+        return
+
+    out_dir = figures_root(config) / "dro_oos"
+
+    for record in results:
+        regime_name = str(record.get("regime_name", "regime"))
+
+        def _run(regime_name: str = regime_name, record: dict = record) -> None:
+            ratios = np.array(record.get("poa_ratios", []), dtype=float)
+            ratios = ratios[~np.isnan(ratios)]
+            if ratios.size == 0:
+                print(f"[plot] Skipping DRO OOS distribution for '{regime_name}': no PoA ratios")
+                return
+
+            mean_poa = float(record.get("oos_mean_poa_ratio", np.mean(ratios)))
+            max_poa = float(record.get("oos_max_poa_ratio", np.max(ratios)))
+            n_used = int(record.get("n_scenarios_used", ratios.size))
+            seed = record.get("seed", "?")
+
+            out_dir.mkdir(parents=True, exist_ok=True)
+            fig, ax = plt.subplots(figsize=(7.5, 4.5))
+            ax.hist(ratios, bins=30, color="tab:blue", alpha=0.72,
+                    edgecolor="white", linewidth=0.5)
+            ax.axvline(mean_poa, color="tab:orange", linewidth=2.0,
+                       label=f"Mean = {mean_poa:.4f}")
+            ax.axvline(max_poa, color="tab:red", linewidth=1.6, linestyle="--",
+                       label=f"Max = {max_poa:.4f}")
+            ax.axvline(1.0, color="0.4", linewidth=1.2, linestyle=":", alpha=0.7,
+                       label="PoA = 1")
+            ax.set_xlabel("PoA ratio  (C_eq / C_opt)", fontsize=10)
+            ax.set_ylabel("Count", fontsize=10)
+            ax.set_title(
+                f"DRO Out-of-Sample PoA Distribution -- regime '{regime_name}'\n"
+                f"N={n_used} scenarios, seed={seed}",
+                fontsize=11,
+            )
+            ax.legend(fontsize=9)
+            ax.grid(True, alpha=0.25)
+            fig.tight_layout()
+
+            out_path = out_dir / f"{regime_name}_oos_poa_distribution.png"
+            fig.savefig(out_path, dpi=180, bbox_inches="tight")
+            plt.close(fig)
+            print(f"[plot] Saved DRO OOS distribution for '{regime_name}' to {out_path}")
+
+        _guard(f"DRO OOS distribution for '{regime_name}'", _run)
 
 
 # ---------------------------------------------------------------------------

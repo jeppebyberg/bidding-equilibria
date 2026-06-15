@@ -603,12 +603,14 @@ class ScenarioManager:
 		demand_profile: List[float],
 		generator_wind_profiles: Dict[str, List[float]],
 		contingency_margin: float = 0.0,
+		enforce_n_minus_one: bool = True,
 	) -> bool:
-		"""Check base feasibility and N-1 contingency across all time steps.
+		"""Check base feasibility and optionally N-1 contingency across all time steps.
 
 		A scenario is feasible only if:
 		1) Total available capacity can serve demand at each time step.
-		2) Demand can still be served when any single generator is unavailable (N-1).
+		2) (When enforce_n_minus_one=True) Demand can still be served when any
+		   single generator is unavailable (N-1).
 		"""
 		horizon = self.base_case["time_steps"]
 
@@ -620,6 +622,9 @@ class ScenarioManager:
 			# Base feasibility (no outage).
 			if demand_t + contingency_margin > total_capacity_t + 1e-9:
 				return False
+
+			if not enforce_n_minus_one:
+				continue
 
 			# N-1 contingency: demand must still be met without any single physical generator.
 			for generator_capacity_t in available_capacity_t.values():
@@ -779,15 +784,35 @@ class ScenarioManager:
 		regime_set: Optional[str] = None,
 		seed: Optional[int] = None,
 		enforce_support_set: bool = False,
+		enforce_dispatch_feasibility: Optional[bool] = None,
+		n_minus_one_margin: Optional[float] = None,
+		enforce_n_minus_one: Optional[bool] = None,
 	) -> Dict[str, Any]:
 		"""Generate stochastic scenarios from a YAML-defined list of regimes.
 
 		Set enforce_support_set=True (DRO poa scenarios) to reject draws that
 		violate the support set point-wise level bounds or AR(1) innovation bounds.
+		enforce_dispatch_feasibility, n_minus_one_margin, and enforce_n_minus_one
+		override the values from the YAML config when provided.  Pass
+		enforce_n_minus_one=False to require only base feasibility (total capacity
+		>= demand) without the stricter N-1 contingency check.
 		"""
 		config = self.load_regime_configuration(regime_config_path=regime_config_path, regime_set=regime_set)
 
 		effective_seed = seed if seed is not None else config["seed"]
+		effective_enforce_feasibility = (
+			enforce_dispatch_feasibility
+			if enforce_dispatch_feasibility is not None
+			else config["enforce_dispatch_feasibility"]
+		)
+		effective_n_minus_one_margin = (
+			float(n_minus_one_margin)
+			if n_minus_one_margin is not None
+			else float(config["n_minus_one_margin"])
+		)
+		effective_enforce_n_minus_one = (
+			enforce_n_minus_one if enforce_n_minus_one is not None else True
+		)
 		rng = np.random.default_rng(effective_seed)
 
 		scenarios_table: List[Dict[str, Any]] = []
@@ -805,12 +830,13 @@ class ScenarioManager:
 						rng=rng,
 					)
 
-					if not config["enforce_dispatch_feasibility"]:
+					if not effective_enforce_feasibility:
 						break
 					if self._is_dispatch_feasible(
 						demand_profile,
 						generator_wind_profiles,
-						contingency_margin=config["n_minus_one_margin"],
+						contingency_margin=effective_n_minus_one_margin,
+						enforce_n_minus_one=effective_enforce_n_minus_one,
 					) and (
 						not enforce_support_set
 						or self._is_within_support_set(

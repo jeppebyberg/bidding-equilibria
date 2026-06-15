@@ -9,7 +9,6 @@ import numpy as np
 
 from config.scenarios.scenario_generator import ScenarioManager
 
-
 POA_TIGHTENING_FLAGS = {
     "primal_big_m": True,
     "relu_bounds": True,
@@ -17,6 +16,7 @@ POA_TIGHTENING_FLAGS = {
     "slack_binary_fix": True,
     "dual_big_m": True,
     "optimal_cost_bounds": True,
+    "equilibrium_cost_bounds": False,
 }
 
 DRO_TIGHTENING_FLAGS = {
@@ -26,6 +26,7 @@ DRO_TIGHTENING_FLAGS = {
     "slack_binary_fix": True,
     "dual_big_m": True,
     "optimal_cost_bounds": True,
+    "equilibrium_cost_bounds": False,
 }
 
 # primal_big_m and optimal_cost_bounds are correctness-critical for a valid
@@ -35,30 +36,27 @@ DRO_TIGHTENING_FLAGS = {
 # force-enabled in code.
 ALWAYS_ON_TIGHTENING_STAGES = ("primal_big_m", "optimal_cost_bounds")
 
+
 def default_eta_grid() -> list[float]:
-    # Sampling is concentrated where the base-case worst-case PoA ratio actually
-    # responds to eta. The ratio is most sensitive at very small eta and flat
-    # beyond eta ~ 1, so the old logspace(-2.5, 0.5) tail (1.18, 1.93, 3.16) just
-    # re-sampled the plateau. Instead: a fine low-eta region below the previous
-    # 10**-2.5 floor, the main descent region 10**-2.5 .. 1.0, and only two tail
-    # anchors (1.5, 10.0).
-    low = np.logspace(-4.0, -2.5, 6, endpoint=False).tolist()  # ~1e-4 .. 1.8e-3
-    mid = np.logspace(-2.5, 0.0, 9).tolist()  # 3.2e-3 .. 1.0
-    return [0.0] + low + mid + [1.5, 10.0]
+    # One anchor in the flat left plateau (eta < ~0.005).
+    low = [0.001, 0.005]
+    # Five points across the ~2-decade transition where the curve actually moves.
+    mid = np.logspace(-2.0, 0.0, 10).tolist()  # 0.01, 0.032, 0.1, 0.316, 1.0
+    # One anchor to confirm the right plateau.
+    tail = [5.0, 10.0]
+    return [0.0] + low + mid + tail
 
 
 def poa_tightening_paths(base_dir: Path) -> dict[str, str]:
     base = str(base_dir / "tightening")
-    stages = list(POA_TIGHTENING_FLAGS)
-    paths = {stage: f"{base}/{stage}_report.json" for stage in stages}
+    paths = {stage: f"{base}/{stage}_report.json" for stage in POA_TIGHTENING_FLAGS}
     paths["final"] = f"{base}/final_tightening_report.json"
     return paths
 
 
 def dro_tightening_paths(base_dir: Path) -> dict[str, str]:
     base = str(base_dir / "tightening" / "{regime_name}")
-    stages = list(DRO_TIGHTENING_FLAGS)
-    paths = {stage: f"{base}/{stage}_report.json" for stage in stages}
+    paths = {stage: f"{base}/{stage}_report.json" for stage in DRO_TIGHTENING_FLAGS}
     paths["final"] = f"{base}/final_tightening_report.json"
     return paths
 
@@ -75,6 +73,11 @@ class ProjectConfig:
     ambiguity_set_config_path: str = "config/ambiguity_set_config.yaml"
     ambiguity_set_config_name: str = "base_test_case"
     bid_tolerance: float = 1e-2
+    # Undercut applied when a marginal block bids just below its nearest higher
+    # competitor. Kept separate from bid_tolerance so the buffer below the next
+    # generator's cost (e.g. wind vs the conventional fringe at 10 -> label ~9.75
+    # with margin 0.25) can be widened without coarsening numerical comparisons.
+    inflation_margin: float = 0.25
 
     nn_feature_columns: list[str] = field(
         default_factory=lambda: [
@@ -119,15 +122,20 @@ class ProjectConfig:
     epsilon: float = 1e-6
     poa_parallel_workers: int = 6
     poa_solver_threads_per_worker: int | None = 1
+    # Gurobi Threads/Seed for the FINAL PoA solve (not the tightening subproblems).
+    # None = Gurobi default (all cores, default seed). Pin both (e.g. threads=1,
+    # seed=0) to make solves deterministic and comparable 1:1 across runs.
+    poa_solver_threads: int | None = None
+    poa_solver_seed: int | None = None
 
     poa_context_num_scenarios: int = 1
     poa_objective_mode: str = "piecewise_mccormick"
     poa_mccormick_bounds: dict[str, Any] | None = None
-    poa_mccormick_PoA_bounds: tuple[float, float] | None = (1.0, 20.0)
+    poa_mccormick_PoA_bounds: tuple[float, float] | None = (1.0, 100.0)
     poa_mccormick_c_opt_bounds: tuple[float, float] | None = None
     poa_mccormick_num_pieces: int = 50
     poa_mccormick_c_opt_breakpoints: list[float] | None = None
-    poa_time_limit: int | None = None
+    poa_time_limit: int | None = 3600
     run_poa_tightening: bool = False
     poa_tightening_flags: dict[str, bool] = field(
         default_factory=lambda: dict(POA_TIGHTENING_FLAGS)
@@ -144,11 +152,14 @@ class ProjectConfig:
     dro_tightening_eta: float = 0.0
     dro_objective_mode: str = "piecewise_mccormick"
     dro_mccormick_bounds: dict[str, Any] | None = None
-    dro_mccormick_PoA_bounds: tuple[float, float] | None = (1.0, 20.0)
+    dro_mccormick_PoA_bounds: tuple[float, float] | None = (1.0, 100.0)
     dro_mccormick_c_opt_bounds: tuple[float, float] | None = None
-    dro_mccormick_num_pieces: int = 50
+    dro_mccormick_num_pieces: int = 100
     dro_mccormick_c_opt_breakpoints: list[float] | None = None
     dro_time_limit: int = 1000
+
+    # Relative cushion on the derived PoA upper bound (numerical safety).
+    poa_bounds_derivation_margin: float = 1e-3
 
     calibrate_support_coverage: bool = True
     support_verify_seed: int = 77777
@@ -164,7 +175,7 @@ class ProjectConfig:
     run_dro_optimization: bool = False
     archive_existing_dro_results: bool = True
 
-    plot_results_along_the_way: bool = False
+    plot_results_along_the_way: bool = True
     run_scenario_generation: bool = True
     run_heuristic_labels: bool = True
     run_feature_building: bool = False
@@ -189,6 +200,7 @@ class ProjectConfig:
             self.synthetic_time_steps = self.horizon
         if self.synthetic_labels_target is not None:
             import math
+
             self.synthetic_num_scenarios = math.ceil(self.synthetic_labels_target / self.horizon)
         root = Path("results") / self.case_label
         defaults = {
@@ -240,9 +252,7 @@ def ensure_requested_policy_generators(config: ProjectConfig) -> ProjectConfig:
             )
         if not config.allow_wind_to_play:
             wind_names = {
-                gen["physical_name"]
-                for gen in manager.physical_generators
-                if bool(gen["is_wind"])
+                gen["physical_name"] for gen in manager.physical_generators if bool(gen["is_wind"])
             }
             config.nn_policy_generators = [
                 name for name in config.nn_policy_generators if name not in wind_names

@@ -1,0 +1,373 @@
+players_N2:
+  demand:
+  - 100.0
+  time_steps:
+  - 24
+  generators:
+  - id: 0
+    name: G2
+    type: conventional
+    pmin: 0.0
+    R_rate_up: 30.0
+    R_rate_down: 30.0
+    bidding_blocks:
+    - block_id: 0
+      name: G2_B1
+      pmax: 37.5
+      cost: 50.0
+    - block_id: 1
+      name: G2_B2
+      pmax: 37.5
+      cost: 60.0
+  - id: 1
+    name: G1
+    type: conventional
+    pmin: 0.0
+    R_rate_up: 30.0
+    R_rate_down: 30.0
+    bidding_blocks:
+    - block_id: 0
+      name: G1_B1
+      pmax: 37.5
+      cost: 10.0
+    - block_id: 1
+      name: G1_B2
+      pmax: 37.5
+      cost: 20.0
+  - id: 2
+    name: W2
+    type: wind
+    pmin: 0.0
+    R_rate_up: 75.0
+    R_rate_down: 75.0
+    bidding_blocks:
+    - block_id: 0
+      name: W2_B1
+      pmax: 75.0
+      cost: 0.3
+  - id: 3
+    name: W1
+    type: wind
+    pmin: 0.0
+    R_rate_up: 75.0
+    R_rate_down: 75.0
+    bidding_blocks:
+    - block_id: 0
+      name: W1_B1
+      pmax: 75.0
+      cost: 0.1
+  players:
+  - id: 0
+    controlled_generators:
+    - 0
+  - id: 1
+    controlled_generators:
+    - 1
+  - id: 2
+    controlled_generators:
+    - 2
+  - id: 3
+    controlled_generators:
+    - 3
+players_N4:
+  demand:
+  - 100.0
+  time_steps:
+  - 24
+  generators:
+  - id: 0
+    name: G4
+    type: conventional
+    pmin: 0.0
+    R_rate_up: 15.0
+    R_rate_down: 15.0
+    bidding_blocks:
+    - block_id: 0
+      name: G4_B1
+      pmax: 18.75
+      cost: 50.0
+    - block_id: 1
+      name: G4_B2
+      pmax: 18.75
+      cost: 60.0
+  - id: 1
+    name: G3
+    type: conventional
+    pmin: 0.0
+    R_rate_up: 15.0
+    R_rate_down: 15.0
+    bidding_blocks:
+    - block_id: 0
+      name: G3_B1
+      pmax: 18.75
+      cost: 36.66666666666667
+    - block_id: 1
+      name: G3_B2
+      pmax: 18.75
+      cost: 46.66666666666667
+  - id: 2
+    name: G2
+    type: conventional
+    pmin: 0.0
+    R_rate_up: 15.0
+    R_rate_down: 15.0
+    bidding_blocks:
+    - block_id: 0
+      name: G2_B1
+      pmax: 18.75
+      cost: 23.333333333333336
+    - block_id: 1
+      name: G2_B2
+      pmax: 18.75
+      cost: 33.333333333333336
+  - id: 3
+    name: G1
+    type: conventional
+    pmin: 0.0
+    R_rate_up: 15.0
+    R_rate_down: 15.0
+    bidding_blocks:
+    - block_id: 0
+      name: G1_B1
+      pmax: 18.75
+      cost: 10.0
+    - block_id: 1
+      name: G1_B2
+      pmax: 18.75
+      cost: 20.0
+  - id: 4
+    name: W4
+    type: wind
+    pmin: 0.0
+    R_rate_up: 37.5
+    R_rate_down: 37.5
+    bidding_blocks:
+    - block_id: 0
+      name: W4_B1
+      pmax: 37.5
+      cost: 0.3
+  - id: 5
+    name: W3
+    type: wind
+    pmin: 0.0
+    R_rate_up: 37.5
+    R_rate_down: 37.5
+    bidding_blocks:
+    - block_id: 0
+      name: W3_B1
+      pmax: 37.5
+      cost: 0.23333333333333334
+  - id: 6
+    name: W2
+    type: wind
+    pmin: 0.0
+    R_rate_up: 37.5
+    R_rate_down: 37.5
+    bidding_blocks:
+    - block_id: 0
+      name: W2_B1
+      pmax: 37.5
+      cost: 0.16666666666666669
+  - id: 7
+    name: W1
+    type: wind
+    pmin: 0.0
+    R_rate_up: 37.5
+    R_rate_down: 37.5
+    bidding_blocks:
+    - block_id: 0
+      name: W1_B1
+      pmax: 37.5
+      cost: 0.1
+  players:
+  - id: 0
+    controlled_generators:
+    - 0
+  - id: 1
+    controlled_generators:
+    - 1
+  - id: 2
+    controlled_generators:
+    - 2
+  - id: 3
+    controlled_generators:
+    - 3
+  - id: 4
+    controlled_generators:
+    - 4
+  - id: 5
+    controlled_generators:
+    - 5
+  - id: 6
+    controlled_generators:
+    - 6
+  - id: 7
+    controlled_generators:
+    - 7
+players_N5:
+  demand:
+  - 100.0
+  time_steps:
+  - 24
+  generators:
+  - id: 0
+    name: G5
+    type: conventional
+    pmin: 0.0
+    R_rate_up: 12.0
+    R_rate_down: 12.0
+    bidding_blocks:
+    - block_id: 0
+      name: G5_B1
+      pmax: 15.0
+      cost: 50.0
+    - block_id: 1
+      name: G5_B2
+      pmax: 15.0
+      cost: 60.0
+  - id: 1
+    name: G4
+    type: conventional
+    pmin: 0.0
+    R_rate_up: 12.0
+    R_rate_down: 12.0
+    bidding_blocks:
+    - block_id: 0
+      name: G4_B1
+      pmax: 15.0
+      cost: 40.0
+    - block_id: 1
+      name: G4_B2
+      pmax: 15.0
+      cost: 50.0
+  - id: 2
+    name: G3
+    type: conventional
+    pmin: 0.0
+    R_rate_up: 12.0
+    R_rate_down: 12.0
+    bidding_blocks:
+    - block_id: 0
+      name: G3_B1
+      pmax: 15.0
+      cost: 30.0
+    - block_id: 1
+      name: G3_B2
+      pmax: 15.0
+      cost: 40.0
+  - id: 3
+    name: G2
+    type: conventional
+    pmin: 0.0
+    R_rate_up: 12.0
+    R_rate_down: 12.0
+    bidding_blocks:
+    - block_id: 0
+      name: G2_B1
+      pmax: 15.0
+      cost: 20.0
+    - block_id: 1
+      name: G2_B2
+      pmax: 15.0
+      cost: 30.0
+  - id: 4
+    name: G1
+    type: conventional
+    pmin: 0.0
+    R_rate_up: 12.0
+    R_rate_down: 12.0
+    bidding_blocks:
+    - block_id: 0
+      name: G1_B1
+      pmax: 15.0
+      cost: 10.0
+    - block_id: 1
+      name: G1_B2
+      pmax: 15.0
+      cost: 20.0
+  - id: 5
+    name: W5
+    type: wind
+    pmin: 0.0
+    R_rate_up: 30.0
+    R_rate_down: 30.0
+    bidding_blocks:
+    - block_id: 0
+      name: W5_B1
+      pmax: 30.0
+      cost: 0.3
+  - id: 6
+    name: W4
+    type: wind
+    pmin: 0.0
+    R_rate_up: 30.0
+    R_rate_down: 30.0
+    bidding_blocks:
+    - block_id: 0
+      name: W4_B1
+      pmax: 30.0
+      cost: 0.25
+  - id: 7
+    name: W3
+    type: wind
+    pmin: 0.0
+    R_rate_up: 30.0
+    R_rate_down: 30.0
+    bidding_blocks:
+    - block_id: 0
+      name: W3_B1
+      pmax: 30.0
+      cost: 0.2
+  - id: 8
+    name: W2
+    type: wind
+    pmin: 0.0
+    R_rate_up: 30.0
+    R_rate_down: 30.0
+    bidding_blocks:
+    - block_id: 0
+      name: W2_B1
+      pmax: 30.0
+      cost: 0.15
+  - id: 9
+    name: W1
+    type: wind
+    pmin: 0.0
+    R_rate_up: 30.0
+    R_rate_down: 30.0
+    bidding_blocks:
+    - block_id: 0
+      name: W1_B1
+      pmax: 30.0
+      cost: 0.1
+  players:
+  - id: 0
+    controlled_generators:
+    - 0
+  - id: 1
+    controlled_generators:
+    - 1
+  - id: 2
+    controlled_generators:
+    - 2
+  - id: 3
+    controlled_generators:
+    - 3
+  - id: 4
+    controlled_generators:
+    - 4
+  - id: 5
+    controlled_generators:
+    - 5
+  - id: 6
+    controlled_generators:
+    - 6
+  - id: 7
+    controlled_generators:
+    - 7
+  - id: 8
+    controlled_generators:
+    - 8
+  - id: 9
+    controlled_generators:
+    - 9

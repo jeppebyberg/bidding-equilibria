@@ -880,29 +880,60 @@ class DROPoAMIPStart:
         P = solution["P"]
         lambda_ = solution["lambda"]
 
+        def _set_if_within_bounds(var_data: Any, raw_value: float, tol: float = 1e-7) -> None:
+            value = float(raw_value)
+            lower = var_data.lb
+            upper = var_data.ub
+            if lower is not None and value < float(lower) - tol:
+                return
+            if upper is not None and value > float(upper) + tol:
+                return
+            var_data.set_value(value)
+
         for t in range(T):
-            lambda_var[k, t].set_value(float(lambda_[t]))
+            _set_if_within_bounds(lambda_var[k, t], float(lambda_[t]))
         for i in range(self.num_physical_generators):
-            mu_ramp_up_var[k, i, T].set_value(0.0)
-            mu_ramp_down_var[k, i, T].set_value(0.0)
+            _set_if_within_bounds(mu_ramp_up_var[k, i, T], 0.0)
+            _set_if_within_bounds(mu_ramp_down_var[k, i, T], 0.0)
 
         for (i, b) in solution["pairs"]:
             for t in range(T):
                 p_val = float(P[(int(i), int(b), t)])
                 p_max = float(Pmax_block_emp[(i, b)][t])
-                P_var[k, i, b, t].set_value(p_val)
+                _set_if_within_bounds(P_var[k, i, b, t], p_val)
                 if alpha_var is not None and alpha_values is not None:
-                    alpha_var[k, i, b, t].set_value(float(alpha_values[(i, b)][t]))
-                mu_upper_var[k, i, b, t].set_value(solution["mu_upper"][(int(i), int(b), t)])
-                mu_lower_var[k, i, b, t].set_value(solution["mu_lower"][(int(i), int(b), t)])
+                    _set_if_within_bounds(
+                        alpha_var[k, i, b, t],
+                        float(alpha_values[(i, b)][t]),
+                    )
+                _set_if_within_bounds(
+                    mu_upper_var[k, i, b, t],
+                    solution["mu_upper"][(int(i), int(b), t)],
+                )
+                _set_if_within_bounds(
+                    mu_lower_var[k, i, b, t],
+                    solution["mu_lower"][(int(i), int(b), t)],
+                )
                 # z_upper=1 iff the upper capacity bound is active at the solution.
-                z_upper_var[k, i, b, t].set_value(1 if p_val >= p_max - 1e-8 else 0)
-                z_lower_var[k, i, b, t].set_value(1 if p_val <= 1e-8 else 0)
+                _set_if_within_bounds(
+                    z_upper_var[k, i, b, t],
+                    1 if p_val >= p_max - 1e-8 else 0,
+                )
+                _set_if_within_bounds(
+                    z_lower_var[k, i, b, t],
+                    1 if p_val <= 1e-8 else 0,
+                )
 
         for i in range(self.num_physical_generators):
             for t in range(T):
-                mu_ramp_up_var[k, i, t].set_value(solution["mu_ramp_up"][(i, t)])
-                mu_ramp_down_var[k, i, t].set_value(solution["mu_ramp_down"][(i, t)])
+                _set_if_within_bounds(
+                    mu_ramp_up_var[k, i, t],
+                    solution["mu_ramp_up"][(i, t)],
+                )
+                _set_if_within_bounds(
+                    mu_ramp_down_var[k, i, t],
+                    solution["mu_ramp_down"][(i, t)],
+                )
                 p_total_t = sum(
                     float(P[(i, b, t)]) for b in self.local_blocks_by_generator[i]
                 )
@@ -914,8 +945,14 @@ class DROPoAMIPStart:
                 )
                 ramp_up_slack = float(self.ramp_vector_up[i]) - (p_total_t - p_total_prev)
                 ramp_dn_slack = float(self.ramp_vector_down[i]) - (p_total_prev - p_total_t)
-                z_ramp_up_var[k, i, t].set_value(1 if ramp_up_slack <= 1e-8 else 0)
-                z_ramp_down_var[k, i, t].set_value(1 if ramp_dn_slack <= 1e-8 else 0)
+                _set_if_within_bounds(
+                    z_ramp_up_var[k, i, t],
+                    1 if ramp_up_slack <= 1e-8 else 0,
+                )
+                _set_if_within_bounds(
+                    z_ramp_down_var[k, i, t],
+                    1 if ramp_dn_slack <= 1e-8 else 0,
+                )
 
     def _write_cost_and_poa_start(
         self,

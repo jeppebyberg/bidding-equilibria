@@ -20,6 +20,10 @@ from models.helper import (
 )
 from models.synthetic_data_generation.economic_dispatch_clean import EconomicDispatchModel
 
+# Numerical guard for strict bid comparisons. Deliberately tiny and independent of
+# bid_tolerance (which is an economically meaningful price gap, not float noise).
+_PRICE_EPS = 1e-9
+
 
 @dataclass(frozen=True)
 class MeritOrderEntry:
@@ -51,15 +55,27 @@ class MeritOrderHeuristic:
         ramps_df: pd.DataFrame,
         players_config: List[Dict[str, Any]],
         bid_tolerance: float = 1e-6,
+        inflation_margin: Optional[float] = None,
     ) -> None:
         if bid_tolerance <= 0:
             raise ValueError("bid_tolerance must be positive")
+        if inflation_margin is not None and inflation_margin < 0:
+            raise ValueError("inflation_margin must be nonnegative")
 
         self.scenarios_df = scenarios_df.copy(deep=True).reset_index(drop=True)
         self.costs_df = costs_df
         self.ramps_df = ramps_df
         self.players_config = players_config
         self.bid_tolerance = float(bid_tolerance)
+        # How far BELOW the nearest higher opponent the marginal block is bid.
+        # Decoupled from bid_tolerance (which is a numerical guard used for
+        # capacity/dispatch/unchanged comparisons): widening the undercut to put
+        # a buffer between a strategic bid and the next generator's cost must not
+        # also coarsen those numerical comparisons. Defaults to bid_tolerance so
+        # the historical "bid just below the competitor" behaviour is unchanged.
+        self.inflation_margin = (
+            float(inflation_margin) if inflation_margin is not None else self.bid_tolerance
+        )
         self.debug = False
 
         self._initialize_block_structure()
@@ -350,12 +366,29 @@ class MeritOrderHeuristic:
         if marginal_block.player_id is None:
             return None
 
+        # The threshold is the nearest opponent (with capacity) bidding AT OR ABOVE
+        # the marginal block: raising our bid to just under it keeps us dispatched
+        # while staying below that opponent. Two correctness points:
+        #
+        #  * Compare against marginal_block.bid with only a tiny numerical guard,
+        #    NOT bid_tolerance. bid_tolerance is an economically meaningful gap here
+        #    (wind costs can sit ~0.01 apart, i.e. one tolerance), so offsetting by
+        #    it would skip a real competitor whose bid lands within a tolerance of
+        #    ours and let the threshold leap to a far more expensive block --
+        #    inflating, e.g., a wind block up to the cheapest conventional bid.
+        #
+        #  * Include opponents tied at our bid (>=, not strictly >). A tied opponent
+        #    with spare capacity would undercut and displace us the instant we bid
+        #    above it, so it caps the inflation at our current bid (candidate then
+        #    falls back below the old bid and is rejected as unchanged). Excluding
+        #    ties reintroduces the same leap-to-conventional bug when several units
+        #    (e.g. all wind) share a cost.
         opponent_entries = [
             entry
             for entry in merit_order
             if entry.player_id != marginal_block.player_id
             and entry.available_capacity > self.bid_tolerance
-            and entry.bid > marginal_block.bid + self.bid_tolerance
+            and entry.bid >= marginal_block.bid - _PRICE_EPS
         ]
         if not opponent_entries:
             return None
@@ -433,7 +466,20 @@ class MeritOrderHeuristic:
                     )
                     continue
 
-                candidate_bid = float(threshold_bid) - self.bid_tolerance
+                # Bid inflation_margin below the nearest higher opponent, leaving a
+                # buffer so the learned policy's noisy prediction is unlikely to
+                # straddle the competitor's cost (e.g. wind vs the conventional
+                # fringe at 10 -> ~9.75 with margin 0.25). When the gap to the
+                # competitor is too small to fit that margin and still raise our
+                # bid, fall back to undercutting by just bid_tolerance (bid right
+                # below the competitor, as before) so small inter-generator price
+                # gaps still produce a valid inflation rather than none.
+                gap = float(threshold_bid) - float(marginal_block.bid)
+                if gap - self.inflation_margin >= self.bid_tolerance:
+                    effective_margin = self.inflation_margin
+                else:
+                    effective_margin = self.bid_tolerance
+                candidate_bid = float(threshold_bid) - effective_margin
                 inflation_blocks = self.get_same_player_blocks_to_inflate(
                     marginal_block,
                     merit_order,
@@ -567,6 +613,7 @@ class MeritOrderHeuristic:
         return {
             "config": {
                 "bid_tolerance": self.bid_tolerance,
+                "inflation_margin": self.inflation_margin,
                 "heuristic": "single_ed_marginal_price_setter_bid_inflation",
                 "ed_solves_in_run": 1,
                 "dispatches_are_recleared_after_bid_updates": bool(dispatches_are_recleared),

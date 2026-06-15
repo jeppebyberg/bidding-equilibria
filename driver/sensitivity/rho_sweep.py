@@ -34,8 +34,7 @@ from driver.sensitivity.sensitivity_config import (  # noqa: E402
 STUDY_NAME = "rho_sweep"
 BASE_AMBIGUITY_CONFIG = PROJECT_ROOT / "config" / "ambiguity_set_config.yaml"
 
-RHO_VALUES = [-0.75, -0.25, 0.0, 0.25, 0.50, 0.75, 0.90]
-
+RHO_VALUES = [-0.25, 0.0, 0.25, 0.50, 0.75, 0.99]
 
 @dataclass(frozen=True)
 class RhoSpec:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,7 @@ from driver.block0_system_setup import (  # noqa: E402
 def run(config=None) -> dict[str, Any]:
     cfg = config or build_config()
 
+    t0 = time.perf_counter()
     manager = ScenarioManager(cfg.case)
     scenarios = load_or_generate_scenarios(
         config=cfg,
@@ -35,6 +37,7 @@ def run(config=None) -> dict[str, Any]:
         run_heuristic(cfg, scenarios, manager)
     else:
         print("[block1] Reusing existing heuristic labels.")
+    wall_time = time.perf_counter() - t0
 
     if cfg.plot_results_along_the_way:
         plot_setup_stage(cfg, manager, scenarios)
@@ -46,6 +49,7 @@ def run(config=None) -> dict[str, Any]:
         "num_scenarios": len(scenarios["scenarios_df"]),
         "saved_scenario_tables": bool(cfg.run_scenario_generation),
         "ran_heuristic_labels": bool(cfg.run_heuristic_labels),
+        "wall_time_seconds": wall_time,
     }
     write_manifest("block1_data_labels", manifest, cfg)
     return manifest

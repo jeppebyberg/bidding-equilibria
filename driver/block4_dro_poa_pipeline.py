@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,7 @@ from driver.block0_system_setup import (  # noqa: E402
     write_manifest,
 )
 
+
 def run(config=None) -> dict[str, Any]:
     cfg = config or build_config()
     discovered = discover_trained_policy_generators(cfg.model_dir)
@@ -47,6 +49,7 @@ def run(config=None) -> dict[str, Any]:
         scenarios = {}
         regime_names = list(dcfg.dro_regime_names)
 
+    t0_tightening = time.perf_counter()
     if cfg.run_dro_tightening:
         for regime_name in regime_names:
             run_dro_tightening_for_regime(dcfg, scenarios, regime_name)
@@ -60,9 +63,11 @@ def run(config=None) -> dict[str, Any]:
             run_dro_essential_bounds_for_regime(dcfg, scenarios, regime_name)
     else:
         print("[block4] Reusing existing DRO tightening reports.")
+    tightening_wall_time = time.perf_counter() - t0_tightening
 
     summary_path = dcfg.dro_result_dir / "eta_sweep_summary.json"
     sweep_summary: list[dict[str, Any]] = []
+    t0_solve = time.perf_counter()
     if cfg.run_dro_optimization:
         if cfg.archive_existing_dro_results:
             archive_existing_dro_result_folders(dcfg, regime_names)
@@ -71,6 +76,7 @@ def run(config=None) -> dict[str, Any]:
         print(f"\nSaved DRO eta-sweep summary: {summary_path}")
     else:
         print("[block4] Reusing existing DRO eta-sweep results.")
+    solve_wall_time = time.perf_counter() - t0_solve
 
     if cfg.plot_results_along_the_way:
         plot_dro_stage(cfg, dcfg, regime_names, oos_results_path=None)
@@ -86,6 +92,9 @@ def run(config=None) -> dict[str, Any]:
         "ran_dro_tightening": bool(cfg.run_dro_tightening),
         "ran_dro_optimization": bool(cfg.run_dro_optimization),
         "num_summary_records": len(sweep_summary),
+        "tightening_wall_time_seconds": tightening_wall_time,
+        "solve_wall_time_seconds": solve_wall_time,
+        "wall_time_seconds": tightening_wall_time + solve_wall_time,
     }
     write_manifest("block4_dro_poa", manifest, cfg)
     return manifest

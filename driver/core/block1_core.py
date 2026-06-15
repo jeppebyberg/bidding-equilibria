@@ -61,6 +61,7 @@ def run_heuristic(
         ramps_df=scenarios["ramps_df"],
         players_config=scenario_manager.get_players_config(),
         bid_tolerance=config.bid_tolerance,
+        inflation_margin=config.inflation_margin,
     )
     heuristic.run()
     output_path = heuristic.save_results(config.heuristic_results_path)

@@ -73,7 +73,7 @@ base_test_case:
         - block_id: 0
           name: "W2_B1"
           pmax: 50.0
-          cost: 0.29
+          cost: 0.2
 
     - id: 5
       name: "W1"
@@ -85,7 +85,7 @@ base_test_case:
         - block_id: 0
           name: "W1_B1"
           pmax: 50.0
-          cost: 0.28
+          cost: 0.1
 
   players:
     - id: 0
