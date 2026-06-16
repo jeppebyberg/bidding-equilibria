@@ -36,6 +36,7 @@ BASE_AMBIGUITY_CONFIG = PROJECT_ROOT / "config" / "ambiguity_set_config.yaml"
 
 RHO_VALUES = [-0.25, 0.0, 0.25, 0.50, 0.75, 0.99]
 
+
 @dataclass(frozen=True)
 class RhoSpec:
     """One rho sensitivity run."""
@@ -74,6 +75,31 @@ def write_rho_ambiguity_configs(specs: list[RhoSpec]) -> Path:
     )
 
 
+def _run_overrides(spec: RhoSpec, study_config_path: Path) -> dict[str, Any]:
+    """Ambiguity-set pointer for one run.
+
+    The rho = base rho_fixed variant resolves to an ambiguity set identical to
+    base_test_case, so it points at the base ambiguity config instead of the
+    study-local copy. That makes its substantive config match the base case, so
+    the framework reuses results/base_case rather than recomputing an identical
+    solve. (Base-case reuse compares config-pointer fields literally, not the
+    resolved YAML content, so a study-local pointer would always miss the match.)
+    """
+    base_config = load_project_config()
+    with BASE_AMBIGUITY_CONFIG.open("r", encoding="utf-8") as fh:
+        base_entry = yaml.safe_load(fh)["ambiguity_sets"][base_config.ambiguity_set_config_name]
+    base_rho = float(base_entry["demand"]["rho_fixed"])
+    if float(spec.rho) == base_rho == float(base_entry["wind"]["rho_fixed"]):
+        return {
+            "ambiguity_set_config_path": str(base_config.ambiguity_set_config_path),
+            "ambiguity_set_config_name": base_config.ambiguity_set_config_name,
+        }
+    return {
+        "ambiguity_set_config_path": str(study_config_path),
+        "ambiguity_set_config_name": spec.ambiguity_set_name,
+    }
+
+
 def build_study(specs: list[RhoSpec]) -> SensitivityStudy:
     ambiguity_config_path = write_rho_ambiguity_configs(specs)
     return SensitivityStudy(
@@ -82,10 +108,7 @@ def build_study(specs: list[RhoSpec]) -> SensitivityStudy:
         runs=[
             SensitivityRun(
                 name=spec.run_name,
-                overrides={
-                    "ambiguity_set_config_path": str(ambiguity_config_path),
-                    "ambiguity_set_config_name": spec.ambiguity_set_name,
-                },
+                overrides=_run_overrides(spec, ambiguity_config_path),
             )
             for spec in specs
         ],

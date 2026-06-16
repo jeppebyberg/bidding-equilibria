@@ -29,7 +29,6 @@ from driver.sensitivity.sensitivity_config import (  # noqa: E402
     write_ambiguity_sweep_config,
 )
 
-
 STUDY_NAME = "peak_w_sweep"
 BASE_AMBIGUITY_CONFIG = PROJECT_ROOT / "config" / "ambiguity_set_config.yaml"
 
@@ -69,19 +68,39 @@ def write_peak_w_ambiguity_configs(specs: list[PeakWindSpec]) -> Path:
     )
 
 
+def _run_overrides(spec: PeakWindSpec, study_config_path: Path) -> dict[str, Any]:
+    """Ambiguity-set pointer for one run.
+
+    The peak_w = base tau_fixed variant resolves to an ambiguity set identical to
+    base_test_case, so it points at the base ambiguity config instead of the
+    study-local copy. That makes its substantive config match the base case, so
+    the framework reuses results/base_case rather than recomputing an identical
+    solve. (Base-case reuse compares config-pointer fields literally, not the
+    resolved YAML content, so a study-local pointer would always miss the match.)
+    """
+    base_config = load_project_config()
+    with BASE_AMBIGUITY_CONFIG.open("r", encoding="utf-8") as file_handle:
+        base_entry = yaml.safe_load(file_handle)["ambiguity_sets"][
+            base_config.ambiguity_set_config_name
+        ]
+    if float(spec.peak_w) == float(base_entry["wind"]["tau_fixed"]):
+        return {
+            "ambiguity_set_config_path": str(base_config.ambiguity_set_config_path),
+            "ambiguity_set_config_name": base_config.ambiguity_set_config_name,
+        }
+    return {
+        "ambiguity_set_config_path": str(study_config_path),
+        "ambiguity_set_config_name": spec.ambiguity_set_name,
+    }
+
+
 def build_study(specs: list[PeakWindSpec]) -> SensitivityStudy:
     ambiguity_config_path = write_peak_w_ambiguity_configs(specs)
     return SensitivityStudy(
         name=STUDY_NAME,
         blocks=("full",),
         runs=[
-            SensitivityRun(
-                spec.run_name,
-                {
-                    "ambiguity_set_config_path": str(ambiguity_config_path),
-                    "ambiguity_set_config_name": spec.ambiguity_set_name,
-                },
-            )
+            SensitivityRun(spec.run_name, _run_overrides(spec, ambiguity_config_path))
             for spec in specs
         ],
     )

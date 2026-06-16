@@ -37,6 +37,8 @@ class StudyMeta(NamedTuple):
     xlabel: str
     # run_name -> numeric x (None => categorical, ordered by sort_key)
     x_of: Callable[[str], float | None]
+    # Render PoA as a bar chart instead of a line (for categorical studies).
+    bar: bool = False
 
 
 def _trailing_int(run: str, prefix: str) -> float | None:
@@ -52,21 +54,15 @@ STUDY_META: dict[str, StudyMeta] = {
     "players_sweep": StudyMeta(
         "Number of players", "N (conv + wind, each N)", lambda r: _trailing_int(r, "players_N")
     ),
-    "horizon_sweep": StudyMeta(
-        "Horizon", "Time steps (T)", lambda r: _trailing_int(r, "T")
-    ),
+    "horizon_sweep": StudyMeta("Horizon", "Time steps (T)", lambda r: _trailing_int(r, "T")),
     "ramp_rate_sweep": StudyMeta(
         "Ramp rate", "Conv ramp rate (MW/h)", lambda r: _trailing_int(r, "ramp_R")
     ),
-    "overlapping_costs_sweep": StudyMeta(
-        "Overlapping costs", "Cost configuration", lambda r: None
-    ),
+    "overlapping_costs_sweep": StudyMeta("Overlapping costs", "Cost configuration", lambda r: None),
     "wind_playing_sweep": StudyMeta(
-        "Wind plays strategically", "Configuration", lambda r: None
+        "Wind plays strategically", "Configuration", lambda r: None, bar=True
     ),
-    "composition_sweep": StudyMeta(
-        "Generation mix", "Composition", lambda r: None
-    ),
+    "composition_sweep": StudyMeta("Generation mix", "Composition", lambda r: None, bar=True),
 }
 
 
@@ -118,8 +114,14 @@ def _sort_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(rows, key=lambda r: r["run"])
 
 
-def _draw_panel(ax, study: str, rows: list[dict[str, Any]], base_ref: float | None,
-                title_size: int = 11, ylabel_size: int = 8) -> None:
+def _draw_panel(
+    ax,
+    study: str,
+    rows: list[dict[str, Any]],
+    base_ref: float | None,
+    title_size: int = 11,
+    ylabel_size: int = 8,
+) -> None:
     rows = _sort_rows(rows)
     meta = STUDY_META.get(study)
     numeric = all(r["x"] is not None for r in rows)
@@ -132,22 +134,35 @@ def _draw_panel(ax, study: str, rows: list[dict[str, Any]], base_ref: float | No
         tick_labels = [_pretty_run(r["run"]) for r in rows]
     ys = [r["metric"] for r in rows]
 
-    ax.plot(xs, ys, "-o", color="#1f77b4", zorder=3)
+    if meta is not None and meta.bar:
+        ax.bar(xs, ys, color="#1f77b4", width=0.6, zorder=3)
+    else:
+        ax.plot(xs, ys, "-o", color="#1f77b4", zorder=3)
     for x, y in zip(xs, ys):
-        ax.annotate(f"{y:.2f}", (x, y), textcoords="offset points",
-                    xytext=(0, 7), ha="center", fontsize=8)
+        ax.annotate(
+            f"{y:.2f}", (x, y), textcoords="offset points", xytext=(0, 7), ha="center", fontsize=8
+        )
 
     if base_ref is not None:
         ax.axhline(base_ref, ls="--", lw=1, color="grey", zorder=1)
-        ax.text(0.02, base_ref, f" base {base_ref:.2f}", color="grey",
-                fontsize=7, va="bottom", ha="left", transform=ax.get_yaxis_transform())
+        ax.text(
+            0.02,
+            base_ref,
+            f" base {base_ref:.2f}",
+            color="grey",
+            fontsize=7,
+            va="bottom",
+            ha="left",
+            transform=ax.get_yaxis_transform(),
+        )
 
     ax.set_title(meta.title if meta else study, fontsize=title_size)
     ax.set_xlabel(meta.xlabel if meta else "run")
     ax.set_ylabel(METRIC_LABEL, fontsize=ylabel_size)
     ax.set_xticks(xs)
-    ax.set_xticklabels(tick_labels, rotation=0 if numeric else 20, fontsize=8,
-                       ha="center" if numeric else "right")
+    ax.set_xticklabels(
+        tick_labels, rotation=0 if numeric else 20, fontsize=8, ha="center" if numeric else "right"
+    )
     ax.grid(True, alpha=0.3)
 
 

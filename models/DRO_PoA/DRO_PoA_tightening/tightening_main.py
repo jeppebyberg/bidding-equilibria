@@ -751,15 +751,21 @@ class DROPoATighteningMain:
         return self.save_final_report(output_paths["final"])
 
     def _compute_cost_ratio_bound(self) -> Optional[dict[str, Any]]:
-        """Valid analytical PoA upper bound from the largest feasible cost-ratio displacement pair.
+        """Valid analytical PoA upper bound: max of the overlapping-displacement and
+        consecutive-cost ratios.
 
-        For each pair of blocks ((i,b), (j,k)) with c_{j,k} > c_{i,b}: if the
-        certified lower bound on alpha[j,k] is strictly below the certified upper
-        bound on alpha[i,b], then (j,k) can displace (i,b) in some scenario despite
-        being more expensive. The PoA is bounded above by kappa = max c_{j,k}/c_{i,b}
-        over all such feasible displacement pairs.
+        Term 1 (overlapping displacement): for each pair of blocks ((i,b), (j,k))
+        with c_{j,k} > c_{i,b}, if the certified lower bound on alpha[j,k] is
+        strictly below the certified upper bound on alpha[i,b], then (j,k) can
+        displace (i,b) in some scenario despite being more expensive, contributing
+        the ratio c_{j,k}/c_{i,b}.
 
-        Returns a dict with 'kappa' and the witnessing pair, or None if unavailable.
+        Term 2 (consecutive cost): the largest ratio between cost-adjacent blocks
+        (distinct positive costs sorted ascending). This is always applied so the
+        bound cannot collapse to 1 when no certified bid ranges overlap.
+
+        kappa = max(max Term 1, max Term 2). Returns a dict with 'kappa', the
+        witnessing pair, and which term is binding, or None if unavailable.
         """
         alpha_bounds = getattr(self.poa, "alpha_bounds", None) or {}
         if not alpha_bounds:
@@ -779,8 +785,9 @@ class DROPoATighteningMain:
             ib = (int(key[offset]), int(key[offset + 1]))
             alpha_ub[ib] = max(alpha_ub.get(ib, -1e18), float(bounds["upper"]))
             alpha_lb[ib] = min(alpha_lb.get(ib, 1e18), float(bounds["lower"]))
-        kappa: Optional[float] = None
-        best: Optional[tuple[tuple[int, int], tuple[int, int]]] = None
+        # --- Term 1: largest feasible overlapping-displacement ratio ---
+        overlap_kappa: Optional[float] = None
+        overlap_best: Optional[tuple[tuple[int, int], tuple[int, int]]] = None
         for ib, c_ib in block_cost.items():
             if c_ib <= 0 or ib not in alpha_ub:
                 continue
@@ -790,11 +797,40 @@ class DROPoATighteningMain:
                 if alpha_lb[jk] >= alpha_ub[ib]:
                     continue  # j,k always bids above i,b: displacement impossible
                 ratio = c_jk / c_ib
-                if kappa is None or ratio > kappa:
-                    kappa = ratio
-                    best = (ib, jk)
-        if kappa is None or best is None:
+                if overlap_kappa is None or ratio > overlap_kappa:
+                    overlap_kappa = ratio
+                    overlap_best = (ib, jk)
+
+        # --- Term 2: largest ratio between cost-adjacent blocks (always applied) ---
+        # Sort the distinct positive block costs ascending and take the largest
+        # ratio between consecutive (cost-adjacent) blocks. A more expensive block
+        # can be dispatched ahead of the next-cheaper one even when no certified
+        # bid ranges overlap, so this keeps kappa from collapsing to 1. Flooring
+        # kappa only loosens the bound (the final box is min(C_eq/C_opt, kappa)),
+        # so the result stays a valid PoA upper bound.
+        adjacent_kappa: Optional[float] = None
+        adjacent_best: Optional[tuple[tuple[int, int], tuple[int, int]]] = None
+        block_at_cost: dict[float, tuple[int, int]] = {}
+        for ib, c_ib in block_cost.items():
+            if c_ib > 0.0:
+                block_at_cost.setdefault(c_ib, ib)
+        positive_costs = sorted(block_at_cost)
+        for c_low, c_high in zip(positive_costs, positive_costs[1:]):
+            ratio = c_high / c_low
+            if adjacent_kappa is None or ratio > adjacent_kappa:
+                adjacent_kappa = ratio
+                adjacent_best = (block_at_cost[c_low], block_at_cost[c_high])
+
+        # --- kappa = max(Term 1, Term 2) ---
+        finite = [
+            (k, pair)
+            for k, pair in ((overlap_kappa, overlap_best), (adjacent_kappa, adjacent_best))
+            if k is not None and pair is not None
+        ]
+        if not finite:
             return None
+        kappa, best = max(finite, key=lambda item: item[0])
+        binding_term = "overlap" if best is overlap_best else "consecutive_cost"
         ib, jk = best
         return {
             "kappa": float(kappa),
@@ -802,8 +838,13 @@ class DROPoATighteningMain:
             "expensive_block": list(jk),
             "cheap_cost": float(block_cost[ib]),
             "expensive_cost": float(block_cost[jk]),
-            "cheap_alpha_upper": float(alpha_ub[ib]),
-            "expensive_alpha_lower": float(alpha_lb[jk]),
+            "cheap_alpha_upper": float(alpha_ub[ib]) if ib in alpha_ub else None,
+            "expensive_alpha_lower": float(alpha_lb[jk]) if jk in alpha_lb else None,
+            "binding_term": binding_term,
+            "overlap_kappa": float(overlap_kappa) if overlap_kappa is not None else None,
+            "consecutive_cost_kappa": (
+                float(adjacent_kappa) if adjacent_kappa is not None else None
+            ),
         }
 
     def run_all(

@@ -11,12 +11,16 @@ and reference case, then solves the full default eta grid keeping the inherited
 ``dro_time_limit`` (1000s) cap per solve. T6 == base_test_case already carries a
 DRO sweep (results/base_case/dro), so it is intentionally skipped here.
 
-Run:
+Run (all remaining horizons):
   .\\.venv\\Scripts\\python.exe -m driver.sensitivity.horizon_sweep_dro
+
+Run a subset (e.g. only T=10):
+  .\\.venv\\Scripts\\python.exe -m driver.sensitivity.horizon_sweep_dro 10
 """
 
 from __future__ import annotations
 
+import sys
 from typing import Any
 
 from driver.sensitivity.horizon_sweep import _horizon_overrides
@@ -37,17 +41,26 @@ _DRO_BASE_OVERRIDES: dict[str, Any] = {
 }
 
 
-study = SensitivityStudy(
-    name="horizon_sweep",
-    blocks=("block4",),
-    # Only non-base horizons are listed, so base-case copy must not short-circuit.
-    reuse_base_case_results=False,
-    base_overrides=_DRO_BASE_OVERRIDES,
-    runs=[
-        SensitivityRun(f"T{h}", _horizon_overrides(h)) for h in HORIZONS_TO_RUN
-    ],
-)
+def build_study(horizons: list[int]) -> SensitivityStudy:
+    """DRO eta-sweep study over the given horizons (each reuses its PoA artifacts)."""
+    return SensitivityStudy(
+        name="horizon_sweep",
+        blocks=("block4",),
+        # Only non-base horizons are listed, so base-case copy must not short-circuit.
+        reuse_base_case_results=False,
+        base_overrides=_DRO_BASE_OVERRIDES,
+        runs=[SensitivityRun(f"T{h}", _horizon_overrides(h)) for h in horizons],
+    )
+
+
+def _parse_horizons(argv: list[str]) -> list[int]:
+    """Horizons from CLI args (e.g. '10' or '4 10'); default = all remaining."""
+    return [int(a) for a in argv] if argv else list(HORIZONS_TO_RUN)
+
+
+# Default study over all remaining horizons (kept for importers).
+study = build_study(HORIZONS_TO_RUN)
 
 
 if __name__ == "__main__":
-    run_sensitivity_study(study)
+    run_sensitivity_study(build_study(_parse_horizons(sys.argv[1:])))

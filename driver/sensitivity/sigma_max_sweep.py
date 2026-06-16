@@ -36,7 +36,11 @@ STUDY_NAME = "sigma_max_sweep"
 BASE_AMBIGUITY_CONFIG = PROJECT_ROOT / "config" / "ambiguity_set_config.yaml"
 
 # Max sigma values under study. Base case is 0.025.
-SIGMA_MAX_VALUES = [0.025, 0.02, 0.015, 0.01]
+# Full sweep is [0.025, 0.02, 0.015, 0.01]. The 0.025 (base, reuses base_case)
+# and 0.02 cases are already computed on disk; this overnight run finishes the
+# remaining two where the computation was stopped. Restore the full list to
+# regenerate every case from scratch.
+SIGMA_MAX_VALUES = [0.015, 0.01]
 BASE_SIGMA_MAX = 0.025
 
 
@@ -77,6 +81,28 @@ def write_sigma_max_ambiguity_configs(specs: list[SigmaMaxSpec]) -> Path:
     )
 
 
+def _run_overrides(spec: SigmaMaxSpec, study_config_path: Path) -> dict[str, Any]:
+    """Ambiguity-set pointer for one run.
+
+    The sigma.max = base variant resolves to an ambiguity set identical to
+    base_test_case, so it points at the base ambiguity config instead of the
+    study-local copy. That makes its substantive config match the base case, so
+    the framework reuses results/base_case rather than recomputing an identical
+    solve. (Base-case reuse compares config-pointer fields literally, not the
+    resolved YAML content, so a study-local pointer would always miss the match.)
+    """
+    if spec.sigma_max == BASE_SIGMA_MAX:
+        base_config = load_project_config()
+        return {
+            "ambiguity_set_config_path": str(base_config.ambiguity_set_config_path),
+            "ambiguity_set_config_name": base_config.ambiguity_set_config_name,
+        }
+    return {
+        "ambiguity_set_config_path": str(study_config_path),
+        "ambiguity_set_config_name": spec.ambiguity_set_name,
+    }
+
+
 def build_study(specs: list[SigmaMaxSpec]) -> SensitivityStudy:
     ambiguity_config_path = write_sigma_max_ambiguity_configs(specs)
     return SensitivityStudy(
@@ -85,10 +111,7 @@ def build_study(specs: list[SigmaMaxSpec]) -> SensitivityStudy:
         runs=[
             SensitivityRun(
                 name=spec.run_name,
-                overrides={
-                    "ambiguity_set_config_path": str(ambiguity_config_path),
-                    "ambiguity_set_config_name": spec.ambiguity_set_name,
-                },
+                overrides=_run_overrides(spec, ambiguity_config_path),
                 label=(
                     f"sigma.max = {spec.sigma_max:g}"
                     + (" (base)" if spec.sigma_max == BASE_SIGMA_MAX else "")

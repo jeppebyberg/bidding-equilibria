@@ -74,11 +74,12 @@ UPSTREAM_ROOTS = {
 # Piece counts under study. Brackets the chosen value (50) on both sides so the
 # companion summary can show the compute/binary cost rising while the ex-post
 # relaxation gap flattens out.
-PIECES = [5, 10, 20, 30, 50, 75, 100, 200]
+PIECES = [5, 10, 20, 30, 50, 75, 100, 200, 300, 500]
 
 # Piece counts this run actually (re)solves. Subset of PIECES so a run can fill
-# in missing points without re-solving the ones already on disk.
-PIECES_TO_RUN = list(PIECES)
+# in missing points without re-solving the ones already on disk. This run only
+# adds the high-resolution 300 and 500 points; the rest are already on disk.
+PIECES_TO_RUN = [300, 500]
 
 # Per-run PoA solve time limit (seconds). Runs that hit this cap report the
 # incumbent and MIP gap instead of a proven optimum; the summary flags them via
