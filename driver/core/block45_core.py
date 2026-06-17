@@ -392,6 +392,188 @@ def _true_cost(
 # Public API
 # ---------------------------------------------------------------------------
 
+# Regime parameter columns produced by ScenarioManager for each drawn scenario.
+# Reported per scenario so realized inefficiency can be correlated with the draw.
+_SCENARIO_PARAM_COLUMNS = (
+    "mu_D",
+    "rho_D",
+    "sigma_D",
+    "mu_W",
+    "rho_W",
+    "sigma_W",
+    "peak_W",
+)
+
+
+def _compute_poa_on_scenarios(
+    scenarios_df: Any,
+    costs_df: Any,
+    ramps_df: Any,
+    model_dir: Path,
+    norm_stats_path: Path,
+    nn_policy_generators: list[str],
+) -> dict[str, Any]:
+    """Apply NN policies, solve eq/opt dispatch, return per-scenario inefficiency.
+
+    Shared body for both the regime and ambiguity-set OOS evaluators. The
+    equilibrium dispatch uses NN bids for nn_policy_generators and true marginal
+    costs for all other generators; the optimal dispatch uses true marginal costs
+    everywhere. C_eq and C_opt are both evaluated at true block costs (not bids).
+    """
+    scenarios_df = scenarios_df.reset_index(drop=True)
+    actual_n = len(scenarios_df)
+
+    # Block structure
+    block_struct = block_structure_from_dataframes(scenarios_df, ramps_df)
+    block_names = list(block_struct.block_names)
+    block_to_physical = dict(block_struct.block_to_physical)
+    cost_vec = list(block_cost_vector(costs_df, block_names))
+    T = infer_num_time_steps(scenarios_df)
+
+    # Load NN policies and normalization stats
+    nn_policies: dict[str, tuple[BiddingPolicyNetwork, dict[str, Any]]] = {
+        gen: _load_policy_network(model_dir, gen)
+        for gen in nn_policy_generators
+    }
+    norm_stats = _load_normalization_stats(norm_stats_path)
+
+    # Shared market features (used by all generators)
+    market_features = _build_market_features(
+        scenarios_df, block_names, block_to_physical, T
+    )
+
+    # Equilibrium and optimal scenarios_df copies with bid columns attached
+    eq_df, opt_df = _build_dispatch_scenarios(
+        scenarios_df=scenarios_df,
+        block_names=block_names,
+        cost_vec=cost_vec,
+        num_time_steps=T,
+        nn_policies=nn_policies,
+        norm_stats=norm_stats,
+        market_features=market_features,
+    )
+
+    # Solve dispatch LPs
+    print(f"  Solving equilibrium dispatch ({actual_n} scenarios)...")
+    ed_eq = EconomicDispatchModel(eq_df, costs_df, ramps_df)
+    ed_eq.solve()
+
+    print(f"  Solving optimal dispatch ({actual_n} scenarios)...")
+    ed_opt = EconomicDispatchModel(opt_df, costs_df, ramps_df)
+    ed_opt.solve()
+
+    if ed_eq.block_dispatches is None:
+        raise RuntimeError("Equilibrium LP dispatch failed to find an optimal solution.")
+    if ed_opt.block_dispatches is None:
+        raise RuntimeError("Optimal LP dispatch failed to find an optimal solution.")
+
+    # True-cost inefficiency per scenario
+    n_blocks = len(block_names)
+    poa_ratios: list[float] = []
+    c_eq_list: list[float] = []
+    c_opt_list: list[float] = []
+    scenario_params: list[dict[str, float]] = []
+    param_cols = [c for c in _SCENARIO_PARAM_COLUMNS if c in scenarios_df.columns]
+
+    for s in range(actual_n):
+        c_eq = _true_cost(ed_eq.block_dispatches, cost_vec, s, T, n_blocks)
+        c_opt = _true_cost(ed_opt.block_dispatches, cost_vec, s, T, n_blocks)
+        c_eq_list.append(c_eq)
+        c_opt_list.append(c_opt)
+        if c_opt > 1e-9:
+            poa_ratios.append(c_eq / c_opt)
+        else:
+            warnings.warn(
+                f"Scenario {s}: C_opt={c_opt:.3g} near zero; PoA ratio skipped.",
+                stacklevel=2,
+            )
+        scenario_params.append(
+            {col: float(scenarios_df.at[s, col]) for col in param_cols}
+        )
+
+    oos_mean_poa = float(np.mean(poa_ratios)) if poa_ratios else float("nan")
+    oos_max_poa = float(np.max(poa_ratios)) if poa_ratios else float("nan")
+    return {
+        "n_scenarios_used": len(poa_ratios),
+        "oos_mean_poa_ratio": oos_mean_poa,
+        "oos_max_poa_ratio": oos_max_poa,
+        "poa_ratios": poa_ratios,
+        "c_eq": c_eq_list,
+        "c_opt": c_opt_list,
+        "scenario_params": scenario_params,
+    }
+
+
+def evaluate_oos_poa_from_ambiguity_set(
+    case: str,
+    horizon: int,
+    model_dir: Path,
+    norm_stats_path: Path,
+    nn_policy_generators: list[str],
+    ambiguity_set_config_path: str | Path = "config/ambiguity_set_config.yaml",
+    ambiguity_set: str = "base_test_case",
+    n_scenarios: int = 500,
+    seed: int = 999,
+    enforce_dispatch_feasibility: bool = True,
+    enforce_support_set: bool = False,
+) -> dict[str, Any]:
+    """Draw fresh OOS scenarios from the ambiguity set and return realized inefficiency.
+
+    Scenarios are drawn exactly as ``ScenarioManager.create_scenario_set_from_ambiguity_set``
+    does: the stochastic-process parameters (mu_D, sigma_D, mu_W, sigma_W) are sampled
+    uniformly over the ambiguity-set bounds, so the draw spans a much wider range of
+    market states than any single regime. For each scenario the NN policy bids are
+    applied and two dispatch LPs are solved (equilibrium vs. social optimum); the
+    per-scenario inefficiency is C_eq / C_opt with both costs evaluated at true block
+    costs.
+
+    Args:
+        case:                       Reference case name (e.g. "base_test_case").
+        horizon:                    Number of time steps T.
+        model_dir:                  Directory with *_policy.pt and *_policy_metadata.json.
+        norm_stats_path:            Path to min_max_stats.json.
+        nn_policy_generators:       Generators with trained NN policies.
+        ambiguity_set_config_path:  Path to ambiguity_set_config.yaml.
+        ambiguity_set:              Ambiguity set name in that config.
+        n_scenarios:                Number of fresh scenarios to draw.
+        seed:                       RNG seed (use one not used in training/optimization).
+        enforce_dispatch_feasibility: Reject draws whose dispatch is infeasible.
+        enforce_support_set:        Reject draws outside the DRO support set.
+
+    Returns:
+        dict with summary statistics and per-scenario inefficiency, costs, and the
+        drawn stochastic-process parameters.
+    """
+    manager = ScenarioManager(case)
+    apply_time_steps_override(manager, horizon)
+    raw = manager.create_scenario_set_from_ambiguity_set(
+        ambiguity_config_path=str(ambiguity_set_config_path),
+        ambiguity_set=ambiguity_set,
+        n_scenarios=n_scenarios,
+        seed=seed,
+        enforce_dispatch_feasibility=enforce_dispatch_feasibility,
+        enforce_support_set=enforce_support_set,
+    )
+
+    result = _compute_poa_on_scenarios(
+        scenarios_df=raw["scenarios_df"],
+        costs_df=raw["costs_df"],
+        ramps_df=raw["ramps_df"],
+        model_dir=model_dir,
+        norm_stats_path=norm_stats_path,
+        nn_policy_generators=list(nn_policy_generators),
+    )
+    result.update(
+        {
+            "scenario_source": "ambiguity_set",
+            "ambiguity_set": ambiguity_set,
+            "n_scenarios_requested": n_scenarios,
+            "seed": seed,
+        }
+    )
+    return result
+
+
 def evaluate_oos_poa_for_regime(
     case: str,
     regime_name: str,
@@ -472,84 +654,23 @@ def evaluate_oos_poa_for_regime(
             stacklevel=2,
         )
     scenarios_df = scenarios_df.iloc[:n_scenarios].reset_index(drop=True)
-    actual_n = len(scenarios_df)
 
-    # 2. Block structure
-    block_struct = block_structure_from_dataframes(scenarios_df, ramps_df)
-    block_names = list(block_struct.block_names)
-    block_to_physical = dict(block_struct.block_to_physical)
-    cost_vec = list(block_cost_vector(costs_df, block_names))
-    T = infer_num_time_steps(scenarios_df)
-
-    # 3. Load NN policies and normalization stats
-    nn_policies: dict[str, tuple[BiddingPolicyNetwork, dict[str, Any]]] = {
-        gen: _load_policy_network(model_dir, gen)
-        for gen in nn_policy_generators
-    }
-    norm_stats = _load_normalization_stats(norm_stats_path)
-
-    # 4. Build shared market features (used by all generators)
-    market_features = _build_market_features(
-        scenarios_df, block_names, block_to_physical, T
-    )
-
-    # 5. Build equilibrium and optimal scenarios_df copies with bid columns
-    eq_df, opt_df = _build_dispatch_scenarios(
+    result = _compute_poa_on_scenarios(
         scenarios_df=scenarios_df,
-        block_names=block_names,
-        cost_vec=cost_vec,
-        num_time_steps=T,
-        nn_policies=nn_policies,
-        norm_stats=norm_stats,
-        market_features=market_features,
+        costs_df=costs_df,
+        ramps_df=ramps_df,
+        model_dir=model_dir,
+        norm_stats_path=norm_stats_path,
+        nn_policy_generators=list(nn_policy_generators),
     )
-
-    # 6. Solve dispatch LPs
-    print(f"  Solving equilibrium dispatch ({actual_n} scenarios)...")
-    ed_eq = EconomicDispatchModel(eq_df, costs_df, ramps_df)
-    ed_eq.solve()
-
-    print(f"  Solving optimal dispatch ({actual_n} scenarios)...")
-    ed_opt = EconomicDispatchModel(opt_df, costs_df, ramps_df)
-    ed_opt.solve()
-
-    if ed_eq.block_dispatches is None:
-        raise RuntimeError("Equilibrium LP dispatch failed to find an optimal solution.")
-    if ed_opt.block_dispatches is None:
-        raise RuntimeError("Optimal LP dispatch failed to find an optimal solution.")
-
-    # 7. Compute true-cost PoA per scenario
-    n_blocks = len(block_names)
-    poa_ratios: list[float] = []
-    c_eq_list: list[float] = []
-    c_opt_list: list[float] = []
-
-    for s in range(actual_n):
-        c_eq = _true_cost(ed_eq.block_dispatches, cost_vec, s, T, n_blocks)
-        c_opt = _true_cost(ed_opt.block_dispatches, cost_vec, s, T, n_blocks)
-        c_eq_list.append(c_eq)
-        c_opt_list.append(c_opt)
-        if c_opt > 1e-9:
-            poa_ratios.append(c_eq / c_opt)
-        else:
-            warnings.warn(
-                f"Scenario {s}: C_opt={c_opt:.3g} near zero; PoA ratio skipped.",
-                stacklevel=2,
-            )
-
-    oos_mean_poa = float(np.mean(poa_ratios)) if poa_ratios else float("nan")
-    oos_max_poa = float(np.max(poa_ratios)) if poa_ratios else float("nan")
-    return {
-        "regime_name": regime_name,
-        "n_scenarios_requested": n_scenarios,
-        "n_scenarios_used": len(poa_ratios),
-        "seed": seed,
-        "oos_mean_poa_ratio": oos_mean_poa,
-        "oos_max_poa_ratio": oos_max_poa,
-        "poa_ratios": poa_ratios,
-        "c_eq": c_eq_list,
-        "c_opt": c_opt_list,
-    }
+    result.update(
+        {
+            "regime_name": regime_name,
+            "n_scenarios_requested": n_scenarios,
+            "seed": seed,
+        }
+    )
+    return result
 
 def save_oos_results(results: list[dict[str, Any]], output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)

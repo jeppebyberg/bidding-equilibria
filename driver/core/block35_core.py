@@ -108,7 +108,9 @@ def _load_poa_support_parameters(config: ProjectConfig) -> dict[str, Any]:
         config.ambiguity_set_config_name,
     )
     return {
-        "ambiguity_kappa": float(support_config["kappa"]),
+        # config.ambiguity_kappa is the single source of truth for the budget
+        # multiplier (overrides the YAML 'kappa'), matching block3's PoA solve.
+        "ambiguity_kappa": float(config.ambiguity_kappa),
         "rho_D": float(support_config["demand"]["rho_fixed"]),
         "rho_W": float(support_config["wind"]["rho_fixed"]),
         "tau_W": float(support_config["wind"]["tau_fixed"]),

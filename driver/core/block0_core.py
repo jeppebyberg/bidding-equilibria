@@ -148,7 +148,7 @@ class ProjectConfig:
     poa_regime_set: str = "sensitivity_runtime"
     etas: list[float] = field(default_factory=default_eta_grid)
     dro_wasserstein_epsilon: float = 1.0
-    ambiguity_kappa: float = 0.25
+    ambiguity_kappa: float = 0.3
     dro_tightening_eta: float = 0.0
     dro_objective_mode: str = "piecewise_mccormick"
     dro_mccormick_bounds: dict[str, Any] | None = None

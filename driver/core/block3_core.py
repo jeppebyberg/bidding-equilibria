@@ -151,6 +151,9 @@ class PoAPipelineConfig:
     horizon: int = 8
     ambiguity_set_config_path: str = "config/ambiguity_set_config.yaml"
     ambiguity_set_config_name: str = "base_test_case"
+    # Support-set budget multiplier; overrides the YAML 'kappa' (single source of
+    # truth, so sweeps over ambiguity_kappa actually change the PoA budget).
+    ambiguity_kappa: float = 0.3
     nn_policy_generators: list[int | str] = field(default_factory=lambda: ["G1", "W3"])
 
     # Objective modes: "difference", "mccormick", or
@@ -288,6 +291,7 @@ def build_poa_config(config: ProjectConfig) -> PoAPipelineConfig:
         horizon=config.horizon,
         ambiguity_set_config_path=config.ambiguity_set_config_path,
         ambiguity_set_config_name=config.ambiguity_set_config_name,
+        ambiguity_kappa=config.ambiguity_kappa,
         nn_policy_generators=list(config.nn_policy_generators),
         poa_objective_mode=config.poa_objective_mode,
         poa_mccormick_bounds=config.poa_mccormick_bounds,
@@ -338,10 +342,16 @@ def load_poa_scenario_data(config: PoAPipelineConfig) -> dict[str, Any]:
 
 
 def load_ambiguity_set_config(config: PoAPipelineConfig) -> dict[str, Any]:
-    return PoAOptimization.load_ambiguity_set(
+    ambiguity_set_config = PoAOptimization.load_ambiguity_set(
         config_path=config.ambiguity_set_config_path,
         config_name=config.ambiguity_set_config_name,
     )
+    # config.ambiguity_kappa is the single source of truth for the support-set
+    # budget multiplier; override the YAML 'kappa' so sweeps over ambiguity_kappa
+    # actually change the PoA budget (the model reads cfg['kappa']).
+    ambiguity_set_config = dict(ambiguity_set_config)
+    ambiguity_set_config["kappa"] = float(config.ambiguity_kappa)
+    return ambiguity_set_config
 
 
 def build_poa_mccormick_bounds(config: PoAPipelineConfig) -> dict[str, Any] | None:

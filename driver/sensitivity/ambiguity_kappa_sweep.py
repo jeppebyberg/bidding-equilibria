@@ -1,6 +1,6 @@
 """Sensitivity study: the ambiguity-budget multiplier ``ambiguity_kappa``.
 
-``ambiguity_kappa`` (base 0.25) scales the support-set budget used both by the
+``ambiguity_kappa`` (base 0.3) scales the support-set budget used both by the
 PoA support set / tightening big-Ms (block3) and by the DRO solve (block4); it
 also sets the OOS-coverage budget (block35). It does NOT affect scenario
 generation, heuristic labels, feature building, or NN training, so this sweep
@@ -9,7 +9,7 @@ only the kappa-dependent legs (PoA + support-OOS + DRO) per value. Reusing the
 same policies makes every PoA/DRO difference attributable to kappa alone rather
 than to per-run NN-training noise, and cuts the compute roughly 5x (no retrain).
 
-Sweep: kappa in [0.0, 0.25 (base), 0.5, 0.75, 1.0]. ``kappa = 0`` collapses the
+Sweep: kappa in [0.0, 0.25, 0.3 (base), 0.5, 0.75, 1.0]. ``kappa = 0`` collapses the
 support set to the reference point (zero budget); ``kappa < 0`` is rejected by
 the PoA model, so 0 is the valid floor.
 
@@ -41,9 +41,10 @@ from driver.sensitivity.sensitivity_config import (  # noqa: E402
 
 STUDY_NAME = "ambiguity_kappa_sweep"
 
-# Ambiguity-budget multipliers under study. Base case is 0.25.
-KAPPA_VALUES = [0.0, 0.25, 0.5, 0.75, 1.0]
-BASE_KAPPA = 0.25
+# Ambiguity-budget multipliers under study. Base case is 0.3 (matches
+# config.ambiguity_kappa default and the YAML 'kappa' the base case was solved with).
+KAPPA_VALUES = [0.0, 0.25, 0.3, 0.5, 0.75, 1.0]
+BASE_KAPPA = 0.3
 
 # kappa changes only the PoA/support/DRO legs, so reuse one fixed policy/feature
 # set from results/base_case and skip the data + NN stages for every run.

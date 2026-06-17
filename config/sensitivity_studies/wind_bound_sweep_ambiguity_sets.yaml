@@ -1,0 +1,82 @@
+default_ambiguity_set: wind_mu_0_1
+ambiguity_sets:
+  wind_mu_0_1:
+    description: 'Wind-mean-bound sensitivity: wind.mu in [0, 1].'
+    demand:
+      mu:
+        min: 0.75
+        max: 1.25
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.75
+    wind:
+      mu:
+        min: 0.0
+        max: 1.0
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.75
+      tau_fixed: 14
+    kappa: 0.3
+  wind_mu_0p1_0p9:
+    description: 'Wind-mean-bound sensitivity: wind.mu in [0.1, 0.9].'
+    demand:
+      mu:
+        min: 0.75
+        max: 1.25
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.75
+    wind:
+      mu:
+        min: 0.1
+        max: 0.9
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.75
+      tau_fixed: 14
+    kappa: 0.3
+  wind_mu_0p25_0p75:
+    description: 'Wind-mean-bound sensitivity: wind.mu in [0.25, 0.75].'
+    demand:
+      mu:
+        min: 0.75
+        max: 1.25
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.75
+    wind:
+      mu:
+        min: 0.25
+        max: 0.75
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.75
+      tau_fixed: 14
+    kappa: 0.3
+  wind_mu_0p4_0p6:
+    description: 'Wind-mean-bound sensitivity: wind.mu in [0.4, 0.6].'
+    demand:
+      mu:
+        min: 0.75
+        max: 1.25
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.75
+    wind:
+      mu:
+        min: 0.4
+        max: 0.6
+      sigma:
+        min: 0.001
+        max: 0.025
+      rho_fixed: 0.75
+      tau_fixed: 14
+    kappa: 0.3

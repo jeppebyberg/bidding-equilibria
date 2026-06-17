@@ -530,15 +530,26 @@ class PoATighteningMain:
         """Valid analytical PoA upper bound: max of the overlapping-displacement and
         consecutive-cost ratios.
 
-        Term 1 (overlapping displacement): for each pair of blocks ((i,b), (j,k))
-        with c_{j,k} > c_{i,b}, if the certified lower bound on alpha[j,k] is
-        strictly below the certified upper bound on alpha[i,b], then (j,k) can
-        displace (i,b) in some scenario despite being more expensive, contributing
-        the ratio c_{j,k}/c_{i,b}.
+        Both terms compare blocks of DIFFERENT physical generators (i != j):
+        within one generator the blocks are convex-cost-ordered and co-dispatched,
+        so a generator never serves a pricier own-block ahead of a cheaper
+        own-block -- that pair is not a feasible merit-order displacement.
 
-        Term 2 (consecutive cost): the largest ratio between cost-adjacent blocks
-        (distinct positive costs sorted ascending). This is always applied so the
-        bound cannot collapse to 1 when no certified bid ranges overlap.
+        Term 1 (overlapping displacement): for each cross-generator pair of blocks
+        ((i,b), (j,k)) with i != j and c_{j,k} > c_{i,b}, if the certified lower
+        bound on alpha[j,k] is strictly below the certified upper bound on
+        alpha[i,b], then (j,k) can displace (i,b) in some scenario despite being
+        more expensive, contributing the ratio c_{j,k}/c_{i,b}. It ranges over ALL
+        cross-generator pairs (not just cost-adjacent), so the large-ratio case of
+        a cheap block whose range overlaps a far more expensive block is captured.
+
+        Term 2 (consecutive generator cost): represent each generator by its
+        cheapest (merit-order entry) block cost, sort generators ascending, and
+        take the largest ratio between cost-adjacent generators. Always applied so
+        the bound cannot collapse to 1 when no certified bid ranges overlap. Using
+        generator entry costs (not block costs) avoids inserting spurious
+        intra-generator block steps that would shrink the ratio below the true
+        cross-generator displacement gap.
 
         kappa = max(max Term 1, max Term 2). Returns a dict with 'kappa', the
         witnessing pair, and which term is binding, or None if unavailable.
@@ -561,7 +572,11 @@ class PoATighteningMain:
             ib = (int(key[offset]), int(key[offset + 1]))
             alpha_ub[ib] = max(alpha_ub.get(ib, -1e18), float(bounds["upper"]))
             alpha_lb[ib] = min(alpha_lb.get(ib, 1e18), float(bounds["lower"]))
-        # --- Term 1: largest feasible overlapping-displacement ratio ---
+        # --- Term 1: largest feasible cross-generator overlapping-displacement ratio ---
+        # Ranges over ALL cross-generator pairs (i != j), so a cheap block whose
+        # certified range overlaps a far-more-expensive block is captured here, not
+        # only cost-adjacent pairs. Same-generator pairs are skipped: own blocks are
+        # convex-ordered and co-dispatched, so they cannot displace each other.
         overlap_kappa: Optional[float] = None
         overlap_best: Optional[tuple[tuple[int, int], tuple[int, int]]] = None
         for ib, c_ib in block_cost.items():
@@ -570,6 +585,8 @@ class PoATighteningMain:
             for jk, c_jk in block_cost.items():
                 if c_jk <= c_ib or jk not in alpha_lb:
                     continue
+                if jk[0] == ib[0]:
+                    continue  # same generator: own blocks are convex-ordered, no displacement
                 if alpha_lb[jk] >= alpha_ub[ib]:
                     continue  # j,k always bids above i,b: displacement impossible
                 ratio = c_jk / c_ib
@@ -577,25 +594,33 @@ class PoATighteningMain:
                     overlap_kappa = ratio
                     overlap_best = (ib, jk)
 
-        # --- Term 2: largest ratio between cost-adjacent blocks (always applied) ---
-        # Sort the distinct positive block costs ascending and take the largest
-        # ratio between consecutive (cost-adjacent) blocks. A more expensive block
-        # can be dispatched ahead of the next-cheaper one even when no certified
-        # bid ranges overlap, so this keeps kappa from collapsing to 1. Flooring
-        # kappa only loosens the bound (the final box is min(C_eq/C_opt, kappa)),
+        # --- Term 2: largest ratio between cost-adjacent GENERATORS (always applied) ---
+        # Represent each physical generator by its cheapest (merit-order entry) block
+        # cost, sort generators ascending, and take the largest ratio between
+        # consecutive generators. A pricier generator can be dispatched ahead of the
+        # next-cheaper one even when no certified bid ranges overlap (ramp/intertemporal
+        # limits), so this keeps kappa from collapsing to 1. Generator entry costs are
+        # used instead of block costs so intra-generator block boundaries do not insert
+        # spurious intermediate steps that would understate the cross-generator gap.
+        # Raising kappa only loosens the final box (min(max C_eq / min C_opt, kappa)),
         # so the result stays a valid PoA upper bound.
+        gen_entry_cost: dict[int, float] = {}
+        gen_entry_block: dict[int, tuple[int, int]] = {}
+        for ib, c_ib in block_cost.items():
+            if c_ib <= 0.0:
+                continue
+            gen = ib[0]
+            if gen not in gen_entry_cost or c_ib < gen_entry_cost[gen]:
+                gen_entry_cost[gen] = c_ib
+                gen_entry_block[gen] = ib
         adjacent_kappa: Optional[float] = None
         adjacent_best: Optional[tuple[tuple[int, int], tuple[int, int]]] = None
-        block_at_cost: dict[float, tuple[int, int]] = {}
-        for ib, c_ib in block_cost.items():
-            if c_ib > 0.0:
-                block_at_cost.setdefault(c_ib, ib)
-        positive_costs = sorted(block_at_cost)
-        for c_low, c_high in zip(positive_costs, positive_costs[1:]):
-            ratio = c_high / c_low
+        sorted_gens = sorted(gen_entry_cost, key=lambda g: gen_entry_cost[g])
+        for g_low, g_high in zip(sorted_gens, sorted_gens[1:]):
+            ratio = gen_entry_cost[g_high] / gen_entry_cost[g_low]
             if adjacent_kappa is None or ratio > adjacent_kappa:
                 adjacent_kappa = ratio
-                adjacent_best = (block_at_cost[c_low], block_at_cost[c_high])
+                adjacent_best = (gen_entry_block[g_low], gen_entry_block[g_high])
 
         # --- kappa = max(Term 1, Term 2) ---
         finite = [

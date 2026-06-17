@@ -31,7 +31,7 @@ PROJECT_CONFIG = ProjectConfig(
 
     run_poa_tightening = True,
 
-    ambiguity_kappa = 0.25,
+    ambiguity_kappa = 0.3,
 
     poa_tightening_flags = {
         "relu_bounds": True,
