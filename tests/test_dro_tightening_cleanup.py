@@ -6,6 +6,7 @@ from models.DRO_PoA.DRO_PoA_optimization import DRO_PoAOptimization
 from models.DRO_PoA.DRO_PoA_tightening import compute_dual_big_m
 from models.DRO_PoA.DRO_PoA_tightening.compute_dual_big_m import DRODualBigMComputer
 from models.DRO_PoA.DRO_PoA_tightening.tightening_main import DROPoATighteningMain
+from models.DRO_PoA.dro_poa_model.tightening_reports import DROPoATighteningReports
 
 
 REMOVED_REPORT_KEYS = {
@@ -105,6 +106,88 @@ def test_dro_dual_big_m_tightening_returns_only_componentwise_fields(monkeypatch
     assert REMOVED_REPORT_KEYS.isdisjoint(report)
     assert set(report) == {"scenario_tight_big_m", "regime_tight_big_m", "tight_big_m"}
     assert set(report["scenario_tight_big_m"]) == set(DUAL_NAMES)
+
+
+def test_dro_dual_big_m_reports_best_bound_on_time_limit(monkeypatch) -> None:
+    computer = _fake_dual_computer()
+
+    def fake_solve(task):
+        (
+            side,
+            constraint_type,
+            scenario_index,
+            regime_index,
+            _alpha_bounds,
+            _fixed_binaries,
+            _solver_name,
+            _time_limit,
+            _tee,
+            _solver_options,
+        ) = task
+        return {
+            "side": side,
+            "constraint_type": constraint_type,
+            "dual_name": computer._dual_name(side, constraint_type),
+            "scenario_index": tuple(scenario_index),
+            "regime_index": tuple(regime_index),
+            "scenario_key": computer._json_key(scenario_index),
+            "regime_key": computer._json_key(regime_index),
+            "tight_big_m": None,
+            "incumbent_big_m": 4.0,
+            "best_bound": 9.5,
+            "fixed_by_slack": False,
+            "termination_condition": "maxTimeLimit",
+        }
+
+    monkeypatch.setattr(compute_dual_big_m, "_solve_parallel_dual_big_m", fake_solve)
+
+    report = computer.run_dual_big_m_tightening(parallel_workers=1)
+    details = report["regime_tight_big_m"]["mu_upper_eq"]["0,0,0"]
+
+    assert details["tight_big_m"] is None
+    assert details["incumbent_big_m"] == 4.0
+    assert details["best_bound"] == 9.5
+    assert (
+        DRODualBigMComputer._best_bound_suffix(details)
+        == "; Best Bound: 9.5"
+    )
+
+
+def test_dro_dual_big_m_extracts_finite_best_objective_bound() -> None:
+    results = SimpleNamespace(
+        problem=[
+            SimpleNamespace(
+                lower_bound=3.0,
+                upper_bound=8.0,
+            )
+        ]
+    )
+
+    assert DRODualBigMComputer._best_objective_bound(results) == 8.0
+
+
+def test_dro_tightening_loader_accepts_best_bound_when_tight_big_m_missing() -> None:
+    report_loader = DROPoATighteningReports.__new__(DROPoATighteningReports)
+
+    parsed = report_loader._indexed_numeric_entries(
+        {"1,1,3": {"tight_big_m": None, "best_bound": 12.25}},
+        "dual Big-M 'mu_lower_eq'",
+        (3, 4),
+        "i,b,t or k,i,b,t",
+    )
+
+    assert parsed[(1, 1, 3)] == 12.25
+
+
+def test_dro_big_m_aggregation_uses_best_bound_when_tight_big_m_missing() -> None:
+    stage = DROPoATighteningMain.__new__(DROPoATighteningMain)
+
+    aggregated = stage.aggregate_big_m_over_k(
+        {"0,1,1,3": {"tight_big_m": None, "best_bound": 12.25}}
+    )
+
+    assert aggregated["1,1,3"]["tight_big_m"] == 12.25
+    assert aggregated["1,1,3"]["best_bound"] == 12.25
 
 
 def test_dro_dual_big_m_stage_report_excludes_lambda_and_aggregate(monkeypatch) -> None:

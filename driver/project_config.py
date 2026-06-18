@@ -24,12 +24,12 @@ PROJECT_CONFIG = ProjectConfig(
     lr_scheduler_patience = 20,
 
     plot_results_along_the_way = True,
-    run_scenario_generation = True,
-    run_heuristic_labels = True,
-    run_feature_building = True,
-    run_nn_training = True,
+    run_scenario_generation = False,
+    run_heuristic_labels = False,
+    run_feature_building = False,
+    run_nn_training = False,
 
-    run_poa_tightening = True,
+    run_poa_tightening = False,
 
     ambiguity_kappa = 0.3,
 
@@ -40,14 +40,14 @@ PROJECT_CONFIG = ProjectConfig(
         "dual_big_m": True,
     },
 
-    run_poa_optimization = True,
+    run_poa_optimization = False,
 
     run_dro_tightening = True,
 
     dro_tightening_flags = {
-        "relu_bounds": True,
-        "alpha_bounds": True,
-        "slack_binary_fix": True,
+        "relu_bounds": False,
+        "alpha_bounds": False,
+        "slack_binary_fix": False,
         "dual_big_m": True,
     },
 

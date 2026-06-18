@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import sys
 import time
 from pathlib import Path
@@ -12,6 +13,7 @@ from pyomo.environ import (
     Binary,
     ConcreteModel,
     Constraint,
+    ConstraintList,
     NonNegativeReals,
     Objective,
     Reals,
@@ -35,6 +37,7 @@ from models.helper import (
     gurobi_log_filter,
     infer_num_time_steps,
     is_wind_generator_name,
+    parse_gurobi_node_log,
     ramp_vectors,
 )
 from models.DRO_PoA.dro_poa_model.mccormick import DROPoAMcCormick
@@ -93,6 +96,7 @@ class DRO_PoAOptimization(
     DEFAULT_PoA_UPPER = 10.0
     DEFAULT_PHI_LOWER = DEFAULT_PoA_LOWER
     DEFAULT_PHI_UPPER = DEFAULT_PoA_UPPER
+    DEFAULT_ALPHA_ORDERING_EPSILON = 1e-6
 
     normalization_epsilon = 1e-12
     # Scenarios whose minimum achievable Wasserstein distance to the support set
@@ -115,6 +119,9 @@ class DRO_PoAOptimization(
         regime_config_path: str | Path = "config/regime_definitions.yaml",
         regime_set: str = "PoA_analysis",
         regime_name: Optional[str] = None,
+        regime_parameters: Optional[dict[str, Any]] = None,
+        ambiguity_set_config_path: str | Path = "config/ambiguity_set_config.yaml",
+        ambiguity_set_config_name: Optional[str] = None,
         eta: float = 0.0,
         epsilon: float = 0.0,
         nn_model_dir: Optional[str | Path] = None,
@@ -142,6 +149,7 @@ class DRO_PoAOptimization(
         default_phi_lower: Optional[float] = None,
         default_phi_upper: Optional[float] = None,
         ar1_coverage: Optional[float] = None,
+        alpha_ordering_epsilon: float = DEFAULT_ALPHA_ORDERING_EPSILON,
     ):
         if float(eta) < 0.0:
             raise ValueError("eta must be nonnegative")
@@ -159,6 +167,8 @@ class DRO_PoAOptimization(
         self.requested_nn_policy_generators = nn_policy_generators
         self.regime_config_path = Path(regime_config_path)
         self.regime_set = str(regime_set)
+        self.ambiguity_set_config_path = Path(ambiguity_set_config_path)
+        self.ambiguity_set_config_name = ambiguity_set_config_name
         self.eta = float(eta)
         self.epsilon = float(epsilon)
         self.ambiguity_kappa = float(ambiguity_kappa)
@@ -185,12 +195,15 @@ class DRO_PoAOptimization(
         self.default_PoA_upper = float(
             default_PoA_upper if default_phi_upper is None else default_phi_upper
         )
+        self.alpha_ordering_epsilon = float(alpha_ordering_epsilon)
         if self.default_c_opt_lower <= 0.0:
             raise ValueError("default_c_opt_lower must be strictly positive")
         if self.default_c_opt_upper < self.default_c_opt_lower:
             raise ValueError("default_c_opt_upper must be >= default_c_opt_lower")
         if self.default_lambda_lower >= self.default_lambda_upper:
             raise ValueError("default_lambda_lower must be < default_lambda_upper")
+        if self.alpha_ordering_epsilon < 0.0:
+            raise ValueError("alpha_ordering_epsilon must be nonnegative")
         self.capacity_dual_bound = float(self.default_dual_big_m)
         self.ramp_dual_bound = float(self.default_dual_big_m)
         self.primal_big_m_placeholder = float(self.default_dual_big_m)
@@ -223,19 +236,28 @@ class DRO_PoAOptimization(
         self.nn_policies: dict[str, Any] = {}
         self.nn_stats: dict[str, Any] = {}
 
-        self.selected_regime = self.load_regime_config(
-            self.regime_config_path,
-            self.regime_set,
-            regime_name,
-        )
-        self.regime_name = str(self.selected_regime["name"])
-        self.selected_regime_parameters = dict(self.selected_regime)
-
-        self.scenarios_df = self._filter_scenarios_to_regime(
-            scenarios_df,
-            self.regime_name,
-            regime_name_was_explicit=regime_name is not None,
-        )
+        if regime_parameters is not None:
+            # Caller supplies the regime context directly (e.g. derived from the
+            # ambiguity set via regime_context_from_ambiguity_set), so no
+            # regime_definitions entry is read.  Empirical samples are taken as-is
+            # (typically drawn from the ambiguity set), without regime filtering.
+            self.selected_regime = self._normalize_regime_override(regime_parameters)
+            self.regime_name = str(self.selected_regime["name"])
+            self.selected_regime_parameters = dict(self.selected_regime)
+            self.scenarios_df = scenarios_df.reset_index(drop=True).copy()
+        else:
+            self.selected_regime = self.load_regime_config(
+                self.regime_config_path,
+                self.regime_set,
+                regime_name,
+            )
+            self.regime_name = str(self.selected_regime["name"])
+            self.selected_regime_parameters = dict(self.selected_regime)
+            self.scenarios_df = self._filter_scenarios_to_regime(
+                scenarios_df,
+                self.regime_name,
+                regime_name_was_explicit=regime_name is not None,
+            )
         self._initialize_block_structure()
         self.num_time_steps = int(num_time_steps or infer_num_time_steps(self.scenarios_df))
         if self.num_time_steps <= 0:
@@ -261,6 +283,10 @@ class DRO_PoAOptimization(
         self.empirical_Pmax_phys = self._build_empirical_physical_capacity_profiles()
         self._configure_fixed_regime_parameters()
         self._configure_regime_shape_profiles()
+        self._configure_dro_regime_bounds()
+        self._configure_wasserstein_weights()
+        self._parse_empirical_regime_parameters()
+        self._configure_empirical_warm_start()
         self.p_init = self.compute_p_init_from_ed()
         if self.nn_model_dir is not None and self.nn_policy_generator_ids:
             self._load_nn_policies()
@@ -448,6 +474,224 @@ class DRO_PoAOptimization(
         if not 0.0 <= self.peak_W_fixed <= 24.0:
             raise ValueError("Selected regime peak_W must be in [0, 24]")
 
+    @staticmethod
+    def load_ambiguity_set_config(
+        config_path: str | Path,
+        config_name: Optional[str],
+    ) -> dict[str, Any]:
+        path = Path(config_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Ambiguity-set config not found: {path}")
+        with path.open("r", encoding="utf-8") as file_handle:
+            raw_config = yaml.safe_load(file_handle) or {}
+        if "ambiguity_sets" not in raw_config:
+            return raw_config
+        ambiguity_sets = raw_config.get("ambiguity_sets")
+        if not isinstance(ambiguity_sets, dict) or not ambiguity_sets:
+            raise ValueError("'ambiguity_sets' must be a non-empty mapping")
+        selected_name = (
+            config_name
+            or raw_config.get("default_ambiguity_set")
+            or next(iter(ambiguity_sets))
+        )
+        if selected_name not in ambiguity_sets:
+            raise ValueError(
+                f"Unknown ambiguity-set config '{selected_name}'. "
+                f"Available: {', '.join(ambiguity_sets.keys())}"
+            )
+        return ambiguity_sets[selected_name] or {}
+
+    @staticmethod
+    def _regime_bounds_from_config(
+        config: dict[str, Any],
+        section: str,
+        parameter: str,
+    ) -> tuple[float, float]:
+        try:
+            section_cfg = config[section][parameter]
+            lower = float(section_cfg["min"])
+            upper = float(section_cfg["max"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(
+                f"ambiguity_set_config['{section}']['{parameter}'] must define "
+                "numeric 'min' and 'max'"
+            ) from exc
+        if lower > upper:
+            raise ValueError(
+                f"ambiguity_set_config['{section}']['{parameter}']['min'] "
+                "cannot exceed max"
+            )
+        return (lower, upper)
+
+    def _configure_dro_regime_bounds(self) -> None:
+        """Bounds for the free DRO regime variables r^DRO = (mu_D, sigma_D, mu_W,
+        sigma_W), taken from the same ambiguity set R used by the PoA upper level.
+
+        rho_D, rho_W, and peak_W are not part of r^DRO; they stay fixed at the
+        selected (empirical) regime and define the support-set shape.  The
+        empirical regime must lie inside the box so the empirical (W=0) point is
+        feasible for the free regime variables.
+        """
+        cfg = self.load_ambiguity_set_config(
+            self.ambiguity_set_config_path,
+            self.ambiguity_set_config_name,
+        )
+        if not isinstance(cfg, dict) or not cfg:
+            raise ValueError("ambiguity_set_config is required and must be non-empty")
+        self.ambiguity_set_config = cfg
+        self.mu_D_bounds = self._regime_bounds_from_config(cfg, "demand", "mu")
+        self.sigma_D_bounds = self._regime_bounds_from_config(cfg, "demand", "sigma")
+        self.mu_W_bounds = self._regime_bounds_from_config(cfg, "wind", "mu")
+        self.sigma_W_bounds = self._regime_bounds_from_config(cfg, "wind", "sigma")
+        if self.sigma_D_bounds[0] < 0 or self.sigma_W_bounds[0] < 0:
+            raise ValueError("ambiguity-set sigma minima must be non-negative")
+
+    @staticmethod
+    def _normalize_regime_override(regime_parameters: dict[str, Any]) -> dict[str, Any]:
+        """Validate and float-cast a caller-supplied regime context, matching the
+        schema produced by load_regime_config (name + mu/rho/sigma for demand and
+        wind + peak_W)."""
+        required = ("name", "mu_D", "rho_D", "sigma_D", "mu_W", "rho_W", "sigma_W")
+        missing = [field for field in required if field not in regime_parameters]
+        if missing:
+            raise ValueError(f"regime_parameters is missing fields: {missing}")
+        peak_key = "peak_W" if "peak_W" in regime_parameters else "tau_W"
+        if peak_key not in regime_parameters:
+            raise ValueError("regime_parameters must include peak_W or tau_W")
+        normalized = dict(regime_parameters)
+        normalized["peak_W"] = float(regime_parameters[peak_key])
+        for field in ("mu_D", "rho_D", "sigma_D", "mu_W", "rho_W", "sigma_W"):
+            normalized[field] = float(normalized[field])
+        normalized["name"] = str(normalized["name"])
+        return normalized
+
+    @classmethod
+    def regime_context_from_ambiguity_set(
+        cls,
+        ambiguity_set_config_path: str | Path = "config/ambiguity_set_config.yaml",
+        ambiguity_set_config_name: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """Build a regime context from the ambiguity set, so the DRO model needs no
+        regime_definitions entry.
+
+        rho_D, rho_W, and peak_W are taken from the fixed ambiguity-set values
+        (rho_fixed, tau_fixed); mu_D/sigma_D/mu_W/sigma_W default to the box centre
+        and are only used as the deterministic p_init operating point (the regime
+        variables themselves are free within the box).
+        """
+        cfg = cls.load_ambiguity_set_config(
+            ambiguity_set_config_path, ambiguity_set_config_name
+        )
+
+        def _mid(section: str, parameter: str) -> float:
+            lo, hi = cls._regime_bounds_from_config(cfg, section, parameter)
+            return 0.5 * (lo + hi)
+
+        try:
+            rho_D = float(cfg["demand"]["rho_fixed"])
+            rho_W = float(cfg["wind"]["rho_fixed"])
+            peak_W = float(cfg["wind"]["tau_fixed"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(
+                "ambiguity_set_config must define demand.rho_fixed, wind.rho_fixed, "
+                "and wind.tau_fixed"
+            ) from exc
+
+        return {
+            "name": str(cfg.get("name", ambiguity_set_config_name or "ambiguity_set")),
+            "mu_D": _mid("demand", "mu"),
+            "sigma_D": _mid("demand", "sigma"),
+            "mu_W": _mid("wind", "mu"),
+            "sigma_W": _mid("wind", "sigma"),
+            "rho_D": rho_D,
+            "rho_W": rho_W,
+            "peak_W": peak_W,
+        }
+
+    def _configure_empirical_warm_start(self) -> None:
+        """Decide whether the empirical (W=0) point is a feasible MIP start.
+
+        The warm start sets a single shared r^DRO and every scenario's trajectory
+        to its empirical value, which is only feasible when all scenarios share one
+        regime r^(k) (so r^DRO can equal it) and that regime lies inside R.  This
+        holds for the single-regime-filter case but not for ambiguity-set draws
+        where r^(k) varies per scenario; in the latter case the empirical point is
+        infeasible and the warm start is skipped (cold start).
+        """
+        def _is_constant(values: list[float]) -> bool:
+            return (max(values) - min(values)) <= 1e-9 if values else True
+
+        regimes_constant = all(
+            _is_constant(values)
+            for values in (
+                self.empirical_mu_D,
+                self.empirical_sigma_D,
+                self.empirical_mu_W,
+                self.empirical_sigma_W,
+            )
+        )
+        inside_R = (
+            self.mu_D_bounds[0] - 1e-9 <= self.empirical_mu_D[0] <= self.mu_D_bounds[1] + 1e-9
+            and self.sigma_D_bounds[0] - 1e-9 <= self.empirical_sigma_D[0] <= self.sigma_D_bounds[1] + 1e-9
+            and self.mu_W_bounds[0] - 1e-9 <= self.empirical_mu_W[0] <= self.mu_W_bounds[1] + 1e-9
+            and self.sigma_W_bounds[0] - 1e-9 <= self.empirical_sigma_W[0] <= self.sigma_W_bounds[1] + 1e-9
+        )
+        self.empirical_regime_inside_ambiguity_set = bool(regimes_constant and inside_R)
+        if not self.empirical_regime_inside_ambiguity_set:
+            reason = (
+                "regimes vary across scenarios"
+                if not regimes_constant
+                else "the shared empirical regime lies outside R"
+            )
+            logging.getLogger(__name__).info(
+                "Empirical (W=0) MIP start disabled (%s); Gurobi will start cold.",
+                reason,
+            )
+
+    def _configure_wasserstein_weights(self) -> None:
+        """Per-component Wasserstein weights normalizing each deviation by its
+        admissible range, so MW-scale trajectory deviations and dimensionless
+        regime deviations are placed on a comparable scale.
+
+        Regime weights are 1 / (parameter range); trajectory weights are
+        1 / (admissible MW range of the channel), with demand range
+        D_ref * (mu_D range) and per-wind-generator range cap_i * (mu_W range).
+        """
+        def _inv_width(width: float) -> float:
+            return 1.0 / width if width > self.normalization_epsilon else 0.0
+
+        mu_D_width = self.mu_D_bounds[1] - self.mu_D_bounds[0]
+        mu_W_width = self.mu_W_bounds[1] - self.mu_W_bounds[0]
+
+        self.omega_mu_D = _inv_width(mu_D_width)
+        self.omega_sigma_D = _inv_width(self.sigma_D_bounds[1] - self.sigma_D_bounds[0])
+        self.omega_mu_W = _inv_width(mu_W_width)
+        self.omega_sigma_W = _inv_width(self.sigma_W_bounds[1] - self.sigma_W_bounds[0])
+
+        self.omega_D = _inv_width(self.demand_D_ref * mu_D_width)
+        self.omega_W_phys: dict[int, float] = {
+            int(i): _inv_width(float(self.static_physical_capacity[int(i)]) * mu_W_width)
+            for i in self.wind_physical_generator_ids
+        }
+
+    def _parse_empirical_regime_parameters(self) -> None:
+        """Empirical regime r^(k) = (mu_D, sigma_D, mu_W, sigma_W) per scenario.
+
+        With the single-regime filter every row shares the selected regime, so
+        these default to the fixed regime values; per-scenario columns (if
+        present) override, allowing future regime-varied empirical draws without
+        further changes.
+        """
+        def _column_or_fixed(column: str, fixed: float) -> list[float]:
+            if column in self.scenarios_df.columns:
+                return [float(value) for value in self.scenarios_df[column].tolist()]
+            return [float(fixed)] * self.num_empirical_scenarios
+
+        self.empirical_mu_D = _column_or_fixed("mu_D", self.mu_D_fixed)
+        self.empirical_sigma_D = _column_or_fixed("sigma_D", self.sigma_D_fixed)
+        self.empirical_mu_W = _column_or_fixed("mu_W", self.mu_W_fixed)
+        self.empirical_sigma_W = _column_or_fixed("sigma_W", self.sigma_W_fixed)
+
     def _configure_regime_shape_profiles(self) -> None:
         scenario_manager = ScenarioManager(self.reference_case)
         self.demand_D_ref = float(scenario_manager.base_case["demand"])
@@ -626,6 +870,31 @@ class DRO_PoAOptimization(
     # Model construction
     # ------------------------------------------------------------------
 
+    def ensure_default_bounds_available(self, *args: Any, **kwargs: Any) -> None:
+        """Self-provide model-construction bounds, extending the base routine with
+        NN ReLU preactivation bounds.
+
+        The base DRO routine computes primal Big-M (and, in ratio modes, optimal
+        cost bounds) but not ReLU bounds.  The NN MILP embedding requires valid
+        preactivation bounds, and because the regime is now a free DRO variable the
+        support set is wider, so any cached bounds would be invalid -- they are
+        recomputed here over the current (free-regime) support set.
+        """
+        super().ensure_default_bounds_available(*args, **kwargs)
+        if getattr(self, "nn_policy_generator_ids", []) and not self.nn_relu_bounds:
+            from models.DRO_PoA.DRO_PoA_tightening.compute_relu_bounds import (
+                DROReLUBoundsComputer,
+            )
+
+            computer = DROReLUBoundsComputer.__new__(DROReLUBoundsComputer)
+            computer.poa = self
+            computer.tightening_data = {}
+            computer.stage_reports = {}
+            computer.compute_relu_bounds(
+                solver_name="gurobi",
+                parallel_workers=1,
+            )
+
     def build_model(self) -> None:
         if not getattr(self, "tightening_report", None) and getattr(
             self,
@@ -748,17 +1017,40 @@ class DRO_PoAOptimization(
 
     def _build_regime_variables(self) -> None:
         m = self.model
-        m.mu_D = Var(bounds=(self.mu_D_fixed, self.mu_D_fixed))
-        m.sigma_D = Var(bounds=(self.sigma_D_fixed, self.sigma_D_fixed))
-        m.mu_W = Var(bounds=(self.mu_W_fixed, self.mu_W_fixed))
-        m.sigma_W = Var(bounds=(self.sigma_W_fixed, self.sigma_W_fixed))
+        # Free DRO regime variables r^DRO, shared across all scenarios, bounded by
+        # the ambiguity set R (same uncertainty set as the PoA upper level).  The
+        # support set is built around these, so trajectories are restricted to the
+        # optimized regime rather than a fixed one.
+        m.mu_D = Var(bounds=self.mu_D_bounds)
+        m.sigma_D = Var(bounds=self.sigma_D_bounds)
+        m.mu_W = Var(bounds=self.mu_W_bounds)
+        m.sigma_W = Var(bounds=self.sigma_W_bounds)
+        # rho and the wind peak hour are not part of r^DRO; they stay fixed at the
+        # selected (empirical) regime and define the support-set shape.
         m.rho_D = Var(bounds=(self.demand_rho_fixed, self.demand_rho_fixed))
         m.rho_W = Var(bounds=(self.wind_rho_fixed, self.wind_rho_fixed))
         m.peak_W = Var(bounds=(self.peak_W_fixed, self.peak_W_fixed))
+        # Regime-space transport deviations |r^DRO - r^(k)| (linearized below).
+        m.mu_D_abs_deviation = Var(m.scenarios, domain=NonNegativeReals)
+        m.sigma_D_abs_deviation = Var(m.scenarios, domain=NonNegativeReals)
+        m.mu_W_abs_deviation = Var(m.scenarios, domain=NonNegativeReals)
+        m.sigma_W_abs_deviation = Var(m.scenarios, domain=NonNegativeReals)
+        # Support-set level-band deviations (consumed by the support set mixin).
         m.D_abs_deviation = Var(m.scenarios, m.time_steps, domain=NonNegativeReals)
         m.P_max_phys_abs_deviation = Var(
             m.scenarios, m.wind_physical_generators, m.time_steps, domain=NonNegativeReals
         )
+
+    def _build_regime_fixing_constraints(self) -> None:
+        """Override the support-set mixin: only rho and the wind peak are fixed.
+
+        mu_D, sigma_D, mu_W, sigma_W are free DRO regime variables (r^DRO) bounded
+        by the ambiguity set, so they are not pinned here.
+        """
+        m = self.model
+        m.regime_rho_D_fixed = Constraint(expr=m.rho_D == self.demand_rho_fixed)
+        m.regime_rho_W_fixed = Constraint(expr=m.rho_W == self.wind_rho_fixed)
+        m.regime_peak_W_fixed = Constraint(expr=m.peak_W == self.peak_W_fixed)
 
     def _build_equilibrium_variables(self) -> None:
         m = self.model
@@ -936,21 +1228,33 @@ class DRO_PoAOptimization(
     def _build_difference_objective(self) -> None:
         m = self.model
         m.objective = Objective(
-            expr=sum(m.PoA[k] for k in m.scenarios) / self.num_empirical_scenarios,
+            expr=sum(
+                m.PoA[k] - self.eta * m.wasserstein_distance[k]
+                for k in m.scenarios
+            )
+            / self.num_empirical_scenarios,
             sense=maximize,
         )
 
     def _build_mccormick_objective(self) -> None:
         m = self.model
         m.objective = Objective(
-            expr=sum(m.PoA[k] for k in m.scenarios) / self.num_empirical_scenarios,
+            expr=sum(
+                m.PoA[k] - self.eta * m.wasserstein_distance[k]
+                for k in m.scenarios
+            )
+            / self.num_empirical_scenarios,
             sense=maximize,
         )
 
     def _build_piecewise_mccormick_objective(self) -> None:
         m = self.model
         m.objective = Objective(
-            expr=sum(m.PoA[k] for k in m.scenarios) / self.num_empirical_scenarios,
+            expr=sum(
+                m.PoA[k] - self.eta * m.wasserstein_distance[k]
+                for k in m.scenarios
+            )
+            / self.num_empirical_scenarios,
             sense=maximize,
         )
 
@@ -965,9 +1269,11 @@ class DRO_PoAOptimization(
         self._build_KKT_complementarity_equilibrium_constraints()
         self._build_KKT_complementarity_optimal_constraints()
         self._build_PoA_constraints()
-        self._build_support_floor_constraints()
+        # No support-floor constraint: the regime is now a free DRO variable, so
+        # the optimizer may move r^DRO away from the empirical regime and incur a
+        # Wasserstein penalty that drives the per-scenario objective term
+        # PoA[k] - eta * W[k] below 1.  A DRO-PoA value below 1 is therefore valid.
 
-    
     def _build_transport_constraints(self) -> None:
         m = self.model
 
@@ -997,14 +1303,61 @@ class DRO_PoAOptimization(
                 - physical_capacity_expr(int(k), int(i), int(t))
             )
 
+        # Regime-space transport deviations |r^DRO - r^(k)| (linearized).  r^DRO is
+        # shared across scenarios; r^(k) is the per-scenario empirical regime.
+        def mu_D_dev_pos_rule(m, k):
+            return m.mu_D_abs_deviation[k] >= m.mu_D - self.empirical_mu_D[int(k)]
+
+        def mu_D_dev_neg_rule(m, k):
+            return m.mu_D_abs_deviation[k] >= self.empirical_mu_D[int(k)] - m.mu_D
+
+        def sigma_D_dev_pos_rule(m, k):
+            return m.sigma_D_abs_deviation[k] >= m.sigma_D - self.empirical_sigma_D[int(k)]
+
+        def sigma_D_dev_neg_rule(m, k):
+            return m.sigma_D_abs_deviation[k] >= self.empirical_sigma_D[int(k)] - m.sigma_D
+
+        def mu_W_dev_pos_rule(m, k):
+            return m.mu_W_abs_deviation[k] >= m.mu_W - self.empirical_mu_W[int(k)]
+
+        def mu_W_dev_neg_rule(m, k):
+            return m.mu_W_abs_deviation[k] >= self.empirical_mu_W[int(k)] - m.mu_W
+
+        def sigma_W_dev_pos_rule(m, k):
+            return m.sigma_W_abs_deviation[k] >= m.sigma_W - self.empirical_sigma_W[int(k)]
+
+        def sigma_W_dev_neg_rule(m, k):
+            return m.sigma_W_abs_deviation[k] >= self.empirical_sigma_W[int(k)] - m.sigma_W
+
+        def trajectory_transport_cost_expr(m, k):
+            return (
+                self.omega_D
+                * sum(m.D_transport_abs_deviation[k, t] for t in m.time_steps)
+                + sum(
+                    self.omega_W_phys[int(i)]
+                    * sum(
+                        m.P_max_phys_transport_abs_deviation[k, i, t]
+                        for t in m.time_steps
+                    )
+                    for i in m.wind_physical_generators
+                )
+            )
+
+        def regime_transport_cost_expr(m, k):
+            return (
+                self.omega_mu_D * m.mu_D_abs_deviation[k]
+                + self.omega_sigma_D * m.sigma_D_abs_deviation[k]
+                + self.omega_mu_W * m.mu_W_abs_deviation[k]
+                + self.omega_sigma_W * m.sigma_W_abs_deviation[k]
+            )
+
+        # Per-scenario Wasserstein cost: weighted (normalized) trajectory-space plus
+        # regime-space transport.  Trajectory deviations are MW; regime deviations
+        # are dimensionless; the omega weights place them on a comparable scale.
         def wasserstein_distance_rule(m, k):
             return m.wasserstein_distance[k] == (
-                sum(m.D_transport_abs_deviation[k, t] for t in m.time_steps)
-                + sum(
-                    m.P_max_phys_transport_abs_deviation[k, i, t]
-                    for i in m.physical_generators
-                    for t in m.time_steps
-                )
+                trajectory_transport_cost_expr(m, k)
+                + regime_transport_cost_expr(m, k)
             )
 
         m.demand_transport_abs_pos = Constraint(
@@ -1029,19 +1382,22 @@ class DRO_PoAOptimization(
             m.time_steps,
             rule=pmax_transport_neg_rule,
         )
+        m.mu_D_transport_abs_pos = Constraint(m.scenarios, rule=mu_D_dev_pos_rule)
+        m.mu_D_transport_abs_neg = Constraint(m.scenarios, rule=mu_D_dev_neg_rule)
+        m.sigma_D_transport_abs_pos = Constraint(m.scenarios, rule=sigma_D_dev_pos_rule)
+        m.sigma_D_transport_abs_neg = Constraint(m.scenarios, rule=sigma_D_dev_neg_rule)
+        m.mu_W_transport_abs_pos = Constraint(m.scenarios, rule=mu_W_dev_pos_rule)
+        m.mu_W_transport_abs_neg = Constraint(m.scenarios, rule=mu_W_dev_neg_rule)
+        m.sigma_W_transport_abs_pos = Constraint(m.scenarios, rule=sigma_W_dev_pos_rule)
+        m.sigma_W_transport_abs_neg = Constraint(m.scenarios, rule=sigma_W_dev_neg_rule)
         m.wasserstein_distance_definition = Constraint(
             m.scenarios,
             rule=wasserstein_distance_rule,
         )
 
-        # Aggregate Wasserstein budget: (1/|K|) * sum_k W[k] <= epsilon (eq. 11b).
-        m.wasserstein_budget = Constraint(
-            expr=(
-                sum(m.wasserstein_distance[k] for k in m.scenarios)
-                / self.num_empirical_scenarios
-                <= self.epsilon
-            )
-        )
+        # Cache the cost-component expression builders for results reporting.
+        self._trajectory_transport_cost_expr = trajectory_transport_cost_expr
+        self._regime_transport_cost_expr = regime_transport_cost_expr
 
     # ------------------------------------------------------------------
     # Lower level equilibrium and optimality constraints
@@ -1804,14 +2160,21 @@ class DRO_PoAOptimization(
         return self._support_diagnostics_cache
 
     def _build_support_floor_constraints(self) -> None:
-        """Floor PoA[k] >= 1 for scenarios inside the Wasserstein support set.
+        """Floor the per-scenario objective term at 1 where W[k]=0 is feasible.
 
-        For empirical scenarios inside the support set (minimum achievable transport
-        distance <= SUPPORT_FLOOR_TOLERANCE) the nominal state W[k]=0 is feasible,
-        so PoA[k] >= 1 is a valid and tightening lower bound. Scenarios outside the
-        support set are skipped (W[k] is forced strictly positive there).
+        For empirical scenarios inside the Wasserstein support set (minimum
+        achievable transport distance <= SUPPORT_FLOOR_TOLERANCE, as reported by
+        DROPoASupportDiagnostics) the nominal market state W[k]=0 is feasible and
+        yields PoA[k] >= 1, so the per-scenario maximand PoA[k] - eta * W[k] is at
+        least 1.  Imposing this as a valid lower bound tightens the relaxation
+        without removing the optimum.  Scenarios outside the support set
+        (min_W_total > tolerance) are skipped because the floor need not hold
+        there (W[k] is forced strictly positive and the penalty -eta * W[k] can
+        pull the term below 1).
 
-        This constraint does not depend on epsilon and is built once.
+        This constraint depends on eta, so update_eta() rebuilds it during an eta
+        sweep.  The set of floored scenarios is eta-independent, so it is created
+        once and kept; only the constraint coefficients change between etas.
         """
         m = self.model
         diagnostics = self.support_set_diagnostics()
@@ -1828,7 +2191,7 @@ class DRO_PoAOptimization(
             m.support_floor_scenario_set = Set(initialize=inside_support)
 
         def support_objective_floor_rule(m, k):
-            return m.PoA[k] >= 1.0
+            return m.PoA[k] - self.eta * m.wasserstein_distance[k] >= 1.0
 
         m.support_objective_floor = Constraint(
             m.support_floor_scenario_set, rule=support_objective_floor_rule
@@ -1838,13 +2201,99 @@ class DRO_PoAOptimization(
     # Solver
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # MIP start: extend the empirical (W=0) point to the regime deviations
+    # ------------------------------------------------------------------
+
+    def _write_support_start(
+        self,
+        k: int,
+        D_emp: "np.ndarray",
+        Pmax_block_emp: dict[tuple[int, int], list[float]],
+    ) -> None:
+        """Empirical point: trajectory deviations are zero (handled by the mixin),
+        and with r^DRO started at the empirical regime the regime deviations are
+        zero too, so the per-scenario Wasserstein cost W[k] = 0 is consistent.
+        """
+        super()._write_support_start(k, D_emp, Pmax_block_emp)
+        m = self.model
+        m.mu_D_abs_deviation[k].set_value(0.0)
+        m.sigma_D_abs_deviation[k].set_value(0.0)
+        m.mu_W_abs_deviation[k].set_value(0.0)
+        m.sigma_W_abs_deviation[k].set_value(0.0)
+
+    # ------------------------------------------------------------------
+    # Results: report r^DRO and the regime / trajectory deviation split
+    # ------------------------------------------------------------------
+
+    def extract_results(self) -> dict[str, Any]:
+        results = super().extract_results()
+        m = self.model
+
+        results["dro_regime"] = {
+            "mu_D": self._safe_value(m.mu_D),
+            "sigma_D": self._safe_value(m.sigma_D),
+            "mu_W": self._safe_value(m.mu_W),
+            "sigma_W": self._safe_value(m.sigma_W),
+            "rho_D": self.demand_rho_fixed,
+            "rho_W": self.wind_rho_fixed,
+            "peak_W": self.peak_W_fixed,
+        }
+        results["empirical_regime"] = {
+            "mu_D": self.mu_D_fixed,
+            "sigma_D": self.sigma_D_fixed,
+            "mu_W": self.mu_W_fixed,
+            "sigma_W": self.sigma_W_fixed,
+            "rho_D": self.demand_rho_fixed,
+            "rho_W": self.wind_rho_fixed,
+            "peak_W": self.peak_W_fixed,
+        }
+        results["wasserstein_weights"] = {
+            "omega_mu_D": self.omega_mu_D,
+            "omega_sigma_D": self.omega_sigma_D,
+            "omega_mu_W": self.omega_mu_W,
+            "omega_sigma_W": self.omega_sigma_W,
+            "omega_D": self.omega_D,
+            "omega_W_phys": {
+                self.physical_generator_names[i]: weight
+                for i, weight in self.omega_W_phys.items()
+            },
+        }
+
+        regime_costs: list[float] = []
+        trajectory_costs: list[float] = []
+        for entry in results.get("scenarios", []):
+            k = int(entry["k"])
+            entry["regime_abs_deviation"] = {
+                "mu_D": self._safe_value(m.mu_D_abs_deviation[k]),
+                "sigma_D": self._safe_value(m.sigma_D_abs_deviation[k]),
+                "mu_W": self._safe_value(m.mu_W_abs_deviation[k]),
+                "sigma_W": self._safe_value(m.sigma_W_abs_deviation[k]),
+            }
+            regime_cost = self._safe_value(self._regime_transport_cost_expr(m, k))
+            trajectory_cost = self._safe_value(self._trajectory_transport_cost_expr(m, k))
+            entry["regime_transport_cost"] = regime_cost
+            entry["trajectory_transport_cost"] = trajectory_cost
+            if regime_cost is not None:
+                regime_costs.append(regime_cost)
+            if trajectory_cost is not None:
+                trajectory_costs.append(trajectory_cost)
+
+        results["average_regime_transport_cost"] = (
+            float(np.mean(regime_costs)) if regime_costs else None
+        )
+        results["average_trajectory_transport_cost"] = (
+            float(np.mean(trajectory_costs)) if trajectory_costs else None
+        )
+        return results
+
     def attach_persistent_solver(self) -> Any:
         """Create a persistent Gurobi solver and load the model into it once.
 
-        This is the setup step for an epsilon sweep: the model is loaded a single
-        time, after which update_epsilon() pushes only the epsilon-dependent
-        wasserstein_budget constraint to the live solver instead of rebuilding and
-        re-loading the whole model for every epsilon.
+        This is the setup step for an eta sweep: the model is loaded a single
+        time, after which update_eta() pushes only the eta-dependent objective and
+        support-floor constraints to the live solver instead of rebuilding and
+        re-loading the whole model for every eta.
         """
         if not hasattr(self, "model"):
             raise ValueError("Model is not built. Call build_model() first.")
@@ -1855,43 +2304,37 @@ class DRO_PoAOptimization(
 
         # Provide Gurobi with a feasible starting point: the empirical trajectories
         # (W[k]=0) dispatched under the NN bids.  This gives an immediate incumbent
-        # at the root node so Gurobi starts pruning rather than searching.
-        self.compute_empirical_mip_start()
+        # at the root node so Gurobi starts pruning rather than searching.  It is
+        # only valid when the empirical regime lies inside the ambiguity set R; if
+        # not, r^DRO cannot equal the empirical regime, the empirical point is
+        # infeasible, and the warm start is skipped in favour of a cold start.
+        if getattr(self, "empirical_regime_inside_ambiguity_set", True):
+            self.compute_empirical_mip_start()
+        else:
+            print(
+                "Empirical regime is outside the ambiguity set R; skipping the "
+                "empirical W=0 MIP start (Gurobi will start cold)."
+            )
 
         return solver
 
-    def update_epsilon(self, epsilon: float) -> None:
-        """Re-point the epsilon-dependent Wasserstein budget constraint at a new epsilon.
+    def update_eta(self, eta: float) -> None:
+        """Re-point the eta-dependent parts of the model at a new eta, in place.
 
-        Only the aggregate budget (1/|K|) * sum_k W[k] <= epsilon depends on
-        epsilon; the objective and all other constraints are unchanged.  When a
-        persistent solver is attached, the rebuilt constraint is pushed to it so an
-        epsilon sweep reuses the already-loaded model.
+        Only the objective term -eta * W[k] depends on eta; everything else
+        (support set, transport, KKT, ReLU embedding, McCormick) is unchanged.
+        When a persistent solver is attached, the rebuilt objective is pushed to
+        it so an eta sweep reuses the already-loaded model.
         """
-        self.epsilon = float(epsilon)
+        self.eta = float(eta)
         m = self.model
         solver = getattr(self, "_persistent_solver", None)
 
-        previous_budget = (
-            list(m.wasserstein_budget.values())
-            if hasattr(m, "wasserstein_budget")
-            else []
-        )
-        if hasattr(m, "wasserstein_budget"):
-            m.del_component(m.wasserstein_budget)
-
-        m.wasserstein_budget = Constraint(
-            expr=(
-                sum(m.wasserstein_distance[k] for k in m.scenarios)
-                / self.num_empirical_scenarios
-                <= self.epsilon
-            )
-        )
+        # Rebuild the eta-dependent objective.
+        m.del_component(m.objective)
+        self._build_objective()
         if solver is not None:
-            for constraint_data in previous_budget:
-                solver.remove_constraint(constraint_data)
-            for constraint_data in m.wasserstein_budget.values():
-                solver.add_constraint(constraint_data)
+            solver.set_objective(m.objective)
 
     def solve(self, time_limit: Optional[float] = None, warm_start: bool = False) -> Any:
         if not hasattr(self, "model"):
@@ -1913,10 +2356,47 @@ class DRO_PoAOptimization(
         start = time.perf_counter()
         with gurobi_log_filter(solver, self._gurobi_log_path, self._gurobi_log_pos) as log_path:
             self._gurobi_log_path = log_path
+            log_file = Path(log_path)
+            log_offset = log_file.stat().st_size if log_file.exists() else 0
             self.solver_results = solver.solve(
                 tee=False, load_solutions=False, warmstart=warm_start
             )
         self.solve_wall_time_seconds = time.perf_counter() - start
+
+        # Slice this solve's segment out of the shared (appended) Gurobi log and
+        # parse the node log into an incumbent/BestBd/gap time series, so each
+        # eta's bound movement can be saved alongside its result.
+        self.last_solve_gurobi_log = None
+        self.solve_bound_progression = []
+        try:
+            with log_file.open("r", encoding="utf-8", errors="replace") as file_handle:
+                file_handle.seek(log_offset)
+                self.last_solve_gurobi_log = file_handle.read()
+        except OSError:
+            pass
+        if self.last_solve_gurobi_log:
+            self.solve_bound_progression = parse_gurobi_node_log(self.last_solve_gurobi_log)
+
+        # Certified bracket from Gurobi (maximization): the incumbent is a lower
+        # bound and ObjBound an upper bound on the optimum, so a time-limited
+        # solve still yields a reportable interval. Reset first: the persistent
+        # solver is reused across the eta sweep and stale values must not leak.
+        self.best_objective_bound = None
+        self.mip_gap = None
+        gurobi_model = getattr(solver, "_solver_model", None)
+        if gurobi_model is not None:
+            try:
+                bound = float(gurobi_model.ObjBound)
+                if np.isfinite(bound):
+                    self.best_objective_bound = bound
+            except (AttributeError, TypeError, ValueError):
+                pass
+            try:
+                gap = float(gurobi_model.MIPGap)
+                if np.isfinite(gap):
+                    self.mip_gap = gap
+            except (AttributeError, TypeError, ValueError):
+                pass
 
         termination = self.solver_results.solver.termination_condition
         if termination == TerminationCondition.infeasible:
@@ -1934,7 +2414,18 @@ class DRO_PoAOptimization(
                     "optimizer.write_iis_on_infeasible=True to diagnose)."
                 )
         elif len(self.solver_results.solution) > 0:
-            self.model.solutions.load_from(self.solver_results)
+            # Gurobi can return sign-bounded KKT duals (e.g. mu_lower_eq) a hair
+            # past their 0 lower bound, within FeasibilityTol (~1e-6). The value
+            # is genuinely zero; the only effect is a cosmetic W1002 on load.
+            # Silence pyomo.core just for this load so real out-of-bounds loads
+            # elsewhere still surface.
+            pyomo_core_logger = logging.getLogger("pyomo.core")
+            previous_level = pyomo_core_logger.level
+            pyomo_core_logger.setLevel(logging.ERROR)
+            try:
+                self.model.solutions.load_from(self.solver_results)
+            finally:
+                pyomo_core_logger.setLevel(previous_level)
         return self.solver_results
 
 if __name__ == "__main__":
@@ -1942,7 +2433,8 @@ if __name__ == "__main__":
     regime_set = "PoA_analysis"
     regime_name = "normal"
     seed = 1
-    epsilon = 0.0  # Wasserstein radius; sweep over this
+    eta = 0.5
+    epsilon = 0.0
     horizon = 4
 
     scenario_manager = ScenarioManager(case)
@@ -1962,6 +2454,7 @@ if __name__ == "__main__":
         regime_config_path="config/regime_definitions.yaml",
         regime_set=regime_set,
         regime_name=regime_name,
+        eta=eta,
         epsilon=epsilon,
         nn_model_dir=None,
         reference_case=case,
@@ -1988,6 +2481,7 @@ if __name__ == "__main__":
 
     print("\nDRO PoA solve complete")
     print(f"  Regime: {regime_set}/{regime_name}")
+    print(f"  Eta: {eta}")
     print(f"  Epsilon: {epsilon}")
     print(f"  Results: {result_path}")
     print(f"  Runtime: {elapsed:.2f} seconds")

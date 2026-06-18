@@ -18,7 +18,7 @@ from driver.core.block0_core import (
     dro_tightening_paths,
 )
 from driver.core.block1_core import apply_time_steps_override, write_json
-from models.DRO_PoA.DRO_PoA_optimization import DRO_PoAOptimization
+from models.DRO_PoA.DRO_PoA_optimization_new import DRO_PoAOptimization
 from models.DRO_PoA.DRO_PoA_tightening.tightening_main import (
     DEFAULT_DRO_TIGHTENING_OUTPUT_PATHS,
     DROPoATighteningMain,
@@ -59,6 +59,18 @@ class DROPoAPipelineConfig:
     synthetic_num_scenarios: int = 400
     ambiguity_set_config_path: str = "config/ambiguity_set_config.yaml"
     ambiguity_set_config_name: str = "base_test_case"
+    # When True, r^DRO is given a regime context derived from the ambiguity set R
+    # (rho/peak fixed from the R config, mu/sigma reference at the box centre) and
+    # regime_definitions.yaml is not used for the regime context.  The empirical
+    # regime r^(k) is still whatever the scenarios carry; only the optimized regime
+    # context comes from R.  Set False to fall back to the regime_definitions regime.
+    dro_regime_context_from_ambiguity_set: bool = True
+    # When True, the empirical scenarios are drawn directly from the ambiguity set R
+    # (per-scenario mu/sigma uniform over R, rho/peak fixed) instead of from
+    # regime_definitions.  Empirical samples and r^DRO then both come from R, and the
+    # DRO collapses to a single regime labelled by ambiguity_set_config_name.
+    dro_scenarios_from_ambiguity_set: bool = True
+    dro_ambiguity_num_scenarios: int = 10
     poa_context_scenarios_per_regime: dict[str, int] = field(default_factory=dict)
     dro_regime_names: list[str] | None = None
     bid_tolerance: float = 1e-2
@@ -397,20 +409,32 @@ def calibrate_ar1_coverage_from_scenarios(
 
 
 def load_dro_scenario_data(config: DROPoAPipelineConfig) -> dict[str, Any]:
-    if not config.runtime_config_path.exists():
-        raise FileNotFoundError(
-            "DRO runtime regime config is missing. Run Block 3 first: "
-            f"{config.runtime_config_path}"
-        )
     scenario_manager = ScenarioManager(config.case)
     apply_time_steps_override(scenario_manager, config.horizon)
-    scenarios = scenario_manager.create_scenario_set_from_regimes(
-        regime_config_path=str(config.runtime_config_path),
-        regime_set=config.poa_regime_set,
-        seed=config.poa_seed,
-        enforce_support_set=False,
-        enforce_n_minus_one=False,
-    )
+    if getattr(config, "dro_scenarios_from_ambiguity_set", False):
+        # Draw empirical samples directly from the ambiguity set R: per-scenario
+        # (mu_D, sigma_D, mu_W, sigma_W) uniform over R, rho/peak fixed, trajectory
+        # simulated and support-filtered.  regime_definitions.yaml is not used.
+        scenarios = scenario_manager.create_scenario_set_from_ambiguity_set(
+            ambiguity_config_path=config.ambiguity_set_config_path,
+            ambiguity_set=config.ambiguity_set_config_name,
+            n_scenarios=int(config.dro_ambiguity_num_scenarios),
+            seed=config.poa_seed,
+            enforce_support_set=True,
+        )
+    else:
+        if not config.runtime_config_path.exists():
+            raise FileNotFoundError(
+                "DRO runtime regime config is missing. Run Block 3 first: "
+                f"{config.runtime_config_path}"
+            )
+        scenarios = scenario_manager.create_scenario_set_from_regimes(
+            regime_config_path=str(config.runtime_config_path),
+            regime_set=config.poa_regime_set,
+            seed=config.poa_seed,
+            enforce_support_set=False,
+            enforce_n_minus_one=False,
+        )
 
     if config.ar1_coverage is not None:
         ar1_coverage = float(config.ar1_coverage)
@@ -456,6 +480,10 @@ def resolve_dro_regime_names(
     config: DROPoAPipelineConfig,
     scenarios: dict[str, Any],
 ) -> list[str]:
+    if getattr(config, "dro_scenarios_from_ambiguity_set", False):
+        # Drawing from R collapses the DRO to a single regime labelled by the
+        # ambiguity set; every scenario carries that regime tag.
+        return [str(config.ambiguity_set_config_name)]
     if config.dro_regime_names is not None:
         return [str(regime_name) for regime_name in config.dro_regime_names]
     scenarios_df = scenarios["scenarios_df"]
@@ -466,12 +494,57 @@ def resolve_dro_regime_names(
     return sorted(scenarios_df["regime"].dropna().astype(str).unique().tolist())
 
 
+def scenarios_for_regime(
+    scenarios: dict[str, Any],
+    regime_name: str,
+) -> dict[str, Any]:
+    """Restrict the scenario set to one regime's rows.
+
+    The optimizer no longer filters internally when given an R-based regime context
+    (regime_parameters), so the per-regime loop must hand each stage only that
+    regime's empirical scenarios.  When the regime tag is absent or matches nothing,
+    the full set is returned unchanged (single-regime / already-filtered cases).
+    """
+    scenarios_df = scenarios["scenarios_df"]
+    if "regime" not in scenarios_df.columns:
+        return scenarios
+    filtered = scenarios_df[
+        scenarios_df["regime"].astype(str) == str(regime_name)
+    ].reset_index(drop=True)
+    if filtered.empty or len(filtered) == len(scenarios_df):
+        return scenarios
+    return {**scenarios, "scenarios_df": filtered}
+
+
+def build_dro_regime_context(
+    config: DROPoAPipelineConfig,
+    regime_name: str,
+) -> dict[str, Any] | None:
+    """Regime context for r^DRO.
+
+    When dro_regime_context_from_ambiguity_set is set, derive it from the ambiguity
+    set R (rho/peak fixed from the R config, mu/sigma reference at the box centre)
+    and label it with regime_name so per-regime tightening reports validate by name;
+    regime_definitions.yaml is not consulted.  Otherwise return None and let the
+    optimizer load the regime from regime_definitions.
+    """
+    if not getattr(config, "dro_regime_context_from_ambiguity_set", False):
+        return None
+    context = DRO_PoAOptimization.regime_context_from_ambiguity_set(
+        ambiguity_set_config_path=config.ambiguity_set_config_path,
+        ambiguity_set_config_name=config.ambiguity_set_config_name,
+    )
+    context["name"] = str(regime_name)
+    return context
+
+
 def build_dro_tightening(
     config: DROPoAPipelineConfig,
     scenarios: dict[str, Any],
     regime_name: str,
 ) -> DROPoATighteningMain:
     objective_mode = str(config.dro_objective_mode).strip().lower()
+    scenarios = scenarios_for_regime(scenarios, regime_name)
     return DROPoATighteningMain(
         scenarios_df=scenarios["scenarios_df"],
         costs_df=scenarios["costs_df"],
@@ -480,6 +553,9 @@ def build_dro_tightening(
         regime_config_path=str(config.runtime_config_path),
         regime_set=config.poa_regime_set,
         regime_name=regime_name,
+        regime_parameters=build_dro_regime_context(config, regime_name),
+        ambiguity_set_config_path=config.ambiguity_set_config_path,
+        ambiguity_set_config_name=config.ambiguity_set_config_name,
         eta=config.dro_tightening_eta,
         epsilon=config.dro_wasserstein_epsilon,
         nn_model_dir=str(config.model_dir) if config.nn_policy_generators else None,
@@ -1244,6 +1320,7 @@ def build_dro_optimizer(
     eta: float,
 ) -> DRO_PoAOptimization:
     mccormick_bounds = build_dro_mccormick_bounds(config, regime_name)
+    scenarios = scenarios_for_regime(scenarios, regime_name)
     optimizer = DRO_PoAOptimization(
         scenarios_df=scenarios["scenarios_df"],
         costs_df=scenarios["costs_df"],
@@ -1252,6 +1329,9 @@ def build_dro_optimizer(
         regime_config_path=str(config.runtime_config_path),
         regime_set=config.poa_regime_set,
         regime_name=regime_name,
+        regime_parameters=build_dro_regime_context(config, regime_name),
+        ambiguity_set_config_path=config.ambiguity_set_config_path,
+        ambiguity_set_config_name=config.ambiguity_set_config_name,
         eta=float(eta),
         epsilon=float(config.dro_wasserstein_epsilon),
         nn_model_dir=str(config.model_dir) if config.nn_policy_generators else None,

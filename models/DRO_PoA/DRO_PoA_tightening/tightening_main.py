@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from models.DRO_PoA.DRO_PoA_optimization import DRO_PoAOptimization
+from models.DRO_PoA.DRO_PoA_optimization_new import DRO_PoAOptimization
 
 DEFAULT_DRO_TIGHTENING_OUTPUT_PATHS: dict[str, str] = {
     "primal_big_m": "results/dro_poa_tightening/{regime_name}/primal_big_m_report.json",
@@ -53,6 +53,9 @@ class DROPoATighteningMain:
         regime_config_path: str | Path = "config/regime_definitions.yaml",
         regime_set: str = "PoA_analysis",
         regime_name: Optional[str] = None,
+        regime_parameters: Optional[dict[str, Any]] = None,
+        ambiguity_set_config_path: str | Path = "config/ambiguity_set_config.yaml",
+        ambiguity_set_config_name: Optional[str] = None,
         eta: float = 0.0,
         epsilon: float = 0.0,
         nn_model_dir: Optional[str | Path] = None,
@@ -62,6 +65,7 @@ class DROPoATighteningMain:
         case_label: str = "",
         objective_mode: str = "piecewise_mccormick",
         mccormick_bounds: Optional[dict[str, Any]] = None,
+        defer_mccormick_bound_validation: bool = False,
         ambiguity_kappa: float = 0.3,
         use_default_bounds: bool = False,
         ar1_coverage: Optional[float] = None,
@@ -69,6 +73,12 @@ class DROPoATighteningMain:
             DRO_PoAOptimization.DEFAULT_ALPHA_ORDERING_EPSILON
         ),
     ) -> None:
+        # The optimizer's regime variables r^DRO are always bounded by the ambiguity
+        # set R (ambiguity_set_config).  regime_parameters, when given, supplies the
+        # regime context directly (e.g. derived from R) and bypasses
+        # regime_definitions; when None, the regime is loaded from regime_definitions
+        # as before (the empirical regime is then a fixed named regime, still
+        # transported to an r^DRO that lives in R).
         self.poa = DRO_PoAOptimization(
             scenarios_df=scenarios_df,
             costs_df=costs_df,
@@ -77,6 +87,9 @@ class DROPoATighteningMain:
             regime_config_path=regime_config_path,
             regime_set=regime_set,
             regime_name=regime_name,
+            regime_parameters=regime_parameters,
+            ambiguity_set_config_path=ambiguity_set_config_path,
+            ambiguity_set_config_name=ambiguity_set_config_name,
             eta=eta,
             epsilon=epsilon,
             nn_model_dir=nn_model_dir,
@@ -86,6 +99,7 @@ class DROPoATighteningMain:
             case_label=case_label,
             objective_mode=objective_mode,
             mccormick_bounds=mccormick_bounds,
+            defer_mccormick_bound_validation=defer_mccormick_bound_validation,
             ambiguity_kappa=ambiguity_kappa,
             use_default_bounds=use_default_bounds,
             ar1_coverage=ar1_coverage,
@@ -368,6 +382,18 @@ class DROPoATighteningMain:
                 "regime_config_path": self.poa.regime_config_path,
                 "regime_set": self.poa.regime_set,
                 "regime_name": self.poa.regime_name,
+                # Carry the exact regime context so parallel workers rebuild the
+                # optimizer from it (and bound r^DRO by the ambiguity set R) instead
+                # of re-reading regime_definitions.  scenarios_df is already the
+                # regime's scenarios, so the override path applies no extra filter.
+                "regime_parameters": (
+                    dict(getattr(self.poa, "selected_regime_parameters", {})) or None
+                ),
+                "ambiguity_set_config_path": str(self.poa.ambiguity_set_config_path),
+                "ambiguity_set_config_name": self.poa.ambiguity_set_config_name,
+                "defer_mccormick_bound_validation": getattr(
+                    self.poa, "defer_mccormick_bound_validation", False
+                ),
                 "eta": self.poa.eta,
                 "epsilon": self.poa.epsilon,
                 "nn_model_dir": self.poa.nn_model_dir,
@@ -552,11 +578,13 @@ class DROPoATighteningMain:
             if len(index) < 2:
                 raise ValueError(f"Scenario-indexed Big-M key '{raw_key}' must include k")
             regime_index = tuple(int(part) for part in index[1:])
-            value = self._details_value(details, "big_m")
+            value = None
+            for value_key in ("big_m", "tight_big_m", "upper_bound", "ub", "bound", "value", "best_bound"):
+                value = self._details_value(details, value_key)
+                if value is not None:
+                    break
             if value is None:
-                value = self._details_value(details, "tight_big_m")
-            if value is None:
-                value = self._details_value(details, "value", details)
+                value = details
             numeric_value = float(value)
             if regime_index not in aggregated or numeric_value > float(
                 aggregated[regime_index].get(

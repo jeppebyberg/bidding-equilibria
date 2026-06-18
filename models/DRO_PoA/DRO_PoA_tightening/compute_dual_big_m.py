@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -82,6 +83,7 @@ def _solve_parallel_dual_big_m(task: tuple[Any, ...]) -> dict[str, Any]:
         tee=tee,
         solver_options=solver_options,
     )
+    incumbent_value = computer._safe_value(dual_expr)
     return {
         "side": side,
         "constraint_type": constraint_type,
@@ -90,7 +92,9 @@ def _solve_parallel_dual_big_m(task: tuple[Any, ...]) -> dict[str, Any]:
         "regime_index": tuple(int(part) for part in regime_index),
         "scenario_key": scenario_key,
         "regime_key": regime_key,
-        "tight_big_m": computer._safe_value(dual_expr) if solved else None,
+        "tight_big_m": incumbent_value if solved else None,
+        "incumbent_big_m": incumbent_value,
+        "best_bound": computer._best_objective_bound(results),
         "fixed_by_slack": False,
         "termination_condition": str(results.solver.termination_condition),
     }
@@ -241,6 +245,36 @@ class DRODualBigMComputer(DROPoATighteningMain):
         return None if raw_value is None else float(raw_value)
 
     @staticmethod
+    def _best_objective_bound(results: Any) -> Optional[float]:
+        """Best available upper bound for this maximization subproblem."""
+        try:
+            problem = results.problem[0]
+        except (AttributeError, IndexError, TypeError):
+            return None
+        candidates: list[float] = []
+        for attr in ("upper_bound", "lower_bound"):
+            raw_value = getattr(problem, attr, None)
+            if raw_value is None:
+                continue
+            try:
+                numeric_value = float(raw_value)
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(numeric_value):
+                candidates.append(numeric_value)
+        return max(candidates) if candidates else None
+
+    @staticmethod
+    def _best_bound_suffix(result: dict[str, Any]) -> str:
+        best_bound = result.get("best_bound")
+        if best_bound is None:
+            return ""
+        termination = str(result.get("termination_condition", "")).lower()
+        if result.get("tight_big_m") is None or "timelimit" in termination:
+            return f"; Best Bound: {best_bound}"
+        return ""
+
+    @staticmethod
     def _solve_tightening_model(
         m: ConcreteModel,
         solver_name: str,
@@ -329,7 +363,8 @@ class DRODualBigMComputer(DROPoATighteningMain):
                     print(
                         f"[DRO Dual Big-M {completed}/{len(dual_parallel_tasks)}] "
                         f"maximize {result['dual_name']}[{result['scenario_key']}] -> "
-                        f"{result['tight_big_m']} ({result['termination_condition']})",
+                        f"{result['tight_big_m']} ({result['termination_condition']})"
+                        f"{self._best_bound_suffix(result)}",
                         flush=True,
                     )
                     dual_results.append(result)
@@ -348,6 +383,10 @@ class DRODualBigMComputer(DROPoATighteningMain):
                 "fixed_by_slack": bool(result["fixed_by_slack"]),
                 "termination_condition": result["termination_condition"],
             }
+            if "best_bound" in result:
+                details["best_bound"] = result["best_bound"]
+            if "incumbent_big_m" in result:
+                details["incumbent_big_m"] = result["incumbent_big_m"]
             tight_big_m.setdefault(dual_name, {})[regime_key] = details
             scenario_tight_big_m.setdefault(dual_name, {})[regime_key] = details
 

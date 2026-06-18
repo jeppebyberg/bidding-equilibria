@@ -31,7 +31,7 @@ from config.scenarios.scenario_generator import ScenarioManager
 from driver.core.block1_core import apply_time_steps_override
 from driver.core.block2_core import discover_trained_policy_generators
 from driver.core.block4_core import validate_scenarios_within_wasserstein_support
-from models.DRO_PoA.DRO_PoA_optimization_tmp import DRO_PoAOptimization
+from xXgraveyard.DRO_PoA_optimization_tmp import DRO_PoAOptimization
 from models.DRO_PoA.dro_poa_model.support_set import DROWassersteinSupportSet
 
 # ---------------------------------------------------------------------------

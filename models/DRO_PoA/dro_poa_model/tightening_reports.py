@@ -132,9 +132,21 @@ class DROPoATighteningReports:
         if payload is None:
             return None
         if isinstance(payload, dict):
-            for value_key in ("tight_big_m", "big_m", "upper_bound", "ub", "bound", "value"):
+            for value_key in (
+                "tight_big_m",
+                "big_m",
+                "upper_bound",
+                "ub",
+                "bound",
+                "value",
+                "best_bound",
+            ):
                 if value_key in payload:
-                    return DROPoATighteningReports._optional_numeric_bound(payload[value_key])
+                    numeric_value = DROPoATighteningReports._optional_numeric_bound(
+                        payload[value_key]
+                    )
+                    if numeric_value is not None:
+                        return numeric_value
             return None
         try:
             numeric_value = float(payload)
@@ -350,7 +362,7 @@ class DROPoATighteningReports:
                 raise ValueError(
                     f"Invalid {bound_type} entry at key '{raw_key}'. Expected a "
                     "finite numeric bound in tight_big_m, big_m, upper_bound, ub, "
-                    "bound, or value."
+                    "bound, value, or best_bound."
                 )
             parsed[index] = float(numeric_value)
         return parsed
