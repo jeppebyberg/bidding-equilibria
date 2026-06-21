@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-06-15
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 """Swap the freshly regenerated base case into every study's base-equivalent run.
 
 Each sensitivity study contains one run that is physically identical to the base

@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-05-25
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 from __future__ import annotations
 
 import ast
@@ -10,6 +18,11 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+# Thesis figure output: vector PDF + high-DPI PNG (results_viz/_thesis_style.py)
+import sys as _sys, pathlib as _pl  # noqa: E402
+_sys.path.insert(0, str(next((p for p in _pl.Path(__file__).resolve().parents if (p / "pyproject.toml").exists()), _pl.Path(__file__).resolve().parents[0])))  # noqa: E402
+import results_viz._thesis_style  # noqa: E402,F401
 import numpy as np
 import pandas as pd
 
@@ -208,7 +221,8 @@ def plot_final_merit_order(
     y_max = float(np.max(y_values))
     y_span = max(y_max - y_min, 1.0)
 
-    fig, ax = plt.subplots(figsize=(14, 8))
+    # Sized for the A4 text width (~16 cm) so it is included ~1:1.
+    fig, ax = plt.subplots(figsize=(6.3, 4.5))
     ax.step(
         cost_stack["edges"],
         cost_stack["step_values"],
@@ -227,23 +241,6 @@ def plot_final_merit_order(
         label="Heuristic Merit Order",
     )
     ax.axvline(demand, color="#2ca02c", linewidth=2.4, label=f"Demand ({demand:.1f} MW)")
-    ax.axhline(
-        original_clearing_price,
-        color="#111111",
-        linewidth=2.0,
-        linestyle=":",
-        # label=f"Original Market Clearing Price ({original_clearing_price:.2f})",
-    )
-    ax.scatter(
-        [demand],
-        [inflated_merit_price],
-        s=150,
-        marker="s",
-        color="#ff2b2b",
-        edgecolor="black",
-        zorder=5,
-        label=f"Heuristic Clearing ({inflated_merit_price:.2f})",
-    )
     if updates:
         highlighted_label_used = False
         for moved in updates:
@@ -264,31 +261,20 @@ def plot_final_merit_order(
                 ),
             )
             highlighted_label_used = True
-        ax.axhline(
-            float(update["threshold_bid"]),
-            color="#9467bd",
-            linewidth=1.5,
-            linestyle="-.",
-        )
 
     _annotate_stack(ax, cost_stack, block_names, "Cost", "#2636ff", y_offset=-0.12 * y_span)
     _annotate_stack(ax, bid_stack, block_names, "Bid", "#ff2b2b", y_offset=0.08 * y_span)
 
-    regime = "scenario"
-    if scenarios_df is not None and "regime" in scenarios_df.columns:
-        regime = str(scenarios_df.at[scenario_idx, "regime"])
-    ax.set_title(
-        f"Merit Order Comparison: Original Bids vs Inflated Bids\n"
-        f"Regime {regime}, Scenario {scenario_idx}, Time {time_step}",
-        fontsize=15,
-        fontweight="bold",
-    )
-    ax.set_xlabel(f"Cumulative {width_source.title()} (MW)", fontsize=12)
-    ax.set_ylabel("Price / Bid ($/MWh)", fontsize=12)
-    ax.set_xlim(0.0, max(total_capacity, demand) * 1.05)
+    ax.set_xlabel(f"Cumulative {width_source.title()} (MW)", fontsize=14)
+    ax.set_ylabel("Price / Bid (€/MWh)", fontsize=14)
+    ax.tick_params(labelsize=12)
+    ax.set_xlim(60.0, 160.0)
     ax.set_ylim(y_min - 0.22 * y_span, y_max + 0.22 * y_span)
     ax.grid(True, alpha=0.28)
-    ax.legend(loc="best", fontsize=10)
+    ax.legend(
+        loc="upper center", bbox_to_anchor=(0.5, -0.22),
+        ncol=3, fontsize=9, frameon=True,
+    )
     fig.tight_layout()
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -300,24 +286,27 @@ def plot_final_merit_order(
 
 def main() -> None:
     # Edit these paths/settings directly when running this script.
-    results_path = Path("results/merit_order_best_response_results.json")
+    results_path = Path("results/base_case/merit_order_results.json")
+    # Load the exact scenarios the labels were generated from, so the block
+    # capacity widths (and the inflated-block region) align with the result.
+    scenarios_csv = Path("results/base_case/synthetic_scenarios/scenarios.csv")
     output_dir = Path("results_viz/figures/merit_order_best_response")
-    case = "test_case_bidding_blocks"
-    regime_set = "policy_training"
-    seed = 1
-    time_step = 0
+    # Render a single scenario / time step only.
+    scenario_idx = 0
+    time_step = 2
 
     result = json.loads(results_path.read_text(encoding="utf-8"))
-    scenarios_df = _load_scenarios(case=case, regime_set=regime_set, seed=seed)
-    for scenario_idx in range(len(result["final_bids"])):
-        saved = plot_final_merit_order(
-            result=result,
-            scenarios_df=scenarios_df,
-            scenario_idx=scenario_idx,
-            time_step=time_step,
-            output_dir=output_dir,
-        )
-        print(f"Saved one-pass merit-order diagnostic to {saved}")
+    scenarios_df = (
+        pd.read_csv(scenarios_csv).reset_index(drop=True) if scenarios_csv.exists() else None
+    )
+    saved = plot_final_merit_order(
+        result=result,
+        scenarios_df=scenarios_df,
+        scenario_idx=scenario_idx,
+        time_step=time_step,
+        output_dir=output_dir,
+    )
+    print(f"Saved one-pass merit-order diagnostic to {saved}")
 
 
 if __name__ == "__main__":

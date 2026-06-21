@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-06-14
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 """Full-pipeline compute-time breakdown per block and horizon.
 
 Reads ``pipeline_manifests/block*.json`` from each sensitivity-study run and
@@ -16,6 +24,11 @@ from pathlib import Path
 from typing import Any
 
 import matplotlib.pyplot as plt
+
+# Thesis figure output: vector PDF + high-DPI PNG (results_viz/_thesis_style.py)
+import sys as _sys, pathlib as _pl  # noqa: E402
+_sys.path.insert(0, str(next((p for p in _pl.Path(__file__).resolve().parents if (p / "pyproject.toml").exists()), _pl.Path(__file__).resolve().parents[0])))  # noqa: E402
+import results_viz._thesis_style  # noqa: E402,F401
 import numpy as np
 
 from driver.sensitivity.horizon_sweep import study as HORIZON_STUDY

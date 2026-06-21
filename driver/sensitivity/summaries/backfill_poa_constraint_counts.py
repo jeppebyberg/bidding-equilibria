@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-06-15
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 """Backfill ``solver.num_constraints`` into PoA result JSONs.
 
 Result JSONs written before constraint instrumentation was added to

@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-05-09
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 """
 Script to run Economic Dispatch model for multiple scenarios using ScenarioManager
 """

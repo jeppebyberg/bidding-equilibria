@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-05-09
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 """
 Feature Setup Module for Policy-Based Bidding
 
@@ -34,6 +42,11 @@ import pandas as pd
 from pathlib import Path
 import matplotlib.pyplot as plt
 
+
+# Thesis figure output: vector PDF + high-DPI PNG (results_viz/_thesis_style.py)
+import sys as _sys, pathlib as _pl  # noqa: E402
+_sys.path.insert(0, str(next((p for p in _pl.Path(__file__).resolve().parents if (p / "pyproject.toml").exists()), _pl.Path(__file__).resolve().parents[0])))  # noqa: E402
+import results_viz._thesis_style  # noqa: E402,F401
 from models.diagonalization.intertemporal.MultipleScenarios.economic_dispatch_MS import EconomicDispatchModel
 from config.scenarios.scenario_generator import ScenarioManager
 from config.default_loader import load_test_case_config

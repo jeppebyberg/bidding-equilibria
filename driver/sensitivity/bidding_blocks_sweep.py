@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-06-15
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 """Sensitivity study: number of bidding blocks per conventional generator [1, 2, 3, 4].
 
 Each conventional generator (G1, G2, G3) has the same total capacity (50 MW)

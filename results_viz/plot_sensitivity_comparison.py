@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-06-06
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 """Comparison plots of PoA curves across all cases in a sensitivity study.
 
 Two figures are produced per study:
@@ -29,6 +37,11 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+# Thesis figure output: vector PDF + high-DPI PNG (results_viz/_thesis_style.py)
+import sys as _sys, pathlib as _pl  # noqa: E402
+_sys.path.insert(0, str(next((p for p in _pl.Path(__file__).resolve().parents if (p / "pyproject.toml").exists()), _pl.Path(__file__).resolve().parents[0])))  # noqa: E402
+import results_viz._thesis_style  # noqa: E402,F401
 import numpy as np
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -238,6 +251,55 @@ def plot_eta_sweep_comparison(
 
 
 # ---------------------------------------------------------------------------
+# Thesis-figure curve labels / ordering (match results_viz/plot_base_poa_overview)
+# ---------------------------------------------------------------------------
+
+# wind_playing_sweep was not in the bar/line figures, so its labels live here.
+_WIND_PLAYING_LABELS = {
+    "no_wind": "Wind Gen. true cost",
+    "wind": "Wind Gen. act strat.",
+}
+
+
+def _thesis_curve_label(study_name: str, case_name: str) -> str:
+    """Per-curve legend label matching the appendix bar/line plots."""
+    from results_viz import plot_base_poa_overview as ov
+
+    if study_name == "wind_playing_sweep":
+        return _WIND_PLAYING_LABELS.get(case_name, case_name)
+    label_fn = ov.THESIS_TICK_LABELS.get(study_name)
+    if label_fn is not None:
+        return label_fn(case_name)
+    meta = ov.STUDY_META.get(study_name)
+    if meta is not None:
+        x = meta.x_of(case_name)
+        if x is not None:
+            return f"{int(x) if float(x).is_integer() else x}"
+    return _extract_curve_label(case_name)
+
+
+def _thesis_sort_key(study_name: str, case_name: str) -> tuple[int, float, str]:
+    """Order curves by the swept parameter value (numeric where possible)."""
+    from results_viz import plot_base_poa_overview as ov
+
+    meta = ov.STUDY_META.get(study_name)
+    if meta is not None:
+        x = meta.x_of(case_name)
+        if x is not None:
+            return (0, float(x), case_name)
+    return (1, 0.0, _thesis_curve_label(study_name, case_name))
+
+
+def _thesis_legend_title(study_name: str) -> str:
+    from results_viz import plot_base_poa_overview as ov
+
+    if study_name == "wind_playing_sweep":
+        return "Wind generators"
+    meta = ov.STUDY_META.get(study_name)
+    return meta.xlabel if meta is not None else study_name.replace("_", " ").title()
+
+
+# ---------------------------------------------------------------------------
 # Figure 2 — epsilon frontier comparison (average PoA vs Wasserstein distance)
 # ---------------------------------------------------------------------------
 
@@ -247,38 +309,53 @@ def plot_epsilon_frontier_comparison(
     results_root: Path = RESULTS_ROOT,
     output_root: Path = OUTPUT_ROOT,
     show: bool = False,
+    thesis_style: bool = False,
 ) -> Path:
     """Average PoA vs achieved Wasserstein distance, one curve per case.
 
     The frontier traces the PoA-robustness trade-off as η varies.  A lower
     curve (lower PoA for the same Wasserstein budget) indicates a more
     benign composition from a market-power perspective.
+
+    ``thesis_style`` switches to the appendix layout: no title, x-axis
+    ``ε [MW]``, y-axis ``E PoA``, A4-friendly size, curve labels matching the
+    bar/line figures, no η annotations, and a red ring on any point that did
+    not solve to optimality.
     """
     cases = discover_study_cases(results_root / study_name, regime_name)
     if not cases:
         print(f"No eta-sweep results found under {results_root / study_name}.")
         return output_root / study_name / "no_results.txt"
 
+    if thesis_style:
+        cases = sorted(cases, key=lambda c: _thesis_sort_key(study_name, c[0]))
+
     output_dir = output_root / study_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
     colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-    fig, ax = plt.subplots(figsize=(9, 5.5))
+    fig, ax = plt.subplots(figsize=(7.5, 5.0) if thesis_style else (9, 5.5))
 
+    nonopt_legend_done = False
     for idx, (case_name, records, _) in enumerate(cases):
         color = colors[idx % len(colors)]
-        label = _extract_curve_label(case_name)
+        label = (
+            _thesis_curve_label(study_name, case_name)
+            if thesis_style
+            else _extract_curve_label(case_name)
+        )
 
-        # Collect (wasserstein_dist, avg_poa_ratio, eta) triples.
-        points: list[tuple[float, float, float]] = []
+        # Collect (wasserstein_dist, avg_poa_ratio, eta, optimal) tuples.
+        points: list[tuple[float, float, float, bool]] = []
         for r in records:
             x = r.get("average_wasserstein_distance")
             y = r.get("average_poa_ratio")
             eta = r.get("eta")
             if x is None or y is None or eta is None:
                 continue
+            term = str(r.get("solver_termination_condition") or "").lower()
             try:
-                points.append((float(x), float(y), float(eta)))
+                points.append((float(x), float(y), float(eta), term == "optimal"))
             except (TypeError, ValueError):
                 continue
 
@@ -294,31 +371,57 @@ def plot_epsilon_frontier_comparison(
         ax.plot(xs, ys, "o-", color=color, linewidth=2, markersize=5,
                 zorder=3, label=label)
 
-        # Annotate η at most 5 points per curve (always include first and last).
-        step = max(1, math.ceil(n / 5))
-        for i in sorted(set(range(0, n, step)) | {n - 1}):
-            ax.annotate(
-                f"η={etas[i]:.2g}",
-                xy=(xs[i], ys[i]),
-                xytext=(5, 4),
-                textcoords="offset points",
-                fontsize=7,
-                color=color,
-                alpha=0.85,
-            )
+        if thesis_style:
+            # No η annotations; instead ring every point not solved to optimality.
+            non_opt = [(x, y) for x, y, _, ok in points if not ok]
+            if non_opt:
+                nx, ny = zip(*non_opt)
+                ax.scatter(
+                    nx, ny, s=170, facecolors="none", edgecolors="#d62728",
+                    linewidths=2.2, zorder=6,
+                    label=None if nonopt_legend_done else "Not solved to optimality",
+                )
+                nonopt_legend_done = True
+        else:
+            # Annotate η at most 5 points per curve (always first and last).
+            step = max(1, math.ceil(n / 5))
+            for i in sorted(set(range(0, n, step)) | {n - 1}):
+                ax.annotate(
+                    f"η={etas[i]:.2g}",
+                    xy=(xs[i], ys[i]),
+                    xytext=(5, 4),
+                    textcoords="offset points",
+                    fontsize=7,
+                    color=color,
+                    alpha=0.85,
+                )
 
     ax.axhline(1.0, color="0.5", linewidth=1, linestyle=":", alpha=0.4, zorder=0)
-    ax.set_xlabel("Achieved Wasserstein distance  (distributional deviation)")
-    ax.set_ylabel("Average PoA ratio")
     ax.grid(True, which="both", alpha=0.2)
     ax.ticklabel_format(axis="both", style="plain", useOffset=False)
-    ax.legend(title=study_name.replace("_", " ").title(),
-              loc="upper left", fontsize=9, title_fontsize=9)
-    fig.suptitle(
-        f"PoA–robustness frontier — {study_name.replace('_', ' ')}  "
-        f"(regime: {regime_name})",
-        fontsize=12,
-    )
+
+    if thesis_style:
+        ax.set_xlabel(r"$\varepsilon$ [MW]")
+        ax.set_ylabel(r"$\mathbb{E}$ PoA")
+        # Push the "Not solved to optimality" entry to the bottom of the legend.
+        handles, labels = ax.get_legend_handles_labels()
+        order = [i for i, lab in enumerate(labels) if lab != "Not solved to optimality"]
+        order += [i for i, lab in enumerate(labels) if lab == "Not solved to optimality"]
+        ax.legend(
+            [handles[i] for i in order], [labels[i] for i in order],
+            title=_thesis_legend_title(study_name), loc="best",
+            fontsize=9, title_fontsize=9,
+        )
+    else:
+        ax.set_xlabel("Achieved Wasserstein distance  (distributional deviation)")
+        ax.set_ylabel("Average PoA ratio")
+        ax.legend(title=study_name.replace("_", " ").title(),
+                  loc="upper left", fontsize=9, title_fontsize=9)
+        fig.suptitle(
+            f"PoA–robustness frontier — {study_name.replace('_', ' ')}  "
+            f"(regime: {regime_name})",
+            fontsize=12,
+        )
     fig.tight_layout()
 
     out = output_dir / f"poa_frontier_comparison_{regime_name}.png"

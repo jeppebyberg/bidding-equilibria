@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-06-04
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 from __future__ import annotations
 
 import csv
@@ -24,7 +32,7 @@ from models.neural_network.training.dataset import (
     identify_target_columns,
 )
 from models.neural_network.training.model import BiddingPolicyNetwork
-from models.neural_network.training.visualize_policy_design_cv import (
+from results_viz.visualize_policy_design_cv import (
     create_policy_design_cv_plots,
 )
 

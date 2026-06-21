@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-06-16
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 r"""Out-of-sample support-set coverage for the base case, reported per state variable.
 
 For the base-case PoA result we draw N fresh (out-of-sample) trajectories from the
@@ -31,6 +39,11 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+# Thesis figure output: vector PDF + high-DPI PNG (results_viz/_thesis_style.py)
+import sys as _sys, pathlib as _pl  # noqa: E402
+_sys.path.insert(0, str(next((p for p in _pl.Path(__file__).resolve().parents if (p / "pyproject.toml").exists()), _pl.Path(__file__).resolve().parents[0])))  # noqa: E402
+import results_viz._thesis_style  # noqa: E402,F401
 import numpy as np
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -192,7 +205,8 @@ def main() -> None:
     _write_latex_table(rows)
     print(f"\nWrote LaTeX table: {LATEX_PATH}")
 
-    _plot_oos(processes, membership, constraint="level", output_path=LEVEL_PLOT_PATH)
+    _plot_oos(processes, membership, constraint="level", output_path=LEVEL_PLOT_PATH,
+              show_suptitle=False)
     print(f"Wrote level-box plot: {LEVEL_PLOT_PATH}")
     _plot_oos(processes, membership, constraint="tube", output_path=TUBE_PLOT_PATH)
     print(f"Wrote AR(1) tube plot: {TUBE_PLOT_PATH}")
@@ -205,11 +219,13 @@ def _plot_oos(
     membership: dict[str, tuple[np.ndarray, np.ndarray]],
     constraint: str,
     output_path: Path,
+    show_suptitle: bool = True,
 ) -> None:
     """Plot the first N_PLOT fresh trajectories per state, colored inside/outside one constraint.
 
     constraint = "level" shows only the level box; "tube" shows only the AR(1) tube.
     Trajectory coloring uses the first N_PLOT draws; the title count is over all N_DRAWS.
+    ``show_suptitle=False`` drops the overall figure title (per-panel titles are kept).
     """
     band_color = "tab:blue" if constraint == "level" else "tab:orange"
     band_label = "Level box" if constraint == "level" else "AR(1) tube"
@@ -244,11 +260,12 @@ def _plot_oos(
         ax.legend(loc="best", fontsize=7, ncol=2)
 
     axes[-1].set_xlabel("Time step t")
-    fig.suptitle(
-        f"Out-of-sample trajectories vs {band_label} (base_case)\n"
-        f"count over {N_DRAWS} draws, {N_PLOT} shown; green = inside, red = outside",
-        fontsize=11,
-    )
+    if show_suptitle:
+        fig.suptitle(
+            f"Out-of-sample trajectories vs {band_label} (base_case)\n"
+            f"count over {N_DRAWS} draws, {N_PLOT} shown; green = inside, red = outside",
+            fontsize=11,
+        )
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=170, bbox_inches="tight")
@@ -307,19 +324,14 @@ def _plot_innovations(
         grid = np.linspace(flat.min(), flat.max(), 300)
         ax_hist.plot(grid, _norm_dist.pdf(grid, 0.0, proc.sigma_innov), "r-", lw=2.0,
                      label=f"N(0, {proc.sigma_innov:.2f}$^2$)")
-        ax_hist.axvline(bound, color="tab:orange", ls="--", lw=1.4)
+        ax_hist.axvline(bound, color="tab:orange", ls="--", lw=1.4,
+                        label=f"+/- half-width = {bound:.2f}")
         ax_hist.axvline(-bound, color="tab:orange", ls="--", lw=1.4)
         ax_hist.set_xlabel(r"$\xi_t$ (MW)")
         ax_hist.set_ylabel("Density")
         ax_hist.legend(fontsize=7, loc="best")
         ax_hist.grid(True, alpha=0.2)
 
-    fig.suptitle(
-        f"Out-of-sample whitened AR(1) innovations (base_case)\n"
-        f"count/histogram over {N_DRAWS} draws, {N_PLOT} series shown; "
-        "green = inside tube, red = outside",
-        fontsize=11,
-    )
     fig.tight_layout()
     INNOV_PLOT_PATH.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(INNOV_PLOT_PATH, dpi=170, bbox_inches="tight")

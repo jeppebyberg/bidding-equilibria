@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-06-15
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 """One-off validation: does S4 (dual Big-M) cut off S0_loose's PoA solution?
 
 Concern: the reported (relaxed) PoA dropped 11.399 -> 11.351 when dual Big-M

@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-06-17
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 """Side-by-side equilibrium vs optimal dispatch for the m5 inflation-margin run.
 
 Clean two-panel figure for the thesis: stacked generation against demand,
@@ -6,7 +14,7 @@ floods all wind (forcing expensive G2 at t4/t6), while the optimum spills a
 little wind at the t5 peak to keep the cheap ramp-limited G1 warm.
 
 Run:
-  .\\.venv\\Scripts\\python.exe -m driver.sensitivity.visualize_m5_sidebyside
+  .\\.venv\\Scripts\\python.exe -m results_viz.visualize_m5_sidebyside
 """
 
 from __future__ import annotations
@@ -15,6 +23,11 @@ import json
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+
+# Thesis figure output: vector PDF + high-DPI PNG (results_viz/_thesis_style.py)
+import sys as _sys, pathlib as _pl  # noqa: E402
+_sys.path.insert(0, str(next((p for p in _pl.Path(__file__).resolve().parents if (p / "pyproject.toml").exists()), _pl.Path(__file__).resolve().parents[0])))  # noqa: E402
+import results_viz._thesis_style  # noqa: E402,F401
 import numpy as np
 
 RESULT = Path(
@@ -56,10 +69,11 @@ def panel(ax, T, disp, cap, demand, title):
             first = False
 
     ax.plot(x, demand, "k--o", lw=1.6, ms=5, label="demand $D_t$", zorder=5)
-    ax.set_title(title, fontsize=11, fontweight="bold")
+    ax.set_title(title, fontsize=14, fontweight="bold")
     ax.set_xticks(x)
-    ax.set_xticklabels([f"$t_{t+1}$" for t in range(T)])
-    ax.set_xlabel("period")
+    ax.set_xticklabels([f"$t_{t+1}$" for t in range(T)], fontsize=11)
+    ax.set_xlabel("period", fontsize=13)
+    ax.tick_params(axis="y", labelsize=11)
     ax.margins(x=0.02)
 
 
@@ -71,14 +85,12 @@ def main():
     opt = {g: np.array(gens[g]["optimal_physical_dispatch"]) for g in gens}
     cap = {g: np.array(gens[g]["physical_capacity_profile"]) for g in gens}
     demand = data["demand_profile"]
-    obj = data["objective"]
 
-    fig, (axL, axR) = plt.subplots(1, 2, figsize=(11, 4.6), sharey=True)
-    panel(axL, T, eq, cap, demand,
-          r"Equilibrium  ($C_{\mathrm{eq}} = %.0f$)" % obj["C_eq"])
-    panel(axR, T, opt, cap, demand,
-          r"Social optimum  ($C_{\mathrm{opt}} = %.0f$)" % obj["C_opt"])
-    axL.set_ylabel("generation [MW]")
+    # Sized for the A4 text width so the text stays readable when included ~1:1.
+    fig, (axL, axR) = plt.subplots(1, 2, figsize=(6.8, 3.8), sharey=True)
+    panel(axL, T, eq, cap, demand, "Policy bids")
+    panel(axR, T, opt, cap, demand, "True costs")
+    axL.set_ylabel("generation [MW]", fontsize=13)
     axL.set_ylim(0, max(demand) * 1.16)
 
     handles, labels = axL.get_legend_handles_labels()
@@ -86,13 +98,10 @@ def main():
     for h, l in zip(h2, l2):
         if l not in labels:
             handles.append(h); labels.append(l)
-    fig.legend(handles, labels, loc="lower center", ncol=7, fontsize=8.5,
-               frameon=False, bbox_to_anchor=(0.5, -0.02))
+    fig.legend(handles, labels, loc="lower center", ncol=4, fontsize=10,
+               frameon=False, bbox_to_anchor=(0.5, -0.06))
 
-    fig.suptitle(
-        r"$m_5$: $\mathrm{PoA} = C_{\mathrm{eq}}/C_{\mathrm{opt}} = %.3f$"
-        % obj["ex_post_ratio"], fontsize=12.5, fontweight="bold")
-    fig.tight_layout(rect=(0, 0.06, 1, 0.96))
+    fig.tight_layout(rect=(0, 0.04, 1, 1))
     OUT.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(OUT, dpi=150, bbox_inches="tight")
     print(f"wrote {OUT}")

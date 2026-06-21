@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-06-17
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 """Sensitivity study: the ambiguity-budget multiplier ``ambiguity_kappa``.
 
 ``ambiguity_kappa`` (base 0.3) scales the support-set budget used both by the

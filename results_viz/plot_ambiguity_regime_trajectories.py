@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-06-04
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 """Plot the ambiguity regime, optimized state trajectories, and fresh scenario coverage.
 
 Coverage scope note: the 95% joint-coverage claim applies to the AR(1) innovation tube
@@ -19,6 +27,11 @@ from pathlib import Path
 from typing import Any, Optional
 
 import matplotlib.pyplot as plt
+
+# Thesis figure output: vector PDF + high-DPI PNG (results_viz/_thesis_style.py)
+import sys as _sys, pathlib as _pl  # noqa: E402
+_sys.path.insert(0, str(next((p for p in _pl.Path(__file__).resolve().parents if (p / "pyproject.toml").exists()), _pl.Path(__file__).resolve().parents[0])))  # noqa: E402
+import results_viz._thesis_style  # noqa: E402,F401
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -252,15 +265,16 @@ def plot_ambiguity_regime_trajectories(
     result_path: Path,
     output_dir: Path = DEFAULT_OUTPUT_DIR,
     show: bool = False,
-    extra_title_line: str | None = None,
-) -> Path:
-    """Plot the optimized demand and wind trajectories against the support set.
+    extra_title_line: str | None = None,  # kept for backward compatibility; unused
+) -> tuple[Path, Path]:
+    """Plot the constraining support set and optimized trajectories as two figures.
 
-    Shows three layers for each process:
-      - Level box (stationary sigma): widest band, existing behavior.
-      - AR(1) innovation tube (innovation sigma): narrower orange band; the 95% coverage
-        claim applies here. Visualized as reference +/- kappa * D_ref * sigma_D.
-      - Optimized trajectory: the point the optimizer chose within the support set.
+    Figure 1 (demand): support band, reference, and the optimized demand trajectory.
+    Figure 2 (wind):   a single shared support band (the wind support set is the
+                       same for every wind generator), reference, and the optimized
+                       trajectory of each wind generator overlaid.
+
+    No title is drawn.
     """
     results = _load_json(result_path)
     ambiguity_set = results.get("ambiguity_set")
@@ -271,7 +285,6 @@ def plot_ambiguity_regime_trajectories(
         )
 
     demand_block = ambiguity_set.get("demand", {}) or {}
-    selected_regime = ambiguity_set.get("selected_regime", {}) or {}
     horizon = int(results["num_time_steps"])
     time = np.arange(horizon)
 
@@ -285,119 +298,80 @@ def plot_ambiguity_regime_trajectories(
         raise ValueError("No wind generators found in result['generators']")
     wind_block = ambiguity_set.get("wind", {}) or {}
 
-    # AR(1) tube params (optional: only available in results built after the tube refactor).
-    params = _get_ambiguity_params(results)
-    kappa_ar1 = _ar1_kappa(horizon) if horizon > 1 else None
-
     output_dir.mkdir(parents=True, exist_ok=True)
-    fig, axes = plt.subplots(
-        1 + len(wind_names),
-        1,
-        figsize=(11, 3.1 * (1 + len(wind_names))),
-        sharex=True,
-    )
-    regime_label = _format_regime_label(selected_regime)
-    title = f"Optimized Ambiguity Regime and Induced Support Bounds\n{regime_label}"
-    obj = results.get("objective") or {}
-    poa_ratio = obj.get("PoA_ratio")
-    c_eq = obj.get("C_eq")
-    c_opt = obj.get("C_opt")
-    if poa_ratio is not None and c_eq is not None and c_opt is not None:
-        title += (
-            f"\nPoA ratio = {float(poa_ratio):.4f}"
-            f"  |  C_eq = {float(c_eq):.1f},  C_opt = {float(c_opt):.1f}"
-        )
-    if extra_title_line:
-        title += f"\n{extra_title_line}"
-    fig.suptitle(title, fontsize=12)
 
-    # Demand subplot.
-    if params is not None and kappa_ar1 is not None:
-        stat_lo, stat_hi = _stationary_demand_bands(
-            demand_reference, params["D_ref"], params["sigma_D"], params["rho_D"], kappa_ar1
-        )
-        cum_lo, cum_hi = _cumulative_demand_bands(
-            demand_reference, params["D_ref"], params["sigma_D"], params["rho_D"], kappa_ar1
-        )
-        axes[0].fill_between(
-            time, stat_lo, stat_hi,
-            color="tab:blue", alpha=0.12,
-            label=f"Stationary bound (kappa={kappa_ar1:.3f}, scale=1/√(1−ρ²))",
-        )
-        axes[0].fill_between(
-            time, cum_lo, cum_hi,
-            color="tab:blue", alpha=0.30,
-            label="Cumulative AR(1) bound (grows from t=0)",
-        )
-    else:
-        axes[0].fill_between(
-            time, demand_lower, demand_upper,
-            color="tab:blue", alpha=0.16, label="Support bounds",
-        )
-    axes[0].plot(
+    # Shared figure size so the demand and wind figures have identical dimensions.
+    # Sized to the A4 text width (~16 cm) so labels stay readable when included ~1:1.
+    fig_size = (6.3, 3.9)
+
+    # --- Figure 1: Demand support set + optimized trajectory ---
+    fig_d, ax_d = plt.subplots(figsize=fig_size)
+    ax_d.fill_between(
+        time, demand_lower, demand_upper,
+        color="tab:blue", alpha=0.20, label="Support set",
+    )
+    ax_d.plot(
         time, demand_reference,
-        color="tab:blue", linestyle="--", linewidth=1.8, label="Demand reference",
+        color="tab:blue", linestyle="--", linewidth=1.8, label="Reference",
     )
-    axes[0].plot(
+    ax_d.plot(
         time, demand,
-        color="black", marker="o", linewidth=2.2, label="Optimized demand D[t]",
+        color="black", marker="o", linewidth=2.2, label="Optimized demand",
     )
-    axes[0].set_title("Demand Trajectory")
-    axes[0].set_ylabel("MW")
-    axes[0].grid(True, alpha=0.25)
-    axes[0].legend(loc="best", fontsize=8)
-
-    # Wind subplots.
-    for axis, gen_name in zip(axes[1:], wind_names):
-        if gen_name not in wind_block:
-            raise KeyError(f"ambiguity_set['wind'] is missing wind generator '{gen_name}'")
-        gen_amb = wind_block[gen_name]
-        gen_profile = _series(results["generators"][gen_name]["physical_capacity_profile"])
-        wind_ref = _series(gen_amb["reference"])
-        if params is not None and kappa_ar1 is not None:
-            cap = float(gen_amb.get("installed_capacity", 1.0))
-            stat_lo, stat_hi = _stationary_wind_bands(
-                wind_ref, cap, params["sigma_W"], params["rho_W"], kappa_ar1
-            )
-            cum_lo, cum_hi = _cumulative_wind_bands(
-                wind_ref, cap, params["sigma_W"], params["rho_W"], kappa_ar1
-            )
-            axis.fill_between(
-                time, stat_lo, stat_hi,
-                color="tab:green", alpha=0.12,
-                label=f"Stationary bound (kappa={kappa_ar1:.3f}, scale=1/√(1−ρ²))",
-            )
-            axis.fill_between(
-                time, cum_lo, cum_hi,
-                color="tab:green", alpha=0.30,
-                label="Cumulative AR(1) bound (grows from t=0)",
-            )
-        else:
-            axis.fill_between(
-                time, _series(gen_amb["lower"]), _series(gen_amb["upper"]),
-                color="tab:green", alpha=0.18, label="Support bounds",
-            )
-        axis.plot(
-            time, wind_ref,
-            color="tab:green", linestyle="--", linewidth=1.8, label="Wind reference",
-        )
-        axis.plot(
-            time, gen_profile,
-            color="black", marker="o", linewidth=2.0, label="Optimized wind availability",
-        )
-        axis.set_title(f"{gen_name} Wind Availability")
-        axis.set_ylabel("MW")
-        axis.grid(True, alpha=0.25)
-        axis.legend(loc="best", fontsize=8)
-
-    axes[-1].set_xlabel("Time step")
-    fig.tight_layout()
-    output_path = output_dir / f"{result_path.stem}_ambiguity_regime_trajectories.png"
-    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    ax_d.set_xlabel("Time step", fontsize=14)
+    ax_d.set_ylabel("MW", fontsize=14)
+    ax_d.tick_params(labelsize=12)
+    ax_d.grid(True, alpha=0.25)
+    ax_d.legend(loc="best", fontsize=11)
+    fig_d.tight_layout()
+    demand_path = output_dir / f"{result_path.stem}_demand_support_set.png"
+    fig_d.savefig(demand_path)
     if show:
         plt.show()
-    plt.close(fig)
-    return output_path
+    plt.close(fig_d)
+
+    # --- Figure 2: Shared wind support set + each generator's trajectory ---
+    # The wind support set (reference/lower/upper) is identical across wind
+    # generators, so a single band is drawn and the trajectories overlaid.
+    missing = [g for g in wind_names if g not in wind_block]
+    if missing:
+        raise KeyError(f"ambiguity_set['wind'] is missing wind generator(s): {missing}")
+
+    shared_amb = wind_block[wind_names[0]]
+    wind_ref = _series(shared_amb["reference"])
+    wind_lower = _series(shared_amb["lower"])
+    wind_upper = _series(shared_amb["upper"])
+
+    fig_w, ax_w = plt.subplots(figsize=fig_size)
+    ax_w.fill_between(
+        time, wind_lower, wind_upper,
+        color="tab:green", alpha=0.20, label="Support set",
+    )
+    ax_w.plot(
+        time, wind_ref,
+        color="tab:green", linestyle="--", linewidth=1.8, label="Reference",
+    )
+    traj_colors = ["tab:orange", "tab:red", "tab:purple", "tab:brown", "tab:cyan"]
+    for idx, gen_name in enumerate(wind_names):
+        gen_profile = _series(results["generators"][gen_name]["physical_capacity_profile"])
+        ax_w.plot(
+            time, gen_profile,
+            color=traj_colors[idx % len(traj_colors)],
+            marker="o", linewidth=2.0, label=f"Optimized {gen_name}",
+        )
+    ax_w.set_xlabel("Time step", fontsize=14)
+    ax_w.set_ylabel("MW", fontsize=14)
+    ax_w.tick_params(labelsize=12)
+    ax_w.grid(True, alpha=0.25)
+    ax_w.legend(loc="best", fontsize=11)
+    fig_w.tight_layout()
+    wind_path = output_dir / f"{result_path.stem}_wind_support_set.png"
+    fig_w.savefig(wind_path)
+    if show:
+        plt.show()
+    plt.close(fig_w)
+
+    return demand_path, wind_path
 
 
 # ---------------------------------------------------------------------------
@@ -847,9 +821,9 @@ def plot_fresh_scenario_innovations(
 def main() -> None:
     # Edit these paths/settings directly when running this script.
     result_paths: list[Path] = [
-        Path("results/sensitivity_pipeline/poa/poa_optimization_T8_piecewise_mccormick.json"),
+        Path("results/base_case/poa/poa_optimization_T6_piecewise_mccormick.json"),
     ]
-    results_dir = Path("results/sensitivity_pipeline/poa")
+    results_dir = Path("results/base_case/poa")
     plot_all_matching_results = False
     output_dir = DEFAULT_OUTPUT_DIR
     show = False
@@ -865,13 +839,14 @@ def main() -> None:
     )
 
     for result_path in selected_result_paths:
-        # 1. Enhanced existing plot: optimized trajectory + support set bounds.
-        p1 = plot_ambiguity_regime_trajectories(
+        # 1. Support set plots: demand figure and wind figure.
+        p_demand, p_wind = plot_ambiguity_regime_trajectories(
             result_path=result_path,
             output_dir=output_dir,
             show=show,
         )
-        print(f"Saved trajectory plot:            {p1}")
+        print(f"Saved demand support set plot:    {p_demand}")
+        print(f"Saved wind support set plot:      {p_wind}")
 
         # 2. Fresh scenario coverage in level space.
         try:

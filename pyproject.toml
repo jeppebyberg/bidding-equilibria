@@ -43,7 +43,7 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["config", "models", "driver"]
+packages = ["config", "models", "driver", "results_viz"]
 
 [tool.setuptools.package-dir]
 "" = "."

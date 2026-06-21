@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-06-14
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 """Summarize PoA solve cost and ex-post relaxation gap across the pieces sweep.
 
 Reads each run's ``poa/poa_optimization_T*.json`` (written by block3) and pulls,
@@ -22,6 +30,11 @@ Run (after mccormick_pieces_sweep):
 """
 
 from __future__ import annotations
+
+# Thesis figure output: vector PDF + high-DPI PNG (results_viz/_thesis_style.py)
+import sys as _sys, pathlib as _pl  # noqa: E402
+_sys.path.insert(0, str(next((p for p in _pl.Path(__file__).resolve().parents if (p / "pyproject.toml").exists()), _pl.Path(__file__).resolve().parents[0])))  # noqa: E402
+import results_viz._thesis_style  # noqa: E402,F401
 
 import csv
 import json
@@ -238,15 +251,9 @@ def plot_summary(
     horizons = [h for h in summary["horizons"] if _runs_for_horizon(summary, h)]
     if not horizons:
         return
-    chosen = summary.get("chosen_pieces")
     all_pieces = sorted(
         {r["pieces"] for h in horizons for r in _runs_for_horizon(summary, h)}
     )
-
-    def _mark_chosen(ax: Any) -> None:
-        if chosen in all_pieces:
-            ax.axvline(chosen, color="tab:red", ls="--", alpha=0.6,
-                       label=f"chosen = {chosen}")
 
     fig, ax = plt.subplots(figsize=(7, 5))
     capped_labelled = False
@@ -272,10 +279,8 @@ def plot_summary(
             capped_labelled = True
     ax.set_xlabel("McCormick pieces")
     ax.set_ylabel("PoA solve wall time (s)")
-    ax.set_title("PoA solve time vs. McCormick pieces")
     _apply_log_x(ax, all_pieces)
     ax.grid(alpha=0.3)
-    _mark_chosen(ax)
     ax.legend()
     fig.tight_layout()
     fig.savefig(time_path, dpi=150)
@@ -303,18 +308,15 @@ def plot_summary(
         )
     ax.set_xlabel("McCormick pieces")
     ax.set_ylabel("binary variables")
-    ax.set_title("PoA binary count vs. McCormick pieces")
     _apply_log_x(ax, all_pieces)
     ax.grid(alpha=0.3)
-    _mark_chosen(ax)
     ax.legend()
     fig.tight_layout()
     fig.savefig(binary_path, dpi=150)
     plt.close(fig)
 
-    # Ex-post relaxation gap and the realized fraction of the relaxed PoA.
+    # Ex-post relaxation gap vs pieces (Relaxation Gap only).
     fig, ax = plt.subplots(figsize=(7, 5))
-    ax2 = ax.twinx()
     for horizon in horizons:
         runs = _runs_for_horizon(summary, horizon)
         pieces = [r["pieces"] for r in runs]
@@ -324,32 +326,12 @@ def plot_summary(
             [r["mccormick_gap"] for r in runs],
             marker="o",
             color=color,
-            label=f"T={horizon} gap (PoA - ex-post)",
-        )
-        frac_pct = [
-            (r["ex_post_fraction"] * 100.0)
-            if isinstance(r["ex_post_fraction"], (int, float))
-            else None
-            for r in runs
-        ]
-        ax2.plot(
-            pieces,
-            frac_pct,
-            marker="s",
-            ls=":",
-            color=color,
-            label=f"T={horizon} ex-post fraction (%)",
+            label=f"T={horizon}",
         )
     ax.set_xlabel("McCormick pieces")
-    ax.set_ylabel("relaxation gap")
-    ax2.set_ylabel("ex-post fraction (%)")
-    ax.set_title("Ex-post relaxation gap vs. McCormick pieces")
+    ax.set_ylabel("Relaxation Gap")
     _apply_log_x(ax, all_pieces)
     ax.grid(alpha=0.3)
-    _mark_chosen(ax)
-    lines1, labels1 = ax.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-    ax.legend(lines1 + lines2, labels1 + labels2, loc="best", fontsize=8)
     fig.tight_layout()
     fig.savefig(gap_path, dpi=150)
     plt.close(fig)

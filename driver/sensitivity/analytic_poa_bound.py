@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-06-12
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 """Analytic upper bound on the PoA ratio over a DRO support set.
 
 Certifies a valid McCormick PoA upper bound (``*_mccormick_PoA_bounds[1]``)

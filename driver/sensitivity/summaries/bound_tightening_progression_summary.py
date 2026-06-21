@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-06-14
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 """Summarize tightening time vs. PoA compute time across the tightening progression.
 
 Reads, per cumulative case:
@@ -20,6 +28,11 @@ Run (after bound_tightening_progression):
 """
 
 from __future__ import annotations
+
+# Thesis figure output: vector PDF + high-DPI PNG (results_viz/_thesis_style.py)
+import sys as _sys, pathlib as _pl  # noqa: E402
+_sys.path.insert(0, str(next((p for p in _pl.Path(__file__).resolve().parents if (p / "pyproject.toml").exists()), _pl.Path(__file__).resolve().parents[0])))  # noqa: E402
+import results_viz._thesis_style  # noqa: E402,F401
 
 import csv
 import json
@@ -58,6 +71,21 @@ STAGE_COLORS = {
     "dual_big_m": "tab:red",
     "optimal_cost_bounds": "tab:purple",
     "equilibrium_cost_bounds": "tab:brown",
+}
+
+# Friendly display names for the four substantive tightening stages, shared by
+# both plots so their labels stay consistent.
+STAGE_DISPLAY = {
+    "relu_bounds": "Preactivation",
+    "alpha_bounds": "Bid bounds",
+    "slack_binary_fix": "Compl. Bin. Fixing",
+    "dual_big_m": "Dual bounds",
+}
+
+# Each cumulative case adds one stage; label it by the stage it introduces.
+CASE_DISPLAY = {
+    case_name: (STAGE_DISPLAY.get(stages[-1], case_name) if stages else "Baseline")
+    for case_name, _label, stages in TIGHTENING_CASES
 }
 
 
@@ -228,42 +256,50 @@ def plot_summary(summary: dict[str, Any], time_path: Path, stage_path: Path) -> 
     runs = summary["runs"]
     if not runs:
         return
-    labels = [r["case_name"] for r in runs]
+    labels = [CASE_DISPLAY.get(r["case_name"], r["case_name"]) for r in runs]
     x = np.arange(len(runs))
 
     # Plot 1: tightening vs. compute, stacked so the bar height is total wall time.
     tighten = [r["tightening_seconds"] or 0.0 for r in runs]
     compute = [r["compute_seconds"] if isinstance(r["compute_seconds"], (int, float)) else 0.0 for r in runs]
-    fig, ax = plt.subplots(figsize=(9, 5.5))
-    ax.bar(x, tighten, color="tab:orange", label="tightening time")
-    ax.bar(x, compute, bottom=tighten, color="tab:blue", label="PoA solve (compute) time")
+    fig, ax = plt.subplots(figsize=(6.3, 4.2))
+    ax.bar(x, tighten, color="tab:orange", label="Tightening time")
+    ax.bar(x, compute, bottom=tighten, color="tab:blue", label="PoA solve time")
     for xi, (t, c) in enumerate(zip(tighten, compute)):
-        ax.text(xi, t + c, f"{t + c:.0f}s", ha="center", va="bottom", fontsize=8)
+        ax.text(xi, t + c, f"{t + c:.0f}s", ha="center", va="bottom", fontsize=9)
     ax.set_xticks(x)
-    ax.set_xticklabels(labels, rotation=20, ha="right")
-    ax.set_ylabel("wall time (s)")
-    ax.set_title(f"Tightening vs. PoA compute time per cumulative stage (T={HORIZON})")
+    ax.set_xticklabels(labels, rotation=25, ha="right", fontsize=11)
+    ax.set_ylabel("Wall time [s]", fontsize=13)
+    ax.tick_params(axis="y", labelsize=11)
     ax.grid(axis="y", alpha=0.3)
-    ax.legend()
+    ax.legend(fontsize=10)
     fig.tight_layout()
     fig.savefig(time_path, dpi=150)
     plt.close(fig)
 
-    # Plot 2: per-stage tightening time, stacked, to show where tightening goes.
-    fig, ax = plt.subplots(figsize=(9, 5.5))
-    bottoms = np.zeros(len(runs))
-    for stage in STAGE_ORDER:
-        heights = np.array([r["stage_seconds"].get(stage, 0.0) for r in runs])
-        if not heights.any():
-            continue
-        ax.bar(x, heights, bottom=bottoms, color=STAGE_COLORS.get(stage), label=stage)
-        bottoms += heights
-    ax.set_xticks(x)
-    ax.set_xticklabels(labels, rotation=20, ha="right")
-    ax.set_ylabel("tightening wall time (s)")
-    ax.set_title(f"Per-stage tightening time per cumulative case (T={HORIZON})")
+    # Plot 2: computation time of each tightening stage, one bar per stage
+    # (not stacked). Times are taken from the most complete run (all stages on).
+    display_stages = [
+        (stage, STAGE_DISPLAY[stage])
+        for stage in ("relu_bounds", "alpha_bounds", "slack_binary_fix", "dual_big_m")
+    ]
+    full_run = max(runs, key=lambda r: len(r.get("ran_stages", [])))
+    stage_keys = [s for s, _ in display_stages]
+    names = [name for _, name in display_stages]
+    heights = [float(full_run["stage_seconds"].get(s, 0.0)) for s in stage_keys]
+    colors = [STAGE_COLORS.get(s) for s in stage_keys]
+    xs = np.arange(len(display_stages))
+
+    fig, ax = plt.subplots(figsize=(6.3, 4.0))
+    ax.bar(xs, heights, color=colors)
+    for xi, h in zip(xs, heights):
+        ax.text(xi, h, f"{h:.1f}s", ha="center", va="bottom", fontsize=10)
+    ax.set_xticks(xs)
+    ax.set_xticklabels(names, fontsize=11)
+    ax.set_ylabel("Computation time [s]", fontsize=13)
+    ax.tick_params(axis="y", labelsize=11)
+    ax.set_ylim(0, max(heights) * 1.15 if heights else 1.0)
     ax.grid(axis="y", alpha=0.3)
-    ax.legend(fontsize=8)
     fig.tight_layout()
     fig.savefig(stage_path, dpi=150)
     plt.close(fig)

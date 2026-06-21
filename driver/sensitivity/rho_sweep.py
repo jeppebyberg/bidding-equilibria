@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-06-16
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 """Sensitivity study: autocorrelation rho in the DRO ambiguity set.
 
 Varies ``demand.rho_fixed`` and ``wind.rho_fixed`` jointly across a grid that

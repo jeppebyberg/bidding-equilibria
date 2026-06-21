@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-06-16
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 """DRO eta-sweep for the horizon study, reusing the existing PoA artifacts.
 
 The non-DRO ``horizon_sweep`` already produced, per horizon, an isolated run

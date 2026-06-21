@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-06-17
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 """Visualize the m5 inflation-margin run: equilibrium vs optimal dispatch.
 
 Shows the ramp-trap / curtailment mechanism behind PoA > 1 at
@@ -8,7 +16,7 @@ inflation_margin = 5.0:
     to meet t4/t6 residual demand on its own; G2 never runs.
 
 Run:
-  .\\.venv\\Scripts\\python.exe -m driver.sensitivity.visualize_m5_dispatch
+  .\\.venv\\Scripts\\python.exe -m results_viz.visualize_m5_dispatch
 """
 
 from __future__ import annotations
@@ -17,6 +25,11 @@ import json
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+
+# Thesis figure output: vector PDF + high-DPI PNG (results_viz/_thesis_style.py)
+import sys as _sys, pathlib as _pl  # noqa: E402
+_sys.path.insert(0, str(next((p for p in _pl.Path(__file__).resolve().parents if (p / "pyproject.toml").exists()), _pl.Path(__file__).resolve().parents[0])))  # noqa: E402
+import results_viz._thesis_style  # noqa: E402,F401
 import numpy as np
 
 RESULT = Path(

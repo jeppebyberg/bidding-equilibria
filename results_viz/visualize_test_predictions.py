@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-06-15
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 """Overlay held-out NN test predictions on the residual-demand bid regions.
 
 This is a separate view from visualize_training_labels.py: it does NOT show the
@@ -19,17 +27,22 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+# Thesis figure output: vector PDF + high-DPI PNG (results_viz/_thesis_style.py)
+import sys as _sys, pathlib as _pl  # noqa: E402
+_sys.path.insert(0, str(next((p for p in _pl.Path(__file__).resolve().parents if (p / "pyproject.toml").exists()), _pl.Path(__file__).resolve().parents[0])))  # noqa: E402
+import results_viz._thesis_style  # noqa: E402,F401
 import numpy as np
 import pandas as pd
 import torch
 from sklearn.model_selection import GroupShuffleSplit
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from models.neural_network.training.model import BiddingPolicyNetwork
-from models.neural_network.training.visualize_training_labels import (
+from results_viz.visualize_training_labels import (
     DECISION_MODE,
     MAX_LEAF_NODES,
     X_FEATURE,
@@ -63,6 +76,11 @@ COLOR_ON = "#9CA3AF"     # prediction inside the label range (within tolerance)
 RANGE_TOL = 0.25         # bid-unit padding on the label range
 POINT_SIZE = 30
 ON_SIZE = 14
+
+# Legend labels (kept here so the per-block plots and the standalone legend match).
+LABEL_ABOVE = r"Above range  $[\,c_{j,b}+\nu,\ \infty\,[$"
+LABEL_INSIDE = r"Inside range  $[\,c_{i,b}-\nu,\ c_{j,b}+\nu\,]$"
+LABEL_BELOW = r"Below range  $]\,{-}\infty,\ c_{i,b}-\nu\,]$"
 
 
 def _load_model(
@@ -124,6 +142,7 @@ def _draw_block_panel(
     decision_mode: str,
     test_size: float,
     random_state: int,
+    show_legend: bool = True,
 ) -> dict[str, int]:
     """Draw the region shading + held-out test predictions for one block onto ax.
 
@@ -153,29 +172,31 @@ def _draw_block_panel(
     under = pred_bid < low_val - RANGE_TOL    # below the label range
     inside = ~over & ~under
 
-    ax.scatter(x_test[inside], y_test[inside], s=ON_SIZE, c=COLOR_ON,
-               alpha=0.6, linewidths=0, zorder=4,
-               label=f"inside range [{low_val:.4g}, {high_val:.4g}] ±{RANGE_TOL:g}")
     ax.scatter(x_test[over], y_test[over], s=POINT_SIZE, marker="^",
                c=COLOR_OVER, alpha=0.85, edgecolors="white", linewidths=0.4,
-               zorder=5, label=f"above max ({high_val:.4g})")
+               zorder=5, label=LABEL_ABOVE)
+    ax.scatter(x_test[inside], y_test[inside], s=ON_SIZE, c=COLOR_ON,
+               alpha=0.6, linewidths=0, zorder=4,
+               label=LABEL_INSIDE)
     ax.scatter(x_test[under], y_test[under], s=POINT_SIZE, marker="v",
                c=COLOR_UNDER, alpha=0.85, edgecolors="white", linewidths=0.4,
-               zorder=5, label=f"below min ({low_val:.4g})")
+               zorder=5, label=LABEL_BELOW)
 
     n_test = int(test_mask.sum())
     n_over = int(over.sum())
     n_under = int(under.sum())
     n_inside = int(inside.sum())
 
-    ax.set_xlabel(x_feature.replace("_", " ") + " (MWh)")
-    ax.set_ylabel(y_feature.replace("_", " ") + " (MWh)")
-    ax.set_title(
-        f"{gen} - {block_label}\n"
-        f"above: {n_over}   below: {n_under}   inside: {n_inside}  / {n_test}"
-    )
+    ax.set_xlabel(r"$D_t$ [MWh]", fontsize=12)
+    ax.set_ylabel(r"$\sum_{i \in \mathcal{I}_W}\bar{P}_i$ [MWh]", fontsize=12)
+    ax.tick_params(labelsize=10)
     ax.grid(True, alpha=0.2, zorder=2)
-    ax.legend(fontsize=8, markerscale=1.1, framealpha=0.85, loc="best")
+    if show_legend:
+        # Legend below the axes so it does not cover data in the small two-up figure.
+        ax.legend(
+            fontsize=8, markerscale=1.1, framealpha=0.85,
+            loc="upper center", bbox_to_anchor=(0.5, -0.28), ncol=1,
+        )
     return {"test": n_test, "above": n_over, "below": n_under, "inside": n_inside}
 
 
@@ -225,8 +246,13 @@ def plot_test_predictions(
     decision_mode: str = DECISION_MODE,
     test_size: float = TEST_SIZE,
     random_state: int = RANDOM_STATE,
+    show_legend: bool = False,
 ) -> list[Path]:
-    """Save one PNG per (generator, block) into output_dir. Returns saved paths."""
+    """Save one PNG per (generator, block) into output_dir. Returns saved paths.
+
+    Legends are omitted by default; use the standalone legend from save_legend()
+    placed once under a row of panels instead.
+    """
     panels = _collect_panels(raw_dir, norm_dir, model_dir)
     if not panels:
         print("No trained NN generators with varying labels found.")
@@ -237,16 +263,13 @@ def plot_test_predictions(
 
     saved_paths: list[Path] = []
     for gen, block_label, target_col, target_idx, raw_df, norm_df, meta in panels:
-        fig, ax = plt.subplots(figsize=(6.0, 5.4))
+        # Sized for ~half the A4 text width so two figures sit side by side and
+        # the text stays readable when included at ~0.48\textwidth each.
+        fig, ax = plt.subplots(figsize=(3.4, 3.4))
         stats = _draw_block_panel(
             ax, gen, block_label, target_col, target_idx, raw_df, norm_df, meta,
             model_dir, x_feature, y_feature, max_leaf_nodes, decision_mode,
-            test_size, random_state,
-        )
-        fig.suptitle(
-            "Held-out test predictions vs. bid region\n"
-            f"(triangle up = above label max, down = below label min, by +-{RANGE_TOL:g})",
-            fontsize=11,
+            test_size, random_state, show_legend=show_legend,
         )
         fig.tight_layout()
         out_path = output_dir / f"{gen}_{block_label}_test_predictions.png"
@@ -260,6 +283,109 @@ def plot_test_predictions(
 
     print(f"\nSaved {len(saved_paths)} per-block plots to {output_dir}")
     return saved_paths
+
+
+def _legend_handles() -> list:
+    """Proxy handles matching the test-prediction scatter markers/labels."""
+    from matplotlib.lines import Line2D
+
+    return [
+        Line2D([], [], linestyle="none", marker="^", markersize=8,
+               markerfacecolor=COLOR_OVER, markeredgecolor="white", markeredgewidth=0.4,
+               label=LABEL_ABOVE),
+        Line2D([], [], linestyle="none", marker="o", markersize=7,
+               markerfacecolor=COLOR_ON, markeredgecolor="none", label=LABEL_INSIDE),
+        Line2D([], [], linestyle="none", marker="v", markersize=8,
+               markerfacecolor=COLOR_UNDER, markeredgecolor="white", markeredgewidth=0.4,
+               label=LABEL_BELOW),
+    ]
+
+
+def plot_panels_side_by_side(
+    panel_keys: list[tuple[str, str]],
+    output_path: Path,
+    raw_dir: Path = RAW_DATA_DIR,
+    norm_dir: Path = NORM_DATA_DIR,
+    model_dir: Path = MODEL_DIR,
+    x_feature: str = X_FEATURE,
+    y_feature: str = Y_FEATURE,
+    max_leaf_nodes: int = MAX_LEAF_NODES,
+    decision_mode: str = DECISION_MODE,
+    test_size: float = TEST_SIZE,
+    random_state: int = RANDOM_STATE,
+    show_legend: bool = True,
+    titles: list[str] | None = None,
+) -> Path:
+    """Draw the given (generator, block) test-prediction panels in one figure.
+
+    Panels are placed side by side sharing a single y-axis (only the left panel
+    carries the y-axis label and tick labels). A single shared legend is drawn
+    centred underneath both panels. Optional per-panel titles may be supplied.
+    """
+    panels = _collect_panels(raw_dir, norm_dir, model_dir)
+    by_key = {(rec[0], rec[1]): rec for rec in panels}
+    missing = [k for k in panel_keys if k not in by_key]
+    if missing:
+        raise KeyError(f"Panels not found: {missing}. Available: {sorted(by_key)}")
+    selected = [by_key[k] for k in panel_keys]
+
+    n = len(selected)
+    fig_h = 3.9 if show_legend else 3.4
+    fig, axes = plt.subplots(1, n, figsize=(3.4 * n, fig_h), sharey=True)
+    axes = np.atleast_1d(axes)
+    for ax, (gen, block_label, target_col, target_idx, raw_df, norm_df, meta) in zip(axes, selected):
+        _draw_block_panel(
+            ax, gen, block_label, target_col, target_idx, raw_df, norm_df, meta,
+            model_dir, x_feature, y_feature, max_leaf_nodes, decision_mode,
+            test_size, random_state, show_legend=False,
+        )
+    for ax in axes[1:]:
+        ax.set_ylabel("")  # single shared y-axis label on the left only
+
+    if titles is not None:
+        for ax, title in zip(axes, titles):
+            ax.set_title(title, fontsize=12)
+
+    if show_legend:
+        # Reserve space at the bottom and place one shared legend under both panels.
+        fig.tight_layout(rect=(0.0, 0.14, 1.0, 1.0))
+        fig.legend(
+            handles=_legend_handles(), loc="lower center",
+            bbox_to_anchor=(0.5, 0.0), ncol=3, frameon=True,
+            fontsize=9, handletextpad=0.4, columnspacing=1.4,
+        )
+    else:
+        fig.tight_layout()
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path)
+    plt.close(fig)
+    print(f"Saved side-by-side panels to {output_path}")
+    return output_path
+
+
+def save_legend(output_path: Path, ncol: int = 3, fontsize: int = 11) -> Path:
+    """Save a standalone, tight-cropped legend (no axes) for the test-prediction plots.
+
+    Intended to be placed once underneath a row of side-by-side panels in LaTeX,
+    so the individual panels can omit their own legend.
+    """
+    handles = _legend_handles()
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig = plt.figure(figsize=(9.0, 0.6))
+    leg = fig.legend(
+        handles=handles, loc="center", ncol=ncol, frameon=True,
+        fontsize=fontsize, handletextpad=0.4, columnspacing=1.4,
+    )
+    fig.canvas.draw()
+    bbox = leg.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
+    fig.savefig(output_path, bbox_inches=bbox)
+    plt.close(fig)
+    print(f"Saved standalone legend to {output_path}")
+    return output_path
 
 
 def main() -> None:

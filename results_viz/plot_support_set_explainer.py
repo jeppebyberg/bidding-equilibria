@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-06-11
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 """Explanatory figures for the PoA support set (generic process, no model data needed).
 
 Figure 1 (level box): mean/reference trajectory with nested level-box bands at
@@ -31,6 +39,11 @@ from __future__ import annotations
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+
+# Thesis figure output: vector PDF + high-DPI PNG (results_viz/_thesis_style.py)
+import sys as _sys, pathlib as _pl  # noqa: E402
+_sys.path.insert(0, str(next((p for p in _pl.Path(__file__).resolve().parents if (p / "pyproject.toml").exists()), _pl.Path(__file__).resolve().parents[0])))  # noqa: E402
+import results_viz._thesis_style  # noqa: E402,F401
 import numpy as np
 
 from models.PoA.poa_model.support_set import _ar1_kappa, _level_scale
@@ -46,12 +59,18 @@ CONFIDENCE_LEVELS = [0.80, 0.95, 0.99]
 HIGHLIGHT_CONFIDENCE = 0.95
 AMBIGUITY_KAPPA = 0.25  # budget fraction, matches driver/project_config.py
 
+# Larger fonts so labels stay readable when the figure is placed on an A4 page.
 plt.rcParams.update({
-    "font.size": 11,
-    "axes.titlesize": 12,
-    "axes.labelsize": 11,
-    "legend.fontsize": 9,
+    "font.size": 13,
+    "axes.titlesize": 14,
+    "axes.labelsize": 14,
+    "legend.fontsize": 11,
+    "xtick.labelsize": 12,
+    "ytick.labelsize": 12,
 })
+
+# Figure size matched to the A4 text width (~16 cm) so it is included ~1:1.
+A4_FIGSIZE = (6.3, 3.9)
 
 
 def _reference_shape(num_steps: int) -> np.ndarray:
@@ -80,24 +99,21 @@ def plot_level_bounds(output_path: Path) -> None:
     reference = _reference_shape(T)
     scales = _scales(T, RHO)
 
-    fig, ax = plt.subplots(figsize=(9, 5.5))
+    fig, ax = plt.subplots(figsize=A4_FIGSIZE)
 
-    # Nested level boxes for increasing joint confidence.
-    fills = plt.cm.Blues(np.linspace(0.45, 0.2, len(CONFIDENCE_LEVELS)))
-    for conf, color in zip(sorted(CONFIDENCE_LEVELS, reverse=True), fills):
-        kappa = _ar1_kappa(T, conf)
-        half = kappa * SIGMA * scales
-        ax.fill_between(
-            time,
-            reference - half,
-            reference + half,
-            color=color,
-            label=f"level box, joint {conf:.0%}",
-        )
-
-    # For the highlighted confidence, overlay the two envelopes whose minimum
-    # defines the effective box: cumulative (growing) and stationary (constant).
+    # Single 95% level box.
     kappa_h = _ar1_kappa(T, HIGHLIGHT_CONFIDENCE)
+    half_h = kappa_h * SIGMA * scales
+    ax.fill_between(
+        time,
+        reference - half_h,
+        reference + half_h,
+        color=plt.cm.Blues(0.35),
+        label=f"level box, joint {HIGHLIGHT_CONFIDENCE:.0%}",
+    )
+
+    # Overlay the two envelopes whose minimum defines the effective box:
+    # cumulative (growing) and stationary (constant).
     cumulative = (1.0 - RHO ** (time + 1.0)) / (1.0 - RHO)
     stationary = np.full(T, 1.0 / np.sqrt(1.0 - RHO**2))
     for sign in (+1, -1):
@@ -121,18 +137,16 @@ def plot_level_bounds(output_path: Path) -> None:
 
     # Clip y so the bands stay readable; the cumulative envelope runs off-plot,
     # illustrating that the stationary bound caps it.
-    margin = 1.35 * _ar1_kappa(T, max(CONFIDENCE_LEVELS)) * SIGMA * stationary[0]
+    margin = 1.35 * kappa_h * SIGMA * stationary[0]
     ax.set_ylim(reference.min() - margin, reference.max() + margin)
 
     ax.set_xlabel("time step t")
-    ax.set_ylabel("level (relative to reference)")
-    ax.set_title(
-        f"Support-set level box: half-width = kappa * sigma * min(cumulative, stationary)"
-        f"\nAR(1) with rho={RHO}, innovation sigma={SIGMA}, T={T}, Sidak-corrected kappa"
-    )
+    ax.set_ylabel(r"Level (rel. to $\widetilde{D}$)")
+    # 5 entries over 3 columns -> 2 rows.
     ax.legend(
-        loc="upper center", bbox_to_anchor=(0.5, -0.15),
+        loc="upper center", bbox_to_anchor=(0.5, -0.26),
         ncol=3, fontsize=9, frameon=True,
+        columnspacing=1.0, handletextpad=0.4,
     )
 
     fig.tight_layout()
@@ -197,7 +211,7 @@ def plot_ar1_tube(output_path: Path) -> None:
     t_lo, t_hi = 5, 14
     window = slice(t_lo, t_hi + 1)
 
-    fig, ax = plt.subplots(figsize=(9, 5.5))
+    fig, ax = plt.subplots(figsize=A4_FIGSIZE)
 
     ax.fill_between(
         time[window], (reference - half_width)[window], (reference + half_width)[window],
@@ -236,14 +250,12 @@ def plot_ar1_tube(output_path: Path) -> None:
     ax.plot(t_far, center_far, "o", ms=5, color="tab:purple", zorder=7)
 
     ax.set_xlabel("time step t")
-    ax.set_ylabel("level (relative to reference)")
-    ax.set_title(
-        "AR(1) tube: $|x_t - \\rho x_{t-1} - \\overline{ar1}_t| \\leq \\kappa\\sigma$"
-        "\neach point $x_{t-1}$ generates a one-step tube the next value must lie in"
-    )
+    ax.set_ylabel(r"Level (rel. to $\widetilde{D}$)")
+    # 4 entries over 2 columns -> 2 rows.
     ax.legend(
-        loc="upper center", bbox_to_anchor=(0.5, -0.15),
-        ncol=4, fontsize=9, frameon=True,
+        loc="upper center", bbox_to_anchor=(0.5, -0.26),
+        ncol=2, fontsize=9, frameon=True,
+        columnspacing=1.0, handletextpad=0.4,
     )
 
     fig.tight_layout()

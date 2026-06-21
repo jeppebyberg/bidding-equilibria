@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-06-06
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 """Visualize the PoA-optimal bidding trajectory as merit order curves.
 
 Reads a PoA result JSON produced by PoAResults.save_results() and writes one
@@ -35,6 +43,11 @@ from pathlib import Path
 from typing import Any
 
 import matplotlib.pyplot as plt
+
+# Thesis figure output: vector PDF + high-DPI PNG (results_viz/_thesis_style.py)
+import sys as _sys, pathlib as _pl  # noqa: E402
+_sys.path.insert(0, str(next((p for p in _pl.Path(__file__).resolve().parents if (p / "pyproject.toml").exists()), _pl.Path(__file__).resolve().parents[0])))  # noqa: E402
+import results_viz._thesis_style  # noqa: E402,F401
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -84,6 +97,7 @@ def _annotate_stack(
     color: str,
     y_offset: float,
     changed_blocks: set[int] | None = None,
+    fontsize: float = 6.5,
 ) -> None:
     """Annotate each block in the merit order stack.
 
@@ -106,7 +120,7 @@ def _annotate_stack(
             xytext=(center_x, bid_val + y_offset),
             ha="center",
             va="bottom" if y_offset >= 0 else "top",
-            fontsize=6.5,
+            fontsize=fontsize,
             color=ann_color,
             bbox=dict(boxstyle="round,pad=0.2", fc="white", ec=ann_color, alpha=0.85),
             arrowprops=dict(arrowstyle="->", color=ann_color, lw=0.8, alpha=0.75),
@@ -156,6 +170,19 @@ def _plot_time_step(
     output_path: Path,
     show: bool,
     show_dispatch_bars: bool,
+    *,
+    show_title: bool = True,
+    show_clearing_price: bool = True,
+    show_lambda_lines: bool = True,
+    xlim: tuple[float, float] | None = None,
+    ylim: tuple[float, float] | None = None,
+    currency: str = "$",
+    eq_legend_label: str = "Eq. bid",
+    annotation_fontsize: float = 6.5,
+    figsize: tuple[float, float] = (8.0, 7.0),
+    label_fontsize: float = 9,
+    tick_fontsize: float = 8,
+    legend_fontsize: float = 8,
 ) -> Path:
     demand = [float(d) for d in result["demand_profile"]]
     block_names: list[str] = result["block_names"]
@@ -174,12 +201,13 @@ def _plot_time_step(
         header_parts.append(f"C_eq = {c_eq:.1f}  C_opt = {c_opt:.1f}")
     header = "  |  ".join(header_parts)
 
-    fig, ax = plt.subplots(figsize=(8.0, 7.0))
-    fig.suptitle(
-        f"PoA-optimal trajectory  —  t = {t}\n"
-        f"NN generators: {', '.join(nn_generators) or 'none'}  |  {header}",
-        fontsize=11,
-    )
+    fig, ax = plt.subplots(figsize=figsize)
+    if show_title:
+        fig.suptitle(
+            f"PoA-optimal trajectory  —  t = {t}\n"
+            f"NN generators: {', '.join(nn_generators) or 'none'}  |  {header}",
+            fontsize=11,
+        )
 
     tc_stack = _build_stack(true_costs, caps[:, t], block_names)
     eq_stack = _build_stack(alpha[:, t], caps[:, t], block_names)
@@ -200,14 +228,16 @@ def _plot_time_step(
     # Blocks whose rank changed between the two orderings are highlighted red.
     changed = _changed_order_blocks(tc_stack, eq_stack)
 
+    tc_label = f"True cost  (CP={tc_cp:.1f})" if show_clearing_price else "True cost"
+    eq_label = f"{eq_legend_label}  (CP={eq_cp:.1f})" if show_clearing_price else eq_legend_label
     ax.step(
         tc_stack["edges"], tc_stack["step_values"], where="post",
-        color="#2636ff", linewidth=2.2, label=f"True cost  (CP={tc_cp:.1f})",
+        color="#2636ff", linewidth=2.2, label=tc_label,
     )
     ax.step(
         eq_stack["edges"], eq_stack["step_values"], where="post",
         color="#2ca02c", linewidth=2.0, linestyle="--",
-        label=f"Eq. bid  (CP={eq_cp:.1f})",
+        label=eq_label,
     )
 
     ax.axvline(
@@ -215,30 +245,43 @@ def _plot_time_step(
         label=f"Demand = {demand[t]:.1f} MW",
     )
 
-    if eq_prices[t] is not None:
-        ax.axhline(
-            float(eq_prices[t]), color="#2ca02c", linewidth=1.1, linestyle=":",
-            alpha=0.8, label=f"$\\lambda_{{eq}}$ = {float(eq_prices[t]):.1f}",
-        )
-    if opt_prices[t] is not None:
-        ax.axhline(
-            float(opt_prices[t]), color="#2636ff", linewidth=1.1, linestyle=":",
-            alpha=0.8, label=f"$\\lambda_{{opt}}$ = {float(opt_prices[t]):.1f}",
-        )
+    if show_lambda_lines:
+        if eq_prices[t] is not None:
+            ax.axhline(
+                float(eq_prices[t]), color="#2ca02c", linewidth=1.1, linestyle=":",
+                alpha=0.8, label=f"$\\lambda_{{eq}}$ = {float(eq_prices[t]):.1f}",
+            )
+        if opt_prices[t] is not None:
+            ax.axhline(
+                float(opt_prices[t]), color="#2636ff", linewidth=1.1, linestyle=":",
+                alpha=0.8, label=f"$\\lambda_{{opt}}$ = {float(opt_prices[t]):.1f}",
+            )
 
-    _annotate_stack(ax, tc_stack, "cost", "#2636ff", -0.22 * y_span, changed_blocks=changed)
-    _annotate_stack(ax, eq_stack, "bid", "#2ca02c", +0.18 * y_span, changed_blocks=changed)
+    _annotate_stack(
+        ax, tc_stack, "cost", "#2636ff", -0.22 * y_span,
+        changed_blocks=changed, fontsize=annotation_fontsize,
+    )
+    _annotate_stack(
+        ax, eq_stack, "bid", "#2ca02c", +0.18 * y_span,
+        changed_blocks=changed, fontsize=annotation_fontsize,
+    )
 
     total_cap = float(np.sum(caps[:, t]))
-    ax.set_xlim(0.0, total_cap * 1.05)
-    ax.set_ylim(
-        float(np.min(y_all)) - 0.55 * y_span,
-        float(np.max(y_all)) + 0.45 * y_span,
-    )
-    ax.set_xlabel("Cumulative capacity (MW)", fontsize=9)
-    ax.set_ylabel("Bid / cost ($/MWh)", fontsize=9)
-    ax.tick_params(labelsize=8)
-    ax.legend(fontsize=8, loc="upper left")
+    if xlim is not None:
+        ax.set_xlim(*xlim)
+    else:
+        ax.set_xlim(0.0, total_cap * 1.05)
+    if ylim is not None:
+        ax.set_ylim(*ylim)
+    else:
+        ax.set_ylim(
+            float(np.min(y_all)) - 0.55 * y_span,
+            float(np.max(y_all)) + 0.45 * y_span,
+        )
+    ax.set_xlabel("Cumulative capacity (MW)", fontsize=label_fontsize)
+    ax.set_ylabel(f"Bid / cost ({currency}/MWh)", fontsize=label_fontsize)
+    ax.tick_params(labelsize=tick_fontsize)
+    ax.legend(fontsize=legend_fontsize, loc="upper left")
     ax.grid(True, alpha=0.25)
 
     fig.tight_layout()
@@ -281,6 +324,36 @@ def generate_poa_trajectory_figures(
         saved.append(out)
     print(f"[poa_trajectory] Saved {len(saved)} figures to {output_dir}")
     return saved
+
+
+def generate_single_merit_order_figure(
+    result_json_path: str | Path,
+    output_path: str | Path,
+    t: int,
+    show: bool = False,
+    show_dispatch_bars: bool = False,
+    **overrides: Any,
+) -> Path:
+    """Render the merit order figure for a single time step with optional overrides.
+
+    Used for one-off, case-specific thesis figures (e.g. a zoomed base-case view).
+    The override keyword arguments (show_title, show_clearing_price,
+    show_lambda_lines, xlim, ylim, currency, eq_legend_label) are passed through
+    to _plot_time_step; defaults leave the general behavior unchanged.
+    """
+    result = _load_result(Path(result_json_path))
+    true_costs, alpha, caps = _extract_arrays(result)
+    return _plot_time_step(
+        t=t,
+        result=result,
+        true_costs=true_costs,
+        alpha=alpha,
+        caps=caps,
+        output_path=Path(output_path),
+        show=show,
+        show_dispatch_bars=show_dispatch_bars,
+        **overrides,
+    )
 
 
 def main() -> None:

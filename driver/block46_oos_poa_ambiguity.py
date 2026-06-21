@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-06-17
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 """Block 4.6: realized inefficiency over a wide OOS draw from the ambiguity set.
 
 Unlike block 4.5 (which draws from a single PoA regime), this block draws fresh
@@ -12,6 +20,11 @@ the full support, rather than only at the worst-case regime the MILP reports.
 """
 
 from __future__ import annotations
+
+# Thesis figure output: vector PDF + high-DPI PNG (results_viz/_thesis_style.py)
+import sys as _sys, pathlib as _pl  # noqa: E402
+_sys.path.insert(0, str(next((p for p in _pl.Path(__file__).resolve().parents if (p / "pyproject.toml").exists()), _pl.Path(__file__).resolve().parents[0])))  # noqa: E402
+import results_viz._thesis_style  # noqa: E402,F401
 
 import json
 import sys
@@ -181,12 +194,13 @@ def _plot_combined_distributions(
     bins = np.linspace(lo, hi, 40)
 
     series = [
-        ("ambiguity set", amb, "#4C72B0"),
-        ("worst-case regime", reg, "#C44E52"),
+        (r"Uncertainty set $\mathcal{R}$", amb, "#4C72B0"),
+        (r"Regime $r^*$", reg, "#C44E52"),
     ]
 
-    fig, ax = plt.subplots(figsize=(8.5, 5))
-    ax.axvline(1.0, color="black", linestyle=":", linewidth=1, label="efficient (1.0)")
+    # Sized for the A4 text width (~16 cm) so labels stay readable when included ~1:1.
+    fig, ax = plt.subplots(figsize=(6.3, 3.9))
+    ax.axvline(1.0, color="black", linestyle=":", linewidth=1)
     for label, data, color in series:
         ax.hist(
             data,
@@ -194,14 +208,14 @@ def _plot_combined_distributions(
             color=color,
             alpha=0.5,
             edgecolor="white",
-            label=f"{label} (n={data.size}, mean={data.mean():.2f})",
+            label=f"{label} (mean={data.mean():.2f})",
         )
         ax.axvline(float(data.mean()), color=color, linestyle="--", linewidth=1.5)
 
-    ax.set_xlabel("Realized inefficiency  C_eq / C_opt")
-    ax.set_ylabel("Number of OOS scenarios")
-    ax.set_title("OOS inefficiency: ambiguity set vs. worst-case regime")
-    ax.legend()
+    ax.set_xlabel("PoA", fontsize=14)
+    ax.set_ylabel("Number of OOS scenarios", fontsize=14)
+    ax.tick_params(labelsize=12)
+    ax.legend(fontsize=11)
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=150)

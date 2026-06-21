@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-06-15
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 """Focused re-run: does the NN alpha-bound floor fix S4's PoA under-report?
 
 Background: at S4 (dual Big-M) the free PoA solve reported 11.351 and a

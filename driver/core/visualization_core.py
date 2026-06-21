@@ -15,6 +15,11 @@ warning and never aborts the pipeline run.
 """
 from __future__ import annotations
 
+# Thesis figure output: vector PDF + high-DPI PNG (results_viz/_thesis_style.py)
+import sys as _sys, pathlib as _pl  # noqa: E402
+_sys.path.insert(0, str(next((p for p in _pl.Path(__file__).resolve().parents if (p / "pyproject.toml").exists()), _pl.Path(__file__).resolve().parents[0])))  # noqa: E402
+import results_viz._thesis_style  # noqa: E402,F401
+
 import traceback
 from pathlib import Path
 from typing import Any
@@ -423,7 +428,7 @@ def _guard(stage_name: str, fn, *args, **kwargs) -> Any:
 # ---------------------------------------------------------------------------
 
 def plot_nn_policy_stage(config: Any) -> None:
-    from models.neural_network.tests.visualize_nn_policy_merit_order import (
+    from results_viz.visualize_nn_policy_merit_order import (
         generate_merit_order_figures,
     )
 

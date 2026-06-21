@@ -160,13 +160,13 @@ def train_policies(config: ProjectConfig) -> Path:
 
 
 def plot_training_results(config: ProjectConfig) -> Path:
-    from models.neural_network.training.visualize_training import (
+    from results_viz.visualize_training import (
         main as visualize_training_main,
     )
-    from models.neural_network.training.visualize_test_predictions import (
+    from results_viz.visualize_test_predictions import (
         plot_test_predictions,
     )
-    from models.neural_network.training.visualize_training_labels import (
+    from results_viz.visualize_training_labels import (
         load_all_raw_datasets,
         plot_label_scatter_individual,
     )

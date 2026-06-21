@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-06-01
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 """Plot the PoA ambiguity regime trajectories for the sensitivity pipeline result.
 
 Delegates to plot_ambiguity_regime_trajectories.py for all plotting logic.

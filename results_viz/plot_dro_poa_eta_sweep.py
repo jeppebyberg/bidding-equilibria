@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-06-05
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 """Plot DRO PoA values as a function of eta for one regime."""
 
 from __future__ import annotations
@@ -12,6 +20,11 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+# Thesis figure output: vector PDF + high-DPI PNG (results_viz/_thesis_style.py)
+import sys as _sys, pathlib as _pl  # noqa: E402
+_sys.path.insert(0, str(next((p for p in _pl.Path(__file__).resolve().parents if (p / "pyproject.toml").exists()), _pl.Path(__file__).resolve().parents[0])))  # noqa: E402
+import results_viz._thesis_style  # noqa: E402,F401
 import numpy as np
 
 
@@ -327,7 +340,8 @@ def plot_poa_eta_sweep(
 ) -> Path:
     grouped_records = _records_by_epsilon(records)
     output_dir.mkdir(parents=True, exist_ok=True)
-    fig, ax = plt.subplots(figsize=(9.2, 5.2))
+    # Sized for the A4 text width so labels stay readable when included ~1:1.
+    fig, ax = plt.subplots(figsize=(6.3, 3.9))
 
     plotted_ratio = _plot_metric_by_epsilon(ax, grouped_records, "average_poa_ratio",
                                             epsilon_labels=epsilon_labels)
@@ -347,27 +361,9 @@ def plot_poa_eta_sweep(
     ax.axhline(1.0, color="0.4", linewidth=1.2, linestyle="--", alpha=0.6,
                zorder=1, label="PoA ratio = 1 (competitive)")
 
-    ax.set_title(f"DRO PoA η sweep  —  {regime_name}", fontsize=12)
-    ax.legend(loc="best", frameon=True, fontsize=9)
-    ax.set_ylabel(METRIC_LABELS["average_poa_ratio"])
-    ax.set_xlabel("η  (Wasserstein penalty)", fontsize=10)
-
-    horizon = records[0].get("num_time_steps")
-    n_scenarios = records[0].get("num_empirical_scenarios")
-    context_parts = []
-    if horizon is not None:
-        context_parts.append(f"T = {horizon}")
-    if n_scenarios is not None:
-        context_parts.append(f"N = {n_scenarios}")
-    n_epsilons = len(grouped_records)
-    context_parts.append(f"{n_epsilons} ε curve{'s' if n_epsilons != 1 else ''}")
-    if context_parts:
-        ax.text(
-            0.01, 0.97, "  ".join(context_parts),
-            transform=ax.transAxes,
-            fontsize=8.5, color="0.40", va="top",
-            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="0.75", alpha=0.85),
-        )
+    ax.set_ylabel(r"$\mathbb{E}\,\mathrm{PoA}$", fontsize=14)
+    ax.set_xlabel("η  (Wasserstein penalty)", fontsize=14)
+    ax.tick_params(labelsize=12)
 
     fig.tight_layout()
     output_path = output_dir / f"{regime_name}_poa_by_eta_by_epsilon.png"
@@ -397,13 +393,12 @@ def plot_poa_epsilon_frontier(
     If oos_mean_poa is provided, a horizontal dashed line marks that level and
     the calibrated ε* crossing is marked with a star.
     """
-    import math
-
     grouped = _records_by_epsilon(records)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-    fig, ax = plt.subplots(figsize=(8.5, 5.5))
+    # Sized for the A4 text width so labels stay readable when included ~1:1.
+    fig, ax = plt.subplots(figsize=(6.3, 3.9))
 
     for color_idx, (eps_cap, eps_records) in enumerate(grouped.items()):
         color = colors[color_idx % len(colors)]
@@ -421,25 +416,9 @@ def plot_poa_epsilon_frontier(
         points.sort(key=lambda p: p[0])
         xs = [p[0] for p in points]
         ys = [p[1] for p in points]
-        etas = [p[2] for p in points]
-        n = len(points)
 
         ax.plot(xs, ys, "o-", color=color, linewidth=2.0, markersize=5, zorder=3,
                 label=_epsilon_label(eps_cap, epsilon_labels))
-
-        # Annotate at most 5 points per curve, always including first and last.
-        step = max(1, math.ceil(n / 5))
-        annotated_indices = sorted(set(range(0, n, step)) | {n - 1})
-        for i in annotated_indices:
-            ax.annotate(
-                f"η={etas[i]:.2g}",
-                xy=(xs[i], ys[i]),
-                xytext=(5, 4),
-                textcoords="offset points",
-                fontsize=7,
-                color=color,
-                alpha=0.85,
-            )
 
     # OOS overlays.
     for label_name, poa_value, oos_color, line_style in [
@@ -469,14 +448,9 @@ def plot_poa_epsilon_frontier(
         except (ValueError, StopIteration):
             pass  # frontier too sparse for calibration — overlay line still shown
 
-    ax.set_xlabel("Achieved Wasserstein distance (ε)", fontsize=10)
-    ax.set_ylabel(METRIC_LABELS.get(poa_metric, poa_metric), fontsize=10)
-    ax.set_title(
-        f"PoA–ε frontier  —  {regime_name}\n"
-        "η labels show marginal cost of robustness  (dPoA/dε = η, envelope theorem)",
-        fontsize=11,
-    )
-    ax.legend(loc="best", frameon=True, fontsize=9)
+    ax.set_xlabel(r"$\varepsilon$  [MWh]", fontsize=14)
+    ax.set_ylabel(r"$\mathbb{E}\,\mathrm{PoA}$", fontsize=14)
+    ax.tick_params(labelsize=12)
     ax.ticklabel_format(axis="both", style="plain", useOffset=False)
     ax.grid(True, alpha=0.25)
     fig.tight_layout()

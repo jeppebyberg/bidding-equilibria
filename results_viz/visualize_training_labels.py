@@ -1,3 +1,11 @@
+# -----------------------------------------------------------------------------
+# Conducted by Jeppe Urup Byberg.
+# Last modified: 2026-06-15
+#
+# Part of the MSc thesis on strategic bidding equilibria and worst-case market
+# inefficiency (Price-of-Anarchy) in electricity markets.
+# -----------------------------------------------------------------------------
+
 from __future__ import annotations
 
 import sys
@@ -7,11 +15,16 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+# Thesis figure output: vector PDF + high-DPI PNG (results_viz/_thesis_style.py)
+import sys as _sys, pathlib as _pl  # noqa: E402
+_sys.path.insert(0, str(next((p for p in _pl.Path(__file__).resolve().parents if (p / "pyproject.toml").exists()), _pl.Path(__file__).resolve().parents[0])))  # noqa: E402
+import results_viz._thesis_style  # noqa: E402,F401
 import numpy as np
 import pandas as pd
 from sklearn.tree import DecisionTreeClassifier, export_text
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -141,6 +154,12 @@ def _draw_label_panel(
     max_leaf_nodes: int,
     shade_regions: bool,
     decision_mode: str,
+    *,
+    show_title: bool = True,
+    high_label: str | None = None,
+    low_label: str | None = None,
+    xlabel: str | None = None,
+    ylabel: str | None = None,
 ) -> float:
     """Draw one block's label scatter (and optional regions) onto ax.
 
@@ -176,24 +195,25 @@ def _draw_label_panel(
     ax.scatter(
         x[mask_high], y[mask_high],
         color=COLOR_HIGH, s=POINT_SIZE, alpha=ALPHA_POINTS, linewidths=0,
-        label=f"high bid ({high_val:.4g})", zorder=5,
+        label=high_label if high_label is not None else f"high bid ({high_val:.4g})", zorder=5,
     )
     ax.scatter(
         x[~mask_high], y[~mask_high],
         color=COLOR_LOW, s=POINT_SIZE, alpha=ALPHA_POINTS, linewidths=0,
-        label=f"low bid ({low_val:.4g})", zorder=5,
+        label=low_label if low_label is not None else f"low bid ({low_val:.4g})", zorder=5,
     )
 
     n_high = int(mask_high.sum())
     n_low = int((~mask_high).sum())
     pct_high = 100.0 * n_high / (n_low + n_high)
 
-    ax.set_xlabel(x_feature.replace("_", " ") + " (MWh)")
-    ax.set_ylabel(y_feature.replace("_", " ") + " (MWh)")
-    ax.set_title(
-        f"{gen_name} - {block_label}   (fit acc {accuracy:.0%})\n"
-        f"high: {n_high} ({pct_high:.0f}%)   low: {n_low} ({100 - pct_high:.0f}%)"
-    )
+    ax.set_xlabel(xlabel if xlabel is not None else x_feature.replace("_", " ") + " (MWh)")
+    ax.set_ylabel(ylabel if ylabel is not None else y_feature.replace("_", " ") + " (MWh)")
+    if show_title:
+        ax.set_title(
+            f"{gen_name} - {block_label}   (fit acc {accuracy:.0%})\n"
+            f"high: {n_high} ({pct_high:.0f}%)   low: {n_low} ({100 - pct_high:.0f}%)"
+        )
     ax.grid(True, alpha=0.2, zorder=2)
     ax.legend(fontsize=8, markerscale=1.5, framealpha=0.8)
     return accuracy
@@ -274,6 +294,11 @@ def plot_label_scatter_individual(
         _draw_label_panel(
             ax, gen_name, block_label, df, target_col, x_feature, y_feature,
             max_leaf_nodes, shade_regions, decision_mode,
+            show_title=False,
+            high_label="Heuristic Inflated",
+            low_label="True cost",
+            xlabel=r"$D_t$ [MWh]",
+            ylabel=r"$\sum_{i \in \mathcal{I}_W}\bar{P}_i$ [MWh]",
         )
         fig.tight_layout()
         out_path = output_dir / f"{gen_name}_{block_label}_{suffix}.png"
