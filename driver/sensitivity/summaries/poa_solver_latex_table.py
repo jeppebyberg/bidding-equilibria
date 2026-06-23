@@ -29,6 +29,7 @@ Run (default = base_case):
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any, TypeVar
@@ -62,6 +63,37 @@ def load_regime_params(run_dir: Path) -> dict[str, Any]:
     with params_path.open("r", encoding="utf-8") as fh:
         params = json.load(fh)
     return {key: params.get(key) for key in REGIME_KEYS}
+
+
+def load_dro_stats(run_dir: Path) -> dict[str, Any] | None:
+    """Aggregate a run's DRO eta-sweep solver statistics, or None if absent.
+
+    The DRO stage solves one MILP per eta and reuses a single tightening pass, so
+    the eta-sweep summary holds one record per program. Times are summed/averaged
+    over those programs; the integer-variable counts are identical across them.
+    """
+    summary_path = run_dir / "dro" / "eta_sweep_summary.json"
+    if not summary_path.exists():
+        return None
+    with summary_path.open("r", encoding="utf-8") as fh:
+        records = json.load(fh)
+    if not records:
+        return None
+    waits = [
+        (rec.get("solver") or {}).get("wall_time_seconds")
+        for rec in records
+        if isinstance((rec.get("solver") or {}).get("wall_time_seconds"), (int, float))
+    ]
+    total_wall = sum(waits) if waits else None
+    avg_wall = total_wall / len(waits) if waits else None
+    counts = (records[0].get("solver") or {}).get("variable_counts", {}) or {}
+    return {
+        "n_programs": len(records),
+        "total_wall": total_wall,
+        "avg_wall": avg_wall,
+        "integer_free": counts.get("num_discrete_variables_free"),
+        "integer_total": counts.get("num_discrete_variables_total"),
+    }
 
 
 def extract_stats(result: dict[str, Any]) -> dict[str, Any]:
@@ -302,6 +334,224 @@ def build_poa_regime_overview_latex(
     )
 
 
+def _fmt_regime_tuple(regime: dict[str, Any]) -> str:
+    """Format the optimal regime as $(\\mu_D,\\sigma_D,\\mu_W,\\sigma_W)$.
+
+    mu_* are shown to 2 decimals and sigma_* to 3, matching the thesis tables.
+    """
+
+    def part(value: Any, decimals: int) -> str:
+        return f"{value:.{decimals}f}" if isinstance(value, (int, float)) else "-"
+
+    return (
+        f"$({part(regime.get('mu_D'), 2)},\\,{part(regime.get('sigma_D'), 3)},\\,"
+        f"{part(regime.get('mu_W'), 2)},\\,{part(regime.get('sigma_W'), 3)})$"
+    )
+
+
+def _fmt_status_with_gap(stats: dict[str, Any]) -> str:
+    """Completion status, annotated with the MIP gap when not proven optimal."""
+    status = stats["status"]
+    gap = stats["mip_gap"]
+    if isinstance(gap, (int, float)) and gap > 0.0:
+        return f"{status} ({gap * 100.0:.2f}\\%)"
+    return "Optimal" if status.lower() == "optimal" else status
+
+
+# Per-run rows for the block table, in display order. Each entry maps a metric
+# label to a function that renders its value from (stats, regime).
+_BLOCK_ROWS: tuple[tuple[str, Any], ...] = (
+    ("Objective value", lambda st, rg: f"${_fmt_ratio(st['optimal_value'])}$"),
+    ("Ex-post PoA", lambda st, rg: f"${_fmt_ratio(st['ex_post_ratio'])}$"),
+    (
+        "Optimal regime $r^\\star=(\\mu_D,\\sigma_D,\\mu_W,\\sigma_W)$",
+        lambda st, rg: _fmt_regime_tuple(rg),
+    ),
+    ("Computation time (s)", lambda st, rg: _fmt_time(st["wall_time_seconds"])),
+    (
+        "Integer variables (free / total)",
+        lambda st, rg: _fmt_free_total(st["integer_variables_free"], st["integer_variables"]),
+    ),
+    ("Completion status (MIP gap (\\%))", lambda st, rg: _fmt_status_with_gap(st)),
+)
+
+
+def _regime_block_body(rows: list[tuple[str, dict[str, Any], dict[str, Any]]]) -> list[str]:
+    """Render ``rows`` as ``\\multirow`` blocks separated by ``\\midrule``.
+
+    ``rows`` is ``(run_label, stats, regime_params)``. Returns body lines only
+    (no table/tabular wrapper, no trailing rule), so callers can stack several
+    groups into one table.
+    """
+    n = len(_BLOCK_ROWS)
+    lines: list[str] = []
+    for idx, (run_label, st, regime) in enumerate(rows):
+        safe_label = run_label.replace("_", "\\_")
+        for row_idx, (metric, render) in enumerate(_BLOCK_ROWS):
+            run_cell = f"\\multirow{{{n}}}{{*}}{{{safe_label}}}" if row_idx == 0 else ""
+            lines.append(f"        {run_cell} & {metric} & {render(st, regime)} \\\\")
+        if idx != len(rows) - 1:
+            lines.append("        \\midrule")
+    return lines
+
+
+def build_poa_regime_block_latex(
+    rows: list[tuple[str, dict[str, Any], dict[str, Any]]],
+    caption: str,
+    label: str,
+) -> str:
+    """Multirow table: one stacked block of metrics per run.
+
+    Each run becomes a ``\\multirow`` block of the metrics in ``_BLOCK_ROWS``;
+    blocks are separated by ``\\midrule``. Requires ``\\usepackage{multirow}``.
+    """
+    body = "\n".join(_regime_block_body(rows))
+    return (
+        "\\begin{table}[H]\n"
+        "    \\centering\n"
+        "    \\small\n"
+        "    \\begin{tabular}{llr}\n"
+        "        \\toprule\n"
+        "        Run & Metric & Value \\\\\n"
+        "        \\midrule\n"
+        f"{body}\n"
+        "        \\bottomrule\n"
+        "    \\end{tabular}\n"
+        f"    \\caption{{{caption}}}\n"
+        f"    \\label{{{label}}}\n"
+        "\\end{table}\n"
+    )
+
+
+def build_poa_regime_blocks_combined_latex(
+    per_study_regime: dict[str, list[tuple[str, dict[str, Any], dict[str, Any]]]],
+    caption: str,
+    label: str,
+) -> str:
+    """One combined block table over every sensitivity run, grouped by study.
+
+    Studies appear in alphabetical order, each introduced by a spanning header
+    row; runs within a study are curated/natural-sorted and rendered as
+    ``\\multirow`` blocks. Requires ``\\usepackage{multirow}``.
+    """
+    sections: list[str] = []
+    for study in sorted(per_study_regime):
+        rows = _curate_study_rows(study, per_study_regime[study])
+        if not rows:
+            continue
+        study_label = study.replace("_", "\\_")
+        section = [
+            f"        \\multicolumn{{3}}{{l}}{{\\textbf{{{study_label}}}}} \\\\",
+            "        \\midrule",
+            *_regime_block_body(rows),
+        ]
+        sections.append("\n".join(section))
+    body = "\n        \\midrule\n".join(sections)
+    return (
+        "\\begin{table}[H]\n"
+        "    \\centering\n"
+        "    \\small\n"
+        "    \\begin{tabular}{llr}\n"
+        "        \\toprule\n"
+        "        Run & Metric & Value \\\\\n"
+        "        \\midrule\n"
+        f"{body}\n"
+        "        \\bottomrule\n"
+        "    \\end{tabular}\n"
+        f"    \\caption{{{caption}}}\n"
+        f"    \\label{{{label}}}\n"
+        "\\end{table}\n"
+    )
+
+
+# Per-run rows for the DRO block table, in display order. The user-omitted rows
+# (program count, total bound-tightening time, total variable count) are left out;
+# what remains mirrors the PoA solver-stats table. Each value renders from a DRO
+# stats dict (load_dro_stats).
+_DRO_BLOCK_ROWS: tuple[tuple[str, Any], ...] = (
+    ("Total Computation time (s)", lambda st: _fmt_time(st["total_wall"])),
+    ("Average Computation time (s)", lambda st: _fmt_time(st["avg_wall"])),
+    (
+        "Integer variables (free / total)",
+        lambda st: _fmt_free_total(st["integer_free"], st["integer_total"]),
+    ),
+)
+
+
+def _dro_block_body(rows: list[tuple[str, dict[str, Any]]]) -> list[str]:
+    """Render ``(run_label, dro_stats)`` rows as ``\\multirow`` blocks."""
+    n = len(_DRO_BLOCK_ROWS)
+    lines: list[str] = []
+    for idx, (run_label, st) in enumerate(rows):
+        safe_label = run_label.replace("_", "\\_")
+        for row_idx, (metric, render) in enumerate(_DRO_BLOCK_ROWS):
+            run_cell = f"\\multirow{{{n}}}{{*}}{{{safe_label}}}" if row_idx == 0 else ""
+            lines.append(f"        {run_cell} & {metric} & {render(st)} \\\\")
+        if idx != len(rows) - 1:
+            lines.append("        \\midrule")
+    return lines
+
+
+def build_dro_block_latex(
+    rows: list[tuple[str, dict[str, Any]]],
+    caption: str,
+    label: str,
+) -> str:
+    """Multirow DRO solver-stats table: one block per run. Needs ``multirow``."""
+    body = "\n".join(_dro_block_body(rows))
+    return (
+        "\\begin{table}[H]\n"
+        "    \\centering\n"
+        "    \\small\n"
+        "    \\begin{tabular}{llr}\n"
+        "        \\toprule\n"
+        "        Run & Metric & Value \\\\\n"
+        "        \\midrule\n"
+        f"{body}\n"
+        "        \\bottomrule\n"
+        "    \\end{tabular}\n"
+        f"    \\caption{{{caption}}}\n"
+        f"    \\label{{{label}}}\n"
+        "\\end{table}\n"
+    )
+
+
+def build_dro_blocks_combined_latex(
+    per_study_dro: dict[str, list[tuple[str, dict[str, Any]]]],
+    caption: str,
+    label: str,
+) -> str:
+    """One combined DRO block table over every run with a sweep, grouped by study."""
+    sections: list[str] = []
+    for study in sorted(per_study_dro):
+        rows = _curate_study_rows(study, per_study_dro[study])
+        if not rows:
+            continue
+        study_label = study.replace("_", "\\_")
+        section = [
+            f"        \\multicolumn{{3}}{{l}}{{\\textbf{{{study_label}}}}} \\\\",
+            "        \\midrule",
+            *_dro_block_body(rows),
+        ]
+        sections.append("\n".join(section))
+    body = "\n        \\midrule\n".join(sections)
+    return (
+        "\\begin{table}[H]\n"
+        "    \\centering\n"
+        "    \\small\n"
+        "    \\begin{tabular}{llr}\n"
+        "        \\toprule\n"
+        "        Run & Metric & Value \\\\\n"
+        "        \\midrule\n"
+        f"{body}\n"
+        "        \\bottomrule\n"
+        "    \\end{tabular}\n"
+        f"    \\caption{{{caption}}}\n"
+        f"    \\label{{{label}}}\n"
+        "\\end{table}\n"
+    )
+
+
 def _study_of(run_dir: Path) -> str | None:
     """First path component under sensitivity_studies, or None for base_case."""
     try:
@@ -315,6 +565,11 @@ def _study_run_label(run_dir: Path, study: str) -> str:
     return run_dir.relative_to(SENSITIVITY_ROOT / study).as_posix()
 
 
+def _natural_key(label: str) -> list[Any]:
+    """Sort key that orders embedded integers numerically (T4 < T6 < T10)."""
+    return [int(chunk) if chunk.isdigit() else chunk for chunk in re.split(r"(\d+)", label)]
+
+
 def _curate_study_rows(study: str, study_rows: list[_Row]) -> list[_Row]:
     """Restrict/order a study's overview rows to its canonical runs.
 
@@ -324,10 +579,11 @@ def _curate_study_rows(study: str, study_rows: list[_Row]) -> list[_Row]:
     bound_tightening_progression accumulates experimental side-runs (e.g.
     S4_dual_alpha_floor, S5_equilibrium) in the same study folder. The thesis
     overview table should show only the canonical S0..S4 progression, in stage
-    order. Other studies are returned unchanged.
+    order. Other studies are sorted by natural (numeric-aware) run label so
+    horizons/counts read ascending (T4, T6, T8, T10) rather than lexicographic.
     """
     if study != "bound_tightening_progression":
-        return study_rows
+        return sorted(study_rows, key=lambda row: _natural_key(row[0]))
     # Lazy import to avoid pulling the pipeline in for unrelated studies.
     from driver.sensitivity.bound_tightening_progression import (
         TIGHTENING_CASES,
@@ -351,6 +607,8 @@ def run_all() -> None:
     # PoA + optimal-regime table requested across every study.
     regime_rows: list[tuple[str, dict[str, Any], dict[str, Any]]] = []
     per_study_regime: dict[str, list[tuple[str, dict[str, Any], dict[str, Any]]]] = {}
+    # DRO solver-stats rows: (label, dro_stats) for runs that have an eta sweep.
+    per_study_dro: dict[str, list[tuple[str, dict[str, Any]]]] = {}
     for run_dir in run_dirs:
         try:
             label = _run_label(run_dir)
@@ -364,6 +622,9 @@ def run_all() -> None:
                 run_label = _study_run_label(run_dir, study)
                 per_study.setdefault(study, []).append((run_label, stats))
                 per_study_regime.setdefault(study, []).append((run_label, stats, regime))
+                dro_stats = load_dro_stats(run_dir)
+                if dro_stats is not None:
+                    per_study_dro.setdefault(study, []).append((run_label, dro_stats))
             print(f"  wrote {out_path.relative_to(RESULTS_ROOT)}")
         except FileNotFoundError as exc:
             print(f"  [skip] {run_dir}: {exc}")
@@ -392,6 +653,30 @@ def run_all() -> None:
         ),
         encoding="utf-8",
     )
+    regime_blocks_path = overview_dir / "poa_regime_blocks_overview.tex"
+    regime_blocks_path.write_text(
+        build_poa_regime_blocks_combined_latex(
+            per_study_regime,
+            caption=(
+                "PoA optimization solver statistics and optimal worst-case "
+                "regime per run across all sensitivity studies."
+            ),
+            label="tab:poa_regime_blocks_overview",
+        ),
+        encoding="utf-8",
+    )
+    if per_study_dro:
+        (overview_dir / "dro_solver_blocks_overview.tex").write_text(
+            build_dro_blocks_combined_latex(
+                per_study_dro,
+                caption=(
+                    "DRO PoA optimization solver statistics per run across all "
+                    "sensitivity studies."
+                ),
+                label="tab:dro_solver_blocks_overview",
+            ),
+            encoding="utf-8",
+        )
 
     # Per-study overviews: only that study's runs, written into the study folder.
     for study, study_rows in per_study.items():
@@ -418,6 +703,33 @@ def run_all() -> None:
                 study_regime_rows,
                 caption=(f"Achieved PoA and optimal worst-case regime ({study_label})."),
                 label=f"tab:poa_regime_{study}",
+            ),
+            encoding="utf-8",
+        )
+        (study_dir / "poa_regime_blocks.tex").write_text(
+            build_poa_regime_block_latex(
+                study_regime_rows,
+                caption=(
+                    "PoA optimization solver statistics and optimal worst-case "
+                    f"regime per run ({study_label})."
+                ),
+                label=f"tab:poa_regime_blocks_{study}",
+            ),
+            encoding="utf-8",
+        )
+
+    for study, study_dro_rows in per_study_dro.items():
+        study_dro_rows = _curate_study_rows(study, study_dro_rows)
+        if not study_dro_rows:
+            continue
+        study_dir = SENSITIVITY_ROOT / study / "LaTeX"
+        study_dir.mkdir(parents=True, exist_ok=True)
+        study_label = study.replace("_", "\\_")
+        (study_dir / "dro_solver_blocks.tex").write_text(
+            build_dro_block_latex(
+                study_dro_rows,
+                caption=f"DRO PoA optimization solver statistics per run ({study_label}).",
+                label=f"tab:dro_solver_blocks_{study}",
             ),
             encoding="utf-8",
         )
